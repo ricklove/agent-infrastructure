@@ -1,0 +1,12 @@
+{
+  "name": "devpod-example-4gb",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.10",
+    "typescript": "^5.4.5"
+  }
+}

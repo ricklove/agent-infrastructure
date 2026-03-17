@@ -37,3 +37,18 @@ bunx cdk bootstrap aws://ACCOUNT_ID/REGION
 The default AWS setup intentionally stays simple: one AZ, public subnets, no NAT gateway, no managed VPN, and inbound access controlled entirely by security groups. Swarm machines still communicate with each other over their private VPC IPs, so multi-service workloads can talk east-west without exposing public ports.
 
 Launched workers also start a telemetry agent that maintains a WebSocket connection back to the manager over the private network and sends worker/container CPU and RAM metrics every second.
+
+The manager also exposes a namespaced service registry for colocated workloads.
+Services can register under keys such as `team-a/frontend` or `root/auth`, and
+dependents can resolve a short name like `backend` relative to their own
+namespace with optional fallback to `root`.
+
+## Example workloads
+
+Simple Bun + TypeScript Dockerized example projects live under `examples/devpod`:
+
+- `examples/devpod/1gb`
+- `examples/devpod/2gb`
+- `examples/devpod/4gb`
+
+Each one exposes `GET /health` and reports its declared memory profile in the response body.

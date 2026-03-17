@@ -78,6 +78,50 @@ type ContainerSampleRow = {
   memoryPercent: number;
 };
 
+type ServiceRecord = {
+  namespace: string;
+  serviceName: string;
+  instanceId: string;
+  workerId: string;
+  workerPrivateIp: string;
+  hostPort: number;
+  containerPort: number;
+  protocol: string;
+  healthy: boolean;
+  updatedAtMs: number;
+};
+
+type ServiceRegistrationBody = {
+  namespace: string;
+  serviceName: string;
+  instanceId: string;
+  workerId: string;
+  workerPrivateIp: string;
+  hostPort: number;
+  containerPort: number;
+  protocol?: string;
+  healthy?: boolean;
+};
+
+type ServiceReleaseBody = {
+  namespace: string;
+  serviceName: string;
+  instanceId: string;
+};
+
+type PortLeaseRequestBody = {
+  workerId: string;
+  namespace: string;
+  serviceName: string;
+  instanceId: string;
+  requestedPort?: number;
+};
+
+type PortReleaseBody = {
+  workerId: string;
+  hostPort: number;
+};
+
 const config = {
   hostname: process.env.MANAGER_WS_HOST ?? "0.0.0.0",
   port: Number(process.env.MANAGER_WS_PORT ?? "8787"),
@@ -99,10 +143,22 @@ const config = {
     60 *
     60 *
     1000,
+  rootNamespace: process.env.SWARM_ROOT_NAMESPACE ?? "root",
+  portRangeStart: Number(process.env.SWARM_SERVICE_PORT_RANGE_START ?? "20000"),
+  portRangeEnd: Number(process.env.SWARM_SERVICE_PORT_RANGE_END ?? "40000"),
 };
 
 if (!config.sharedToken) {
   throw new Error("SWARM_SHARED_TOKEN must be set");
+}
+
+if (
+  !Number.isInteger(config.portRangeStart) ||
+  !Number.isInteger(config.portRangeEnd) ||
+  config.portRangeStart <= 0 ||
+  config.portRangeEnd < config.portRangeStart
+) {
+  throw new Error("SWARM service port range is invalid");
 }
 
 const db = new Database(config.dbPath, { create: true });
@@ -205,6 +261,35 @@ db.exec(`
     avg_memory_percent REAL NOT NULL,
     PRIMARY KEY (worker_id, container_id, bucket_start_ms)
   );
+
+  CREATE TABLE IF NOT EXISTS service_instances (
+    namespace TEXT NOT NULL,
+    service_name TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    worker_id TEXT NOT NULL,
+    worker_private_ip TEXT NOT NULL,
+    host_port INTEGER NOT NULL,
+    container_port INTEGER NOT NULL,
+    protocol TEXT NOT NULL,
+    healthy INTEGER NOT NULL,
+    registered_at_ms INTEGER NOT NULL,
+    updated_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (namespace, service_name, instance_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_service_instances_lookup
+    ON service_instances(namespace, service_name, healthy, updated_at_ms DESC);
+
+  CREATE TABLE IF NOT EXISTS port_leases (
+    worker_id TEXT NOT NULL,
+    host_port INTEGER NOT NULL,
+    namespace TEXT NOT NULL,
+    service_name TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    leased_at_ms INTEGER NOT NULL,
+    PRIMARY KEY (worker_id, host_port),
+    UNIQUE (worker_id, namespace, service_name, instance_id)
+  );
 `);
 
 const insertWorkerSample = db.query(
@@ -234,6 +319,119 @@ const insertContainerSample = db.query(
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
+const upsertServiceRecord = db.query(
+  `INSERT INTO service_instances (
+    namespace,
+    service_name,
+    instance_id,
+    worker_id,
+    worker_private_ip,
+    host_port,
+    container_port,
+    protocol,
+    healthy,
+    registered_at_ms,
+    updated_at_ms
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(namespace, service_name, instance_id) DO UPDATE SET
+    worker_id = excluded.worker_id,
+    worker_private_ip = excluded.worker_private_ip,
+    host_port = excluded.host_port,
+    container_port = excluded.container_port,
+    protocol = excluded.protocol,
+    healthy = excluded.healthy,
+    updated_at_ms = excluded.updated_at_ms`,
+);
+
+const deleteServiceRecord = db.query(
+  `DELETE FROM service_instances
+   WHERE namespace = ? AND service_name = ? AND instance_id = ?`,
+);
+
+const listServiceRecords = db.query(
+  `SELECT
+      namespace,
+      service_name,
+      instance_id,
+      worker_id,
+      worker_private_ip,
+      host_port,
+      container_port,
+      protocol,
+      healthy,
+      updated_at_ms
+   FROM service_instances
+   ORDER BY namespace, service_name, updated_at_ms DESC`,
+);
+
+const lookupServiceRecords = db.query(
+  `SELECT
+      namespace,
+      service_name,
+      instance_id,
+      worker_id,
+      worker_private_ip,
+      host_port,
+      container_port,
+      protocol,
+      healthy,
+      updated_at_ms
+   FROM service_instances
+   WHERE namespace = ? AND service_name = ? AND healthy = 1
+   ORDER BY updated_at_ms DESC`,
+);
+
+const lookupAnyServiceRecords = db.query(
+  `SELECT
+      namespace,
+      service_name,
+      instance_id,
+      worker_id,
+      worker_private_ip,
+      host_port,
+      container_port,
+      protocol,
+      healthy,
+      updated_at_ms
+   FROM service_instances
+   WHERE namespace = ? AND service_name = ?
+   ORDER BY updated_at_ms DESC`,
+);
+
+const leaseSpecificPort = db.query(
+  `INSERT INTO port_leases (
+    worker_id,
+    host_port,
+    namespace,
+    service_name,
+    instance_id,
+    leased_at_ms
+  ) VALUES (?, ?, ?, ?, ?, ?)`,
+);
+
+const lookupExistingLease = db.query(
+  `SELECT host_port
+   FROM port_leases
+   WHERE worker_id = ? AND namespace = ? AND service_name = ? AND instance_id = ?`,
+);
+
+const listWorkerLeases = db.query(
+  `SELECT host_port
+   FROM port_leases
+   WHERE worker_id = ?
+   ORDER BY host_port ASC`,
+);
+
+const deletePortLeaseByWorkerPort = db.query(
+  `DELETE FROM port_leases
+   WHERE worker_id = ? AND host_port = ?`,
+);
+
+const deletePortLeaseByService = db.query(
+  `DELETE FROM port_leases
+   WHERE worker_id = ? AND namespace = ? AND service_name = ? AND instance_id = ?`,
+);
+
 const workerSampleBuffer: WorkerSampleRow[] = [];
 const containerSampleBuffer: ContainerSampleRow[] = [];
 const liveWorkers = new Map<string, LiveWorkerState>();
@@ -245,6 +443,14 @@ function nowMs(): number {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function normalizeName(value: string): string {
+  return value.trim();
 }
 
 function isWorkerMetrics(value: unknown): value is WorkerMetrics {
@@ -298,6 +504,7 @@ function parseMessage(raw: string | Buffer): IncomingMessage | null {
     ) {
       return parsed as WorkerAuthMessage;
     }
+
     return null;
   }
 
@@ -312,10 +519,231 @@ function parseMessage(raw: string | Buffer): IncomingMessage | null {
     ) {
       return parsed as WorkerHeartbeatMessage;
     }
+
     return null;
   }
 
   return null;
+}
+
+function jsonError(status: number, message: string): Response {
+  return Response.json(
+    {
+      ok: false,
+      error: message,
+    },
+    { status },
+  );
+}
+
+async function parseJsonBody<T>(request: Request): Promise<T | null> {
+  try {
+    return (await request.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+function requireManagerToken(request: Request): Response | null {
+  const token = request.headers.get("x-swarm-token");
+  if (token !== config.sharedToken) {
+    return jsonError(401, "unauthorized");
+  }
+
+  return null;
+}
+
+function isServiceRegistrationBody(value: unknown): value is ServiceRegistrationBody {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const body = value as Record<string, unknown>;
+  return (
+    isNonEmptyString(body.namespace) &&
+    isNonEmptyString(body.serviceName) &&
+    isNonEmptyString(body.instanceId) &&
+    isNonEmptyString(body.workerId) &&
+    isNonEmptyString(body.workerPrivateIp) &&
+    Number.isInteger(body.hostPort) &&
+    Number.isInteger(body.containerPort) &&
+    (body.protocol === undefined || isNonEmptyString(body.protocol)) &&
+    (body.healthy === undefined || typeof body.healthy === "boolean")
+  );
+}
+
+function isServiceReleaseBody(value: unknown): value is ServiceReleaseBody {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const body = value as Record<string, unknown>;
+  return (
+    isNonEmptyString(body.namespace) &&
+    isNonEmptyString(body.serviceName) &&
+    isNonEmptyString(body.instanceId)
+  );
+}
+
+function isPortLeaseRequestBody(value: unknown): value is PortLeaseRequestBody {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const body = value as Record<string, unknown>;
+  return (
+    isNonEmptyString(body.workerId) &&
+    isNonEmptyString(body.namespace) &&
+    isNonEmptyString(body.serviceName) &&
+    isNonEmptyString(body.instanceId) &&
+    (body.requestedPort === undefined || Number.isInteger(body.requestedPort))
+  );
+}
+
+function isPortReleaseBody(value: unknown): value is PortReleaseBody {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const body = value as Record<string, unknown>;
+  return isNonEmptyString(body.workerId) && Number.isInteger(body.hostPort);
+}
+
+function mapServiceRow(row: Record<string, unknown>): ServiceRecord {
+  return {
+    namespace: String(row.namespace),
+    serviceName: String(row.service_name),
+    instanceId: String(row.instance_id),
+    workerId: String(row.worker_id),
+    workerPrivateIp: String(row.worker_private_ip),
+    hostPort: Number(row.host_port),
+    containerPort: Number(row.container_port),
+    protocol: String(row.protocol),
+    healthy: Number(row.healthy) === 1,
+    updatedAtMs: Number(row.updated_at_ms),
+  };
+}
+
+function listServices(): ServiceRecord[] {
+  return listServiceRecords.all().map((row) =>
+    mapServiceRow(row as Record<string, unknown>),
+  );
+}
+
+function lookupServices(
+  namespace: string,
+  serviceName: string,
+  healthyOnly = true,
+): ServiceRecord[] {
+  const query = healthyOnly ? lookupServiceRecords : lookupAnyServiceRecords;
+  return query.all(namespace, serviceName).map((row) =>
+    mapServiceRow(row as Record<string, unknown>),
+  );
+}
+
+function resolveRelativeService(
+  callerNamespace: string,
+  serviceName: string,
+  fallbackNamespace = config.rootNamespace,
+): {
+  resolvedNamespace: string;
+  serviceName: string;
+  instances: ServiceRecord[];
+} {
+  const localMatches = lookupServices(callerNamespace, serviceName, true);
+  if (localMatches.length > 0) {
+    return {
+      resolvedNamespace: callerNamespace,
+      serviceName,
+      instances: localMatches,
+    };
+  }
+
+  if (fallbackNamespace && fallbackNamespace !== callerNamespace) {
+    const fallbackMatches = lookupServices(fallbackNamespace, serviceName, true);
+    if (fallbackMatches.length > 0) {
+      return {
+        resolvedNamespace: fallbackNamespace,
+        serviceName,
+        instances: fallbackMatches,
+      };
+    }
+  }
+
+  return {
+    resolvedNamespace: callerNamespace,
+    serviceName,
+    instances: [],
+  };
+}
+
+function allocatePort(
+  workerId: string,
+  namespace: string,
+  serviceName: string,
+  instanceId: string,
+  requestedPort?: number,
+): number {
+  const existingLease = lookupExistingLease.get(
+    workerId,
+    namespace,
+    serviceName,
+    instanceId,
+  ) as { host_port: number } | null;
+
+  if (existingLease) {
+    return Number(existingLease.host_port);
+  }
+
+  const leasePort = (hostPort: number): number => {
+    leaseSpecificPort.run(
+      workerId,
+      hostPort,
+      namespace,
+      serviceName,
+      instanceId,
+      nowMs(),
+    );
+    return hostPort;
+  };
+
+  if (requestedPort !== undefined) {
+    if (
+      requestedPort < config.portRangeStart ||
+      requestedPort > config.portRangeEnd
+    ) {
+      throw new Error("requested port is outside the configured service port range");
+    }
+
+    return leasePort(requestedPort);
+  }
+
+  const leasedPorts = new Set(
+    listWorkerLeases
+      .all(workerId)
+      .map((row) => Number((row as { host_port: number }).host_port)),
+  );
+
+  for (
+    let candidatePort = config.portRangeStart;
+    candidatePort <= config.portRangeEnd;
+    candidatePort += 1
+  ) {
+    if (!leasedPorts.has(candidatePort)) {
+      return leasePort(candidatePort);
+    }
+  }
+
+  throw new Error("no free service ports remain on this worker");
+}
+
+function releasePortForService(
+  workerId: string,
+  namespace: string,
+  serviceName: string,
+  instanceId: string,
+): void {
+  deletePortLeaseByService.run(workerId, namespace, serviceName, instanceId);
 }
 
 function flushSamples(): void {
@@ -361,9 +789,9 @@ function flushSamples(): void {
   transaction();
 }
 
-function rollupWorkerRaw(intervalMs: number, tableName: "worker_samples_1m"): void {
+function rollupWorkerRaw(intervalMs: number): void {
   db.query(
-    `INSERT OR REPLACE INTO ${tableName} (
+    `INSERT OR REPLACE INTO worker_samples_1m (
       worker_id,
       bucket_start_ms,
       sample_count,
@@ -392,9 +820,9 @@ function rollupWorkerRaw(intervalMs: number, tableName: "worker_samples_1m"): vo
   ).run(intervalMs, intervalMs, nowMs() - intervalMs);
 }
 
-function rollupContainerRaw(intervalMs: number, tableName: "container_samples_1m"): void {
+function rollupContainerRaw(intervalMs: number): void {
   db.query(
-    `INSERT OR REPLACE INTO ${tableName} (
+    `INSERT OR REPLACE INTO container_samples_1m (
       worker_id,
       project_id,
       container_id,
@@ -427,8 +855,10 @@ function rollupContainerRaw(intervalMs: number, tableName: "container_samples_1m
   ).run(intervalMs, intervalMs, nowMs() - intervalMs);
 }
 
-function rollupFrom1mTo1h(sourceTable: "worker_samples_1m" | "container_samples_1m", targetTable: "worker_samples_1h" | "container_samples_1h"): void {
-  if (sourceTable === "worker_samples_1m" && targetTable === "worker_samples_1h") {
+function rollupFrom1mTo1h(
+  sourceTable: "worker_samples_1m" | "container_samples_1m",
+): void {
+  if (sourceTable === "worker_samples_1m") {
     db.query(
       `INSERT OR REPLACE INTO worker_samples_1h (
         worker_id,
@@ -519,10 +949,11 @@ function pruneOldData(): void {
 function updateStaleWorkers(): void {
   const currentTime = nowMs();
   for (const worker of liveWorkers.values()) {
-    if (worker.status === "connected") {
-      if (currentTime - worker.lastHeartbeatAt > config.heartbeatTimeoutMs) {
-        worker.status = "stale";
-      }
+    if (
+      worker.status === "connected" &&
+      currentTime - worker.lastHeartbeatAt > config.heartbeatTimeoutMs
+    ) {
+      worker.status = "stale";
     }
   }
 }
@@ -533,7 +964,10 @@ function snapshotWorkers(): LiveWorkerState[] {
   );
 }
 
-function closeStaleSession(workerId: string, nextSocket: Bun.ServerWebSocket<SocketData>): void {
+function closeStaleSession(
+  workerId: string,
+  nextSocket: Bun.ServerWebSocket<SocketData>,
+): void {
   const currentSocket = sessions.get(workerId);
   if (currentSocket && currentSocket !== nextSocket) {
     currentSocket.close(1012, "replaced");
@@ -543,7 +977,7 @@ function closeStaleSession(workerId: string, nextSocket: Bun.ServerWebSocket<Soc
 const server = Bun.serve<SocketData>({
   hostname: config.hostname,
   port: config.port,
-  fetch(request, serverInstance) {
+  async fetch(request, serverInstance) {
     const url = new URL(request.url);
 
     if (url.pathname === "/workers/stream") {
@@ -554,7 +988,7 @@ const server = Bun.serve<SocketData>({
       return new Response("WebSocket upgrade failed", { status: 400 });
     }
 
-    if (url.pathname === "/health") {
+    if (request.method === "GET" && url.pathname === "/health") {
       const connectedWorkers = snapshotWorkers();
       return Response.json({
         ok: true,
@@ -566,8 +1000,227 @@ const server = Bun.serve<SocketData>({
       });
     }
 
-    if (url.pathname === "/workers") {
+    if (request.method === "GET" && url.pathname === "/workers") {
       return Response.json({ workers: snapshotWorkers() });
+    }
+
+    if (request.method === "GET" && url.pathname === "/services") {
+      return Response.json({
+        ok: true,
+        rootNamespace: config.rootNamespace,
+        services: listServices(),
+      });
+    }
+
+    if (
+      request.method === "GET" &&
+      url.pathname.startsWith("/services/resolve/")
+    ) {
+      const pathParts = url.pathname.split("/").filter(Boolean);
+
+      if (pathParts.length === 3) {
+        const serviceName = normalizeName(decodeURIComponent(pathParts[2] ?? ""));
+        const callerNamespace = normalizeName(
+          url.searchParams.get("callerNamespace") ?? "",
+        );
+        const fallbackNamespace = normalizeName(
+          url.searchParams.get("fallbackNamespace") ?? config.rootNamespace,
+        );
+
+        if (!callerNamespace || !serviceName) {
+          return jsonError(400, "callerNamespace and service name are required");
+        }
+
+        const result = resolveRelativeService(
+          callerNamespace,
+          serviceName,
+          fallbackNamespace,
+        );
+
+        if (result.instances.length === 0) {
+          return jsonError(404, "service not found");
+        }
+
+        const endpoint = result.instances[0];
+        return Response.json({
+          ok: true,
+          query: {
+            callerNamespace,
+            serviceName,
+            fallbackNamespace,
+          },
+          resolvedNamespace: result.resolvedNamespace,
+          endpoint: {
+            host: endpoint?.workerPrivateIp,
+            port: endpoint?.hostPort,
+            protocol: endpoint?.protocol,
+            healthy: endpoint?.healthy ?? false,
+          },
+          instances: result.instances,
+        });
+      }
+
+      if (pathParts.length === 4) {
+        const namespace = normalizeName(decodeURIComponent(pathParts[2] ?? ""));
+        const serviceName = normalizeName(decodeURIComponent(pathParts[3] ?? ""));
+
+        if (!namespace || !serviceName) {
+          return jsonError(400, "namespace and service name are required");
+        }
+
+        const instances = lookupServices(namespace, serviceName, true);
+        if (instances.length === 0) {
+          return jsonError(404, "service not found");
+        }
+
+        const endpoint = instances[0];
+        return Response.json({
+          ok: true,
+          resolvedNamespace: namespace,
+          endpoint: {
+            host: endpoint?.workerPrivateIp,
+            port: endpoint?.hostPort,
+            protocol: endpoint?.protocol,
+            healthy: endpoint?.healthy ?? false,
+          },
+          instances,
+        });
+      }
+
+      return jsonError(404, "invalid resolve path");
+    }
+
+    if (request.method === "POST" && url.pathname === "/ports/lease") {
+      const unauthorized = requireManagerToken(request);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const body = await parseJsonBody<PortLeaseRequestBody>(request);
+      if (!isPortLeaseRequestBody(body)) {
+        return jsonError(400, "invalid port lease request body");
+      }
+
+      try {
+        const hostPort = allocatePort(
+          normalizeName(body.workerId),
+          normalizeName(body.namespace),
+          normalizeName(body.serviceName),
+          normalizeName(body.instanceId),
+          body.requestedPort,
+        );
+
+        return Response.json({
+          ok: true,
+          workerId: normalizeName(body.workerId),
+          namespace: normalizeName(body.namespace),
+          serviceName: normalizeName(body.serviceName),
+          instanceId: normalizeName(body.instanceId),
+          hostPort,
+        });
+      } catch (error) {
+        return jsonError(
+          409,
+          error instanceof Error ? error.message : "port allocation failed",
+        );
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/ports/release") {
+      const unauthorized = requireManagerToken(request);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const body = await parseJsonBody<PortReleaseBody>(request);
+      if (!isPortReleaseBody(body)) {
+        return jsonError(400, "invalid port release request body");
+      }
+
+      deletePortLeaseByWorkerPort.run(normalizeName(body.workerId), body.hostPort);
+      return Response.json({ ok: true });
+    }
+
+    if (request.method === "POST" && url.pathname === "/services/register") {
+      const unauthorized = requireManagerToken(request);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const body = await parseJsonBody<ServiceRegistrationBody>(request);
+      if (!isServiceRegistrationBody(body)) {
+        return jsonError(400, "invalid service registration body");
+      }
+
+      const namespace = normalizeName(body.namespace);
+      const serviceName = normalizeName(body.serviceName);
+      const instanceId = normalizeName(body.instanceId);
+      const workerId = normalizeName(body.workerId);
+      const workerPrivateIp = normalizeName(body.workerPrivateIp);
+      const protocol = normalizeName(body.protocol ?? "http");
+      const updatedAtMs = nowMs();
+
+      try {
+        const hostPort = allocatePort(
+          workerId,
+          namespace,
+          serviceName,
+          instanceId,
+          body.hostPort,
+        );
+
+        upsertServiceRecord.run(
+          namespace,
+          serviceName,
+          instanceId,
+          workerId,
+          workerPrivateIp,
+          hostPort,
+          body.containerPort,
+          protocol,
+          body.healthy === false ? 0 : 1,
+          updatedAtMs,
+          updatedAtMs,
+        );
+
+        return Response.json({
+          ok: true,
+          namespace,
+          serviceName,
+          instances: lookupServices(namespace, serviceName, false),
+        });
+      } catch (error) {
+        return jsonError(
+          409,
+          error instanceof Error ? error.message : "service registration failed",
+        );
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/services/release") {
+      const unauthorized = requireManagerToken(request);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const body = await parseJsonBody<ServiceReleaseBody>(request);
+      if (!isServiceReleaseBody(body)) {
+        return jsonError(400, "invalid service release body");
+      }
+
+      const namespace = normalizeName(body.namespace);
+      const serviceName = normalizeName(body.serviceName);
+      const instanceId = normalizeName(body.instanceId);
+      const existing = lookupServices(namespace, serviceName, false).find(
+        (service) => service.instanceId === instanceId,
+      );
+
+      if (existing) {
+        releasePortForService(existing.workerId, namespace, serviceName, instanceId);
+      }
+      deleteServiceRecord.run(namespace, serviceName, instanceId);
+
+      return Response.json({ ok: true });
     }
 
     return new Response("Not found", { status: 404 });
@@ -692,14 +1345,14 @@ setInterval(() => {
 
 setInterval(() => {
   flushSamples();
-  rollupWorkerRaw(60_000, "worker_samples_1m");
-  rollupContainerRaw(60_000, "container_samples_1m");
+  rollupWorkerRaw(60_000);
+  rollupContainerRaw(60_000);
 }, 60_000);
 
 setInterval(() => {
   flushSamples();
-  rollupFrom1mTo1h("worker_samples_1m", "worker_samples_1h");
-  rollupFrom1mTo1h("container_samples_1m", "container_samples_1h");
+  rollupFrom1mTo1h("worker_samples_1m");
+  rollupFrom1mTo1h("container_samples_1m");
   pruneOldData();
 }, 60 * 60 * 1000);
 
@@ -709,6 +1362,8 @@ console.log(
     hostname: config.hostname,
     port: config.port,
     dbPath: config.dbPath,
+    rootNamespace: config.rootNamespace,
+    servicePortRange: [config.portRangeStart, config.portRangeEnd],
   }),
 );
 
