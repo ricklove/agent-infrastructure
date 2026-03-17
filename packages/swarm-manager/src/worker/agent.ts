@@ -37,6 +37,9 @@ const config = {
   managerUrl: process.env.MONITOR_MANAGER_URL ?? "",
   sharedToken: process.env.MONITOR_SHARED_TOKEN ?? "",
   reconnectDelayMs: Number(process.env.MONITOR_RECONNECT_DELAY_MS ?? "1000"),
+  workerIdOverride: process.env.MONITOR_WORKER_ID ?? "",
+  instanceIdOverride: process.env.MONITOR_INSTANCE_ID ?? "",
+  privateIpOverride: process.env.MONITOR_PRIVATE_IP ?? "",
 };
 
 if (!config.managerUrl || !config.sharedToken) {
@@ -265,10 +268,20 @@ async function tick(): Promise<void> {
   }
 }
 
-const token = await fetchImdsToken();
-instanceId = await fetchMetadata("instance-id", token);
-privateIp = await fetchMetadata("local-ipv4", token);
-workerId = instanceId;
+if (
+  config.workerIdOverride &&
+  config.instanceIdOverride &&
+  config.privateIpOverride
+) {
+  workerId = config.workerIdOverride;
+  instanceId = config.instanceIdOverride;
+  privateIp = config.privateIpOverride;
+} else {
+  const token = await fetchImdsToken();
+  instanceId = await fetchMetadata("instance-id", token);
+  privateIp = await fetchMetadata("local-ipv4", token);
+  workerId = instanceId;
+}
 
 connect();
 setInterval(() => {

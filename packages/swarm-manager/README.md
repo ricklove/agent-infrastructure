@@ -15,6 +15,7 @@ Manager-side Bun runtime for:
 ```bash
 bun run check
 bun run run:manager
+bun run run:launch-service -- --manager-url http://127.0.0.1:8787 --token TOKEN --worker-id worker-a --worker-private-ip 10.0.0.21 --namespace team-a --service-name backend --image devpod-example-1gb --container-port 3000
 bun run run:worker-agent
 ```
 
@@ -38,3 +39,29 @@ Example relative lookup behavior:
 - caller namespace `team-a` asks for `backend`
 - manager tries `team-a/backend`
 - if not found, manager tries `root/backend`
+
+## Launch helper
+
+`run:launch-service` is a manager-side helper that:
+
+- allocates a host port from the manager registry
+- starts a Docker container on the target Docker host
+- injects swarm identity env vars into the container
+- registers the resulting endpoint with the manager
+
+Supported flags:
+
+- `--manager-url`
+- `--token`
+- `--worker-id`
+- `--worker-private-ip`
+- `--namespace`
+- `--service-name`
+- `--image`
+- `--container-port`
+- `--instance-id`
+- `--container-name`
+- `--protocol`
+- `--fallback-namespace`
+- `--docker-host`
+- `--env KEY=VALUE` repeated as needed

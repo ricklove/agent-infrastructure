@@ -7,6 +7,8 @@
   "scripts": {
     "build": "bun run --filter '*' build",
     "check": "bun run --filter '*' check",
+    "test:swarm-manager": "bun run --filter @agent-infrastructure/swarm-manager test",
+    "test:local-swarm": "bash ./scripts/test-local-swarm.sh",
     "synth:aws-setup": "bun run --filter @agent-infrastructure/aws-setup synth",
     "destroy:aws-setup": "bun run --filter @agent-infrastructure/aws-setup destroy"
   }

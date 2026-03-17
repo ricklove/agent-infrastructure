@@ -5,7 +5,9 @@
   "scripts": {
     "build": "tsc --project tsconfig.json --noEmit",
     "check": "tsc --project tsconfig.json --noEmit",
+    "test": "bun test",
     "run:manager": "bun run src/manager/server.ts",
+    "run:launch-service": "bun run src/manager/launch-service.ts",
     "run:worker-agent": "bun run src/worker/agent.ts"
   },
   "devDependencies": {
