@@ -12,6 +12,8 @@ This repository is a Bun monorepo for infrastructure used to run agent systems.
 ```bash
 bun install
 bun run synth:aws-setup
+bun run test:swarm-manager
+bun run test:local-swarm
 ```
 
 To deploy:
@@ -42,6 +44,11 @@ The manager also exposes a namespaced service registry for colocated workloads.
 Services can register under keys such as `team-a/frontend` or `root/auth`, and
 dependents can resolve a short name like `backend` relative to their own
 namespace with optional fallback to `root`.
+
+Local validation currently has two layers:
+
+- `bun run test:swarm-manager`: manager integration tests for workers, registry resolution, and port leases
+- `bun run test:local-swarm`: Docker-based smoke test for launch helper, injected container identity, and manager-side service resolution
 
 ## Example workloads
 

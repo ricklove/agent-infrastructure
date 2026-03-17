@@ -14,6 +14,7 @@ Manager-side Bun runtime for:
 
 ```bash
 bun run check
+bun run test
 bun run run:manager
 bun run run:launch-service -- --manager-url http://127.0.0.1:8787 --token TOKEN --worker-id worker-a --worker-private-ip 10.0.0.21 --namespace team-a --service-name backend --image devpod-example-1gb --container-port 3000
 bun run run:worker-agent
@@ -65,3 +66,11 @@ Supported flags:
 - `--fallback-namespace`
 - `--docker-host`
 - `--env KEY=VALUE` repeated as needed
+
+## Local test coverage
+
+`bun run test` currently covers:
+
+- local worker-agent connectivity to the real manager process
+- service registration and namespace-aware resolution
+- per-worker port lease uniqueness and reuse
