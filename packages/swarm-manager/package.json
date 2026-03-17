@@ -1,0 +1,15 @@
+{
+  "name": "@agent-infrastructure/swarm-manager",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --project tsconfig.json --noEmit",
+    "check": "tsc --project tsconfig.json --noEmit",
+    "run:manager": "bun run src/manager/server.ts",
+    "run:worker-agent": "bun run src/worker/agent.ts"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.10",
+    "typescript": "^5.4.5"
+  }
+}

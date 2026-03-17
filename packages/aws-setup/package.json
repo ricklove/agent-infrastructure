@@ -1,0 +1,22 @@
+{
+  "name": "@agent-infrastructure/aws-setup",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --project tsconfig.json --noEmit",
+    "check": "tsc --project tsconfig.json --noEmit",
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy": "cdk deploy",
+    "destroy": "bash ./scripts/destroy-swarm.sh"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.130.0",
+    "constructs": "^10.3.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.130.0",
+    "@types/node": "^20.11.30",
+    "typescript": "^5.4.5"
+  }
+}

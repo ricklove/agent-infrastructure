@@ -1,0 +1,13 @@
+{
+  "name": "agent-infrastructure",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "bun run --filter '*' build",
+    "check": "bun run --filter '*' check",
+    "synth:aws-setup": "bun run --filter @agent-infrastructure/aws-setup synth",
+    "destroy:aws-setup": "bun run --filter @agent-infrastructure/aws-setup destroy"
+  }
+}
