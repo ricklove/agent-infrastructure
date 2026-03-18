@@ -35,8 +35,8 @@ type HeartbeatPayload = {
 };
 
 type LifecycleEventType =
-  | "bootstrap_started"
-  | "telemetry_started"
+  | "telemetry_process_started"
+  | "telemetry_connect_started"
   | "shutdown"
   | "disconnected";
 
@@ -337,12 +337,12 @@ if (
   workerId = instanceId;
 }
 
-await emitLifecycleEvent("bootstrap_started", {
+await emitLifecycleEvent("telemetry_process_started", {
   managerUrl: config.managerUrl,
   nodeRole: config.nodeRole,
 });
+await emitLifecycleEvent("telemetry_connect_started");
 connect();
-await emitLifecycleEvent("telemetry_started");
 setInterval(() => {
   void tick();
 }, 1000);

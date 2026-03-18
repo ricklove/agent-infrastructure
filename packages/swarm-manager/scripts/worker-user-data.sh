@@ -1,16 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-dnf install -y awscli docker jq unzip
-export HOME=/root
-export BUN_INSTALL=/opt/bun
-curl -fsSL https://bun.sh/install | bash
-install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
-
 TOKEN=$(curl -X PUT -s http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')
 INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
 LOCAL_IPV4=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
 MANAGER_EVENT_URL="http://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/workers/events"
+
+json_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\t'/\\t}"
+  printf '%s' "$value"
+}
 
 emit_event() {
   local event_type="$1"
@@ -18,23 +22,32 @@ emit_event() {
   if [[ -z "$details_json" ]]; then
     details_json="{}"
   fi
+  local event_ts_ms
   local payload
-  payload=$(jq -cn \
-    --arg workerId "$INSTANCE_ID" \
-    --arg instanceId "$INSTANCE_ID" \
-    --arg privateIp "$LOCAL_IPV4" \
-    --arg nodeRole "worker" \
-    --arg eventType "$event_type" \
-    --argjson eventTsMs "$(($(date +%s) * 1000))" \
-    --arg detailsJson "$details_json" \
-    '{workerId:$workerId,instanceId:$instanceId,privateIp:$privateIp,nodeRole:$nodeRole,eventType:$eventType,eventTsMs:$eventTsMs,details:($detailsJson | fromjson)}')
+  event_ts_ms="$(date +%s%3N)"
+  payload=$(cat <<EOF
+{"workerId":"$(json_escape "$INSTANCE_ID")","instanceId":"$(json_escape "$INSTANCE_ID")","privateIp":"$(json_escape "$LOCAL_IPV4")","nodeRole":"worker","eventType":"$(json_escape "$event_type")","eventTsMs":$event_ts_ms,"details":$details_json}
+EOF
+)
   curl -sf -X POST "$MANAGER_EVENT_URL" \
     -H 'content-type: application/json' \
     -H "x-swarm-token: __SWARM_SHARED_TOKEN__" \
     -d "$payload" >/dev/null || true
 }
 
-emit_event bootstrap_started "{\"stage\":\"cloud-init\"}"
+emit_event cloud_init_started "{\"stage\":\"user-data\"}"
+emit_event packages_install_started "{\"packages\":[\"awscli\",\"docker\",\"jq\",\"unzip\"]}"
+dnf install -y awscli docker jq unzip
+emit_event packages_install_completed "{\"packages\":[\"awscli\",\"docker\",\"jq\",\"unzip\"]}"
+
+export HOME=/root
+export BUN_INSTALL=/opt/bun
+emit_event bun_install_started "{\"installDir\":\"$BUN_INSTALL\"}"
+curl -fsSL https://bun.sh/install | bash
+install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
+emit_event bun_install_completed "{\"binaryPath\":\"/usr/local/bin/bun\"}"
+
+emit_event docker_enable_started "{}"
 systemctl enable --now docker
 usermod -aG docker ec2-user
 emit_event docker_ready "{}"
@@ -77,5 +90,5 @@ cat > /opt/agent-swarm/worker-runtime.json <<RUNTIME
 RUNTIME
 
 systemctl daemon-reload
-emit_event telemetry_started "{}"
+emit_event telemetry_service_start_requested "{\"unit\":\"agent-swarm-worker-monitor.service\"}"
 systemctl enable --now agent-swarm-worker-monitor.service

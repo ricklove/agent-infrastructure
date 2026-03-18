@@ -100,10 +100,19 @@ type WorkerLifecycleEventType =
   | "launch"
   | "ec2_running"
   | "instance_status_ok"
+  | "cloud_init_started"
+  | "packages_install_started"
+  | "packages_install_completed"
+  | "bun_install_started"
+  | "bun_install_completed"
+  | "docker_enable_started"
   | "bootstrap_started"
   | "runtime_download_started"
   | "runtime_download_completed"
   | "docker_ready"
+  | "telemetry_service_start_requested"
+  | "telemetry_process_started"
+  | "telemetry_connect_started"
   | "telemetry_started"
   | "running"
   | "connected"
@@ -1064,8 +1073,19 @@ function deriveInventoryWorkerStatus(
 
   const latestProgressEvent = getLatestLifecycleEventOfTypes(instance.instanceId, [
     "instance_status_ok",
+    "telemetry_service_start_requested",
+    "telemetry_process_started",
+    "telemetry_connect_started",
     "telemetry_started",
+    "runtime_download_completed",
     "bootstrap_started",
+    "docker_ready",
+    "docker_enable_started",
+    "bun_install_completed",
+    "bun_install_started",
+    "packages_install_completed",
+    "packages_install_started",
+    "cloud_init_started",
     "launch",
     "create",
     "launch_requested",
