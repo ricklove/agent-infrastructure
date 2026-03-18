@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 type DashboardHealth = {
   ok: boolean;
@@ -92,6 +92,12 @@ type WorkerLifecycleEvent = {
 type WorkerLifecycleEventsResponse = {
   ok: boolean;
   events: WorkerLifecycleEvent[];
+};
+
+type WorkerEventPageState = {
+  events: WorkerLifecycleEvent[];
+  loading: boolean;
+  hasMore: boolean;
 };
 
 type Service = {
@@ -209,6 +215,25 @@ function sortLifecycleEvents(
   events: WorkerLifecycleEvent[],
 ): WorkerLifecycleEvent[] {
   return [...events].sort((left, right) => left.eventTsMs - right.eventTsMs);
+}
+
+function sortLifecycleEventsDesc(
+  events: WorkerLifecycleEvent[],
+): WorkerLifecycleEvent[] {
+  return [...events].sort((left, right) => right.eventTsMs - left.eventTsMs);
+}
+
+function mergeWorkerEvents(
+  currentEvents: WorkerLifecycleEvent[],
+  nextEvents: WorkerLifecycleEvent[],
+): WorkerLifecycleEvent[] {
+  const byKey = new Map<string, WorkerLifecycleEvent>();
+
+  for (const event of [...currentEvents, ...nextEvents]) {
+    byKey.set(`${event.workerId}:${event.eventType}:${event.eventTsMs}`, event);
+  }
+
+  return sortLifecycleEventsDesc(Array.from(byKey.values()));
 }
 
 function findLatestLifecycleEvent(
@@ -419,6 +444,9 @@ export function App() {
   const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [showArchivedWorkers, setShowArchivedWorkers] = useState<boolean>(false);
   const [expandedFleetNodes, setExpandedFleetNodes] = useState<string[]>([]);
+  const [workerEventPages, setWorkerEventPages] = useState<
+    Record<string, WorkerEventPageState>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
@@ -575,6 +603,38 @@ export function App() {
     };
   }, [sessionReady]);
 
+  const groupedWorkerEvents = useMemo(() => {
+    const grouped = new Map<string, WorkerLifecycleEvent[]>();
+
+    for (const event of workerEvents) {
+      const existing = grouped.get(event.workerId);
+      if (existing) {
+        existing.push(event);
+      } else {
+        grouped.set(event.workerId, [event]);
+      }
+    }
+
+    return grouped;
+  }, [workerEvents]);
+
+  useEffect(() => {
+    setWorkerEventPages((currentValue) => {
+      const nextValue = { ...currentValue };
+
+      for (const [workerId, events] of groupedWorkerEvents.entries()) {
+        const existing = nextValue[workerId];
+        nextValue[workerId] = {
+          events: mergeWorkerEvents(existing?.events ?? [], events),
+          loading: existing?.loading ?? false,
+          hasMore: existing?.hasMore ?? true,
+        };
+      }
+
+      return nextValue;
+    });
+  }, [groupedWorkerEvents]);
+
   async function createEnrollmentLink(): Promise<EnrollmentResponse> {
     const response = await apiFetch("/api/access/enrollment-url", {
       method: "POST",
@@ -650,6 +710,81 @@ export function App() {
         ? currentValue.filter((value) => value !== workerId)
         : [...currentValue, workerId],
     );
+  }
+
+  async function loadMoreWorkerEvents(workerId: string): Promise<void> {
+    const currentPage = workerEventPages[workerId];
+    if (currentPage?.loading || currentPage?.hasMore === false) {
+      return;
+    }
+
+    const baseEvents =
+      currentPage?.events ??
+      sortLifecycleEventsDesc(groupedWorkerEvents.get(workerId) ?? []);
+    const oldestEvent = baseEvents[baseEvents.length - 1] ?? null;
+    if (!oldestEvent) {
+      return;
+    }
+
+    setWorkerEventPages((currentValue) => ({
+      ...currentValue,
+      [workerId]: {
+        events: currentValue[workerId]?.events ?? baseEvents,
+        loading: true,
+        hasMore: currentValue[workerId]?.hasMore ?? true,
+      },
+    }));
+
+    try {
+      const response = await apiFetch(
+        `/api/workers/events?workerId=${encodeURIComponent(
+          workerId,
+        )}&limit=50&beforeEventTsMs=${oldestEvent.eventTsMs}`,
+      );
+
+      if (response.status === 401) {
+        window.sessionStorage.removeItem(sessionStorageKey);
+        setAuthRequired(true);
+        setAccessMessage(
+          "Dashboard access expired. Go back to the auth page for a fresh access link.",
+        );
+        setError("");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("dashboard API request failed");
+      }
+
+      const payload = (await response.json()) as WorkerLifecycleEventsResponse;
+      const nextEvents = payload.events;
+
+      setWorkerEventPages((currentValue) => {
+        const existing = currentValue[workerId];
+        return {
+          ...currentValue,
+          [workerId]: {
+            events: mergeWorkerEvents(existing?.events ?? baseEvents, nextEvents),
+            loading: false,
+            hasMore: nextEvents.length === 50,
+          },
+        };
+      });
+    } catch (nextError) {
+      setWorkerEventPages((currentValue) => ({
+        ...currentValue,
+        [workerId]: {
+          events: currentValue[workerId]?.events ?? baseEvents,
+          loading: false,
+          hasMore: currentValue[workerId]?.hasMore ?? true,
+        },
+      }));
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "failed to load more lifecycle events",
+      );
+    }
   }
 
   return (
@@ -853,6 +988,12 @@ export function App() {
               ) : (
                 displayedFleetNodes.map((worker) => {
                   const expanded = expandedFleetNodes.includes(worker.workerId);
+                  const detailEvents =
+                    workerEventPages[worker.workerId]?.events ?? worker.events;
+                  const detailLoading =
+                    workerEventPages[worker.workerId]?.loading ?? false;
+                  const detailHasMore =
+                    workerEventPages[worker.workerId]?.hasMore ?? true;
 
                   return (
                     <Fragment key={worker.workerId}>
@@ -958,15 +1099,27 @@ export function App() {
                                 <span className="fleet-detail-label">
                                   Recent Events
                                 </span>
-                                {worker.events.length === 0 ? (
+                                {detailEvents.length === 0 ? (
                                   <p className="fleet-detail-empty">
                                     No lifecycle events recorded yet.
                                   </p>
                                 ) : (
-                                  <div className="fleet-event-list">
-                                    {worker.events.slice(0, 8).map((event, index) => {
+                                  <div
+                                    className="fleet-event-list"
+                                    onScroll={(event) => {
+                                      const currentTarget = event.currentTarget;
+                                      const remaining =
+                                        currentTarget.scrollHeight -
+                                        currentTarget.scrollTop -
+                                        currentTarget.clientHeight;
+                                      if (remaining <= 120) {
+                                        void loadMoreWorkerEvents(worker.workerId);
+                                      }
+                                    }}
+                                  >
+                                    {detailEvents.map((event, index) => {
                                       const nextEvent =
-                                        index > 0 ? worker.events[index - 1] ?? null : null;
+                                        index > 0 ? detailEvents[index - 1] ?? null : null;
                                       const elapsedLabel =
                                         formatElapsedSincePreviousEvent(
                                           event,
@@ -1015,6 +1168,15 @@ export function App() {
                                       </article>
                                       );
                                     })}
+                                    {detailLoading ? (
+                                      <p className="fleet-detail-empty">
+                                        Loading older events...
+                                      </p>
+                                    ) : !detailHasMore ? (
+                                      <p className="fleet-detail-empty">
+                                        Reached the first recorded event.
+                                      </p>
+                                    ) : null}
                                   </div>
                                 )}
                               </section>

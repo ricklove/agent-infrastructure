@@ -571,6 +571,21 @@ const listWorkerLifecycleEventsByWorker = db.query(
    LIMIT ?`,
 );
 
+const listWorkerLifecycleEventsByWorkerBefore = db.query(
+  `SELECT
+      worker_id,
+      instance_id,
+      private_ip,
+      node_role,
+      event_type,
+      event_ts_ms,
+      details_json
+   FROM worker_lifecycle_events
+   WHERE worker_id = ? AND event_ts_ms < ?
+   ORDER BY event_ts_ms DESC
+   LIMIT ?`,
+);
+
 const listLatestWorkerLifecycleEvents = db.query(
   `SELECT
       events.worker_id,
@@ -893,10 +908,17 @@ function recordWorkerLifecycleEvent(
 function getWorkerLifecycleEvents(
   limit: number,
   workerId?: string,
+  beforeEventTsMs?: number,
 ): WorkerLifecycleEventRecord[] {
   const normalizedLimit = Math.max(1, Math.min(limit, 500));
   const rows = workerId
-    ? listWorkerLifecycleEventsByWorker.all(workerId, normalizedLimit)
+    ? beforeEventTsMs !== undefined
+      ? listWorkerLifecycleEventsByWorkerBefore.all(
+          workerId,
+          beforeEventTsMs,
+          normalizedLimit,
+        )
+      : listWorkerLifecycleEventsByWorker.all(workerId, normalizedLimit)
     : listWorkerLifecycleEvents.all(normalizedLimit);
   return rows.map((row) =>
     mapLifecycleEventRow(row as Record<string, unknown>),
@@ -1540,11 +1562,16 @@ const server = Bun.serve<SocketData>({
     if (request.method === "GET" && url.pathname === "/workers/events") {
       const limitValue = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
       const workerId = normalizeName(url.searchParams.get("workerId") ?? "");
+      const beforeEventTsMsRaw = url.searchParams.get("beforeEventTsMs");
+      const beforeEventTsMs = beforeEventTsMsRaw
+        ? Number.parseInt(beforeEventTsMsRaw, 10)
+        : undefined;
       return Response.json({
         ok: true,
         events: getWorkerLifecycleEvents(
           Number.isInteger(limitValue) ? limitValue : 100,
           workerId || undefined,
+          Number.isInteger(beforeEventTsMs) ? beforeEventTsMs : undefined,
         ),
       });
     }
