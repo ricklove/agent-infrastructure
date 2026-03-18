@@ -108,13 +108,32 @@ export HOME=/root
 export BUN_INSTALL=/opt/bun
 curl -fsSL https://bun.sh/install | bash
 install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
+
+TOKEN=$(curl -X PUT -s http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+LOCAL_IPV4=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
+MANAGER_EVENT_URL="http://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/workers/events"
+
+emit_event() {
+  local event_type="$1"
+  local details_json="\${2:-{}}"
+  curl -sf -X POST "$MANAGER_EVENT_URL" \
+    -H 'content-type: application/json' \
+    -H "x-swarm-token: __SWARM_SHARED_TOKEN__" \
+    -d "{\"workerId\":\"$INSTANCE_ID\",\"instanceId\":\"$INSTANCE_ID\",\"privateIp\":\"$LOCAL_IPV4\",\"nodeRole\":\"worker\",\"eventType\":\"$event_type\",\"eventTsMs\":$(($(date +%s) * 1000)),\"details\":$details_json}" >/dev/null || true
+}
+
+emit_event bootstrap_started "{\"stage\":\"cloud-init\"}"
 systemctl enable --now docker
 usermod -aG docker ec2-user
+emit_event docker_ready "{}"
 
 mkdir -p /opt/agent-swarm/runtime
+emit_event runtime_download_started "{\"bucket\":\"__WORKER_RUNTIME_RELEASE_BUCKET__\",\"key\":\"__WORKER_RUNTIME_RELEASE_KEY__\"}"
 aws s3 cp "s3://__WORKER_RUNTIME_RELEASE_BUCKET__/__WORKER_RUNTIME_RELEASE_KEY__" /opt/agent-swarm/runtime.zip --region "__REGION__"
 rm -rf /opt/agent-swarm/runtime/*
 unzip -q /opt/agent-swarm/runtime.zip -d /opt/agent-swarm/runtime
+emit_event runtime_download_completed "{}"
 
 cat > /etc/agent-swarm-worker-monitor.env <<'ENVFILE'
 MONITOR_MANAGER_URL=ws://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/workers/stream
@@ -129,10 +148,6 @@ ${workerServiceUnit.replace(
 )}
 SERVICE
 
-TOKEN=$(curl -X PUT -s http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')
-INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-LOCAL_IPV4=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
-
 cat > /opt/agent-swarm/worker-runtime.json <<RUNTIME
 {
   "instanceId": "$INSTANCE_ID",
@@ -141,6 +156,7 @@ cat > /opt/agent-swarm/worker-runtime.json <<RUNTIME
 RUNTIME
 
 systemctl daemon-reload
+emit_event telemetry_started "{}"
 systemctl enable --now agent-swarm-worker-monitor.service
 `;
 
@@ -507,10 +523,22 @@ systemctl enable --now agent-swarm-worker-monitor.service
       "WORKER_RUNTIME_RELEASE_BUCKET=$(jq -r '.bucket' \"$RELEASE_CONFIG\")",
       "WORKER_RUNTIME_RELEASE_KEY=$(jq -r '.key' \"$RELEASE_CONFIG\")",
       "if [[ \"$WORKER_RUNTIME_RELEASE_BUCKET\" == \"null\" || -z \"$WORKER_RUNTIME_RELEASE_BUCKET\" || \"$WORKER_RUNTIME_RELEASE_KEY\" == \"null\" || -z \"$WORKER_RUNTIME_RELEASE_KEY\" ]]; then echo 'worker runtime release metadata is invalid' >&2; exit 1; fi",
+      "emit_event() {",
+      "  local worker_id=\"$1\"",
+      "  local private_ip=\"$2\"",
+      "  local event_type=\"$3\"",
+      "  local details_json=\"${4:-{}}\"",
+      "  curl -sf -X POST http://127.0.0.1:8787/workers/events \\",
+      "    -H 'content-type: application/json' \\",
+      "    -H \"x-swarm-token: $SWARM_SHARED_TOKEN\" \\",
+      "    -d \"{\\\"workerId\\\":\\\"$worker_id\\\",\\\"instanceId\\\":\\\"$worker_id\\\",\\\"privateIp\\\":\\\"$private_ip\\\",\\\"nodeRole\\\":\\\"worker\\\",\\\"eventType\\\":\\\"$event_type\\\",\\\"eventTsMs\\\":$(($(date +%s) * 1000)),\\\"details\\\":$details_json}\" >/dev/null || true",
+      "}",
+      "REQUESTED_AT_MS=$(($(date +%s) * 1000))",
       "TEMP_USER_DATA=$(mktemp)",
       "trap 'rm -f \"$TEMP_USER_DATA\"' EXIT",
       "sed -e \"s/__MANAGER_PRIVATE_IP__/$MANAGER_PRIVATE_IP/g\" -e \"s/__MANAGER_MONITOR_PORT__/$MANAGER_MONITOR_PORT/g\" -e \"s/__SWARM_SHARED_TOKEN__/$SWARM_SHARED_TOKEN/g\" -e \"s/__WORKER_RUNTIME_RELEASE_BUCKET__/$WORKER_RUNTIME_RELEASE_BUCKET/g\" -e \"s#__WORKER_RUNTIME_RELEASE_KEY__#$WORKER_RUNTIME_RELEASE_KEY#g\" -e \"s/__REGION__/$REGION/g\" /opt/agent-swarm/worker-user-data.sh > \"$TEMP_USER_DATA\"",
       "IMAGE_ID=$(aws ec2 describe-images --owners amazon --region \"$REGION\" --filters 'Name=name,Values=al2023-ami-2023.*-x86_64' 'Name=state,Values=available' --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)",
+      "emit_event pending pending launch_requested \"{\\\"instanceType\\\":\\\"$INSTANCE_TYPE\\\",\\\"subnetId\\\":\\\"$SUBNET_ID\\\",\\\"requestedAtMs\\\":$REQUESTED_AT_MS}\"",
       "RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \\",
       "  --region \"$REGION\" \\",
       "  --image-id \"$IMAGE_ID\" \\",
@@ -522,13 +550,18 @@ systemctl enable --now agent-swarm-worker-monitor.service
       "  --tag-specifications \"ResourceType=instance,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Role,Value=agent-swarm-worker},{Key=Name,Value=agent-swarm-worker}]\" \"ResourceType=volume,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Name,Value=agent-swarm-worker-volume}]\")",
       "INSTANCE_ID=$(printf '%s' \"$RUN_INSTANCES_OUTPUT\" | jq -r '.Instances[0].InstanceId')",
       "PRIVATE_IP=$(printf '%s' \"$RUN_INSTANCES_OUTPUT\" | jq -r '.Instances[0].PrivateIpAddress // \"\"')",
-      "EVENT_TS_MS=$(($(date +%s) * 1000))",
-      "for EVENT_TYPE in create launch; do",
-      "  curl -sf -X POST http://127.0.0.1:8787/workers/events \\",
-      "    -H 'content-type: application/json' \\",
-      "    -H \"x-swarm-token: $SWARM_SHARED_TOKEN\" \\",
-      "    -d \"{\\\"workerId\\\":\\\"$INSTANCE_ID\\\",\\\"instanceId\\\":\\\"$INSTANCE_ID\\\",\\\"privateIp\\\":\\\"$PRIVATE_IP\\\",\\\"nodeRole\\\":\\\"worker\\\",\\\"eventType\\\":\\\"$EVENT_TYPE\\\",\\\"eventTsMs\\\":$EVENT_TS_MS,\\\"details\\\":{\\\"instanceType\\\":\\\"$INSTANCE_TYPE\\\",\\\"subnetId\\\":\\\"$SUBNET_ID\\\"}}\" >/dev/null || true",
-      "done",
+      "emit_event \"$INSTANCE_ID\" \"$PRIVATE_IP\" create \"{\\\"instanceType\\\":\\\"$INSTANCE_TYPE\\\",\\\"subnetId\\\":\\\"$SUBNET_ID\\\",\\\"imageId\\\":\\\"$IMAGE_ID\\\",\\\"requestedAtMs\\\":$REQUESTED_AT_MS}\"",
+      "( aws ec2 wait instance-running --region \"$REGION\" --instance-ids \"$INSTANCE_ID\"",
+      "  RUNNING_AT_MS=$(($(date +%s) * 1000))",
+      "  RUNNING_ELAPSED_SECONDS=$(((RUNNING_AT_MS - REQUESTED_AT_MS) / 1000))",
+      "  emit_event \"$INSTANCE_ID\" \"$PRIVATE_IP\" ec2_running \"{\\\"elapsedSeconds\\\":$RUNNING_ELAPSED_SECONDS}\"",
+      "  emit_event \"$INSTANCE_ID\" \"$PRIVATE_IP\" launch \"{\\\"runningElapsedSeconds\\\":$RUNNING_ELAPSED_SECONDS}\"",
+      "  if aws ec2 wait instance-status-ok --region \"$REGION\" --instance-ids \"$INSTANCE_ID\"; then",
+      "    STATUS_OK_AT_MS=$(($(date +%s) * 1000))",
+      "    STATUS_OK_ELAPSED_SECONDS=$(((STATUS_OK_AT_MS - REQUESTED_AT_MS) / 1000))",
+      "    emit_event \"$INSTANCE_ID\" \"$PRIVATE_IP\" instance_status_ok \"{\\\"elapsedSeconds\\\":$STATUS_OK_ELAPSED_SECONDS}\"",
+      "  fi",
+      ") >/dev/null 2>&1 & disown",
       "printf '%s\\n' \"$RUN_INSTANCES_OUTPUT\"",
       "EOF",
       "systemctl daemon-reload",

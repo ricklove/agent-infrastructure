@@ -54,15 +54,26 @@ type WorkersResponse = {
 };
 
 type WorkerLifecycleEventType =
+  | "launch_requested"
   | "create"
   | "launch"
+  | "ec2_running"
+  | "instance_status_ok"
+  | "bootstrap_started"
+  | "runtime_download_started"
+  | "runtime_download_completed"
+  | "docker_ready"
+  | "telemetry_started"
   | "running"
   | "connected"
   | "stale"
   | "disconnected"
+  | "hibernate_requested"
   | "hibernating"
   | "hibernated"
+  | "wakeup_requested"
   | "wakeup"
+  | "shutdown_requested"
   | "shutdown"
   | "terminated";
 

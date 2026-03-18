@@ -34,6 +34,12 @@ type HeartbeatPayload = {
   containers: ContainerMetrics[];
 };
 
+type LifecycleEventType =
+  | "bootstrap_started"
+  | "telemetry_started"
+  | "shutdown"
+  | "disconnected";
+
 const config: {
   managerUrl: string;
   sharedToken: string;
@@ -247,6 +253,36 @@ function sendAuth(): void {
   );
 }
 
+function managerHttpBaseUrl(): string {
+  return config.managerUrl
+    .replace(/^wss?:\/\//, (match) => (match === "wss://" ? "https://" : "http://"))
+    .replace(/\/workers\/stream$/, "");
+}
+
+async function emitLifecycleEvent(
+  eventType: LifecycleEventType,
+  details?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await fetch(`${managerHttpBaseUrl()}/workers/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "x-swarm-token": config.sharedToken,
+      },
+      body: JSON.stringify({
+        workerId,
+        instanceId,
+        privateIp,
+        nodeRole: config.nodeRole,
+        eventType,
+        eventTsMs: Date.now(),
+        details: details ?? {},
+      }),
+    });
+  } catch {}
+}
+
 function connect(): void {
   const socket = new WebSocket(config.managerUrl);
   currentSocket = socket;
@@ -256,6 +292,7 @@ function connect(): void {
   });
 
   socket.addEventListener("close", () => {
+    void emitLifecycleEvent("disconnected");
     if (currentSocket === socket) {
       currentSocket = null;
     }
@@ -300,7 +337,12 @@ if (
   workerId = instanceId;
 }
 
+await emitLifecycleEvent("bootstrap_started", {
+  managerUrl: config.managerUrl,
+  nodeRole: config.nodeRole,
+});
 connect();
+await emitLifecycleEvent("telemetry_started");
 setInterval(() => {
   void tick();
 }, 1000);
