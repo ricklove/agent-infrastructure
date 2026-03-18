@@ -77,12 +77,15 @@ sed \
   -e "s/__REGION__/$REGION/g" \
   "$SCRIPT_DIR/worker-user-data.sh" > "$TEMP_USER_DATA"
 
-IMAGE_ID=$(aws ec2 describe-images --owners amazon --region "$REGION" --filters 'Name=name,Values=al2023-ami-2023.*-x86_64' 'Name=state,Values=available' --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)
+IMAGE_METADATA=$(aws ec2 describe-images --owners amazon --region "$REGION" --filters 'Name=name,Values=al2023-ami-2023.*-x86_64' 'Name=state,Values=available' --query 'sort_by(Images,&CreationDate)[-1].{ImageId:ImageId,RootDeviceName:RootDeviceName}' --output json)
+IMAGE_ID=$(printf '%s' "$IMAGE_METADATA" | jq -r '.ImageId')
+ROOT_DEVICE_NAME=$(printf '%s' "$IMAGE_METADATA" | jq -r '.RootDeviceName')
 RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \
   --region "$REGION" \
   --image-id "$IMAGE_ID" \
   --instance-type "$INSTANCE_TYPE" \
   --hibernation-options Configured=true \
+  --block-device-mappings "[{\"DeviceName\":\"$ROOT_DEVICE_NAME\",\"Ebs\":{\"DeleteOnTermination\":true,\"Encrypted\":true}}]" \
   --iam-instance-profile Arn="$INSTANCE_PROFILE_ARN" \
   --security-group-ids "$SECURITY_GROUP_ID" \
   --subnet-id "$SUBNET_ID" \
