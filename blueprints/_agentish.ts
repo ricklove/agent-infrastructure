@@ -1,31 +1,35 @@
-const Agentish = define.language('Agentish');
-const Blueprint = define.entity('Blueprint');
+const Agentish = define.language('Agentish', {
+  purpose: 'AbsoluteSourceOfTruth',
+  requires: 'MaximumInformationDensity'
+});
 
-Agentish.servesAs('AbsoluteSourceOfTruth').for(Blueprint);
-Agentish.requires('MaximumInformationDensity');
-Agentish.rejects('Comments').and('Passivity').and('WastefulObviousPhrases');
+Agentish.rejects('Comments', 'Passivity', 'WastefulObviousPhrases');
+Agentish.allows('AnyFluentPhrase', { accepting: 'AttributeObjects' });
 
-const Human = define.actor('Human');
-Human.architects(Blueprint).using(Agentish);
+const Blueprint = define.entity('Blueprint', {
+  format: Agentish,
+  describes: 'TopologyAndCausality'
+});
+
+const Human = define.actor('Human', { role: 'Architect' });
+Human.designs(Blueprint, { using: Agentish });
 
 const Visualizer = define.system('Visualizer');
-Visualizer.projects(Blueprint).toHelp(Human).understand('Architecture');
+Visualizer.projects(Blueprint, { toHelp: Human, understand: 'Architecture' });
 
-const Agent = define.actor('Agent');
-Agent.reads(Blueprint).toUnderstand('SystemIntent');
-
+const Agent = define.actor('Agent', { boundBy: Blueprint });
 const Codebase = define.entity('Codebase');
-Agent.aligns(Codebase).toMatch(Blueprint);
 
-when(Agent.encounters('Ambiguity').in(Blueprint))
-  .then(Agent.asks(Human, 'to clarify the requirement'));
+Agent.reads(Blueprint).toUnderstand('SystemIntent');
+Agent.aligns(Codebase).toMatch(Blueprint, { method: 'RegenerationOrIteration' });
+
+when(Agent.encounters('Ambiguity', { inside: Blueprint }))
+  .then(Agent.asks(Human, { toClarify: 'Requirement' }));
 
 when(Human.mutates(Blueprint))
-  .then(Agent.synchronizes(Codebase).with(Blueprint));
+  .then(Agent.synchronizes(Codebase).with(Blueprint, { priority: 'High' }));
 
-Agent.measures('InformationDensity').toEvaluate('BlueprintQuality');
+Agent.measures('InformationDensity', { toEvaluate: 'BlueprintQuality' });
 
-when(Human.edits(Codebase).bypassing(Blueprint))
-  .then(Agent.enforces(Blueprint).over(Codebase));
-
-Agentish.allows('AnyFluentPhrase').toExpress('TopologyAndCausality');
+when(Human.edits(Codebase, { bypassing: Blueprint }))
+  .then(Agent.enforces(Blueprint).over(Codebase, { resolving: 'Drift' }));
