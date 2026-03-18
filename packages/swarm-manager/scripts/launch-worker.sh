@@ -83,19 +83,39 @@ RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \
 
 INSTANCE_ID=$(printf '%s' "$RUN_INSTANCES_OUTPUT" | jq -r '.Instances[0].InstanceId')
 PRIVATE_IP=$(printf '%s' "$RUN_INSTANCES_OUTPUT" | jq -r '.Instances[0].PrivateIpAddress // ""')
-emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch_requested "{\"instanceType\":\"$INSTANCE_TYPE\",\"subnetId\":\"$SUBNET_ID\",\"requestedAtMs\":$REQUESTED_AT_MS}"
-emit_event "$INSTANCE_ID" "$PRIVATE_IP" create "{\"instanceType\":\"$INSTANCE_TYPE\",\"subnetId\":\"$SUBNET_ID\",\"imageId\":\"$IMAGE_ID\",\"requestedAtMs\":$REQUESTED_AT_MS}"
+LAUNCH_REQUESTED_DETAILS=$(jq -cn \
+  --arg instanceType "$INSTANCE_TYPE" \
+  --arg subnetId "$SUBNET_ID" \
+  --argjson requestedAtMs "$REQUESTED_AT_MS" \
+  '{instanceType:$instanceType,subnetId:$subnetId,requestedAtMs:$requestedAtMs}')
+CREATE_DETAILS=$(jq -cn \
+  --arg instanceType "$INSTANCE_TYPE" \
+  --arg subnetId "$SUBNET_ID" \
+  --arg imageId "$IMAGE_ID" \
+  --argjson requestedAtMs "$REQUESTED_AT_MS" \
+  '{instanceType:$instanceType,subnetId:$subnetId,imageId:$imageId,requestedAtMs:$requestedAtMs}')
+emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch_requested "$LAUNCH_REQUESTED_DETAILS"
+emit_event "$INSTANCE_ID" "$PRIVATE_IP" create "$CREATE_DETAILS"
 
 (
   aws ec2 wait instance-running --region "$REGION" --instance-ids "$INSTANCE_ID"
   RUNNING_AT_MS=$(($(date +%s) * 1000))
   RUNNING_ELAPSED_SECONDS=$(((RUNNING_AT_MS - REQUESTED_AT_MS) / 1000))
-  emit_event "$INSTANCE_ID" "$PRIVATE_IP" ec2_running "{\"elapsedSeconds\":$RUNNING_ELAPSED_SECONDS}"
-  emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch "{\"runningElapsedSeconds\":$RUNNING_ELAPSED_SECONDS}"
+  EC2_RUNNING_DETAILS=$(jq -cn \
+    --argjson elapsedSeconds "$RUNNING_ELAPSED_SECONDS" \
+    '{elapsedSeconds:$elapsedSeconds}')
+  LAUNCH_DETAILS=$(jq -cn \
+    --argjson runningElapsedSeconds "$RUNNING_ELAPSED_SECONDS" \
+    '{runningElapsedSeconds:$runningElapsedSeconds}')
+  emit_event "$INSTANCE_ID" "$PRIVATE_IP" ec2_running "$EC2_RUNNING_DETAILS"
+  emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch "$LAUNCH_DETAILS"
   if aws ec2 wait instance-status-ok --region "$REGION" --instance-ids "$INSTANCE_ID"; then
     STATUS_OK_AT_MS=$(($(date +%s) * 1000))
     STATUS_OK_ELAPSED_SECONDS=$(((STATUS_OK_AT_MS - REQUESTED_AT_MS) / 1000))
-    emit_event "$INSTANCE_ID" "$PRIVATE_IP" instance_status_ok "{\"elapsedSeconds\":$STATUS_OK_ELAPSED_SECONDS}"
+    INSTANCE_STATUS_OK_DETAILS=$(jq -cn \
+      --argjson elapsedSeconds "$STATUS_OK_ELAPSED_SECONDS" \
+      '{elapsedSeconds:$elapsedSeconds}')
+    emit_event "$INSTANCE_ID" "$PRIVATE_IP" instance_status_ok "$INSTANCE_STATUS_OK_DETAILS"
   fi
 ) >/dev/null 2>&1 & disown
 
