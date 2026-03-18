@@ -55,19 +55,39 @@ function nowMs(): number {
   return Date.now();
 }
 
-function runChecked(command: string[]): string {
+type CommandResult = {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+};
+
+function runCommand(command: string[]): CommandResult {
   const result = Bun.spawnSync(command, {
     stdout: "pipe",
-    stderr: "inherit",
+    stderr: "pipe",
     stdin: "ignore",
     env: process.env,
   });
 
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout.toString(),
+    stderr: result.stderr.toString(),
+  };
+}
+
+function runChecked(command: string[]): string {
+  const result = runCommand(command);
+
   if (result.exitCode !== 0) {
+    const stderr = result.stderr.trim();
+    if (stderr.length > 0) {
+      console.error(stderr);
+    }
     throw new Error(`command failed: ${command.join(" ")}`);
   }
 
-  return result.stdout.toString();
+  return result.stdout;
 }
 
 async function postLifecycleEvent(
@@ -117,6 +137,10 @@ function listInstances(region: string, instanceIds: string[]): Ec2InstanceState[
   return JSON.parse(output) as Ec2InstanceState[];
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const action = optionalOne(argv, "action") as Action | undefined;
@@ -162,16 +186,52 @@ async function main(): Promise<void> {
   }
 
   if (action === "hibernate") {
-    runChecked([
-      "aws",
-      "ec2",
-      "stop-instances",
-      "--region",
-      region,
-      "--hibernate",
-      "--instance-ids",
-      ...instanceIds,
-    ]);
+    const deadline = nowMs() + 10 * 60 * 1000;
+    let retryCount = 0;
+    while (true) {
+      const result = runCommand([
+        "aws",
+        "ec2",
+        "stop-instances",
+        "--region",
+        region,
+        "--hibernate",
+        "--instance-ids",
+        ...instanceIds,
+      ]);
+      if (result.exitCode === 0) {
+        const acceptedAtMs = nowMs();
+        for (const worker of workers) {
+          await postLifecycleEvent(
+            sharedToken,
+            worker,
+            "hibernating",
+            acceptedAtMs,
+            {
+              retryCount,
+            },
+          );
+        }
+        break;
+      }
+
+      const stderr = result.stderr.trim();
+      if (
+        stderr.includes("is not ready to hibernate yet") &&
+        nowMs() < deadline
+      ) {
+        retryCount += 1;
+        await sleep(15000);
+        continue;
+      }
+
+      if (stderr.length > 0) {
+        console.error(stderr);
+      }
+      throw new Error(
+        `command failed: aws ec2 stop-instances --region ${region} --hibernate --instance-ids ${instanceIds.join(" ")}`,
+      );
+    }
     runChecked([
       "aws",
       "ec2",
