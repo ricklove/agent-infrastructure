@@ -23,8 +23,8 @@ emit_event() {
     --arg nodeRole "worker" \
     --arg eventType "$event_type" \
     --argjson eventTsMs "$(($(date +%s) * 1000))" \
-    --argjson details "$details_json" \
-    '{workerId:$workerId,instanceId:$instanceId,privateIp:$privateIp,nodeRole:$nodeRole,eventType:$eventType,eventTsMs:$eventTsMs,details:$details}')
+    --arg detailsJson "$details_json" \
+    '{workerId:$workerId,instanceId:$instanceId,privateIp:$privateIp,nodeRole:$nodeRole,eventType:$eventType,eventTsMs:$eventTsMs,details:($detailsJson | fromjson)}')
   curl -sf -X POST "$MANAGER_EVENT_URL" \
     -H 'content-type: application/json' \
     -H "x-swarm-token: __SWARM_SHARED_TOKEN__" \
