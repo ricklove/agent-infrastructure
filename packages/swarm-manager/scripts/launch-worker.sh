@@ -131,21 +131,27 @@ if [[ -n "$IMAGE_ID_OVERRIDE" ]]; then
   IMAGE_METADATA=$(aws ec2 describe-images \
     --region "$REGION" \
     --image-ids "$IMAGE_ID_OVERRIDE" \
-    --query 'Images[0].{ImageId:ImageId,RootDeviceName:RootDeviceName}' \
+    --query 'Images[0].{ImageId:ImageId,RootDeviceName:RootDeviceName,RootDeviceVolumeSize:BlockDeviceMappings[?DeviceName==RootDeviceName][0].Ebs.VolumeSize}' \
     --output json)
   IMAGE_ID=$(printf '%s' "$IMAGE_METADATA" | jq -r '.ImageId')
   IMAGE_SOURCE="explicit-image-id"
 else
-  IMAGE_METADATA=$(aws ec2 describe-images --owners amazon --region "$REGION" --filters 'Name=name,Values=al2023-ami-2023.*-x86_64' 'Name=state,Values=available' --query 'sort_by(Images,&CreationDate)[-1].{ImageId:ImageId,RootDeviceName:RootDeviceName}' --output json)
+  IMAGE_METADATA=$(aws ec2 describe-images --owners amazon --region "$REGION" --filters 'Name=name,Values=al2023-ami-2023.*-x86_64' 'Name=state,Values=available' --query 'sort_by(Images,&CreationDate)[-1].{ImageId:ImageId,RootDeviceName:RootDeviceName,RootDeviceVolumeSize:BlockDeviceMappings[?DeviceName==RootDeviceName][0].Ebs.VolumeSize}' --output json)
   IMAGE_ID=$(printf '%s' "$IMAGE_METADATA" | jq -r '.ImageId')
 fi
 ROOT_DEVICE_NAME=$(printf '%s' "$IMAGE_METADATA" | jq -r '.RootDeviceName')
+ROOT_DEVICE_VOLUME_SIZE=$(printf '%s' "$IMAGE_METADATA" | jq -r '.RootDeviceVolumeSize // 0')
+if [[ "$ROOT_DEVICE_VOLUME_SIZE" =~ ^[0-9]+$ ]] && (( ROOT_DEVICE_VOLUME_SIZE > 30 )); then
+  WORKER_ROOT_VOLUME_SIZE="$ROOT_DEVICE_VOLUME_SIZE"
+else
+  WORKER_ROOT_VOLUME_SIZE="30"
+fi
 RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \
   --region "$REGION" \
   --image-id "$IMAGE_ID" \
   --instance-type "$INSTANCE_TYPE" \
   --hibernation-options Configured=true \
-  --block-device-mappings "[{\"DeviceName\":\"$ROOT_DEVICE_NAME\",\"Ebs\":{\"DeleteOnTermination\":true,\"Encrypted\":true}}]" \
+  --block-device-mappings "[{\"DeviceName\":\"$ROOT_DEVICE_NAME\",\"Ebs\":{\"DeleteOnTermination\":true,\"Encrypted\":true,\"VolumeSize\":$WORKER_ROOT_VOLUME_SIZE}}]" \
   --iam-instance-profile Arn="$INSTANCE_PROFILE_ARN" \
   --security-group-ids "$SECURITY_GROUP_ID" \
   --subnet-id "$SUBNET_ID" \
