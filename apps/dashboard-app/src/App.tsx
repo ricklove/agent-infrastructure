@@ -181,15 +181,15 @@ function formatLifecycleDetailValue(value: unknown): string {
 
 function formatElapsedSincePreviousEvent(
   currentEvent: WorkerLifecycleEvent,
-  previousEvent: WorkerLifecycleEvent | null,
+  nextEvent: WorkerLifecycleEvent | null,
 ): string | null {
-  if (!previousEvent) {
+  if (!nextEvent) {
     return null;
   }
 
   const elapsedSeconds = Math.max(
     0,
-    Math.round((currentEvent.eventTsMs - previousEvent.eventTsMs) / 1000),
+    Math.round((nextEvent.eventTsMs - currentEvent.eventTsMs) / 1000),
   );
 
   return `+${formatDurationSeconds(elapsedSeconds)}`;
@@ -957,12 +957,12 @@ export function App() {
                                 ) : (
                                   <div className="fleet-event-list">
                                     {worker.events.slice(0, 8).map((event, index) => {
-                                      const previousEvent =
-                                        worker.events[index + 1] ?? null;
+                                      const nextEvent =
+                                        index > 0 ? worker.events[index - 1] ?? null : null;
                                       const elapsedLabel =
                                         formatElapsedSincePreviousEvent(
                                           event,
-                                          previousEvent,
+                                          nextEvent,
                                         );
 
                                       return (
@@ -977,14 +977,14 @@ export function App() {
                                             )}
                                           </strong>
                                           <div className="fleet-event-time">
-                                            <span>
-                                              {formatTimestamp(event.eventTsMs)}
-                                            </span>
                                             {elapsedLabel ? (
                                               <span className="fleet-event-elapsed">
                                                 {elapsedLabel}
                                               </span>
                                             ) : null}
+                                            <span>
+                                              {formatTimestamp(event.eventTsMs)}
+                                            </span>
                                           </div>
                                         </div>
                                         {event.details &&
