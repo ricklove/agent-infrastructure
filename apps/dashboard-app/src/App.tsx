@@ -125,6 +125,7 @@ type FleetNode = Worker & {
   events: WorkerLifecycleEvent[];
   lifecycle: {
     timeToRunningSeconds: number | null;
+    timeToWakeSeconds: number | null;
   };
 };
 
@@ -299,6 +300,14 @@ function buildLifecycleSummary(
     firstEvent?.eventTsMs ?? 0,
     ["running"],
   );
+  const latestWakeRequestEvent = findLatestLifecycleEvent(chronologicalEvents, [
+    "wakeup_requested",
+  ]);
+  const firstRunningAfterWake = latestWakeRequestEvent
+    ? findFirstLifecycleEventAfter(chronologicalEvents, latestWakeRequestEvent.eventTsMs, [
+        "running",
+      ])
+    : null;
 
   return {
     timeToRunningSeconds:
@@ -307,6 +316,17 @@ function buildLifecycleSummary(
             0,
             Math.round(
               (firstRunningEvent.eventTsMs - firstEvent.eventTsMs) / 1000,
+            ),
+          )
+        : null,
+    timeToWakeSeconds:
+      latestWakeRequestEvent && firstRunningAfterWake
+        ? Math.max(
+            0,
+            Math.round(
+              (firstRunningAfterWake.eventTsMs -
+                latestWakeRequestEvent.eventTsMs) /
+                1000,
             ),
           )
         : null,
@@ -1038,6 +1058,16 @@ export function App() {
                                       )}
                                     </strong>
                                   </div>
+                                  {worker.lifecycle.timeToWakeSeconds !== null ? (
+                                    <div className="stacked">
+                                      <span>Time To Wake</span>
+                                      <strong>
+                                        {formatDurationSeconds(
+                                          worker.lifecycle.timeToWakeSeconds,
+                                        )}
+                                      </strong>
+                                    </div>
+                                  ) : null}
                                 </div>
                               </section>
                               <section className="fleet-detail-card">
