@@ -65,6 +65,18 @@ cd ${runtimeDir}
 exec bun run --filter @agent-infrastructure/swarm-manager run:wake-workers -- "$@"
 `;
 
+  const buildWorkerImageWrapper = `#!/usr/bin/env bash
+set -euo pipefail
+cd ${runtimeDir}
+exec bun run --filter @agent-infrastructure/swarm-manager run:build-worker-image -- "$@"
+`;
+
+  const testWorkerImageLifecycleWrapper = `#!/usr/bin/env bash
+set -euo pipefail
+cd ${runtimeDir}
+exec bun run --filter @agent-infrastructure/swarm-manager run:test-worker-image-lifecycle -- "$@"
+`;
+
   writeExecutable(resolve(hostRoot, "launch-worker.sh"), launchWorkerWrapper);
   writeExecutable(resolve(hostRoot, "update-runtime.sh"), updateRuntimeWrapper);
   writeExecutable(
@@ -76,6 +88,14 @@ exec bun run --filter @agent-infrastructure/swarm-manager run:wake-workers -- "$
     hibernateWorkersWrapper,
   );
   writeExecutable(resolve(hostRoot, "wake-workers.sh"), wakeWorkersWrapper);
+  writeExecutable(
+    resolve(hostRoot, "build-worker-image.sh"),
+    buildWorkerImageWrapper,
+  );
+  writeExecutable(
+    resolve(hostRoot, "test-worker-image-lifecycle.sh"),
+    testWorkerImageLifecycleWrapper,
+  );
   writeExecutable(
     resolve(hostRoot, "worker-user-data.sh"),
     readFileSync(resolve(scriptsDir, "worker-user-data.sh"), "utf8"),
