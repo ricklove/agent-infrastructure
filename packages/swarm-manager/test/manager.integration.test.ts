@@ -339,4 +339,47 @@ describe("manager integration", () => {
 
     expect(reusedLease.hostPort).toBe(firstLease.hostPort);
   });
+
+  test("worker lifecycle events can be recorded and queried", async () => {
+    await fetchJson(
+      `http://127.0.0.1:${managerPort}/workers/events`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-swarm-token": sharedToken,
+        },
+        body: JSON.stringify({
+          workerId: "worker-a",
+          instanceId: "i-worker-a",
+          privateIp: "10.0.0.21",
+          nodeRole: "worker",
+          eventType: "hibernated",
+          eventTsMs: Date.now(),
+          details: {
+            reason: "idle",
+          },
+        }),
+      },
+    );
+
+    const events = await fetchJson<{
+      ok: boolean;
+      events: Array<{
+        workerId: string;
+        eventType: string;
+        details: { reason?: string } | null;
+      }>;
+    }>(`http://127.0.0.1:${managerPort}/workers/events?workerId=worker-a&limit=20`);
+
+    expect(events.ok).toBe(true);
+    expect(
+      events.events.some(
+        (event) =>
+          event.workerId === "worker-a" &&
+          event.eventType === "hibernated" &&
+          event.details?.reason === "idle",
+      ),
+    ).toBe(true);
+  });
 });

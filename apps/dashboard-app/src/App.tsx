@@ -53,6 +53,34 @@ type WorkersResponse = {
   workers: Worker[];
 };
 
+type WorkerLifecycleEventType =
+  | "create"
+  | "launch"
+  | "running"
+  | "connected"
+  | "stale"
+  | "disconnected"
+  | "hibernating"
+  | "hibernated"
+  | "wakeup"
+  | "shutdown"
+  | "terminated";
+
+type WorkerLifecycleEvent = {
+  workerId: string;
+  instanceId: string;
+  privateIp: string;
+  nodeRole: "manager" | "worker";
+  eventType: WorkerLifecycleEventType;
+  eventTsMs: number;
+  details: Record<string, unknown> | null;
+};
+
+type WorkerLifecycleEventsResponse = {
+  ok: boolean;
+  events: WorkerLifecycleEvent[];
+};
+
 type Service = {
   namespace: string;
   serviceName: string;
@@ -72,6 +100,17 @@ type ServicesResponse = {
   services: Service[];
 };
 
+type FleetNode = Worker & {
+  archived: boolean;
+  latestEvent: WorkerLifecycleEvent | null;
+  lifecycle: {
+    launchToRunningSeconds: number | null;
+    hibernateSeconds: number | null;
+    wakeToRunningSeconds: number | null;
+    wakeToFleetVisibleSeconds: number | null;
+  };
+};
+
 const sessionStorageKey = "agent-infrastructure.dashboard.session";
 
 function formatBytes(bytes: number): string {
@@ -89,6 +128,126 @@ function formatBytes(bytes: number): string {
 
 function formatTimestamp(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString();
+}
+
+function formatDurationSeconds(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds)) {
+    return "--";
+  }
+
+  if (seconds >= 60) {
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`;
+  }
+
+  return `${seconds}s`;
+}
+
+function formatLifecycleEventLabel(eventType: WorkerLifecycleEventType): string {
+  return eventType
+    .split(/(?=[A-Z])|_/)
+    .join(" ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function readDetailNumber(
+  event: WorkerLifecycleEvent | null,
+  key: string,
+): number | null {
+  const value = event?.details?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function buildLifecycleSummary(
+  events: WorkerLifecycleEvent[],
+): FleetNode["lifecycle"] {
+  const launchEvent = events.find((event) => event.eventType === "launch") ?? null;
+  const hibernatedEvent =
+    events.find((event) => event.eventType === "hibernated") ?? null;
+  const resumeRunningEvent =
+    events.find(
+      (event) =>
+        event.eventType === "running" &&
+        (readDetailNumber(event, "elapsedSeconds") !== null ||
+          readDetailNumber(event, "fleetVisibleElapsedSeconds") !== null),
+    ) ?? null;
+
+  return {
+    launchToRunningSeconds: readDetailNumber(launchEvent, "runningElapsedSeconds"),
+    hibernateSeconds: readDetailNumber(hibernatedEvent, "elapsedSeconds"),
+    wakeToRunningSeconds: readDetailNumber(resumeRunningEvent, "elapsedSeconds"),
+    wakeToFleetVisibleSeconds: readDetailNumber(
+      resumeRunningEvent,
+      "fleetVisibleElapsedSeconds",
+    ),
+  };
+}
+
+function buildFleetNodes(
+  workers: Worker[],
+  events: WorkerLifecycleEvent[],
+): FleetNode[] {
+  const eventsByWorkerId = new Map<string, WorkerLifecycleEvent[]>();
+
+  for (const event of events) {
+    const grouped = eventsByWorkerId.get(event.workerId);
+    if (grouped) {
+      grouped.push(event);
+    } else {
+      eventsByWorkerId.set(event.workerId, [event]);
+    }
+  }
+
+  const liveWorkers = new Set(workers.map((worker) => worker.workerId));
+  const fleetNodes: FleetNode[] = workers.map((worker) => {
+    const workerEvents = eventsByWorkerId.get(worker.workerId) ?? [];
+    const latestEvent = workerEvents[0] ?? null;
+
+    return {
+      ...worker,
+      archived: false,
+      latestEvent,
+      lifecycle: buildLifecycleSummary(workerEvents),
+    };
+  });
+
+  for (const [workerId, workerEvents] of eventsByWorkerId.entries()) {
+    if (liveWorkers.has(workerId) || workerEvents.length === 0) {
+      continue;
+    }
+
+    const latestEvent = workerEvents[0];
+    fleetNodes.push({
+      workerId,
+      instanceId: latestEvent.instanceId,
+      privateIp: latestEvent.privateIp,
+      nodeRole: latestEvent.nodeRole,
+      status: latestEvent.eventType,
+      lastHeartbeatAt: latestEvent.eventTsMs,
+      lastMetrics: null,
+      archived: true,
+      latestEvent,
+      lifecycle: buildLifecycleSummary(workerEvents),
+    });
+  }
+
+  return fleetNodes.sort((left, right) => {
+    if (left.archived !== right.archived) {
+      return left.archived ? 1 : -1;
+    }
+
+    const leftTimestamp = Math.max(
+      left.lastHeartbeatAt,
+      left.latestEvent?.eventTsMs ?? 0,
+    );
+    const rightTimestamp = Math.max(
+      right.lastHeartbeatAt,
+      right.latestEvent?.eventTsMs ?? 0,
+    );
+
+    return rightTimestamp - leftTimestamp;
+  });
 }
 
 function readStoredSessionToken(): string {
@@ -113,6 +272,7 @@ export function App() {
   const [config, setConfig] = useState<DashboardConfig | null>(null);
   const [health, setHealth] = useState<DashboardHealth | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
+  const [workerEvents, setWorkerEvents] = useState<WorkerLifecycleEvent[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [error, setError] = useState<string>("");
   const [accessMessage, setAccessMessage] = useState<string>("");
@@ -120,6 +280,7 @@ export function App() {
     useState<EnrollmentResponse | null>(null);
   const [sessionReady, setSessionReady] = useState<boolean>(false);
   const [authRequired, setAuthRequired] = useState<boolean>(false);
+  const [showArchivedWorkers, setShowArchivedWorkers] = useState<boolean>(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -199,16 +360,23 @@ export function App() {
 
     async function refresh(): Promise<void> {
       try {
-        const [healthResponse, workersResponse, servicesResponse] =
+        const [
+          healthResponse,
+          workersResponse,
+          workerEventsResponse,
+          servicesResponse,
+        ] =
           await Promise.all([
             apiFetch("/api/health"),
             apiFetch("/api/workers"),
+            apiFetch("/api/workers/events?limit=200"),
             apiFetch("/api/services"),
           ]);
 
         if (
           healthResponse.status === 401 ||
           workersResponse.status === 401 ||
+          workerEventsResponse.status === 401 ||
           servicesResponse.status === 401
         ) {
           window.sessionStorage.removeItem(sessionStorageKey);
@@ -220,12 +388,19 @@ export function App() {
           return;
         }
 
-        if (!healthResponse.ok || !workersResponse.ok || !servicesResponse.ok) {
+        if (
+          !healthResponse.ok ||
+          !workersResponse.ok ||
+          !workerEventsResponse.ok ||
+          !servicesResponse.ok
+        ) {
           throw new Error("dashboard API request failed");
         }
 
         const nextHealth = (await healthResponse.json()) as DashboardHealth;
         const nextWorkers = (await workersResponse.json()) as WorkersResponse;
+        const nextWorkerEvents =
+          (await workerEventsResponse.json()) as WorkerLifecycleEventsResponse;
         const nextServices = (await servicesResponse.json()) as ServicesResponse;
 
         if (cancelled) {
@@ -234,6 +409,7 @@ export function App() {
 
         setHealth(nextHealth);
         setWorkers(nextWorkers.workers);
+        setWorkerEvents(nextWorkerEvents.events);
         setServices(nextServices.services);
         setAuthRequired(false);
         setError("");
@@ -324,6 +500,11 @@ export function App() {
   const managerNodes = workers.filter((worker) => worker.nodeRole === "manager")
     .length;
   const workerNodes = workers.filter((worker) => worker.nodeRole === "worker").length;
+  const fleetNodes = buildFleetNodes(workers, workerEvents);
+  const archivedNodes = fleetNodes.filter((worker) => worker.archived);
+  const displayedFleetNodes = showArchivedWorkers
+    ? fleetNodes
+    : fleetNodes.filter((worker) => !worker.archived);
 
   return (
     <main className="page-shell">
@@ -467,9 +648,24 @@ export function App() {
         <div className="panel-header">
           <div>
             <p className="eyebrow">Fleet</p>
-            <h2>Live Fleet</h2>
+            <h2>Fleet</h2>
           </div>
+          <button
+            className="secondary-action"
+            onClick={() => {
+              setShowArchivedWorkers((currentValue) => !currentValue);
+            }}
+          >
+            {showArchivedWorkers
+              ? "Hide Archive"
+              : `Show Archive${archivedNodes.length > 0 ? ` (${archivedNodes.length})` : ""}`}
+          </button>
         </div>
+        <p className="lede">
+          Active manager and worker telemetry stays live. Archive mode also keeps
+          hibernated, disconnected, and terminated nodes visible with their most
+          recent lifecycle timings.
+        </p>
         <div className="table-wrap">
           <table>
             <thead>
@@ -482,22 +678,28 @@ export function App() {
                 <th>Memory</th>
                 <th>Containers</th>
                 <th>Heartbeat</th>
+                <th>Lifecycle</th>
               </tr>
             </thead>
             <tbody>
-              {workers.length === 0 ? (
+              {displayedFleetNodes.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="empty-row">
-                    No fleet nodes connected.
+                  <td colSpan={9} className="empty-row">
+                    {showArchivedWorkers
+                      ? "No fleet nodes or archived lifecycle records."
+                      : "No live fleet nodes connected."}
                   </td>
                 </tr>
               ) : (
-                workers.map((worker) => (
+                displayedFleetNodes.map((worker) => (
                   <tr key={worker.workerId}>
                     <td>
                       <div className="stacked">
                         <strong>{worker.workerId}</strong>
                         <span>{worker.instanceId}</span>
+                        {worker.archived ? (
+                          <span className="archive-label">archived</span>
+                        ) : null}
                       </div>
                     </td>
                     <td>{worker.nodeRole}</td>
@@ -523,6 +725,39 @@ export function App() {
                     </td>
                     <td>{worker.lastMetrics?.containerCount ?? "--"}</td>
                     <td>{formatTimestamp(worker.lastHeartbeatAt)}</td>
+                    <td>
+                      <div className="stacked lifecycle-cell">
+                        <span>
+                          Last:{" "}
+                          {worker.latestEvent
+                            ? `${formatLifecycleEventLabel(
+                                worker.latestEvent.eventType,
+                              )} at ${formatTimestamp(worker.latestEvent.eventTsMs)}`
+                            : "--"}
+                        </span>
+                        <span>
+                          Launch:{" "}
+                          {formatDurationSeconds(
+                            worker.lifecycle.launchToRunningSeconds,
+                          )}
+                        </span>
+                        <span>
+                          Hibernate:{" "}
+                          {formatDurationSeconds(worker.lifecycle.hibernateSeconds)}
+                        </span>
+                        <span>
+                          Wake:{" "}
+                          {formatDurationSeconds(
+                            worker.lifecycle.wakeToRunningSeconds,
+                          )}
+                          {worker.lifecycle.wakeToFleetVisibleSeconds !== null
+                            ? ` / fleet ${formatDurationSeconds(
+                                worker.lifecycle.wakeToFleetVisibleSeconds,
+                              )}`
+                            : ""}
+                        </span>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

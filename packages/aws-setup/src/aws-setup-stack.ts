@@ -1,6 +1,7 @@
 import {
   CfnOutput,
   Duration,
+  RemovalPolicy,
   Stack,
   StackProps,
   Tags,
@@ -11,6 +12,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3assets from "aws-cdk-lib/aws-s3-assets";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
@@ -53,6 +55,18 @@ export class AwsSetupStack extends Stack {
         "**/dist",
       ],
     });
+    const workerRuntimeReleaseBucket = new s3.Bucket(
+      this,
+      "WorkerRuntimeReleaseBucket",
+      {
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        enforceSSL: true,
+        versioned: true,
+        removalPolicy: RemovalPolicy.DESTROY,
+        autoDeleteObjects: true,
+      },
+    );
     const managerServiceUnit = `[Unit]
 Description=Agent swarm monitoring server
 After=network-online.target
@@ -110,7 +124,7 @@ systemctl enable --now docker
 usermod -aG docker ec2-user
 
 mkdir -p /opt/agent-swarm/runtime
-aws s3 cp "s3://__RUNTIME_ASSET_BUCKET__/__RUNTIME_ASSET_KEY__" /opt/agent-swarm/runtime.zip --region "__REGION__"
+aws s3 cp "s3://__WORKER_RUNTIME_RELEASE_BUCKET__/__WORKER_RUNTIME_RELEASE_KEY__" /opt/agent-swarm/runtime.zip --region "__REGION__"
 rm -rf /opt/agent-swarm/runtime/*
 unzip -q /opt/agent-swarm/runtime.zip -d /opt/agent-swarm/runtime
 
@@ -202,6 +216,7 @@ systemctl enable --now agent-swarm-worker-monitor.service
       ),
     );
     runtimeAsset.grantRead(workerRole);
+    workerRuntimeReleaseBucket.grantRead(workerRole);
     Tags.of(workerRole).add(swarmTagKey, swarmTagValue);
 
     const workerInstanceProfile = new iam.CfnInstanceProfile(
@@ -223,6 +238,7 @@ systemctl enable --now agent-swarm-worker-monitor.service
       ),
     );
     runtimeAsset.grantRead(managerRole);
+    workerRuntimeReleaseBucket.grantReadWrite(managerRole);
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "ReadEc2Inventory",
@@ -398,6 +414,7 @@ systemctl enable --now agent-swarm-worker-monitor.service
       workerSubnetIds: workerSubnets,
       runtimeAssetBucket: runtimeAsset.s3BucketName,
       runtimeAssetKey: runtimeAsset.s3ObjectKey,
+      workerRuntimeReleaseBucketName: workerRuntimeReleaseBucket.bucketName,
       managerMonitorPort,
       swarmMaxSize: props.swarmMaxSize,
       dashboardAccessApiBaseUrl: dashboardAccessUrl.url.replace(/\/$/, ""),
@@ -405,7 +422,7 @@ systemctl enable --now agent-swarm-worker-monitor.service
     };
 
     managerInstance.userData.addCommands(
-      "dnf install -y awscli jq unzip openssl",
+      "dnf install -y awscli jq unzip zip openssl",
       "curl -fsSL https://pkg.cloudflare.com/cloudflared.repo -o /etc/yum.repos.d/cloudflared.repo",
       "dnf install -y cloudflared",
       "export HOME=/root",
@@ -438,6 +455,14 @@ systemctl enable --now agent-swarm-worker-monitor.service
       "SWARM_SHARED_TOKEN=$(cat /opt/agent-swarm/swarm-shared-token)",
       "jq --arg managerPrivateIp \"$MANAGER_PRIVATE_IP\" --arg swarmSharedToken \"$SWARM_SHARED_TOKEN\" --argjson managerMonitorPort 8787 '. + {managerPrivateIp:$managerPrivateIp, swarmSharedToken:$swarmSharedToken, managerMonitorPort:$managerMonitorPort}' /opt/agent-swarm/bootstrap-context.json > /opt/agent-swarm/bootstrap-context.tmp",
       "mv /opt/agent-swarm/bootstrap-context.tmp /opt/agent-swarm/bootstrap-context.json",
+      "cat > /opt/agent-swarm/publish-worker-runtime-release.sh <<'EOF'",
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "cd /opt/agent-swarm/runtime",
+      "exec bun run --filter @agent-infrastructure/swarm-manager run:publish-worker-runtime-release -- \"$@\"",
+      "EOF",
+      "chmod +x /opt/agent-swarm/publish-worker-runtime-release.sh",
+      "if [[ ! -s /opt/agent-swarm/worker-runtime-release.json ]]; then /opt/agent-swarm/publish-worker-runtime-release.sh --release-id manager-bootstrap; fi",
       "cat > /etc/agent-swarm-monitor.env <<ENVFILE",
       "MANAGER_WS_HOST=0.0.0.0",
       "MANAGER_WS_PORT=8787",
@@ -474,6 +499,8 @@ systemctl enable --now agent-swarm-worker-monitor.service
       "MANAGER_PRIVATE_IP=$(jq -r '.managerPrivateIp' \"$CONFIG\")",
       "MANAGER_MONITOR_PORT=$(jq -r '.managerMonitorPort' \"$CONFIG\")",
       "SWARM_SHARED_TOKEN=$(jq -r '.swarmSharedToken' \"$CONFIG\")",
+      "RELEASE_CONFIG=/opt/agent-swarm/worker-runtime-release.json",
+      "if [[ ! -s \"$RELEASE_CONFIG\" ]]; then echo 'worker runtime release metadata is missing' >&2; exit 1; fi",
       'INSTANCE_TYPE="${1:-}"',
       'if [[ -z "$INSTANCE_TYPE" ]]; then',
       '  INSTANCE_TYPE="$(jq -r \'.workerInstanceType\' "$CONFIG")"',
@@ -484,13 +511,14 @@ systemctl enable --now agent-swarm-worker-monitor.service
       "fi",
       "SECURITY_GROUP_ID=$(jq -r '.workerSecurityGroupId' \"$CONFIG\")",
       "INSTANCE_PROFILE_ARN=$(jq -r '.workerInstanceProfileArn' \"$CONFIG\")",
-      "RUNTIME_ASSET_BUCKET=$(jq -r '.runtimeAssetBucket' \"$CONFIG\")",
-      "RUNTIME_ASSET_KEY=$(jq -r '.runtimeAssetKey' \"$CONFIG\")",
+      "WORKER_RUNTIME_RELEASE_BUCKET=$(jq -r '.bucket' \"$RELEASE_CONFIG\")",
+      "WORKER_RUNTIME_RELEASE_KEY=$(jq -r '.key' \"$RELEASE_CONFIG\")",
+      "if [[ \"$WORKER_RUNTIME_RELEASE_BUCKET\" == \"null\" || -z \"$WORKER_RUNTIME_RELEASE_BUCKET\" || \"$WORKER_RUNTIME_RELEASE_KEY\" == \"null\" || -z \"$WORKER_RUNTIME_RELEASE_KEY\" ]]; then echo 'worker runtime release metadata is invalid' >&2; exit 1; fi",
       "TEMP_USER_DATA=$(mktemp)",
       "trap 'rm -f \"$TEMP_USER_DATA\"' EXIT",
-      "sed -e \"s/__MANAGER_PRIVATE_IP__/$MANAGER_PRIVATE_IP/g\" -e \"s/__MANAGER_MONITOR_PORT__/$MANAGER_MONITOR_PORT/g\" -e \"s/__SWARM_SHARED_TOKEN__/$SWARM_SHARED_TOKEN/g\" -e \"s/__RUNTIME_ASSET_BUCKET__/$RUNTIME_ASSET_BUCKET/g\" -e \"s#__RUNTIME_ASSET_KEY__#$RUNTIME_ASSET_KEY#g\" -e \"s/__REGION__/$REGION/g\" /opt/agent-swarm/worker-user-data.sh > \"$TEMP_USER_DATA\"",
+      "sed -e \"s/__MANAGER_PRIVATE_IP__/$MANAGER_PRIVATE_IP/g\" -e \"s/__MANAGER_MONITOR_PORT__/$MANAGER_MONITOR_PORT/g\" -e \"s/__SWARM_SHARED_TOKEN__/$SWARM_SHARED_TOKEN/g\" -e \"s/__WORKER_RUNTIME_RELEASE_BUCKET__/$WORKER_RUNTIME_RELEASE_BUCKET/g\" -e \"s#__WORKER_RUNTIME_RELEASE_KEY__#$WORKER_RUNTIME_RELEASE_KEY#g\" -e \"s/__REGION__/$REGION/g\" /opt/agent-swarm/worker-user-data.sh > \"$TEMP_USER_DATA\"",
       "IMAGE_ID=$(aws ec2 describe-images --owners amazon --region \"$REGION\" --filters 'Name=name,Values=al2023-ami-2023.*-x86_64' 'Name=state,Values=available' --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text)",
-      "aws ec2 run-instances \\",
+      "RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \\",
       "  --region \"$REGION\" \\",
       "  --image-id \"$IMAGE_ID\" \\",
       "  --instance-type \"$INSTANCE_TYPE\" \\",
@@ -498,7 +526,17 @@ systemctl enable --now agent-swarm-worker-monitor.service
       "  --security-group-ids \"$SECURITY_GROUP_ID\" \\",
       "  --subnet-id \"$SUBNET_ID\" \\",
       "  --user-data file://\"$TEMP_USER_DATA\" \\",
-      "  --tag-specifications \"ResourceType=instance,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Role,Value=agent-swarm-worker}]\" \"ResourceType=volume,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE}]\"",
+      "  --tag-specifications \"ResourceType=instance,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Role,Value=agent-swarm-worker},{Key=Name,Value=agent-swarm-worker}]\" \"ResourceType=volume,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Name,Value=agent-swarm-worker-volume}]\")",
+      "INSTANCE_ID=$(printf '%s' \"$RUN_INSTANCES_OUTPUT\" | jq -r '.Instances[0].InstanceId')",
+      "PRIVATE_IP=$(printf '%s' \"$RUN_INSTANCES_OUTPUT\" | jq -r '.Instances[0].PrivateIpAddress // \"\"')",
+      "EVENT_TS_MS=$(($(date +%s) * 1000))",
+      "for EVENT_TYPE in create launch; do",
+      "  curl -sf -X POST http://127.0.0.1:8787/workers/events \\",
+      "    -H 'content-type: application/json' \\",
+      "    -H \"x-swarm-token: $SWARM_SHARED_TOKEN\" \\",
+      "    -d \"{\\\"workerId\\\":\\\"$INSTANCE_ID\\\",\\\"instanceId\\\":\\\"$INSTANCE_ID\\\",\\\"privateIp\\\":\\\"$PRIVATE_IP\\\",\\\"nodeRole\\\":\\\"worker\\\",\\\"eventType\\\":\\\"$EVENT_TYPE\\\",\\\"eventTsMs\\\":$EVENT_TS_MS,\\\"details\\\":{\\\"instanceType\\\":\\\"$INSTANCE_TYPE\\\",\\\"subnetId\\\":\\\"$SUBNET_ID\\\"}}\" >/dev/null || true",
+      "done",
+      "printf '%s\\n' \"$RUN_INSTANCES_OUTPUT\"",
       "EOF",
       "systemctl daemon-reload",
       "systemctl enable --now agent-swarm-monitor.service",
@@ -539,6 +577,9 @@ systemctl enable --now agent-swarm-worker-monitor.service
     });
     new CfnOutput(this, "DashboardAccessUrl", {
       value: dashboardAccessUrl.url,
+    });
+    new CfnOutput(this, "WorkerRuntimeReleaseBucketName", {
+      value: workerRuntimeReleaseBucket.bucketName,
     });
   }
 }

@@ -250,6 +250,14 @@ tbody tr:last-child td {
   font-size: 0.84rem;
 }
 
+.archive-label {
+  color: #f4d38a;
+}
+
+.lifecycle-cell span {
+  line-height: 1.45;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -268,9 +276,21 @@ tbody tr:last-child td {
 
 .status-stale,
 .status-disconnected,
-.status-error {
+.status-error,
+.status-terminated,
+.status-shutdown {
   color: #ffb39f;
   background: rgba(161, 74, 55, 0.28);
+}
+
+.status-hibernated,
+.status-hibernating,
+.status-wakeup,
+.status-launch,
+.status-create,
+.status-running {
+  color: #f4d38a;
+  background: rgba(145, 112, 22, 0.26);
 }
 
 .empty-row {

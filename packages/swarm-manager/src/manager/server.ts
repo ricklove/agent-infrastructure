@@ -82,6 +82,39 @@ type ContainerSampleRow = {
   memoryPercent: number;
 };
 
+type WorkerLifecycleEventType =
+  | "create"
+  | "launch"
+  | "running"
+  | "connected"
+  | "stale"
+  | "disconnected"
+  | "hibernating"
+  | "hibernated"
+  | "wakeup"
+  | "shutdown"
+  | "terminated";
+
+type WorkerLifecycleEventRecord = {
+  workerId: string;
+  instanceId: string;
+  privateIp: string;
+  nodeRole: "manager" | "worker";
+  eventType: WorkerLifecycleEventType;
+  eventTsMs: number;
+  details: Record<string, unknown> | null;
+};
+
+type WorkerLifecycleEventBody = {
+  workerId: string;
+  instanceId: string;
+  privateIp: string;
+  nodeRole?: "manager" | "worker";
+  eventType: WorkerLifecycleEventType;
+  eventTsMs?: number;
+  details?: Record<string, unknown>;
+};
+
 type ServiceRecord = {
   namespace: string;
   serviceName: string;
@@ -294,6 +327,22 @@ db.exec(`
     PRIMARY KEY (worker_id, host_port),
     UNIQUE (worker_id, namespace, service_name, instance_id)
   );
+
+  CREATE TABLE IF NOT EXISTS worker_lifecycle_events (
+    worker_id TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    private_ip TEXT NOT NULL,
+    node_role TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    event_ts_ms INTEGER NOT NULL,
+    details_json TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_worker_lifecycle_events_worker_ts
+    ON worker_lifecycle_events(worker_id, event_ts_ms DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_worker_lifecycle_events_ts
+    ON worker_lifecycle_events(event_ts_ms DESC);
 `);
 
 const insertWorkerSample = db.query(
@@ -436,10 +485,52 @@ const deletePortLeaseByService = db.query(
    WHERE worker_id = ? AND namespace = ? AND service_name = ? AND instance_id = ?`,
 );
 
+const insertWorkerLifecycleEvent = db.query(
+  `INSERT INTO worker_lifecycle_events (
+    worker_id,
+    instance_id,
+    private_ip,
+    node_role,
+    event_type,
+    event_ts_ms,
+    details_json
+  ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+);
+
+const listWorkerLifecycleEvents = db.query(
+  `SELECT
+      worker_id,
+      instance_id,
+      private_ip,
+      node_role,
+      event_type,
+      event_ts_ms,
+      details_json
+   FROM worker_lifecycle_events
+   ORDER BY event_ts_ms DESC
+   LIMIT ?`,
+);
+
+const listWorkerLifecycleEventsByWorker = db.query(
+  `SELECT
+      worker_id,
+      instance_id,
+      private_ip,
+      node_role,
+      event_type,
+      event_ts_ms,
+      details_json
+   FROM worker_lifecycle_events
+   WHERE worker_id = ?
+   ORDER BY event_ts_ms DESC
+   LIMIT ?`,
+);
+
 const workerSampleBuffer: WorkerSampleRow[] = [];
 const containerSampleBuffer: ContainerSampleRow[] = [];
 const liveWorkers = new Map<string, LiveWorkerState>();
 const sessions = new Map<string, Bun.ServerWebSocket<SocketData>>();
+const seenRunningWorkers = new Set<string>();
 
 function nowMs(): number {
   return Date.now();
@@ -504,10 +595,12 @@ function parseMessage(raw: string | Buffer): IncomingMessage | null {
       typeof parsed.token === "string" &&
       typeof parsed.workerId === "string" &&
       typeof parsed.instanceId === "string" &&
-      typeof parsed.privateIp === "string" &&
-      (parsed.nodeRole === "manager" || parsed.nodeRole === "worker")
+      typeof parsed.privateIp === "string"
     ) {
-      return parsed as WorkerAuthMessage;
+      return {
+        ...(parsed as Omit<WorkerAuthMessage, "nodeRole">),
+        nodeRole: parsed.nodeRole === "manager" ? "manager" : "worker",
+      };
     }
 
     return null;
@@ -518,12 +611,14 @@ function parseMessage(raw: string | Buffer): IncomingMessage | null {
       typeof parsed.workerId === "string" &&
       typeof parsed.instanceId === "string" &&
       typeof parsed.privateIp === "string" &&
-      (parsed.nodeRole === "manager" || parsed.nodeRole === "worker") &&
       isFiniteNumber(parsed.timestamp) &&
       isWorkerMetrics(parsed.worker) &&
       isContainerMetricsArray(parsed.containers)
     ) {
-      return parsed as WorkerHeartbeatMessage;
+      return {
+        ...(parsed as Omit<WorkerHeartbeatMessage, "nodeRole">),
+        nodeRole: parsed.nodeRole === "manager" ? "manager" : "worker",
+      };
     }
 
     return null;
@@ -615,6 +710,44 @@ function isPortReleaseBody(value: unknown): value is PortReleaseBody {
   return isNonEmptyString(body.workerId) && Number.isInteger(body.hostPort);
 }
 
+function isLifecycleEventType(value: unknown): value is WorkerLifecycleEventType {
+  return [
+    "create",
+    "launch",
+    "running",
+    "connected",
+    "stale",
+    "disconnected",
+    "hibernating",
+    "hibernated",
+    "wakeup",
+    "shutdown",
+    "terminated",
+  ].includes(String(value));
+}
+
+function isWorkerLifecycleEventBody(
+  value: unknown,
+): value is WorkerLifecycleEventBody {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const body = value as Record<string, unknown>;
+  return (
+    isNonEmptyString(body.workerId) &&
+    isNonEmptyString(body.instanceId) &&
+    isNonEmptyString(body.privateIp) &&
+    isLifecycleEventType(body.eventType) &&
+    (body.nodeRole === undefined ||
+      body.nodeRole === "manager" ||
+      body.nodeRole === "worker") &&
+    (body.eventTsMs === undefined || isFiniteNumber(body.eventTsMs)) &&
+    (body.details === undefined ||
+      (typeof body.details === "object" && body.details !== null))
+  );
+}
+
 function mapServiceRow(row: Record<string, unknown>): ServiceRecord {
   return {
     namespace: String(row.namespace),
@@ -628,6 +761,50 @@ function mapServiceRow(row: Record<string, unknown>): ServiceRecord {
     healthy: Number(row.healthy) === 1,
     updatedAtMs: Number(row.updated_at_ms),
   };
+}
+
+function mapLifecycleEventRow(
+  row: Record<string, unknown>,
+): WorkerLifecycleEventRecord {
+  return {
+    workerId: String(row.worker_id),
+    instanceId: String(row.instance_id),
+    privateIp: String(row.private_ip),
+    nodeRole: row.node_role === "manager" ? "manager" : "worker",
+    eventType: String(row.event_type) as WorkerLifecycleEventType,
+    eventTsMs: Number(row.event_ts_ms),
+    details:
+      typeof row.details_json === "string" && row.details_json.length > 0
+        ? (JSON.parse(String(row.details_json)) as Record<string, unknown>)
+        : null,
+  };
+}
+
+function recordWorkerLifecycleEvent(
+  event: WorkerLifecycleEventRecord,
+): void {
+  insertWorkerLifecycleEvent.run(
+    event.workerId,
+    event.instanceId,
+    event.privateIp,
+    event.nodeRole,
+    event.eventType,
+    event.eventTsMs,
+    event.details ? JSON.stringify(event.details) : null,
+  );
+}
+
+function getWorkerLifecycleEvents(
+  limit: number,
+  workerId?: string,
+): WorkerLifecycleEventRecord[] {
+  const normalizedLimit = Math.max(1, Math.min(limit, 500));
+  const rows = workerId
+    ? listWorkerLifecycleEventsByWorker.all(workerId, normalizedLimit)
+    : listWorkerLifecycleEvents.all(normalizedLimit);
+  return rows.map((row) =>
+    mapLifecycleEventRow(row as Record<string, unknown>),
+  );
 }
 
 function listServices(): ServiceRecord[] {
@@ -960,6 +1137,17 @@ function updateStaleWorkers(): void {
       currentTime - worker.lastHeartbeatAt > config.heartbeatTimeoutMs
     ) {
       worker.status = "stale";
+      recordWorkerLifecycleEvent({
+        workerId: worker.workerId,
+        instanceId: worker.instanceId,
+        privateIp: worker.privateIp,
+        nodeRole: worker.nodeRole,
+        eventType: "stale",
+        eventTsMs: currentTime,
+        details: {
+          lastHeartbeatAt: worker.lastHeartbeatAt,
+        },
+      });
     }
   }
 }
@@ -1013,6 +1201,18 @@ const server = Bun.serve<SocketData>({
 
     if (request.method === "GET" && url.pathname === "/workers") {
       return Response.json({ workers: snapshotWorkers() });
+    }
+
+    if (request.method === "GET" && url.pathname === "/workers/events") {
+      const limitValue = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
+      const workerId = normalizeName(url.searchParams.get("workerId") ?? "");
+      return Response.json({
+        ok: true,
+        events: getWorkerLifecycleEvents(
+          Number.isInteger(limitValue) ? limitValue : 100,
+          workerId || undefined,
+        ),
+      });
     }
 
     if (request.method === "GET" && url.pathname === "/services") {
@@ -1152,6 +1352,31 @@ const server = Bun.serve<SocketData>({
       return Response.json({ ok: true });
     }
 
+    if (request.method === "POST" && url.pathname === "/workers/events") {
+      const unauthorized = requireManagerToken(request);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      const body = await parseJsonBody<WorkerLifecycleEventBody>(request);
+      if (!isWorkerLifecycleEventBody(body)) {
+        return jsonError(400, "invalid worker lifecycle event body");
+      }
+
+      const event: WorkerLifecycleEventRecord = {
+        workerId: normalizeName(body.workerId),
+        instanceId: normalizeName(body.instanceId),
+        privateIp: normalizeName(body.privateIp),
+        nodeRole: body.nodeRole === "manager" ? "manager" : "worker",
+        eventType: body.eventType,
+        eventTsMs: body.eventTsMs ?? nowMs(),
+        details: body.details ?? null,
+      };
+
+      recordWorkerLifecycleEvent(event);
+      return Response.json({ ok: true, event });
+    }
+
     if (request.method === "POST" && url.pathname === "/services/register") {
       const unauthorized = requireManagerToken(request);
       if (unauthorized) {
@@ -1270,6 +1495,15 @@ const server = Bun.serve<SocketData>({
             lastMetrics: null,
             lastContainers: [],
           });
+          recordWorkerLifecycleEvent({
+            workerId: message.workerId,
+            instanceId: message.instanceId,
+            privateIp: message.privateIp,
+            nodeRole: message.nodeRole,
+            eventType: "connected",
+            eventTsMs: currentTime,
+            details: null,
+          });
           ws.send(JSON.stringify({ type: "auth_ok", ts: currentTime }));
           return;
         }
@@ -1304,6 +1538,21 @@ const server = Bun.serve<SocketData>({
         workerState.lastMetrics = message.worker;
         workerState.lastContainers = message.containers;
         liveWorkers.set(message.workerId, workerState);
+
+        if (!seenRunningWorkers.has(message.workerId)) {
+          seenRunningWorkers.add(message.workerId);
+          recordWorkerLifecycleEvent({
+            workerId: message.workerId,
+            instanceId: message.instanceId,
+            privateIp: message.privateIp,
+            nodeRole: message.nodeRole,
+            eventType: "running",
+            eventTsMs: currentTime,
+            details: {
+              containerCount: message.worker.containerCount,
+            },
+          });
+        }
 
         workerSampleBuffer.push({
           workerId: message.workerId,
@@ -1348,6 +1597,15 @@ const server = Bun.serve<SocketData>({
       const liveWorker = liveWorkers.get(workerId);
       if (liveWorker) {
         liveWorker.status = "disconnected";
+        recordWorkerLifecycleEvent({
+          workerId: liveWorker.workerId,
+          instanceId: liveWorker.instanceId,
+          privateIp: liveWorker.privateIp,
+          nodeRole: liveWorker.nodeRole,
+          eventType: "disconnected",
+          eventTsMs: nowMs(),
+          details: null,
+        });
       }
     },
   },

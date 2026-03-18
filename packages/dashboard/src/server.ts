@@ -52,6 +52,32 @@ type ServicesResponse = {
   }>;
 };
 
+type WorkerLifecycleEventType =
+  | "create"
+  | "launch"
+  | "running"
+  | "connected"
+  | "stale"
+  | "disconnected"
+  | "hibernating"
+  | "hibernated"
+  | "wakeup"
+  | "shutdown"
+  | "terminated";
+
+type WorkerLifecycleEventsResponse = {
+  ok: boolean;
+  events: Array<{
+    workerId: string;
+    instanceId: string;
+    privateIp: string;
+    nodeRole: "manager" | "worker";
+    eventType: WorkerLifecycleEventType;
+    eventTsMs: number;
+    details: Record<string, unknown> | null;
+  }>;
+};
+
 type AccessEnrollmentResponse = {
   ok: boolean;
   registrationUrl: string;
@@ -376,6 +402,37 @@ async function handleApi(request: Request): Promise<Response> {
           ok: false,
           error:
             error instanceof Error ? error.message : "failed to fetch workers",
+        },
+        502,
+      );
+    }
+  }
+
+  if (url.pathname === "/api/workers/events") {
+    try {
+      const search = new URLSearchParams();
+      const workerId = url.searchParams.get("workerId")?.trim() ?? "";
+      const limit = url.searchParams.get("limit")?.trim() ?? "";
+
+      if (workerId) {
+        search.set("workerId", workerId);
+      }
+
+      if (limit) {
+        search.set("limit", limit);
+      }
+
+      const suffix = search.toString();
+      const events = await fetchManagerJson<WorkerLifecycleEventsResponse>(
+        `/workers/events${suffix ? `?${suffix}` : ""}`,
+      );
+      return jsonResponse(events);
+    } catch (error) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            error instanceof Error ? error.message : "failed to fetch worker events",
         },
         502,
       );

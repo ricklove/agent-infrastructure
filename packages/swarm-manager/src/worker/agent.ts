@@ -173,13 +173,18 @@ function parseBytes(value: string): number {
 }
 
 function readContainerMetrics(): ContainerMetrics[] {
-  const result = Bun.spawnSync([
-    "docker",
-    "stats",
-    "--no-stream",
-    "--format",
-    "{{json .}}",
-  ]);
+  let result: Bun.SyncSubprocess;
+  try {
+    result = Bun.spawnSync([
+      "docker",
+      "stats",
+      "--no-stream",
+      "--format",
+      "{{json .}}",
+    ]);
+  } catch {
+    return [];
+  }
 
   if (result.exitCode !== 0) {
     return [];
