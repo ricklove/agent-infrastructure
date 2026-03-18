@@ -179,6 +179,22 @@ function formatLifecycleDetailValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function formatElapsedSincePreviousEvent(
+  currentEvent: WorkerLifecycleEvent,
+  previousEvent: WorkerLifecycleEvent | null,
+): string | null {
+  if (!previousEvent) {
+    return null;
+  }
+
+  const elapsedSeconds = Math.max(
+    0,
+    Math.round((currentEvent.eventTsMs - previousEvent.eventTsMs) / 1000),
+  );
+
+  return `+${formatDurationSeconds(elapsedSeconds)}`;
+}
+
 function readDetailNumber(
   event: WorkerLifecycleEvent | null,
   key: string,
@@ -940,7 +956,16 @@ export function App() {
                                   </p>
                                 ) : (
                                   <div className="fleet-event-list">
-                                    {worker.events.slice(0, 8).map((event) => (
+                                    {worker.events.slice(0, 8).map((event, index) => {
+                                      const previousEvent =
+                                        worker.events[index + 1] ?? null;
+                                      const elapsedLabel =
+                                        formatElapsedSincePreviousEvent(
+                                          event,
+                                          previousEvent,
+                                        );
+
+                                      return (
                                       <article
                                         key={`${worker.workerId}-${event.eventType}-${event.eventTsMs}`}
                                         className="fleet-event-item"
@@ -951,9 +976,16 @@ export function App() {
                                               event.eventType,
                                             )}
                                           </strong>
-                                          <span>
-                                            {formatTimestamp(event.eventTsMs)}
-                                          </span>
+                                          <div className="fleet-event-time">
+                                            <span>
+                                              {formatTimestamp(event.eventTsMs)}
+                                            </span>
+                                            {elapsedLabel ? (
+                                              <span className="fleet-event-elapsed">
+                                                {elapsedLabel}
+                                              </span>
+                                            ) : null}
+                                          </div>
                                         </div>
                                         {event.details &&
                                         Object.keys(event.details).length > 0 ? (
@@ -973,7 +1005,8 @@ export function App() {
                                           </div>
                                         ) : null}
                                       </article>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </section>
