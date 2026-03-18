@@ -53,7 +53,20 @@ MONITOR_RECONNECT_DELAY_MS=1000
 ENVFILE
 
 cat > /etc/systemd/system/agent-swarm-worker-monitor.service <<'SERVICE'
-__WORKER_SERVICE_UNIT__
+[Unit]
+Description=Agent swarm worker telemetry
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/agent-swarm-worker-monitor.env
+ExecStart=/usr/local/bin/bun /opt/agent-swarm/runtime/packages/swarm-manager/src/worker/agent.ts
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
 SERVICE
 
 cat > /opt/agent-swarm/worker-runtime.json <<RUNTIME

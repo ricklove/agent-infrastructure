@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite";
+import { existsSync, readFileSync } from "node:fs";
 
 type WorkerAuthMessage = {
   type: "auth";
@@ -53,7 +54,17 @@ type LiveWorkerState = {
   instanceId: string;
   privateIp: string;
   nodeRole: "manager" | "worker";
-  status: "connected" | "stale" | "disconnected" | "error";
+  status:
+    | "booting"
+    | "connected"
+    | "stale"
+    | "disconnected"
+    | "error"
+    | "hibernated"
+    | "hibernating"
+    | "shutdown"
+    | "terminated"
+    | "zombie";
   lastHeartbeatAt: number;
   lastMetrics: WorkerMetrics | null;
   lastContainers: ContainerMetrics[];
@@ -83,6 +94,7 @@ type ContainerSampleRow = {
 };
 
 type WorkerLifecycleEventType =
+  | "launch_request_started"
   | "launch_requested"
   | "create"
   | "launch"
@@ -97,6 +109,7 @@ type WorkerLifecycleEventType =
   | "connected"
   | "stale"
   | "disconnected"
+  | "zombie"
   | "hibernate_requested"
   | "hibernating"
   | "hibernated"
@@ -170,6 +183,19 @@ type PortReleaseBody = {
   hostPort: number;
 };
 
+type BootstrapContext = {
+  region?: string;
+  swarmTagKey?: string;
+  swarmTagValue?: string;
+};
+
+type Ec2InstanceInventory = {
+  instanceId: string;
+  privateIp: string;
+  state: string;
+  launchTimeMs: number | null;
+};
+
 const config = {
   hostname: process.env.MANAGER_WS_HOST ?? "0.0.0.0",
   port: Number(process.env.MANAGER_WS_PORT ?? "8787"),
@@ -194,6 +220,14 @@ const config = {
   rootNamespace: process.env.SWARM_ROOT_NAMESPACE ?? "root",
   portRangeStart: Number(process.env.SWARM_SERVICE_PORT_RANGE_START ?? "20000"),
   portRangeEnd: Number(process.env.SWARM_SERVICE_PORT_RANGE_END ?? "40000"),
+  workerZombieThresholdMs:
+    Number(process.env.SWARM_WORKER_ZOMBIE_THRESHOLD_SECONDS ?? "120") * 1000,
+  ec2InventoryRefreshMs:
+    Number(process.env.SWARM_EC2_INVENTORY_REFRESH_SECONDS ?? "15") * 1000,
+  bootstrapContextPath:
+    process.env.SWARM_BOOTSTRAP_CONTEXT_PATH ??
+    "/opt/agent-swarm/bootstrap-context.json",
+  ec2InventoryJson: process.env.SWARM_EC2_INVENTORY_JSON ?? "",
 };
 
 if (!config.sharedToken) {
@@ -540,8 +574,10 @@ const listWorkerLifecycleEventsByWorker = db.query(
 const workerSampleBuffer: WorkerSampleRow[] = [];
 const containerSampleBuffer: ContainerSampleRow[] = [];
 const liveWorkers = new Map<string, LiveWorkerState>();
+const ec2InventoryWorkers = new Map<string, LiveWorkerState>();
 const sessions = new Map<string, Bun.ServerWebSocket<SocketData>>();
 const seenRunningWorkers = new Set<string>();
+const bootstrapContext = loadBootstrapContext();
 
 function nowMs(): number {
   return Date.now();
@@ -557,6 +593,20 @@ function isNonEmptyString(value: unknown): value is string {
 
 function normalizeName(value: string): string {
   return value.trim();
+}
+
+function loadBootstrapContext(): BootstrapContext {
+  if (!existsSync(config.bootstrapContextPath)) {
+    return {};
+  }
+
+  try {
+    const raw = readFileSync(config.bootstrapContextPath, "utf8");
+    return JSON.parse(raw) as BootstrapContext;
+  } catch (error) {
+    console.error("failed to load bootstrap context", error);
+    return {};
+  }
 }
 
 function isWorkerMetrics(value: unknown): value is WorkerMetrics {
@@ -723,6 +773,7 @@ function isPortReleaseBody(value: unknown): value is PortReleaseBody {
 
 function isLifecycleEventType(value: unknown): value is WorkerLifecycleEventType {
   return [
+    "launch_request_started",
     "launch_requested",
     "create",
     "launch",
@@ -737,6 +788,7 @@ function isLifecycleEventType(value: unknown): value is WorkerLifecycleEventType
     "connected",
     "stale",
     "disconnected",
+    "zombie",
     "hibernate_requested",
     "hibernating",
     "hibernated",
@@ -827,6 +879,201 @@ function getWorkerLifecycleEvents(
   return rows.map((row) =>
     mapLifecycleEventRow(row as Record<string, unknown>),
   );
+}
+
+function getLatestWorkerLifecycleEvent(
+  workerId: string,
+): WorkerLifecycleEventRecord | null {
+  const events = getWorkerLifecycleEvents(1, workerId);
+  return events[0] ?? null;
+}
+
+function getLatestLifecycleEventOfTypes(
+  workerId: string,
+  eventTypes: WorkerLifecycleEventType[],
+): WorkerLifecycleEventRecord | null {
+  const events = getWorkerLifecycleEvents(50, workerId);
+  return events.find((event) => eventTypes.includes(event.eventType)) ?? null;
+}
+
+function listEc2WorkerInstances(): Ec2InstanceInventory[] {
+  if (config.ec2InventoryJson) {
+    try {
+      return JSON.parse(config.ec2InventoryJson) as Ec2InstanceInventory[];
+    } catch (error) {
+      console.error("failed to parse SWARM_EC2_INVENTORY_JSON", error);
+      return [];
+    }
+  }
+
+  const region = bootstrapContext.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
+  const swarmTagKey = bootstrapContext.swarmTagKey;
+  const swarmTagValue = bootstrapContext.swarmTagValue;
+  if (!region || !swarmTagKey || !swarmTagValue) {
+    return [];
+  }
+
+  const command = [
+    "aws",
+    "ec2",
+    "describe-instances",
+    "--region",
+    region,
+    "--filters",
+    `Name=tag:${swarmTagKey},Values=${swarmTagValue}`,
+    "Name=tag:Role,Values=agent-swarm-worker",
+    "Name=instance-state-name,Values=pending,running,stopping,stopped",
+    "--query",
+    "Reservations[].Instances[].{instanceId:InstanceId,privateIp:PrivateIpAddress,state:State.Name,launchTimeMs:LaunchTime}",
+    "--output",
+    "json",
+  ];
+  const result = Bun.spawnSync(command, {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (result.exitCode !== 0) {
+    const stderr = Buffer.from(result.stderr).toString("utf8").trim();
+    if (stderr.length > 0) {
+      console.error("failed to describe worker instances", stderr);
+    }
+    return [];
+  }
+
+  const raw = Buffer.from(result.stdout).toString("utf8");
+  try {
+    const parsed = JSON.parse(raw) as Array<{
+      instanceId: string;
+      privateIp: string;
+      state: string;
+      launchTimeMs: string | null;
+    }>;
+    return parsed.map((instance) => ({
+      instanceId: instance.instanceId,
+      privateIp: instance.privateIp ?? "",
+      state: instance.state,
+      launchTimeMs: instance.launchTimeMs
+        ? Date.parse(instance.launchTimeMs)
+        : null,
+    }));
+  } catch (error) {
+    console.error("failed to parse worker instance inventory", error);
+    return [];
+  }
+}
+
+function deriveInventoryWorkerStatus(
+  instance: Ec2InstanceInventory,
+): LiveWorkerState["status"] {
+  if (instance.state === "stopped") {
+    const latestHibernateEvent = getLatestLifecycleEventOfTypes(instance.instanceId, [
+      "hibernated",
+      "hibernate_requested",
+      "hibernating",
+    ]);
+    if (latestHibernateEvent?.eventType === "hibernated") {
+      return "hibernated";
+    }
+    if (
+      latestHibernateEvent?.eventType === "hibernating" ||
+      latestHibernateEvent?.eventType === "hibernate_requested"
+    ) {
+      return "hibernating";
+    }
+    return "shutdown";
+  }
+
+  if (instance.state === "stopping") {
+    return "hibernating";
+  }
+
+  if (instance.state === "pending") {
+    return "booting";
+  }
+
+  if (instance.state !== "running") {
+    return "disconnected";
+  }
+
+  const currentTime = nowMs();
+  const latestConnectedLikeEvent = getLatestLifecycleEventOfTypes(instance.instanceId, [
+    "connected",
+    "running",
+    "stale",
+    "disconnected",
+    "zombie",
+  ]);
+  if (
+    latestConnectedLikeEvent?.eventType === "disconnected" ||
+    latestConnectedLikeEvent?.eventType === "stale"
+  ) {
+    return latestConnectedLikeEvent.eventType;
+  }
+  if (latestConnectedLikeEvent?.eventType === "zombie") {
+    return "zombie";
+  }
+
+  const latestProgressEvent = getLatestLifecycleEventOfTypes(instance.instanceId, [
+    "instance_status_ok",
+    "telemetry_started",
+    "bootstrap_started",
+    "launch",
+    "create",
+    "launch_requested",
+    "launch_request_started",
+  ]);
+  const referenceTs =
+    latestProgressEvent?.eventTsMs ?? instance.launchTimeMs ?? currentTime;
+  if (currentTime - referenceTs >= config.workerZombieThresholdMs) {
+    return "zombie";
+  }
+
+  return "booting";
+}
+
+function refreshEc2InventoryWorkers(): void {
+  const instances = listEc2WorkerInstances();
+  const nextWorkers = new Map<string, LiveWorkerState>();
+
+  for (const instance of instances) {
+    if (liveWorkers.has(instance.instanceId)) {
+      continue;
+    }
+
+    const status = deriveInventoryWorkerStatus(instance);
+    const latestEvent = getLatestWorkerLifecycleEvent(instance.instanceId);
+    nextWorkers.set(instance.instanceId, {
+      workerId: instance.instanceId,
+      instanceId: instance.instanceId,
+      privateIp: instance.privateIp,
+      nodeRole: "worker",
+      status,
+      lastHeartbeatAt:
+        latestEvent?.eventTsMs ?? instance.launchTimeMs ?? 0,
+      lastMetrics: null,
+      lastContainers: [],
+    });
+
+    if (status === "zombie" && latestEvent?.eventType !== "zombie") {
+      recordWorkerLifecycleEvent({
+        workerId: instance.instanceId,
+        instanceId: instance.instanceId,
+        privateIp: instance.privateIp,
+        nodeRole: "worker",
+        eventType: "zombie",
+        eventTsMs: nowMs(),
+        details: {
+          reason: "running_without_telemetry",
+          ec2State: instance.state,
+        },
+      });
+    }
+  }
+
+  ec2InventoryWorkers.clear();
+  for (const [workerId, workerState] of nextWorkers.entries()) {
+    ec2InventoryWorkers.set(workerId, workerState);
+  }
 }
 
 function listServices(): ServiceRecord[] {
@@ -1175,7 +1422,14 @@ function updateStaleWorkers(): void {
 }
 
 function snapshotWorkers(): LiveWorkerState[] {
-  return Array.from(liveWorkers.values()).sort((left, right) =>
+  const merged = new Map<string, LiveWorkerState>();
+  for (const [workerId, worker] of ec2InventoryWorkers.entries()) {
+    merged.set(workerId, worker);
+  }
+  for (const [workerId, worker] of liveWorkers.entries()) {
+    merged.set(workerId, worker);
+  }
+  return Array.from(merged.values()).sort((left, right) =>
     left.workerId.localeCompare(right.workerId),
   );
 }
@@ -1217,6 +1471,10 @@ const server = Bun.serve<SocketData>({
           (worker) => worker.status === "connected",
         ).length,
         staleNodes: connectedWorkers.filter((worker) => worker.status === "stale")
+          .length,
+        zombieWorkers: connectedWorkers.filter((worker) => worker.status === "zombie")
+          .length,
+        zombieNodes: connectedWorkers.filter((worker) => worker.status === "zombie")
           .length,
       });
     }
@@ -1639,6 +1897,10 @@ setInterval(() => {
 }, 1000);
 
 setInterval(() => {
+  refreshEc2InventoryWorkers();
+}, config.ec2InventoryRefreshMs);
+
+setInterval(() => {
   flushSamples();
   rollupWorkerRaw(60_000);
   rollupContainerRaw(60_000);
@@ -1661,6 +1923,8 @@ console.log(
     servicePortRange: [config.portRangeStart, config.portRangeEnd],
   }),
 );
+
+refreshEc2InventoryWorkers();
 
 process.on("SIGINT", () => {
   flushSamples();

@@ -41,8 +41,12 @@ emit_event() {
   local private_ip="$2"
   local event_type="$3"
   local details_json="${4-}"
+  local event_ts_ms="${5-}"
   if [[ -z "$details_json" ]]; then
     details_json="{}"
+  fi
+  if [[ -z "$event_ts_ms" ]]; then
+    event_ts_ms="$(($(date +%s) * 1000))"
   fi
   local payload
   payload=$(jq -cn \
@@ -51,7 +55,7 @@ emit_event() {
     --arg privateIp "$private_ip" \
     --arg nodeRole "worker" \
     --arg eventType "$event_type" \
-    --argjson eventTsMs "$(($(date +%s) * 1000))" \
+    --argjson eventTsMs "$event_ts_ms" \
     --arg detailsJson "$details_json" \
     '{workerId:$workerId,instanceId:$instanceId,privateIp:$privateIp,nodeRole:$nodeRole,eventType:$eventType,eventTsMs:$eventTsMs,details:($detailsJson | fromjson)}')
   curl -sf -X POST http://127.0.0.1:8787/workers/events \
@@ -91,12 +95,18 @@ LAUNCH_REQUESTED_DETAILS=$(jq -cn \
   --arg subnetId "$SUBNET_ID" \
   --argjson requestedAtMs "$REQUESTED_AT_MS" \
   '{instanceType:$instanceType,subnetId:$subnetId,requestedAtMs:$requestedAtMs}')
+LAUNCH_REQUEST_STARTED_DETAILS=$(jq -cn \
+  --arg instanceType "$INSTANCE_TYPE" \
+  --arg subnetId "$SUBNET_ID" \
+  --argjson requestedAtMs "$REQUESTED_AT_MS" \
+  '{instanceType:$instanceType,subnetId:$subnetId,requestedAtMs:$requestedAtMs}')
 CREATE_DETAILS=$(jq -cn \
   --arg instanceType "$INSTANCE_TYPE" \
   --arg subnetId "$SUBNET_ID" \
   --arg imageId "$IMAGE_ID" \
   --argjson requestedAtMs "$REQUESTED_AT_MS" \
   '{instanceType:$instanceType,subnetId:$subnetId,imageId:$imageId,requestedAtMs:$requestedAtMs}')
+emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch_request_started "$LAUNCH_REQUEST_STARTED_DETAILS" "$REQUESTED_AT_MS"
 emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch_requested "$LAUNCH_REQUESTED_DETAILS"
 emit_event "$INSTANCE_ID" "$PRIVATE_IP" create "$CREATE_DETAILS"
 

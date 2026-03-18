@@ -391,6 +391,7 @@ tbody tr:last-child td {
 
 .status-stale,
 .status-disconnected,
+.status-zombie,
 .status-error,
 .status-terminated,
 .status-shutdown {
@@ -400,6 +401,7 @@ tbody tr:last-child td {
 
 .status-hibernated,
 .status-hibernating,
+.status-booting,
 .status-wakeup,
 .status-launch,
 .status-create,

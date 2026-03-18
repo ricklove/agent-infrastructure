@@ -75,21 +75,6 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 `;
-    const workerServiceUnit = `[Unit]
-Description=Agent swarm worker telemetry
-After=network-online.target docker.service
-Wants=network-online.target docker.service
-
-[Service]
-Type=simple
-EnvironmentFile=/etc/agent-swarm-worker-monitor.env
-ExecStart=/usr/local/bin/bun /opt/agent-swarm/swarm-manager/worker/agent.ts
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-`;
     const managerNodeServiceUnit = `[Unit]
 Description=Agent swarm manager self telemetry
 After=network-online.target agent-swarm-monitor.service
@@ -108,12 +93,6 @@ WantedBy=multi-user.target
     const workerUserDataTemplate = readFileSync(
       resolve(swarmManagerScriptsDir, "worker-user-data.sh"),
       "utf8",
-    ).replace(
-      "__WORKER_SERVICE_UNIT__",
-      workerServiceUnit.replace(
-        "/opt/agent-swarm/swarm-manager/worker/agent.ts",
-        "/opt/agent-swarm/runtime/packages/swarm-manager/src/worker/agent.ts",
-      ),
     );
 
     const vpc = new ec2.Vpc(this, "AgentSwarmVpc", {

@@ -54,6 +54,7 @@ type WorkersResponse = {
 };
 
 type WorkerLifecycleEventType =
+  | "launch_request_started"
   | "launch_requested"
   | "create"
   | "launch"
@@ -68,6 +69,7 @@ type WorkerLifecycleEventType =
   | "connected"
   | "stale"
   | "disconnected"
+  | "zombie"
   | "hibernate_requested"
   | "hibernating"
   | "hibernated"
@@ -284,7 +286,13 @@ function buildLifecycleSummary(
       readDetailNumber(launchEvent, "runningElapsedSeconds") ??
       computeDurationFromLifecycleEvents(
         events,
-        ["launch_requested", "create", "launch", "bootstrap_started"],
+        [
+          "launch_request_started",
+          "launch_requested",
+          "create",
+          "launch",
+          "bootstrap_started",
+        ],
         ["ec2_running", "instance_status_ok", "connected", "running"],
       ),
     hibernateSeconds:
