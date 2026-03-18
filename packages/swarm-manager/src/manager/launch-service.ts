@@ -15,6 +15,10 @@ type LaunchConfig = {
   envPairs: string[];
 };
 
+type WorkerLifecycleEventType =
+  | "container_start_requested"
+  | "container_started";
+
 type PortLeaseResponse = {
   ok: true;
   workerId: string;
@@ -144,12 +148,41 @@ async function postJson<T>(
   return payload as T;
 }
 
+async function postWorkerLifecycleEvent(
+  config: LaunchConfig,
+  eventType: WorkerLifecycleEventType,
+  details: Record<string, unknown>,
+): Promise<void> {
+  await postJson(
+    `${config.managerUrl}/workers/events`,
+    config.token,
+    {
+      workerId: config.workerId,
+      instanceId: config.workerId,
+      privateIp: config.workerPrivateIp,
+      nodeRole: "worker",
+      eventType,
+      details: {
+        namespace: config.namespace,
+        serviceName: config.serviceName,
+        instanceId: config.instanceId,
+        containerName: config.containerName,
+        image: config.image,
+        ...details,
+      },
+    },
+  );
+}
+
 function runDockerCommand(config: LaunchConfig, hostPort: number): string {
   const envPairs = [
     `SWARM_NAMESPACE=${config.namespace}`,
     `SWARM_SERVICE_NAME=${config.serviceName}`,
     `SWARM_INSTANCE_ID=${config.instanceId}`,
     `SWARM_MANAGER_URL=${config.managerUrl}`,
+    `SWARM_MANAGER_TOKEN=${config.token}`,
+    `SWARM_WORKER_ID=${config.workerId}`,
+    `SWARM_WORKER_PRIVATE_IP=${config.workerPrivateIp}`,
     `SWARM_FALLBACK_NAMESPACE=${config.fallbackNamespace}`,
     ...config.envPairs,
   ];
@@ -219,7 +252,18 @@ async function main(): Promise<void> {
   let containerId = "";
 
   try {
+    await postWorkerLifecycleEvent(config, "container_start_requested", {
+      containerPort: config.containerPort,
+      protocol: config.protocol,
+      hostPort: lease.hostPort,
+    });
     containerId = runDockerCommand(config, lease.hostPort);
+    await postWorkerLifecycleEvent(config, "container_started", {
+      containerId,
+      containerPort: config.containerPort,
+      protocol: config.protocol,
+      hostPort: lease.hostPort,
+    });
 
     const registration = await postJson<ServiceRegisterResponse>(
       `${config.managerUrl}/services/register`,

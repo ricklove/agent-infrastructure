@@ -3,8 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKFLOW_NAME="bun-worker"
-PROVISION_SCRIPT_PATH="$SCRIPT_DIR/provision.sh"
-DOCKERFILE_PATH="$SCRIPT_DIR/Dockerfile"
+WORKFLOW_ARCHIVE_PATH="$(mktemp)"
 
 usage() {
   cat <<'EOF'
@@ -74,21 +73,19 @@ wait_for_ssm() {
 send_provision_command() {
   local instance_id="$1"
   local region="$2"
-  local provision_content_b64="$3"
-  local dockerfile_content_b64="$4"
+  local workflow_archive_b64="$3"
 
   local commands_json
   commands_json="$(jq -cn \
-    --arg provisionContentB64 "$provision_content_b64" \
-    --arg dockerfileContentB64 "$dockerfile_content_b64" \
+    --arg workflowArchiveB64 "$workflow_archive_b64" \
     '{
       commands: [
         "set -euo pipefail",
         "mkdir -p /tmp/agent-swarm-worker-image",
-        "printf %s " + ($provisionContentB64 | @sh) + " | base64 -d > /tmp/agent-swarm-worker-image/provision.sh",
-        "chmod +x /tmp/agent-swarm-worker-image/provision.sh",
-        "printf %s " + ($dockerfileContentB64 | @sh) + " | base64 -d > /tmp/agent-swarm-worker-image/Dockerfile",
+        "printf %s " + ($workflowArchiveB64 | @sh) + " | base64 -d > /tmp/agent-swarm-worker-image/workflow.tgz",
+        "tar -xzf /tmp/agent-swarm-worker-image/workflow.tgz -C /tmp/agent-swarm-worker-image",
         "cd /tmp/agent-swarm-worker-image",
+        "chmod +x /tmp/agent-swarm-worker-image/provision.sh",
         "./provision.sh"
       ]
     }')"
@@ -213,8 +210,8 @@ if [[ -z "$IMAGE_NAME" ]]; then
   IMAGE_NAME="agent-swarm-${WORKFLOW_NAME}-$(date -u +%Y%m%d-%H%M%S)"
 fi
 
-PROVISION_CONTENT_B64="$(base64 -w0 "$PROVISION_SCRIPT_PATH")"
-DOCKERFILE_CONTENT_B64="$(base64 -w0 "$DOCKERFILE_PATH")"
+tar -C "$SCRIPT_DIR" -czf "$WORKFLOW_ARCHIVE_PATH" .
+WORKFLOW_ARCHIVE_B64="$(base64 -w0 "$WORKFLOW_ARCHIVE_PATH")"
 
 INSTANCE_PROFILE_ARG=()
 if [[ -n "$INSTANCE_PROFILE_ARN" ]]; then
@@ -225,6 +222,7 @@ fi
 
 BUILDER_INSTANCE_ID=""
 cleanup() {
+  rm -f "$WORKFLOW_ARCHIVE_PATH"
   if [[ -n "$BUILDER_INSTANCE_ID" ]]; then
     aws ec2 terminate-instances \
       --region "$REGION" \
@@ -256,8 +254,7 @@ wait_for_ssm "$BUILDER_INSTANCE_ID" "$REGION" >/dev/null
 PROVISION_RESULT="$(send_provision_command \
   "$BUILDER_INSTANCE_ID" \
   "$REGION" \
-  "$PROVISION_CONTENT_B64" \
-  "$DOCKERFILE_CONTENT_B64")"
+  "$WORKFLOW_ARCHIVE_B64")"
 
 IMAGE_ID="$(aws ec2 create-image \
   --region "$REGION" \

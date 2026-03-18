@@ -97,6 +97,8 @@ type WorkerLifecycleEventType =
   | "launch_request_started"
   | "launch_requested"
   | "create"
+  | "container_start_requested"
+  | "container_started"
   | "launch"
   | "ec2_running"
   | "instance_status_ok"
@@ -109,7 +111,13 @@ type WorkerLifecycleEventType =
   | "bootstrap_started"
   | "runtime_download_started"
   | "runtime_download_completed"
+  | "repo_update_started"
+  | "repo_update_completed"
   | "docker_ready"
+  | "service_bun_install_started"
+  | "service_bun_install_completed"
+  | "service_process_started"
+  | "service_ready"
   | "telemetry_service_start_requested"
   | "telemetry_process_started"
   | "telemetry_connect_started"
@@ -1072,12 +1080,20 @@ function deriveInventoryWorkerStatus(
   }
 
   const latestProgressEvent = getLatestLifecycleEventOfTypes(instance.instanceId, [
+    "service_ready",
+    "service_process_started",
+    "service_bun_install_completed",
+    "service_bun_install_started",
+    "repo_update_completed",
+    "repo_update_started",
     "instance_status_ok",
     "telemetry_service_start_requested",
     "telemetry_process_started",
     "telemetry_connect_started",
     "telemetry_started",
     "runtime_download_completed",
+    "container_started",
+    "container_start_requested",
     "bootstrap_started",
     "docker_ready",
     "docker_enable_started",
