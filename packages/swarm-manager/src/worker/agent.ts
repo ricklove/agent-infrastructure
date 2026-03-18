@@ -28,18 +28,28 @@ type HeartbeatPayload = {
   workerId: string;
   instanceId: string;
   privateIp: string;
+  nodeRole: "manager" | "worker";
   timestamp: number;
   worker: WorkerMetrics;
   containers: ContainerMetrics[];
 };
 
-const config = {
+const config: {
+  managerUrl: string;
+  sharedToken: string;
+  reconnectDelayMs: number;
+  workerIdOverride: string;
+  instanceIdOverride: string;
+  privateIpOverride: string;
+  nodeRole: "manager" | "worker";
+} = {
   managerUrl: process.env.MONITOR_MANAGER_URL ?? "",
   sharedToken: process.env.MONITOR_SHARED_TOKEN ?? "",
   reconnectDelayMs: Number(process.env.MONITOR_RECONNECT_DELAY_MS ?? "1000"),
   workerIdOverride: process.env.MONITOR_WORKER_ID ?? "",
   instanceIdOverride: process.env.MONITOR_INSTANCE_ID ?? "",
   privateIpOverride: process.env.MONITOR_PRIVATE_IP ?? "",
+  nodeRole: process.env.MONITOR_NODE_ROLE === "manager" ? "manager" : "worker",
 };
 
 if (!config.managerUrl || !config.sharedToken) {
@@ -206,6 +216,7 @@ function buildHeartbeat(): HeartbeatPayload {
     workerId,
     instanceId,
     privateIp,
+    nodeRole: config.nodeRole,
     timestamp: Date.now(),
     worker: {
       cpuPercent: readCpuPercent(),
@@ -226,6 +237,7 @@ function sendAuth(): void {
       workerId,
       instanceId,
       privateIp,
+      nodeRole: config.nodeRole,
     }),
   );
 }

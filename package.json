@@ -2,11 +2,16 @@
   "name": "agent-infrastructure",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "build": "bun run --filter '*' build",
     "check": "bun run --filter '*' check",
+    "dev:dashboard": "bun run --filter @agent-infrastructure/dashboard-app dev",
+    "build:dashboard": "bun run --filter @agent-infrastructure/dashboard-app build",
+    "start:dashboard": "bun run --filter @agent-infrastructure/dashboard start",
+    "open:dashboard": "bun run --filter @agent-infrastructure/swarm-manager run:open-dashboard",
     "test:swarm-manager": "bun run --filter @agent-infrastructure/swarm-manager test",
     "test:local-swarm": "bash ./scripts/test-local-swarm.sh",
     "synth:aws-setup": "bun run --filter @agent-infrastructure/aws-setup synth",

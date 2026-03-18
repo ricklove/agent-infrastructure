@@ -1,0 +1,21 @@
+{
+  "name": "@agent-infrastructure/dashboard-access",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --project tsconfig.json --noEmit",
+    "check": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ec2": "^3.798.0",
+    "@aws-sdk/client-dynamodb": "^3.798.0",
+    "@aws-sdk/client-ssm": "^3.798.0",
+    "@aws-sdk/lib-dynamodb": "^3.798.0",
+    "@simplewebauthn/server": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.147",
+    "@types/node": "^20.11.30",
+    "typescript": "^5.4.5"
+  }
+}

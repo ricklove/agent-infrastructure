@@ -6,6 +6,7 @@ type WorkerAuthMessage = {
   workerId: string;
   instanceId: string;
   privateIp: string;
+  nodeRole: "manager" | "worker";
 };
 
 type WorkerMetrics = {
@@ -31,6 +32,7 @@ type WorkerHeartbeatMessage = {
   workerId: string;
   instanceId: string;
   privateIp: string;
+  nodeRole: "manager" | "worker";
   timestamp: number;
   worker: WorkerMetrics;
   containers: ContainerMetrics[];
@@ -43,12 +45,14 @@ type SocketData = {
   workerId?: string;
   instanceId?: string;
   privateIp?: string;
+  nodeRole?: "manager" | "worker";
 };
 
 type LiveWorkerState = {
   workerId: string;
   instanceId: string;
   privateIp: string;
+  nodeRole: "manager" | "worker";
   status: "connected" | "stale" | "disconnected" | "error";
   lastHeartbeatAt: number;
   lastMetrics: WorkerMetrics | null;
@@ -500,7 +504,8 @@ function parseMessage(raw: string | Buffer): IncomingMessage | null {
       typeof parsed.token === "string" &&
       typeof parsed.workerId === "string" &&
       typeof parsed.instanceId === "string" &&
-      typeof parsed.privateIp === "string"
+      typeof parsed.privateIp === "string" &&
+      (parsed.nodeRole === "manager" || parsed.nodeRole === "worker")
     ) {
       return parsed as WorkerAuthMessage;
     }
@@ -513,6 +518,7 @@ function parseMessage(raw: string | Buffer): IncomingMessage | null {
       typeof parsed.workerId === "string" &&
       typeof parsed.instanceId === "string" &&
       typeof parsed.privateIp === "string" &&
+      (parsed.nodeRole === "manager" || parsed.nodeRole === "worker") &&
       isFiniteNumber(parsed.timestamp) &&
       isWorkerMetrics(parsed.worker) &&
       isContainerMetricsArray(parsed.containers)
@@ -997,6 +1003,11 @@ const server = Bun.serve<SocketData>({
         ).length,
         staleWorkers: connectedWorkers.filter((worker) => worker.status === "stale")
           .length,
+        connectedNodes: connectedWorkers.filter(
+          (worker) => worker.status === "connected",
+        ).length,
+        staleNodes: connectedWorkers.filter((worker) => worker.status === "stale")
+          .length,
       });
     }
 
@@ -1245,6 +1256,7 @@ const server = Bun.serve<SocketData>({
           ws.data.workerId = message.workerId;
           ws.data.instanceId = message.instanceId;
           ws.data.privateIp = message.privateIp;
+          ws.data.nodeRole = message.nodeRole;
           sessions.set(message.workerId, ws);
 
           const currentTime = nowMs();
@@ -1252,6 +1264,7 @@ const server = Bun.serve<SocketData>({
             workerId: message.workerId,
             instanceId: message.instanceId,
             privateIp: message.privateIp,
+            nodeRole: message.nodeRole,
             status: "connected",
             lastHeartbeatAt: currentTime,
             lastMetrics: null,
@@ -1276,6 +1289,7 @@ const server = Bun.serve<SocketData>({
           workerId: message.workerId,
           instanceId: message.instanceId,
           privateIp: message.privateIp,
+          nodeRole: message.nodeRole,
           status: "connected" as const,
           lastHeartbeatAt: currentTime,
           lastMetrics: null,
@@ -1284,6 +1298,7 @@ const server = Bun.serve<SocketData>({
 
         workerState.instanceId = message.instanceId;
         workerState.privateIp = message.privateIp;
+        workerState.nodeRole = message.nodeRole;
         workerState.status = "connected";
         workerState.lastHeartbeatAt = currentTime;
         workerState.lastMetrics = message.worker;

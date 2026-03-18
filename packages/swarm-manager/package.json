@@ -7,6 +7,8 @@
     "check": "tsc --project tsconfig.json --noEmit",
     "test": "bun test",
     "run:manager": "bun run src/manager/server.ts",
+    "run:issue-dashboard-session": "bun run src/manager/issue-dashboard-session.ts",
+    "run:open-dashboard": "bun run src/manager/open-dashboard.ts",
     "run:launch-service": "bun run src/manager/launch-service.ts",
     "run:worker-agent": "bun run src/worker/agent.ts"
   },

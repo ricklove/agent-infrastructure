@@ -40,7 +40,12 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload;
 }
 
-function spawnWorkerAgent(workerId: string, instanceId: string, privateIp: string): void {
+function spawnWorkerAgent(
+  workerId: string,
+  instanceId: string,
+  privateIp: string,
+  nodeRole: "manager" | "worker" = "worker",
+): void {
   const workerProcess = Bun.spawn(
     ["bun", "run", "src/worker/agent.ts"],
     {
@@ -55,6 +60,7 @@ function spawnWorkerAgent(workerId: string, instanceId: string, privateIp: strin
         MONITOR_WORKER_ID: workerId,
         MONITOR_INSTANCE_ID: instanceId,
         MONITOR_PRIVATE_IP: privateIp,
+        MONITOR_NODE_ROLE: nodeRole,
       },
     },
   );
@@ -105,40 +111,58 @@ describe("manager integration", () => {
   test("worker agents connect and are reported by the manager", async () => {
     spawnWorkerAgent("worker-a", "i-worker-a", "10.0.0.21");
     spawnWorkerAgent("worker-b", "i-worker-b", "10.0.0.22");
+    spawnWorkerAgent("i-manager", "i-manager", "10.0.0.10", "manager");
 
     await waitFor(async () => {
       const payload = await fetchJson<{
-        workers: Array<{ workerId: string; status: string; privateIp: string }>;
+        workers: Array<{
+          workerId: string;
+          status: string;
+          privateIp: string;
+          nodeRole: "manager" | "worker";
+        }>;
       }>(`http://127.0.0.1:${managerPort}/workers`);
 
       return (
-        payload.workers.length >= 2 &&
+        payload.workers.length >= 3 &&
         payload.workers.some(
           (worker) =>
             worker.workerId === "worker-a" &&
+            worker.nodeRole === "worker" &&
             worker.status === "connected" &&
             worker.privateIp === "10.0.0.21",
         ) &&
         payload.workers.some(
           (worker) =>
             worker.workerId === "worker-b" &&
+            worker.nodeRole === "worker" &&
             worker.status === "connected" &&
             worker.privateIp === "10.0.0.22",
+        ) &&
+        payload.workers.some(
+          (worker) =>
+            worker.workerId === "i-manager" &&
+            worker.nodeRole === "manager" &&
+            worker.status === "connected" &&
+            worker.privateIp === "10.0.0.10",
         )
       );
     });
 
     await waitFor(async () => {
       const payload = await fetchJson<{
-        workers: Array<{ workerId: string; lastMetrics: { containerCount: number } | null }>;
+        workers: Array<{
+          workerId: string;
+          lastMetrics: { containerCount: number } | null;
+        }>;
       }>(`http://127.0.0.1:${managerPort}/workers`);
 
       return (
         payload.workers.filter(
           (worker) =>
-            (worker.workerId === "worker-a" || worker.workerId === "worker-b") &&
+            ["worker-a", "worker-b", "i-manager"].includes(worker.workerId) &&
             worker.lastMetrics !== null,
-        ).length === 2
+        ).length === 3
       );
     });
 
