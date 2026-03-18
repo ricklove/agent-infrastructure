@@ -11,7 +11,6 @@ import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import * as s3assets from "aws-cdk-lib/aws-s3-assets";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 import { randomBytes } from "node:crypto";
@@ -42,19 +41,8 @@ export class AwsSetupStack extends Stack {
     const swarmTagValue = `${this.stackName}-workers`;
     const managerMonitorPort = 8787;
     const dashboardEnrollmentSecret = randomBytes(32).toString("hex");
-    const runtimeAsset = new s3assets.Asset(this, "RuntimeBundle", {
-      path: resolve(sourceDir, "../../.."),
-      exclude: [
-        ".git",
-        ".runtime",
-        "node_modules",
-        "cdk.out",
-        "**/node_modules",
-        "**/cdk.out",
-        "**/.DS_Store",
-        "**/dist",
-      ],
-    });
+    const runtimeRepoUrl = "https://github.com/ricklove/agent-infrastructure.git";
+    const runtimeRepoRef = "development";
     const workerRuntimeReleaseBucket = new s3.Bucket(
       this,
       "WorkerRuntimeReleaseBucket",
@@ -215,7 +203,6 @@ systemctl enable --now agent-swarm-worker-monitor.service
         "AmazonSSMManagedInstanceCore",
       ),
     );
-    runtimeAsset.grantRead(workerRole);
     workerRuntimeReleaseBucket.grantRead(workerRole);
     Tags.of(workerRole).add(swarmTagKey, swarmTagValue);
 
@@ -237,7 +224,6 @@ systemctl enable --now agent-swarm-worker-monitor.service
         "AmazonSSMManagedInstanceCore",
       ),
     );
-    runtimeAsset.grantRead(managerRole);
     workerRuntimeReleaseBucket.grantReadWrite(managerRole);
     managerRole.addToPolicy(
       new iam.PolicyStatement({
@@ -412,8 +398,8 @@ systemctl enable --now agent-swarm-worker-monitor.service
       workerInstanceProfileArn: workerInstanceProfile.attrArn,
       workerSecurityGroupId: workerSecurityGroup.securityGroupId,
       workerSubnetIds: workerSubnets,
-      runtimeAssetBucket: runtimeAsset.s3BucketName,
-      runtimeAssetKey: runtimeAsset.s3ObjectKey,
+      runtimeRepoUrl,
+      runtimeRepoRef,
       workerRuntimeReleaseBucketName: workerRuntimeReleaseBucket.bucketName,
       managerMonitorPort,
       swarmMaxSize: props.swarmMaxSize,
@@ -422,22 +408,22 @@ systemctl enable --now agent-swarm-worker-monitor.service
     };
 
     managerInstance.userData.addCommands(
-      "dnf install -y awscli jq unzip zip openssl",
+      "dnf install -y awscli git jq unzip zip openssl",
       "curl -fsSL https://pkg.cloudflare.com/cloudflared.repo -o /etc/yum.repos.d/cloudflared.repo",
       "dnf install -y cloudflared",
       "export HOME=/root",
       "export BUN_INSTALL=/opt/bun",
       "curl -fsSL https://bun.sh/install | bash",
       "install -m 0755 \"$BUN_INSTALL/bin/bun\" /usr/local/bin/bun",
-      "mkdir -p /opt/agent-swarm/runtime /var/lib/agent-swarm-monitor",
+      "mkdir -p /opt/agent-swarm /var/lib/agent-swarm-monitor",
       `cat > /opt/agent-swarm/bootstrap-context.json <<'EOF'\n${JSON.stringify(
         bootstrapPayload,
         null,
         2,
       )}\nEOF`,
-      `aws s3 cp "s3://${runtimeAsset.s3BucketName}/${runtimeAsset.s3ObjectKey}" /opt/agent-swarm/runtime.zip --region "${this.region}"`,
-      "rm -rf /opt/agent-swarm/runtime/*",
-      "unzip -q /opt/agent-swarm/runtime.zip -d /opt/agent-swarm/runtime",
+      "RUNTIME_REPO_URL=$(jq -r '.runtimeRepoUrl' /opt/agent-swarm/bootstrap-context.json)",
+      "RUNTIME_REPO_REF=$(jq -r '.runtimeRepoRef' /opt/agent-swarm/bootstrap-context.json)",
+      "if [[ -d /opt/agent-swarm/runtime/.git ]]; then cd /opt/agent-swarm/runtime && git fetch --tags origin && git checkout \"$RUNTIME_REPO_REF\" && git pull --ff-only origin \"$RUNTIME_REPO_REF\"; else rm -rf /opt/agent-swarm/runtime && git clone --branch \"$RUNTIME_REPO_REF\" --single-branch \"$RUNTIME_REPO_URL\" /opt/agent-swarm/runtime; fi",
       "cd /opt/agent-swarm/runtime && bun install --frozen-lockfile",
       writeFileCommand(
         "/etc/systemd/system/agent-swarm-monitor.service",
@@ -462,6 +448,13 @@ systemctl enable --now agent-swarm-worker-monitor.service
       "exec bun run --filter @agent-infrastructure/swarm-manager run:publish-worker-runtime-release -- \"$@\"",
       "EOF",
       "chmod +x /opt/agent-swarm/publish-worker-runtime-release.sh",
+      "cat > /opt/agent-swarm/update-runtime.sh <<'EOF'",
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "cd /opt/agent-swarm/runtime",
+      "exec bun run --filter @agent-infrastructure/swarm-manager run:update-runtime -- \"$@\"",
+      "EOF",
+      "chmod +x /opt/agent-swarm/update-runtime.sh",
       "if [[ ! -s /opt/agent-swarm/worker-runtime-release.json ]]; then /opt/agent-swarm/publish-worker-runtime-release.sh --release-id manager-bootstrap; fi",
       "cat > /etc/agent-swarm-monitor.env <<ENVFILE",
       "MANAGER_WS_HOST=0.0.0.0",

@@ -523,7 +523,21 @@ export function App() {
         </div>
       </section>
 
-      {error ? <div className="banner error">{error}</div> : null}
+      {error ? (
+        <div className="banner error auth-banner">
+          <span>{error}</span>
+          {config?.accessAppUrl ? (
+            <button
+              className="secondary-action"
+              onClick={() => {
+                window.location.href = config.accessAppUrl;
+              }}
+            >
+              Go To Auth Page
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {health?.error ? <div className="banner error">{health.error}</div> : null}
       {accessMessage ? <div className="banner">{accessMessage}</div> : null}
       {authRequired && config?.accessAppUrl ? (
