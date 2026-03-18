@@ -1,3 +1,5 @@
+/// <reference path="./_agentish.d.ts" />
+
 const Agentish = define.language('Agentish', {
   purpose: 'AbsoluteSourceOfTruth',
   requires: 'MaximumInformationDensity'
