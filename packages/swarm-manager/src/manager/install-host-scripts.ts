@@ -44,37 +44,37 @@ exec bash ${runtimeDir}/packages/swarm-manager/scripts/launch-worker.sh "$@"
   const updateRuntimeWrapper = `#!/usr/bin/env bash
 set -euo pipefail
 cd ${runtimeDir}
-exec bun run --filter @agent-infrastructure/swarm-manager run:update-runtime -- "$@"
+exec bun ${runtimeDir}/packages/swarm-manager/src/manager/update-runtime.ts "$@"
 `;
 
   const publishWorkerRuntimeWrapper = `#!/usr/bin/env bash
 set -euo pipefail
 cd ${runtimeDir}
-exec bun run --filter @agent-infrastructure/swarm-manager run:publish-worker-runtime-release -- "$@"
+exec bun ${runtimeDir}/packages/swarm-manager/src/manager/publish-worker-runtime-release.ts "$@"
 `;
 
   const hibernateWorkersWrapper = `#!/usr/bin/env bash
 set -euo pipefail
 cd ${runtimeDir}
-exec bun run --filter @agent-infrastructure/swarm-manager run:hibernate-workers -- "$@"
+exec bun ${runtimeDir}/packages/swarm-manager/src/manager/worker-power.ts --action hibernate "$@"
 `;
 
   const wakeWorkersWrapper = `#!/usr/bin/env bash
 set -euo pipefail
 cd ${runtimeDir}
-exec bun run --filter @agent-infrastructure/swarm-manager run:wake-workers -- "$@"
+exec bun ${runtimeDir}/packages/swarm-manager/src/manager/worker-power.ts --action wake "$@"
 `;
 
   const buildWorkerImageWrapper = `#!/usr/bin/env bash
 set -euo pipefail
 cd ${runtimeDir}
-exec bun run --filter @agent-infrastructure/swarm-manager run:build-worker-image -- "$@"
+exec bun ${runtimeDir}/packages/swarm-manager/src/manager/build-worker-image.ts "$@"
 `;
 
   const testWorkerImageLifecycleWrapper = `#!/usr/bin/env bash
 set -euo pipefail
 cd ${runtimeDir}
-exec bun run --filter @agent-infrastructure/swarm-manager run:test-worker-image-lifecycle -- "$@"
+exec bun ${runtimeDir}/packages/swarm-manager/src/manager/test-worker-image-lifecycle.ts "$@"
 `;
 
   writeExecutable(resolve(hostRoot, "launch-worker.sh"), launchWorkerWrapper);
