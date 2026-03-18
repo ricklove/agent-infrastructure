@@ -60,6 +60,16 @@ async function main(): Promise<void> {
     optionalOne(args, "manifest-path") ?? "/opt/agent-swarm/worker-runtime-release.json";
   const keyPrefix = optionalOne(args, "key-prefix") ?? "releases";
   const releaseId = optionalOne(args, "release-id") ?? utcTimestampReleaseId();
+  const excludePatterns = [
+    ".git/*",
+    ".runtime/*",
+    "node_modules/*",
+    "*/node_modules/*",
+    "cdk.out/*",
+    "*/cdk.out/*",
+    "dist/*",
+    "*/dist/*",
+  ];
 
   const bootstrapContext = await readJsonFile<BootstrapContext>(bootstrapContextPath);
   if (!bootstrapContext.region || !bootstrapContext.workerRuntimeReleaseBucketName) {
@@ -73,11 +83,14 @@ async function main(): Promise<void> {
   const key = `${keyPrefix.replace(/^\/+|\/+$/g, "")}/${releaseId}.zip`;
 
   try {
-    const zipResult = Bun.spawnSync(["zip", "-qr", archivePath, "."], {
-      cwd: archiveCwd,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const zipResult = Bun.spawnSync(
+      ["zip", "-qr", archivePath, ".", ...excludePatterns.flatMap((pattern) => ["-x", pattern])],
+      {
+        cwd: archiveCwd,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
 
     if (zipResult.exitCode !== 0) {
       throw new Error(zipResult.stderr.toString("utf8").trim() || "zip failed");
