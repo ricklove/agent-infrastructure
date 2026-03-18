@@ -53,12 +53,29 @@ cd ${runtimeDir}
 exec bun run --filter @agent-infrastructure/swarm-manager run:publish-worker-runtime-release -- "$@"
 `;
 
+  const hibernateWorkersWrapper = `#!/usr/bin/env bash
+set -euo pipefail
+cd ${runtimeDir}
+exec bun run --filter @agent-infrastructure/swarm-manager run:hibernate-workers -- "$@"
+`;
+
+  const wakeWorkersWrapper = `#!/usr/bin/env bash
+set -euo pipefail
+cd ${runtimeDir}
+exec bun run --filter @agent-infrastructure/swarm-manager run:wake-workers -- "$@"
+`;
+
   writeExecutable(resolve(hostRoot, "launch-worker.sh"), launchWorkerWrapper);
   writeExecutable(resolve(hostRoot, "update-runtime.sh"), updateRuntimeWrapper);
   writeExecutable(
     resolve(hostRoot, "publish-worker-runtime-release.sh"),
     publishWorkerRuntimeWrapper,
   );
+  writeExecutable(
+    resolve(hostRoot, "hibernate-workers.sh"),
+    hibernateWorkersWrapper,
+  );
+  writeExecutable(resolve(hostRoot, "wake-workers.sh"), wakeWorkersWrapper);
   writeExecutable(
     resolve(hostRoot, "worker-user-data.sh"),
     readFileSync(resolve(scriptsDir, "worker-user-data.sh"), "utf8"),

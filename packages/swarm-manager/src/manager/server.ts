@@ -613,7 +613,6 @@ const containerSampleBuffer: ContainerSampleRow[] = [];
 const liveWorkers = new Map<string, LiveWorkerState>();
 const ec2InventoryWorkers = new Map<string, LiveWorkerState>();
 const sessions = new Map<string, Bun.ServerWebSocket<SocketData>>();
-const seenRunningWorkers = new Set<string>();
 const bootstrapContext = loadBootstrapContext();
 
 function nowMs(): number {
@@ -1900,8 +1899,10 @@ const server = Bun.serve<SocketData>({
         workerState.lastContainers = message.containers;
         liveWorkers.set(message.workerId, workerState);
 
-        if (!seenRunningWorkers.has(message.workerId)) {
-          seenRunningWorkers.add(message.workerId);
+        const latestWorkerLifecycleEvent = getLatestWorkerLifecycleEvent(
+          message.workerId,
+        );
+        if (latestWorkerLifecycleEvent?.eventType !== "running") {
           recordWorkerLifecycleEvent({
             workerId: message.workerId,
             instanceId: message.instanceId,
