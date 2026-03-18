@@ -240,6 +240,49 @@ WantedBy=multi-user.target
     );
     managerRole.addToPolicy(
       new iam.PolicyStatement({
+        sid: "ManageWorkerImageBuilders",
+        actions: [
+          "ec2:CreateTags",
+          "ec2:DeleteTags",
+          "ec2:RebootInstances",
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ec2:TerminateInstances",
+        ],
+        resources: ["*"],
+        conditions: {
+          StringEquals: {
+            "ec2:ResourceTag/WorkerImageWorkflow": "bun-worker",
+          },
+        },
+      }),
+    );
+    managerRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "CreateWorkerImages",
+        actions: ["ec2:CreateImage"],
+        resources: ["*"],
+        conditions: {
+          StringEquals: {
+            "ec2:ResourceTag/WorkerImageWorkflow": "bun-worker",
+          },
+        },
+      }),
+    );
+    managerRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "TagWorkerImagesOnCreate",
+        actions: ["ec2:CreateTags"],
+        resources: ["*"],
+        conditions: {
+          StringEquals: {
+            "ec2:CreateAction": "CreateImage",
+          },
+        },
+      }),
+    );
+    managerRole.addToPolicy(
+      new iam.PolicyStatement({
         sid: "PassWorkerRole",
         actions: ["iam:PassRole"],
         resources: [workerRole.roleArn],
