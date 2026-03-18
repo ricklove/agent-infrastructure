@@ -14,7 +14,10 @@ MANAGER_EVENT_URL="http://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/worker
 
 emit_event() {
   local event_type="$1"
-  local details_json="${2:-{}}"
+  local details_json="${2-}"
+  if [[ -z "$details_json" ]]; then
+    details_json="{}"
+  fi
   local payload
   payload=$(jq -cn \
     --arg workerId "$INSTANCE_ID" \

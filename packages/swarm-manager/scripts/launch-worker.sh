@@ -40,7 +40,10 @@ emit_event() {
   local worker_id="$1"
   local private_ip="$2"
   local event_type="$3"
-  local details_json="${4:-{}}"
+  local details_json="${4-}"
+  if [[ -z "$details_json" ]]; then
+    details_json="{}"
+  fi
   local payload
   payload=$(jq -cn \
     --arg workerId "$worker_id" \
