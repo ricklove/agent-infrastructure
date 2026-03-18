@@ -82,6 +82,7 @@ RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \
   --region "$REGION" \
   --image-id "$IMAGE_ID" \
   --instance-type "$INSTANCE_TYPE" \
+  --hibernation-options Configured=true \
   --iam-instance-profile Arn="$INSTANCE_PROFILE_ARN" \
   --security-group-ids "$SECURITY_GROUP_ID" \
   --subnet-id "$SUBNET_ID" \
