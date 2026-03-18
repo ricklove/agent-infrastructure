@@ -187,6 +187,68 @@ function readDetailNumber(
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function sortLifecycleEvents(
+  events: WorkerLifecycleEvent[],
+): WorkerLifecycleEvent[] {
+  return [...events].sort((left, right) => left.eventTsMs - right.eventTsMs);
+}
+
+function findLatestLifecycleEvent(
+  events: WorkerLifecycleEvent[],
+  eventTypes: WorkerLifecycleEventType[],
+): WorkerLifecycleEvent | null {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (eventTypes.includes(event.eventType)) {
+      return event;
+    }
+  }
+
+  return null;
+}
+
+function findFirstLifecycleEventAfter(
+  events: WorkerLifecycleEvent[],
+  timestampMs: number,
+  eventTypes: WorkerLifecycleEventType[],
+): WorkerLifecycleEvent | null {
+  for (const event of events) {
+    if (event.eventTsMs >= timestampMs && eventTypes.includes(event.eventType)) {
+      return event;
+    }
+  }
+
+  return null;
+}
+
+function computeDurationFromLifecycleEvents(
+  events: WorkerLifecycleEvent[],
+  startEventTypes: WorkerLifecycleEventType[],
+  endEventTypes: WorkerLifecycleEventType[],
+): number | null {
+  const chronologicalEvents = sortLifecycleEvents(events);
+  const startEvent = findLatestLifecycleEvent(chronologicalEvents, startEventTypes);
+
+  if (!startEvent) {
+    return null;
+  }
+
+  const endEvent = findFirstLifecycleEventAfter(
+    chronologicalEvents,
+    startEvent.eventTsMs,
+    endEventTypes,
+  );
+
+  if (!endEvent || endEvent.eventTsMs < startEvent.eventTsMs) {
+    return null;
+  }
+
+  return Math.max(
+    0,
+    Math.round((endEvent.eventTsMs - startEvent.eventTsMs) / 1000),
+  );
+}
+
 function buildLifecycleSummary(
   events: WorkerLifecycleEvent[],
 ): FleetNode["lifecycle"] {
@@ -202,13 +264,34 @@ function buildLifecycleSummary(
     ) ?? null;
 
   return {
-    launchToRunningSeconds: readDetailNumber(launchEvent, "runningElapsedSeconds"),
-    hibernateSeconds: readDetailNumber(hibernatedEvent, "elapsedSeconds"),
-    wakeToRunningSeconds: readDetailNumber(resumeRunningEvent, "elapsedSeconds"),
-    wakeToFleetVisibleSeconds: readDetailNumber(
-      resumeRunningEvent,
-      "fleetVisibleElapsedSeconds",
-    ),
+    launchToRunningSeconds:
+      readDetailNumber(launchEvent, "runningElapsedSeconds") ??
+      computeDurationFromLifecycleEvents(
+        events,
+        ["launch_requested", "create", "launch", "bootstrap_started"],
+        ["ec2_running", "instance_status_ok", "connected", "running"],
+      ),
+    hibernateSeconds:
+      readDetailNumber(hibernatedEvent, "elapsedSeconds") ??
+      computeDurationFromLifecycleEvents(
+        events,
+        ["hibernate_requested", "hibernating"],
+        ["hibernated"],
+      ),
+    wakeToRunningSeconds:
+      readDetailNumber(resumeRunningEvent, "elapsedSeconds") ??
+      computeDurationFromLifecycleEvents(
+        events,
+        ["wakeup_requested", "wakeup"],
+        ["running"],
+      ),
+    wakeToFleetVisibleSeconds:
+      readDetailNumber(resumeRunningEvent, "fleetVisibleElapsedSeconds") ??
+      computeDurationFromLifecycleEvents(
+        events,
+        ["wakeup_requested", "wakeup"],
+        ["connected"],
+      ),
   };
 }
 
