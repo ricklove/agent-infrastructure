@@ -124,6 +124,7 @@ type FleetNode = Worker & {
   latestEvent: WorkerLifecycleEvent | null;
   events: WorkerLifecycleEvent[];
   lifecycle: {
+    launchToEc2RunningSeconds: number | null;
     launchToRunningSeconds: number | null;
     hibernateSeconds: number | null;
     wakeToRunningSeconds: number | null;
@@ -296,6 +297,8 @@ function buildLifecycleSummary(
   events: WorkerLifecycleEvent[],
 ): FleetNode["lifecycle"] {
   const launchEvent = events.find((event) => event.eventType === "launch") ?? null;
+  const ec2RunningEvent =
+    events.find((event) => event.eventType === "ec2_running") ?? null;
   const hibernatedEvent =
     events.find((event) => event.eventType === "hibernated") ?? null;
   const resumeRunningEvent =
@@ -307,8 +310,15 @@ function buildLifecycleSummary(
     ) ?? null;
 
   return {
-    launchToRunningSeconds:
+    launchToEc2RunningSeconds:
       readDetailNumber(launchEvent, "runningElapsedSeconds") ??
+      readDetailNumber(ec2RunningEvent, "elapsedSeconds") ??
+      computeDurationFromLifecycleEvents(
+        events,
+        ["launch_request_started", "launch_requested", "create"],
+        ["ec2_running"],
+      ),
+    launchToRunningSeconds:
       computeDurationFromLifecycleEvents(
         events,
         [
@@ -318,7 +328,7 @@ function buildLifecycleSummary(
           "launch",
           "bootstrap_started",
         ],
-        ["ec2_running", "instance_status_ok", "connected", "running"],
+        ["running"],
       ),
     hibernateSeconds:
       readDetailNumber(hibernatedEvent, "elapsedSeconds") ??
@@ -1061,6 +1071,14 @@ export function App() {
                                   Lifecycle Timings
                                 </span>
                                 <div className="fleet-detail-metrics">
+                                  <div className="stacked">
+                                    <span>Launch To EC2 Running</span>
+                                    <strong>
+                                      {formatDurationSeconds(
+                                        worker.lifecycle.launchToEc2RunningSeconds,
+                                      )}
+                                    </strong>
+                                  </div>
                                   <div className="stacked">
                                     <span>Launch To Running</span>
                                     <strong>
