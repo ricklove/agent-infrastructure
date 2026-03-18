@@ -16,12 +16,60 @@ if [[ ! -s "$RELEASE_CONFIG" ]]; then
   exit 1
 fi
 
-INSTANCE_TYPE="${1:-}"
+usage() {
+  cat <<'EOF'
+Usage:
+  launch-worker.sh [--instance-type t3.small] [--subnet-id subnet-...] [--image-id ami-...]
+
+Positional compatibility is retained:
+  launch-worker.sh [instance-type] [subnet-id] [image-id]
+EOF
+}
+
+INSTANCE_TYPE=""
+SUBNET_ID=""
+IMAGE_ID_OVERRIDE=""
+
+POSITIONAL_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --instance-type)
+      INSTANCE_TYPE="${2:-}"
+      shift 2
+      ;;
+    --subnet-id)
+      SUBNET_ID="${2:-}"
+      shift 2
+      ;;
+    --image-id)
+      IMAGE_ID_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$INSTANCE_TYPE" && ${#POSITIONAL_ARGS[@]} -gt 0 ]]; then
+  INSTANCE_TYPE="${POSITIONAL_ARGS[0]}"
+fi
+if [[ -z "$SUBNET_ID" && ${#POSITIONAL_ARGS[@]} -gt 1 ]]; then
+  SUBNET_ID="${POSITIONAL_ARGS[1]}"
+fi
+if [[ -z "$IMAGE_ID_OVERRIDE" && ${#POSITIONAL_ARGS[@]} -gt 2 ]]; then
+  IMAGE_ID_OVERRIDE="${POSITIONAL_ARGS[2]}"
+fi
+
 if [[ -z "$INSTANCE_TYPE" ]]; then
   INSTANCE_TYPE="$(jq -r '.workerInstanceType' "$CONFIG")"
 fi
 
-SUBNET_ID="${2:-}"
 if [[ -z "$SUBNET_ID" ]]; then
   SUBNET_ID="$(jq -r '.workerSubnetIds[0]' "$CONFIG")"
 fi
@@ -77,8 +125,20 @@ sed \
   -e "s/__REGION__/$REGION/g" \
   "$SCRIPT_DIR/worker-user-data.sh" > "$TEMP_USER_DATA"
 
-IMAGE_METADATA=$(aws ec2 describe-images --owners amazon --region "$REGION" --filters 'Name=name,Values=al2023-ami-2023.*-x86_64' 'Name=state,Values=available' --query 'sort_by(Images,&CreationDate)[-1].{ImageId:ImageId,RootDeviceName:RootDeviceName}' --output json)
-IMAGE_ID=$(printf '%s' "$IMAGE_METADATA" | jq -r '.ImageId')
+IMAGE_SOURCE="latest-amazon-linux"
+IMAGE_METADATA=""
+if [[ -n "$IMAGE_ID_OVERRIDE" ]]; then
+  IMAGE_METADATA=$(aws ec2 describe-images \
+    --region "$REGION" \
+    --image-ids "$IMAGE_ID_OVERRIDE" \
+    --query 'Images[0].{ImageId:ImageId,RootDeviceName:RootDeviceName}' \
+    --output json)
+  IMAGE_ID=$(printf '%s' "$IMAGE_METADATA" | jq -r '.ImageId')
+  IMAGE_SOURCE="explicit-image-id"
+else
+  IMAGE_METADATA=$(aws ec2 describe-images --owners amazon --region "$REGION" --filters 'Name=name,Values=al2023-ami-2023.*-x86_64' 'Name=state,Values=available' --query 'sort_by(Images,&CreationDate)[-1].{ImageId:ImageId,RootDeviceName:RootDeviceName}' --output json)
+  IMAGE_ID=$(printf '%s' "$IMAGE_METADATA" | jq -r '.ImageId')
+fi
 ROOT_DEVICE_NAME=$(printf '%s' "$IMAGE_METADATA" | jq -r '.RootDeviceName')
 RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \
   --region "$REGION" \
@@ -97,19 +157,24 @@ PRIVATE_IP=$(printf '%s' "$RUN_INSTANCES_OUTPUT" | jq -r '.Instances[0].PrivateI
 LAUNCH_REQUESTED_DETAILS=$(jq -cn \
   --arg instanceType "$INSTANCE_TYPE" \
   --arg subnetId "$SUBNET_ID" \
+  --arg imageId "$IMAGE_ID" \
+  --arg imageSource "$IMAGE_SOURCE" \
   --argjson requestedAtMs "$REQUESTED_AT_MS" \
-  '{instanceType:$instanceType,subnetId:$subnetId,requestedAtMs:$requestedAtMs}')
+  '{instanceType:$instanceType,subnetId:$subnetId,imageId:$imageId,imageSource:$imageSource,requestedAtMs:$requestedAtMs}')
 LAUNCH_REQUEST_STARTED_DETAILS=$(jq -cn \
   --arg instanceType "$INSTANCE_TYPE" \
   --arg subnetId "$SUBNET_ID" \
+  --arg imageId "$IMAGE_ID" \
+  --arg imageSource "$IMAGE_SOURCE" \
   --argjson requestedAtMs "$REQUESTED_AT_MS" \
-  '{instanceType:$instanceType,subnetId:$subnetId,requestedAtMs:$requestedAtMs}')
+  '{instanceType:$instanceType,subnetId:$subnetId,imageId:$imageId,imageSource:$imageSource,requestedAtMs:$requestedAtMs}')
 CREATE_DETAILS=$(jq -cn \
   --arg instanceType "$INSTANCE_TYPE" \
   --arg subnetId "$SUBNET_ID" \
   --arg imageId "$IMAGE_ID" \
+  --arg imageSource "$IMAGE_SOURCE" \
   --argjson requestedAtMs "$REQUESTED_AT_MS" \
-  '{instanceType:$instanceType,subnetId:$subnetId,imageId:$imageId,requestedAtMs:$requestedAtMs}')
+  '{instanceType:$instanceType,subnetId:$subnetId,imageId:$imageId,imageSource:$imageSource,requestedAtMs:$requestedAtMs}')
 emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch_request_started "$LAUNCH_REQUEST_STARTED_DETAILS" "$REQUESTED_AT_MS"
 emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch_requested "$LAUNCH_REQUESTED_DETAILS"
 emit_event "$INSTANCE_ID" "$PRIVATE_IP" create "$CREATE_DETAILS"
