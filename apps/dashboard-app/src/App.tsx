@@ -292,19 +292,24 @@ function computeDurationFromLifecycleEvents(
 function buildLifecycleSummary(
   events: WorkerLifecycleEvent[],
 ): FleetNode["lifecycle"] {
+  const chronologicalEvents = sortLifecycleEvents(events);
+  const firstEvent = chronologicalEvents[0] ?? null;
+  const firstRunningEvent = findFirstLifecycleEventAfter(
+    chronologicalEvents,
+    firstEvent?.eventTsMs ?? 0,
+    ["running"],
+  );
+
   return {
     timeToRunningSeconds:
-      computeDurationFromLifecycleEvents(
-        events,
-        [
-          "launch_request_started",
-          "launch_requested",
-          "create",
-          "launch",
-          "bootstrap_started",
-        ],
-        ["running"],
-      ),
+      firstEvent && firstRunningEvent
+        ? Math.max(
+            0,
+            Math.round(
+              (firstRunningEvent.eventTsMs - firstEvent.eventTsMs) / 1000,
+            ),
+          )
+        : null,
   };
 }
 
