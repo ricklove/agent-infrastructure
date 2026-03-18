@@ -262,11 +262,6 @@ WantedBy=multi-user.target
         sid: "CreateWorkerImages",
         actions: ["ec2:CreateImage"],
         resources: ["*"],
-        conditions: {
-          StringEquals: {
-            "ec2:ResourceTag/WorkerImageWorkflow": "bun-worker",
-          },
-        },
       }),
     );
     managerRole.addToPolicy(
