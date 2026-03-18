@@ -5,6 +5,7 @@ TOKEN=$(curl -X PUT -s http://169.254.169.254/latest/api/token -H 'X-aws-ec2-met
 INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
 LOCAL_IPV4=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
 MANAGER_EVENT_URL="http://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/workers/events"
+PENDING_EVENT_FILE="/opt/agent-swarm/pending-worker-events.jsonl"
 
 json_escape() {
   local value="$1"
@@ -24,6 +25,45 @@ json_bool() {
   printf 'false'
 }
 
+post_payload() {
+  local payload="$1"
+  curl -sf \
+    --connect-timeout 2 \
+    --max-time 5 \
+    --retry 6 \
+    --retry-delay 1 \
+    --retry-connrefused \
+    -X POST "$MANAGER_EVENT_URL" \
+    -H 'content-type: application/json' \
+    -H "x-swarm-token: __SWARM_SHARED_TOKEN__" \
+    -d "$payload" >/dev/null
+}
+
+flush_pending_events() {
+  mkdir -p "$(dirname "$PENDING_EVENT_FILE")"
+  if [[ ! -f "$PENDING_EVENT_FILE" ]]; then
+    return
+  fi
+
+  local pending_tmp
+  pending_tmp="$(mktemp)"
+  while IFS= read -r pending_payload || [[ -n "$pending_payload" ]]; do
+    if [[ -z "$pending_payload" ]]; then
+      continue
+    fi
+    if ! post_payload "$pending_payload"; then
+      printf '%s\n' "$pending_payload" >> "$pending_tmp"
+    fi
+  done < "$PENDING_EVENT_FILE"
+
+  if [[ -s "$pending_tmp" ]]; then
+    mv "$pending_tmp" "$PENDING_EVENT_FILE"
+    return
+  fi
+
+  rm -f "$PENDING_EVENT_FILE" "$pending_tmp"
+}
+
 emit_event() {
   local event_type="$1"
   local details_json="${2-}"
@@ -37,16 +77,9 @@ emit_event() {
 {"workerId":"$(json_escape "$INSTANCE_ID")","instanceId":"$(json_escape "$INSTANCE_ID")","privateIp":"$(json_escape "$LOCAL_IPV4")","nodeRole":"worker","eventType":"$(json_escape "$event_type")","eventTsMs":$event_ts_ms,"details":$details_json}
 EOF
 )
-  curl -sf \
-    --connect-timeout 2 \
-    --max-time 5 \
-    --retry 6 \
-    --retry-delay 1 \
-    --retry-connrefused \
-    -X POST "$MANAGER_EVENT_URL" \
-    -H 'content-type: application/json' \
-    -H "x-swarm-token: __SWARM_SHARED_TOKEN__" \
-    -d "$payload" >/dev/null || true
+  mkdir -p "$(dirname "$PENDING_EVENT_FILE")"
+  printf '%s\n' "$payload" >> "$PENDING_EVENT_FILE"
+  flush_pending_events || true
 }
 
 emit_event cloud_init_started "{\"stage\":\"user-data\"}"
@@ -125,3 +158,4 @@ RUNTIME
 systemctl daemon-reload
 emit_event telemetry_service_start_requested "{\"unit\":\"agent-swarm-worker-monitor.service\"}"
 systemctl enable --now agent-swarm-worker-monitor.service
+flush_pending_events || true
