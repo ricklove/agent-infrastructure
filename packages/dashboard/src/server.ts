@@ -105,6 +105,8 @@ type DashboardSessionRecord = {
   createdAtMs: number;
   kind: "bootstrap" | "browser";
   usedAtMs?: number;
+  lastAccessAtMs?: number;
+  idleTimeoutMs?: number;
 };
 
 type DashboardSessionStore = {
@@ -122,6 +124,14 @@ const sessionStorePath =
   process.env.DASHBOARD_SESSION_STORE_PATH?.trim() ||
   "/var/lib/agent-swarm-monitor/dashboard-sessions.json";
 const port = Number.parseInt(process.env.DASHBOARD_PORT ?? "3000", 10);
+const browserSessionIdleTimeoutMs =
+  Math.max(
+    60,
+    Number.parseInt(
+      process.env.DASHBOARD_SESSION_IDLE_TIMEOUT_SECONDS ?? "900",
+      10,
+    ) || 900,
+  ) * 1000;
 
 if (!Number.isInteger(port) || port <= 0) {
   throw new Error("DASHBOARD_PORT must be a positive integer");
@@ -182,6 +192,14 @@ function validateBrowserSessionToken(token: string): boolean {
 
     if (session.kind === "browser" && session.tokenHash === tokenHash) {
       matched = true;
+      nextStore.sessions.push({
+        ...session,
+        lastAccessAtMs: currentTime,
+        expiresAtMs:
+          currentTime + (session.idleTimeoutMs ?? browserSessionIdleTimeoutMs),
+        idleTimeoutMs: session.idleTimeoutMs ?? browserSessionIdleTimeoutMs,
+      });
+      continue;
     }
 
     nextStore.sessions.push(session);
@@ -232,17 +250,20 @@ function exchangeBootstrapSessionKey(sessionKey: string): {
   }
 
   const sessionToken = randomBytes(32).toString("hex");
+  const browserExpiresAtMs = currentTime + browserSessionIdleTimeoutMs;
   nextStore.sessions.push({
     tokenHash: hashSessionToken(sessionToken),
-    expiresAtMs: matchedExpiry,
+    expiresAtMs: browserExpiresAtMs,
     createdAtMs: currentTime,
     kind: "browser",
+    lastAccessAtMs: currentTime,
+    idleTimeoutMs: browserSessionIdleTimeoutMs,
   });
   writeSessionStore(nextStore);
 
   return {
     sessionToken,
-    expiresAtMs: matchedExpiry,
+    expiresAtMs: browserExpiresAtMs,
   };
 }
 
