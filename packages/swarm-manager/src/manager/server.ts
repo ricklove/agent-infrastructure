@@ -571,6 +571,28 @@ const listWorkerLifecycleEventsByWorker = db.query(
    LIMIT ?`,
 );
 
+const listLatestWorkerLifecycleEvents = db.query(
+  `SELECT
+      events.worker_id,
+      events.instance_id,
+      events.private_ip,
+      events.node_role,
+      events.event_type,
+      events.event_ts_ms,
+      events.details_json
+   FROM worker_lifecycle_events AS events
+   INNER JOIN (
+     SELECT worker_id, MAX(event_ts_ms) AS max_event_ts_ms
+     FROM worker_lifecycle_events
+     WHERE node_role = 'worker'
+     GROUP BY worker_id
+   ) AS latest
+     ON events.worker_id = latest.worker_id
+    AND events.event_ts_ms = latest.max_event_ts_ms
+   WHERE events.node_role = 'worker'
+   ORDER BY events.event_ts_ms DESC`,
+);
+
 const workerSampleBuffer: WorkerSampleRow[] = [];
 const containerSampleBuffer: ContainerSampleRow[] = [];
 const liveWorkers = new Map<string, LiveWorkerState>();
@@ -888,6 +910,12 @@ function getLatestWorkerLifecycleEvent(
   return events[0] ?? null;
 }
 
+function getLatestLifecycleEventsByWorker(): WorkerLifecycleEventRecord[] {
+  return listLatestWorkerLifecycleEvents
+    .all()
+    .map((row) => mapLifecycleEventRow(row as Record<string, unknown>));
+}
+
 function getLatestLifecycleEventOfTypes(
   workerId: string,
   eventTypes: WorkerLifecycleEventType[],
@@ -1034,6 +1062,7 @@ function deriveInventoryWorkerStatus(
 function refreshEc2InventoryWorkers(): void {
   const instances = listEc2WorkerInstances();
   const nextWorkers = new Map<string, LiveWorkerState>();
+  const inventoryWorkerIds = new Set(instances.map((instance) => instance.instanceId));
 
   for (const instance of instances) {
     if (liveWorkers.has(instance.instanceId)) {
@@ -1068,6 +1097,31 @@ function refreshEc2InventoryWorkers(): void {
         },
       });
     }
+  }
+
+  for (const latestEvent of getLatestLifecycleEventsByWorker()) {
+    if (inventoryWorkerIds.has(latestEvent.workerId)) {
+      continue;
+    }
+    if (liveWorkers.has(latestEvent.workerId)) {
+      continue;
+    }
+    if (latestEvent.eventType === "terminated") {
+      continue;
+    }
+
+    recordWorkerLifecycleEvent({
+      workerId: latestEvent.workerId,
+      instanceId: latestEvent.instanceId,
+      privateIp: latestEvent.privateIp,
+      nodeRole: "worker",
+      eventType: "terminated",
+      eventTsMs: nowMs(),
+      details: {
+        reason: "ec2_missing_from_inventory",
+        previousEventType: latestEvent.eventType,
+      },
+    });
   }
 
   ec2InventoryWorkers.clear();
