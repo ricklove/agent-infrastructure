@@ -10,6 +10,7 @@
     "run:issue-dashboard-session": "bun run src/manager/issue-dashboard-session.ts",
     "run:open-dashboard": "bun run src/manager/open-dashboard.ts",
     "run:update-runtime": "bun run src/manager/update-runtime.ts",
+    "run:install-host-scripts": "bun run src/manager/install-host-scripts.ts",
     "run:publish-worker-runtime-release": "bun run src/manager/publish-worker-runtime-release.ts",
     "run:launch-service": "bun run src/manager/launch-service.ts",
     "run:worker-agent": "bun run src/worker/agent.ts"
