@@ -132,6 +132,14 @@ const browserSessionIdleTimeoutMs =
       10,
     ) || 900,
   ) * 1000;
+const browserSessionRenewIntervalMs =
+  Math.max(
+    30,
+    Number.parseInt(
+      process.env.DASHBOARD_SESSION_RENEW_INTERVAL_SECONDS ?? "300",
+      10,
+    ) || 300,
+  ) * 1000;
 
 if (!Number.isInteger(port) || port <= 0) {
   throw new Error("DASHBOARD_PORT must be a positive integer");
@@ -192,13 +200,18 @@ function validateBrowserSessionToken(token: string): boolean {
 
     if (session.kind === "browser" && session.tokenHash === tokenHash) {
       matched = true;
-      nextStore.sessions.push({
-        ...session,
-        lastAccessAtMs: currentTime,
-        expiresAtMs:
-          currentTime + (session.idleTimeoutMs ?? browserSessionIdleTimeoutMs),
-        idleTimeoutMs: session.idleTimeoutMs ?? browserSessionIdleTimeoutMs,
-      });
+      const idleTimeoutMs = session.idleTimeoutMs ?? browserSessionIdleTimeoutMs;
+      const lastAccessAtMs = session.lastAccessAtMs ?? session.createdAtMs;
+      if (currentTime - lastAccessAtMs >= browserSessionRenewIntervalMs) {
+        nextStore.sessions.push({
+          ...session,
+          lastAccessAtMs: currentTime,
+          expiresAtMs: currentTime + idleTimeoutMs,
+          idleTimeoutMs,
+        });
+      } else {
+        nextStore.sessions.push(session);
+      }
       continue;
     }
 
