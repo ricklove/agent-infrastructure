@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 type DashboardHealth = {
   ok: boolean;
@@ -114,6 +114,7 @@ type ServicesResponse = {
 type FleetNode = Worker & {
   archived: boolean;
   latestEvent: WorkerLifecycleEvent | null;
+  events: WorkerLifecycleEvent[];
   lifecycle: {
     launchToRunningSeconds: number | null;
     hibernateSeconds: number | null;
@@ -160,6 +161,22 @@ function formatLifecycleEventLabel(eventType: WorkerLifecycleEventType): string 
     .split(/(?=[A-Z])|_/)
     .join(" ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function formatLifecycleDetailValue(value: unknown): string {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+
+  return JSON.stringify(value);
 }
 
 function readDetailNumber(
@@ -219,6 +236,7 @@ function buildFleetNodes(
       ...worker,
       archived: false,
       latestEvent,
+      events: workerEvents,
       lifecycle: buildLifecycleSummary(workerEvents),
     };
   });
@@ -239,6 +257,7 @@ function buildFleetNodes(
       lastMetrics: null,
       archived: true,
       latestEvent,
+      events: workerEvents,
       lifecycle: buildLifecycleSummary(workerEvents),
     });
   }
@@ -292,6 +311,7 @@ export function App() {
   const [sessionReady, setSessionReady] = useState<boolean>(false);
   const [authRequired, setAuthRequired] = useState<boolean>(false);
   const [showArchivedWorkers, setShowArchivedWorkers] = useState<boolean>(false);
+  const [expandedFleetNodes, setExpandedFleetNodes] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -517,6 +537,14 @@ export function App() {
     ? fleetNodes
     : fleetNodes.filter((worker) => !worker.archived);
 
+  function toggleFleetNode(workerId: string): void {
+    setExpandedFleetNodes((currentValue) =>
+      currentValue.includes(workerId)
+        ? currentValue.filter((value) => value !== workerId)
+        : [...currentValue, workerId],
+    );
+  }
+
   return (
     <main className="page-shell">
       <section className="hero">
@@ -716,75 +744,163 @@ export function App() {
                   </td>
                 </tr>
               ) : (
-                displayedFleetNodes.map((worker) => (
-                  <tr key={worker.workerId}>
-                    <td>
-                      <div className="stacked">
-                        <strong>{worker.workerId}</strong>
-                        <span>{worker.instanceId}</span>
-                        {worker.archived ? (
-                          <span className="archive-label">archived</span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td>{worker.nodeRole}</td>
-                    <td>
-                      <span className={`status-pill status-${worker.status}`}>
-                        {worker.status}
-                      </span>
-                    </td>
-                    <td>{worker.privateIp}</td>
-                    <td>
-                      {worker.lastMetrics
-                        ? `${worker.lastMetrics.cpuPercent.toFixed(1)}%`
-                        : "--"}
-                    </td>
-                    <td>
-                      {worker.lastMetrics
-                        ? `${formatBytes(
-                            worker.lastMetrics.memoryUsedBytes,
-                          )} / ${formatBytes(
-                            worker.lastMetrics.memoryTotalBytes,
-                          )}`
-                        : "--"}
-                    </td>
-                    <td>{worker.lastMetrics?.containerCount ?? "--"}</td>
-                    <td>{formatTimestamp(worker.lastHeartbeatAt)}</td>
-                    <td>
-                      <div className="stacked lifecycle-cell">
-                        <span>
-                          Last:{" "}
-                          {worker.latestEvent
-                            ? `${formatLifecycleEventLabel(
-                                worker.latestEvent.eventType,
-                              )} at ${formatTimestamp(worker.latestEvent.eventTsMs)}`
+                displayedFleetNodes.map((worker) => {
+                  const expanded = expandedFleetNodes.includes(worker.workerId);
+
+                  return (
+                    <Fragment key={worker.workerId}>
+                      <tr
+                        className={expanded ? "fleet-row expanded" : "fleet-row"}
+                      >
+                        <td>
+                          <div className="stacked">
+                            <strong>{worker.workerId}</strong>
+                            <span>{worker.instanceId}</span>
+                            {worker.archived ? (
+                              <span className="archive-label">archived</span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>{worker.nodeRole}</td>
+                        <td>
+                          <span className={`status-pill status-${worker.status}`}>
+                            {worker.status}
+                          </span>
+                        </td>
+                        <td>{worker.privateIp}</td>
+                        <td>
+                          {worker.lastMetrics
+                            ? `${worker.lastMetrics.cpuPercent.toFixed(1)}%`
                             : "--"}
-                        </span>
-                        <span>
-                          Launch:{" "}
-                          {formatDurationSeconds(
-                            worker.lifecycle.launchToRunningSeconds,
-                          )}
-                        </span>
-                        <span>
-                          Hibernate:{" "}
-                          {formatDurationSeconds(worker.lifecycle.hibernateSeconds)}
-                        </span>
-                        <span>
-                          Wake:{" "}
-                          {formatDurationSeconds(
-                            worker.lifecycle.wakeToRunningSeconds,
-                          )}
-                          {worker.lifecycle.wakeToFleetVisibleSeconds !== null
-                            ? ` / fleet ${formatDurationSeconds(
-                                worker.lifecycle.wakeToFleetVisibleSeconds,
+                        </td>
+                        <td>
+                          {worker.lastMetrics
+                            ? `${formatBytes(
+                                worker.lastMetrics.memoryUsedBytes,
+                              )} / ${formatBytes(
+                                worker.lastMetrics.memoryTotalBytes,
                               )}`
-                            : ""}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                            : "--"}
+                        </td>
+                        <td>{worker.lastMetrics?.containerCount ?? "--"}</td>
+                        <td>{formatTimestamp(worker.lastHeartbeatAt)}</td>
+                        <td>
+                          <div className="lifecycle-summary">
+                            <span>
+                              {worker.latestEvent
+                                ? `${formatLifecycleEventLabel(
+                                    worker.latestEvent.eventType,
+                                  )} at ${formatTimestamp(worker.latestEvent.eventTsMs)}`
+                                : "No lifecycle events yet"}
+                            </span>
+                            <button
+                              className="expand-row-button"
+                              onClick={() => {
+                                toggleFleetNode(worker.workerId);
+                              }}
+                            >
+                              {expanded ? "Hide Details" : "Show Details"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {expanded ? (
+                        <tr className="fleet-row-detail">
+                          <td colSpan={9}>
+                            <div className="fleet-detail-grid">
+                              <section className="fleet-detail-card">
+                                <span className="fleet-detail-label">
+                                  Lifecycle Timings
+                                </span>
+                                <div className="fleet-detail-metrics">
+                                  <div className="stacked">
+                                    <span>Launch To Running</span>
+                                    <strong>
+                                      {formatDurationSeconds(
+                                        worker.lifecycle.launchToRunningSeconds,
+                                      )}
+                                    </strong>
+                                  </div>
+                                  <div className="stacked">
+                                    <span>Hibernate</span>
+                                    <strong>
+                                      {formatDurationSeconds(
+                                        worker.lifecycle.hibernateSeconds,
+                                      )}
+                                    </strong>
+                                  </div>
+                                  <div className="stacked">
+                                    <span>Wake To Running</span>
+                                    <strong>
+                                      {formatDurationSeconds(
+                                        worker.lifecycle.wakeToRunningSeconds,
+                                      )}
+                                    </strong>
+                                  </div>
+                                  <div className="stacked">
+                                    <span>Wake To Fleet Visible</span>
+                                    <strong>
+                                      {formatDurationSeconds(
+                                        worker.lifecycle.wakeToFleetVisibleSeconds,
+                                      )}
+                                    </strong>
+                                  </div>
+                                </div>
+                              </section>
+                              <section className="fleet-detail-card">
+                                <span className="fleet-detail-label">
+                                  Recent Events
+                                </span>
+                                {worker.events.length === 0 ? (
+                                  <p className="fleet-detail-empty">
+                                    No lifecycle events recorded yet.
+                                  </p>
+                                ) : (
+                                  <div className="fleet-event-list">
+                                    {worker.events.slice(0, 8).map((event) => (
+                                      <article
+                                        key={`${worker.workerId}-${event.eventType}-${event.eventTsMs}`}
+                                        className="fleet-event-item"
+                                      >
+                                        <div className="fleet-event-head">
+                                          <strong>
+                                            {formatLifecycleEventLabel(
+                                              event.eventType,
+                                            )}
+                                          </strong>
+                                          <span>
+                                            {formatTimestamp(event.eventTsMs)}
+                                          </span>
+                                        </div>
+                                        {event.details &&
+                                        Object.keys(event.details).length > 0 ? (
+                                          <div className="fleet-event-details">
+                                            {Object.entries(event.details).map(
+                                              ([key, value]) => (
+                                                <span
+                                                  key={`${event.eventTsMs}-${key}`}
+                                                >
+                                                  {key}:{" "}
+                                                  {formatLifecycleDetailValue(
+                                                    value,
+                                                  )}
+                                                </span>
+                                              ),
+                                            )}
+                                          </div>
+                                        ) : null}
+                                      </article>
+                                    ))}
+                                  </div>
+                                )}
+                              </section>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -250,6 +250,109 @@ tbody tr:last-child td {
   font-size: 0.84rem;
 }
 
+.fleet-row.expanded td {
+  border-bottom-color: transparent;
+}
+
+.lifecycle-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.expand-row-button {
+  border: 1px solid rgba(242, 243, 245, 0.12);
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #edf6f1;
+  background: rgba(242, 243, 245, 0.04);
+  cursor: pointer;
+}
+
+.expand-row-button:hover {
+  background: rgba(242, 243, 245, 0.08);
+}
+
+.fleet-row-detail td {
+  padding-top: 0;
+}
+
+.fleet-detail-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 0 14px;
+}
+
+.fleet-detail-card {
+  padding: 14px;
+  border: 1px solid rgba(242, 243, 245, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.fleet-detail-label {
+  display: block;
+  margin-bottom: 12px;
+  color: rgba(242, 243, 245, 0.62);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.fleet-detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.fleet-detail-metrics strong,
+.fleet-event-item strong {
+  font-size: 1rem;
+}
+
+.fleet-detail-empty {
+  margin: 0;
+  color: rgba(242, 243, 245, 0.62);
+}
+
+.fleet-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fleet-event-item {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(8, 12, 16, 0.52);
+}
+
+.fleet-event-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.fleet-event-head span {
+  color: rgba(242, 243, 245, 0.58);
+  font-size: 0.82rem;
+}
+
+.fleet-event-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
+}
+
+.fleet-event-details span {
+  color: rgba(242, 243, 245, 0.68);
+  font-size: 0.84rem;
+}
+
 .archive-label {
   color: #f4d38a;
 }
@@ -313,6 +416,10 @@ tbody tr:last-child td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .fleet-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
   .hero {
     flex-direction: column;
   }
@@ -334,6 +441,10 @@ tbody tr:last-child td {
 
   .table-wrap {
     padding: 12px 14px 16px;
+  }
+
+  .fleet-detail-metrics {
+    grid-template-columns: 1fr;
   }
 
   .panel-header {
