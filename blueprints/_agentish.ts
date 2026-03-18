@@ -15,19 +15,17 @@ const Agent = define.actor('Agent');
 Agent.reads(Blueprint).toUnderstand('SystemIntent');
 
 const Codebase = define.entity('Codebase');
-Agent.generates(Codebase).strictlyFrom(Blueprint);
+Agent.aligns(Codebase).toMatch(Blueprint);
 
 when(Agent.encounters('Ambiguity').in(Blueprint))
   .then(Agent.asks(Human, 'to clarify the requirement'));
 
 when(Human.mutates(Blueprint))
-  .then(Agent.discards(Codebase))
-  .and(Agent.regenerates(Codebase).strictlyFrom(Blueprint));
+  .then(Agent.synchronizes(Codebase).with(Blueprint));
 
 Agent.measures('InformationDensity').toEvaluate('BlueprintQuality');
 
 when(Human.edits(Codebase).bypassing(Blueprint))
-  .then(Agent.strikes(Codebase))
-  .and(Agent.regenerates(Codebase).strictlyFrom(Blueprint));
+  .then(Agent.enforces(Blueprint).over(Codebase));
 
 Agentish.allows('AnyFluentPhrase').toExpress('TopologyAndCausality');
