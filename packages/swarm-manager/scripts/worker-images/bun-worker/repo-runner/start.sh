@@ -12,9 +12,14 @@ emit_event() {
   if [[ -z "${SWARM_MANAGER_URL:-}" || -z "${SWARM_MANAGER_TOKEN:-}" || -z "${SWARM_WORKER_ID:-}" || -z "${SWARM_WORKER_PRIVATE_IP:-}" ]]; then
     return
   fi
-  bun -e '
-const [eventType, detailsJson] = process.argv.slice(1);
-const extraDetails = JSON.parse(detailsJson);
+  EVENT_TYPE="$event_type" EVENT_DETAILS_JSON="$details_json" bun -e '
+const eventType = process.env.EVENT_TYPE ?? "";
+let extraDetails = {};
+try {
+  extraDetails = JSON.parse(process.env.EVENT_DETAILS_JSON ?? "{}");
+} catch {
+  extraDetails = {};
+}
 const payload = {
   workerId: process.env.SWARM_WORKER_ID,
   instanceId: process.env.SWARM_WORKER_ID,
@@ -54,7 +59,7 @@ if (!response.ok) {
   const body = await response.text().catch(() => "");
   console.error(`failed to emit ${eventType}: ${response.status} ${body}`);
 }
-' "$event_type" "$details_json" >/dev/null || true
+' >/dev/null || true
 }
 
 if [[ ! -d "$RUNNER_REPO_DIR/.git" ]]; then
