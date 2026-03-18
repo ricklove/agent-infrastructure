@@ -239,7 +239,7 @@ RUN_OUTPUT="$(aws ec2 run-instances \
   "${INSTANCE_PROFILE_ARG[@]}" \
   --subnet-id "$SUBNET_ID" \
   --security-group-ids "$SECURITY_GROUP_ID" \
-  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${WORKFLOW_NAME}-builder},{Key=WorkerImageWorkflow,Value=${WORKFLOW_NAME}}]" \
+  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${WORKFLOW_NAME}-builder},{Key=Role,Value=agent-swarm-worker-image-builder},{Key=WorkerImageWorkflow,Value=${WORKFLOW_NAME}}]" \
   --query '{instanceId:Instances[0].InstanceId}' \
   --output json)"
 
