@@ -16,6 +16,14 @@ json_escape() {
   printf '%s' "$value"
 }
 
+json_bool() {
+  if [[ "$1" == "true" ]]; then
+    printf 'true'
+    return
+  fi
+  printf 'false'
+}
+
 emit_event() {
   local event_type="$1"
   local details_json="${2-}"
@@ -29,23 +37,48 @@ emit_event() {
 {"workerId":"$(json_escape "$INSTANCE_ID")","instanceId":"$(json_escape "$INSTANCE_ID")","privateIp":"$(json_escape "$LOCAL_IPV4")","nodeRole":"worker","eventType":"$(json_escape "$event_type")","eventTsMs":$event_ts_ms,"details":$details_json}
 EOF
 )
-  curl -sf -X POST "$MANAGER_EVENT_URL" \
+  curl -sf \
+    --connect-timeout 2 \
+    --max-time 5 \
+    --retry 6 \
+    --retry-delay 1 \
+    --retry-connrefused \
+    -X POST "$MANAGER_EVENT_URL" \
     -H 'content-type: application/json' \
     -H "x-swarm-token: __SWARM_SHARED_TOKEN__" \
     -d "$payload" >/dev/null || true
 }
 
 emit_event cloud_init_started "{\"stage\":\"user-data\"}"
-emit_event packages_install_started "{\"packages\":[\"awscli\",\"docker\",\"jq\",\"unzip\"]}"
-dnf install -y awscli docker jq unzip
-emit_event packages_install_completed "{\"packages\":[\"awscli\",\"docker\",\"jq\",\"unzip\"]}"
+REQUIRED_PACKAGES=(awscli docker jq unzip)
+MISSING_PACKAGES=()
+for package_name in "${REQUIRED_PACKAGES[@]}"; do
+  if ! rpm -q "$package_name" >/dev/null 2>&1; then
+    MISSING_PACKAGES+=("$package_name")
+  fi
+done
+PACKAGES_ALREADY_PRESENT=true
+if (( ${#MISSING_PACKAGES[@]} > 0 )); then
+  PACKAGES_ALREADY_PRESENT=false
+fi
+emit_event packages_install_started "{\"packages\":[\"awscli\",\"docker\",\"jq\",\"unzip\"],\"missingPackageCount\":${#MISSING_PACKAGES[@]},\"alreadyInstalled\":$(json_bool "$PACKAGES_ALREADY_PRESENT")}"
+if (( ${#MISSING_PACKAGES[@]} > 0 )); then
+  dnf install -y "${MISSING_PACKAGES[@]}"
+fi
+emit_event packages_install_completed "{\"packages\":[\"awscli\",\"docker\",\"jq\",\"unzip\"],\"missingPackageCount\":${#MISSING_PACKAGES[@]},\"alreadyInstalled\":$(json_bool "$PACKAGES_ALREADY_PRESENT")}"
 
 export HOME=/root
 export BUN_INSTALL=/opt/bun
-emit_event bun_install_started "{\"installDir\":\"$BUN_INSTALL\"}"
-curl -fsSL https://bun.sh/install | bash
+BUN_ALREADY_PRESENT=false
+if [[ -x "$BUN_INSTALL/bin/bun" ]]; then
+  BUN_ALREADY_PRESENT=true
+fi
+emit_event bun_install_started "{\"installDir\":\"$BUN_INSTALL\",\"alreadyInstalled\":$(json_bool "$BUN_ALREADY_PRESENT")}"
+if [[ "$BUN_ALREADY_PRESENT" != "true" ]]; then
+  curl -fsSL https://bun.sh/install | bash
+fi
 install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
-emit_event bun_install_completed "{\"binaryPath\":\"/usr/local/bin/bun\"}"
+emit_event bun_install_completed "{\"binaryPath\":\"/usr/local/bin/bun\",\"alreadyInstalled\":$(json_bool "$BUN_ALREADY_PRESENT")}"
 
 emit_event docker_enable_started "{}"
 systemctl enable --now docker
