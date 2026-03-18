@@ -124,11 +124,7 @@ type FleetNode = Worker & {
   latestEvent: WorkerLifecycleEvent | null;
   events: WorkerLifecycleEvent[];
   lifecycle: {
-    launchToEc2RunningSeconds: number | null;
-    launchToRunningSeconds: number | null;
-    hibernateSeconds: number | null;
-    wakeToRunningSeconds: number | null;
-    wakeToFleetVisibleSeconds: number | null;
+    timeToRunningSeconds: number | null;
   };
 };
 
@@ -296,29 +292,8 @@ function computeDurationFromLifecycleEvents(
 function buildLifecycleSummary(
   events: WorkerLifecycleEvent[],
 ): FleetNode["lifecycle"] {
-  const launchEvent = events.find((event) => event.eventType === "launch") ?? null;
-  const ec2RunningEvent =
-    events.find((event) => event.eventType === "ec2_running") ?? null;
-  const hibernatedEvent =
-    events.find((event) => event.eventType === "hibernated") ?? null;
-  const resumeRunningEvent =
-    events.find(
-      (event) =>
-        event.eventType === "running" &&
-        (readDetailNumber(event, "elapsedSeconds") !== null ||
-          readDetailNumber(event, "fleetVisibleElapsedSeconds") !== null),
-    ) ?? null;
-
   return {
-    launchToEc2RunningSeconds:
-      readDetailNumber(launchEvent, "runningElapsedSeconds") ??
-      readDetailNumber(ec2RunningEvent, "elapsedSeconds") ??
-      computeDurationFromLifecycleEvents(
-        events,
-        ["launch_request_started", "launch_requested", "create"],
-        ["ec2_running"],
-      ),
-    launchToRunningSeconds:
+    timeToRunningSeconds:
       computeDurationFromLifecycleEvents(
         events,
         [
@@ -329,27 +304,6 @@ function buildLifecycleSummary(
           "bootstrap_started",
         ],
         ["running"],
-      ),
-    hibernateSeconds:
-      readDetailNumber(hibernatedEvent, "elapsedSeconds") ??
-      computeDurationFromLifecycleEvents(
-        events,
-        ["hibernate_requested", "hibernating"],
-        ["hibernated"],
-      ),
-    wakeToRunningSeconds:
-      readDetailNumber(resumeRunningEvent, "elapsedSeconds") ??
-      computeDurationFromLifecycleEvents(
-        events,
-        ["wakeup_requested", "wakeup"],
-        ["running"],
-      ),
-    wakeToFleetVisibleSeconds:
-      readDetailNumber(resumeRunningEvent, "fleetVisibleElapsedSeconds") ??
-      computeDurationFromLifecycleEvents(
-        events,
-        ["wakeup_requested", "wakeup"],
-        ["connected"],
       ),
   };
 }
@@ -1072,42 +1026,10 @@ export function App() {
                                 </span>
                                 <div className="fleet-detail-metrics">
                                   <div className="stacked">
-                                    <span>Launch To EC2 Running</span>
+                                    <span>Time To Running</span>
                                     <strong>
                                       {formatDurationSeconds(
-                                        worker.lifecycle.launchToEc2RunningSeconds,
-                                      )}
-                                    </strong>
-                                  </div>
-                                  <div className="stacked">
-                                    <span>Launch To Running</span>
-                                    <strong>
-                                      {formatDurationSeconds(
-                                        worker.lifecycle.launchToRunningSeconds,
-                                      )}
-                                    </strong>
-                                  </div>
-                                  <div className="stacked">
-                                    <span>Hibernate</span>
-                                    <strong>
-                                      {formatDurationSeconds(
-                                        worker.lifecycle.hibernateSeconds,
-                                      )}
-                                    </strong>
-                                  </div>
-                                  <div className="stacked">
-                                    <span>Wake To Running</span>
-                                    <strong>
-                                      {formatDurationSeconds(
-                                        worker.lifecycle.wakeToRunningSeconds,
-                                      )}
-                                    </strong>
-                                  </div>
-                                  <div className="stacked">
-                                    <span>Wake To Fleet Visible</span>
-                                    <strong>
-                                      {formatDurationSeconds(
-                                        worker.lifecycle.wakeToFleetVisibleSeconds,
+                                        worker.lifecycle.timeToRunningSeconds,
                                       )}
                                     </strong>
                                   </div>
