@@ -12,28 +12,49 @@ emit_event() {
   if [[ -z "${SWARM_MANAGER_URL:-}" || -z "${SWARM_MANAGER_TOKEN:-}" || -z "${SWARM_WORKER_ID:-}" || -z "${SWARM_WORKER_PRIVATE_IP:-}" ]]; then
     return
   fi
+  bun -e '
+const [eventType, detailsJson] = process.argv.slice(1);
+const extraDetails = JSON.parse(detailsJson);
+const payload = {
+  workerId: process.env.SWARM_WORKER_ID,
+  instanceId: process.env.SWARM_WORKER_ID,
+  privateIp: process.env.SWARM_WORKER_PRIVATE_IP,
+  nodeRole: "worker",
+  eventType,
+  eventTsMs: Date.now(),
+  details: {
+    namespace: process.env.SWARM_NAMESPACE ?? "root",
+    serviceName: process.env.SWARM_SERVICE_NAME ?? "bun-repo-runner",
+    instanceId: process.env.SWARM_INSTANCE_ID ?? "bun-repo-runner-local",
+    containerName: process.env.HOSTNAME ?? "unknown",
+    repoRef: process.env.RUNNER_REPO_REF ?? "development",
+    repoUrl: process.env.RUNNER_REPO_URL ?? "",
+    appDir: process.env.RUNNER_APP_DIR ?? "",
+    ...extraDetails,
+  },
+};
 
-  local payload
-  local details_fragment
-  details_fragment="${details_json#\{}"
-  details_fragment="${details_fragment%\}}"
-  if [[ -n "$details_fragment" ]]; then
-    details_fragment=",${details_fragment}"
-  fi
-  payload="$(cat <<EOF
-{"workerId":"${SWARM_WORKER_ID}","instanceId":"${SWARM_WORKER_ID}","privateIp":"${SWARM_WORKER_PRIVATE_IP}","nodeRole":"worker","eventType":"${event_type}","eventTsMs":$(date +%s%3N),"details":{"namespace":"${SWARM_NAMESPACE:-root}","serviceName":"${SWARM_SERVICE_NAME:-bun-repo-runner}","instanceId":"${SWARM_INSTANCE_ID:-bun-repo-runner-local}","containerName":"${HOSTNAME:-unknown}","repoRef":"${RUNNER_REPO_REF}","repoUrl":"${RUNNER_REPO_URL}","appDir":"${RUNNER_APP_DIR}"${details_fragment}}}
-EOF
-)"
-  curl -sf \
-    --connect-timeout 2 \
-    --max-time 5 \
-    --retry 3 \
-    --retry-delay 1 \
-    --retry-connrefused \
-    -X POST "${SWARM_MANAGER_URL}/workers/events" \
-    -H 'content-type: application/json' \
-    -H "x-swarm-token: ${SWARM_MANAGER_TOKEN}" \
-    -d "$payload" >/dev/null || true
+const response = await fetch(`${process.env.SWARM_MANAGER_URL}/workers/events`, {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    "x-swarm-token": process.env.SWARM_MANAGER_TOKEN ?? "",
+  },
+  body: JSON.stringify(payload),
+}).catch((error) => {
+  console.error(`failed to emit ${eventType}`, error);
+  return null;
+});
+
+if (!response) {
+  process.exit(0);
+}
+
+if (!response.ok) {
+  const body = await response.text().catch(() => "");
+  console.error(`failed to emit ${eventType}: ${response.status} ${body}`);
+}
+' "$event_type" "$details_json" >/dev/null || true
 }
 
 if [[ ! -d "$RUNNER_REPO_DIR/.git" ]]; then
