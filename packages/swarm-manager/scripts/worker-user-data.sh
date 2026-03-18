@@ -6,6 +6,7 @@ INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.2
 LOCAL_IPV4=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
 MANAGER_EVENT_URL="http://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/workers/events"
 PENDING_EVENT_FILE="/opt/agent-swarm/pending-worker-events.jsonl"
+WORKER_IMAGE_PROFILE_PATH="/etc/agent-swarm/worker-image-profile.json"
 
 json_escape() {
   local value="$1"
@@ -83,22 +84,32 @@ EOF
 }
 
 emit_event cloud_init_started "{\"stage\":\"user-data\"}"
-REQUIRED_PACKAGES=(awscli docker jq unzip)
-MISSING_PACKAGES=()
-for package_name in "${REQUIRED_PACKAGES[@]}"; do
-  if ! rpm -q "$package_name" >/dev/null 2>&1; then
-    MISSING_PACKAGES+=("$package_name")
-  fi
-done
-PACKAGES_ALREADY_PRESENT=true
-if (( ${#MISSING_PACKAGES[@]} > 0 )); then
-  PACKAGES_ALREADY_PRESENT=false
+BAKED_RUNTIME_PROFILE=""
+if [[ -f "$WORKER_IMAGE_PROFILE_PATH" ]]; then
+  BAKED_RUNTIME_PROFILE="$(jq -r '.profile // ""' "$WORKER_IMAGE_PROFILE_PATH" 2>/dev/null || true)"
 fi
-emit_event packages_install_started "{\"packages\":[\"awscli\",\"docker\",\"jq\",\"unzip\"],\"missingPackageCount\":${#MISSING_PACKAGES[@]},\"alreadyInstalled\":$(json_bool "$PACKAGES_ALREADY_PRESENT")}"
-if (( ${#MISSING_PACKAGES[@]} > 0 )); then
+
+REQUIRED_PACKAGES=(aws docker jq unzip)
+MISSING_PACKAGES=()
+PACKAGES_ALREADY_PRESENT=true
+PACKAGES_SKIPPED=false
+if [[ -n "$BAKED_RUNTIME_PROFILE" ]]; then
+  PACKAGES_SKIPPED=true
+else
+  for package_name in "${REQUIRED_PACKAGES[@]}"; do
+    if ! command -v "$package_name" >/dev/null 2>&1; then
+      MISSING_PACKAGES+=("$package_name")
+    fi
+  done
+  if (( ${#MISSING_PACKAGES[@]} > 0 )); then
+    PACKAGES_ALREADY_PRESENT=false
+  fi
+fi
+emit_event packages_install_started "{\"packages\":[\"aws\",\"docker\",\"jq\",\"unzip\"],\"missingPackageCount\":${#MISSING_PACKAGES[@]},\"alreadyInstalled\":$(json_bool "$PACKAGES_ALREADY_PRESENT"),\"skipped\":$(json_bool "$PACKAGES_SKIPPED"),\"bakedProfile\":\"$BAKED_RUNTIME_PROFILE\"}"
+if [[ "$PACKAGES_SKIPPED" != "true" && ${#MISSING_PACKAGES[@]} -gt 0 ]]; then
   dnf install -y "${MISSING_PACKAGES[@]}"
 fi
-emit_event packages_install_completed "{\"packages\":[\"awscli\",\"docker\",\"jq\",\"unzip\"],\"missingPackageCount\":${#MISSING_PACKAGES[@]},\"alreadyInstalled\":$(json_bool "$PACKAGES_ALREADY_PRESENT")}"
+emit_event packages_install_completed "{\"packages\":[\"aws\",\"docker\",\"jq\",\"unzip\"],\"missingPackageCount\":${#MISSING_PACKAGES[@]},\"alreadyInstalled\":$(json_bool "$PACKAGES_ALREADY_PRESENT"),\"skipped\":$(json_bool "$PACKAGES_SKIPPED"),\"bakedProfile\":\"$BAKED_RUNTIME_PROFILE\"}"
 
 export HOME=/root
 export BUN_INSTALL=/opt/bun
@@ -106,12 +117,16 @@ BUN_ALREADY_PRESENT=false
 if [[ -x "$BUN_INSTALL/bin/bun" ]]; then
   BUN_ALREADY_PRESENT=true
 fi
-emit_event bun_install_started "{\"installDir\":\"$BUN_INSTALL\",\"alreadyInstalled\":$(json_bool "$BUN_ALREADY_PRESENT")}"
-if [[ "$BUN_ALREADY_PRESENT" != "true" ]]; then
+SKIP_BUN_INSTALL=false
+if [[ -n "$BAKED_RUNTIME_PROFILE" && "$BUN_ALREADY_PRESENT" == "true" ]]; then
+  SKIP_BUN_INSTALL=true
+fi
+emit_event bun_install_started "{\"installDir\":\"$BUN_INSTALL\",\"alreadyInstalled\":$(json_bool "$BUN_ALREADY_PRESENT"),\"skipped\":$(json_bool "$SKIP_BUN_INSTALL"),\"bakedProfile\":\"$BAKED_RUNTIME_PROFILE\"}"
+if [[ "$SKIP_BUN_INSTALL" != "true" && "$BUN_ALREADY_PRESENT" != "true" ]]; then
   curl -fsSL https://bun.sh/install | bash
 fi
 install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
-emit_event bun_install_completed "{\"binaryPath\":\"/usr/local/bin/bun\",\"alreadyInstalled\":$(json_bool "$BUN_ALREADY_PRESENT")}"
+emit_event bun_install_completed "{\"binaryPath\":\"/usr/local/bin/bun\",\"alreadyInstalled\":$(json_bool "$BUN_ALREADY_PRESENT"),\"skipped\":$(json_bool "$SKIP_BUN_INSTALL"),\"bakedProfile\":\"$BAKED_RUNTIME_PROFILE\"}"
 
 emit_event docker_enable_started "{}"
 systemctl enable --now docker

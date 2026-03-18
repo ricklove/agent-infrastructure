@@ -32,3 +32,16 @@ docker build \
 bun --version
 docker image inspect agent-swarm/bun-worker-base:latest >/dev/null
 docker image inspect agent-swarm/bun-repo-runner:latest >/dev/null
+
+mkdir -p /etc/agent-swarm
+cat > /etc/agent-swarm/worker-image-profile.json <<'PROFILE'
+{
+  "profile": "bun-worker",
+  "preinstalledPackages": ["aws", "docker", "jq", "unzip", "git"],
+  "bunInstalled": true,
+  "dockerImages": [
+    "agent-swarm/bun-worker-base:latest",
+    "agent-swarm/bun-repo-runner:latest"
+  ]
+}
+PROFILE
