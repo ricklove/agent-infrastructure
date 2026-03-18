@@ -19,7 +19,7 @@ fi
 usage() {
   cat <<'EOF'
 Usage:
-  launch-worker.sh [--instance-type t3.small] [--subnet-id subnet-...] [--image-id ami-...]
+  launch-worker.sh [--instance-type t3.small] [--subnet-id subnet-...] [--image-id ami-...] [--name agent-swarm-worker] [--tag Key=Value]
 
 Positional compatibility is retained:
   launch-worker.sh [instance-type] [subnet-id] [image-id]
@@ -29,6 +29,8 @@ EOF
 INSTANCE_TYPE=""
 SUBNET_ID=""
 IMAGE_ID_OVERRIDE=""
+INSTANCE_NAME="agent-swarm-worker"
+EXTRA_TAGS=()
 
 POSITIONAL_ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -43,6 +45,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --image-id)
       IMAGE_ID_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    --name)
+      INSTANCE_NAME="${2:-}"
+      shift 2
+      ;;
+    --tag)
+      EXTRA_TAGS+=("${2:-}")
       shift 2
       ;;
     -h|--help)
@@ -146,6 +156,16 @@ if [[ "$ROOT_DEVICE_VOLUME_SIZE" =~ ^[0-9]+$ ]] && (( ROOT_DEVICE_VOLUME_SIZE > 
 else
   WORKER_ROOT_VOLUME_SIZE="30"
 fi
+INSTANCE_TAG_SPEC="ResourceType=instance,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Role,Value=agent-swarm-worker},{Key=Name,Value=$INSTANCE_NAME}"
+for extra_tag in "${EXTRA_TAGS[@]}"; do
+  if [[ -z "$extra_tag" || "$extra_tag" != *=* ]]; then
+    continue
+  fi
+  extra_key="${extra_tag%%=*}"
+  extra_value="${extra_tag#*=}"
+  INSTANCE_TAG_SPEC+=",{Key=$extra_key,Value=$extra_value}"
+done
+INSTANCE_TAG_SPEC+="]"
 RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \
   --region "$REGION" \
   --image-id "$IMAGE_ID" \
@@ -156,7 +176,7 @@ RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \
   --security-group-ids "$SECURITY_GROUP_ID" \
   --subnet-id "$SUBNET_ID" \
   --user-data file://"$TEMP_USER_DATA" \
-  --tag-specifications "ResourceType=instance,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Role,Value=agent-swarm-worker},{Key=Name,Value=agent-swarm-worker}]" "ResourceType=volume,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Name,Value=agent-swarm-worker-volume}]")
+  --tag-specifications "$INSTANCE_TAG_SPEC" "ResourceType=volume,Tags=[{Key=$TAG_KEY,Value=$TAG_VALUE},{Key=Name,Value=${INSTANCE_NAME}-volume}]")
 
 INSTANCE_ID=$(printf '%s' "$RUN_INSTANCES_OUTPUT" | jq -r '.Instances[0].InstanceId')
 PRIVATE_IP=$(printf '%s' "$RUN_INSTANCES_OUTPUT" | jq -r '.Instances[0].PrivateIpAddress // ""')

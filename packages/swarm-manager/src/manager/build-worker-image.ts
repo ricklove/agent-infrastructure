@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   defaultWorkerImageProfileStorePath,
+  getWorkerImageProfile,
   promoteWorkerImageProfile,
 } from "./worker-image-profiles.js";
 
@@ -81,7 +82,7 @@ function runChecked(command: string[], cwd?: string): string {
   return result.stdout.toString("utf8").trim();
 }
 
-function lookupBaseAmiId(region: string): string {
+function lookupLatestAmazonLinuxAmiId(region: string): string {
   return runChecked([
     "aws",
     "ssm",
@@ -95,6 +96,24 @@ function lookupBaseAmiId(region: string): string {
     "--output",
     "text",
   ]).trim();
+}
+
+function resolveBaseAmiId(
+  explicitImageId: string | undefined,
+  profile: string,
+  region: string,
+  profileStorePath: string,
+): string {
+  if (explicitImageId?.trim()) {
+    return explicitImageId.trim();
+  }
+
+  const existingProfile = getWorkerImageProfile(profile, profileStorePath);
+  if (existingProfile?.imageId?.trim()) {
+    return existingProfile.imageId.trim();
+  }
+
+  return lookupLatestAmazonLinuxAmiId(region);
 }
 
 function parseArgs(argv: string[]): BuildWorkerImageConfig {
@@ -118,7 +137,6 @@ function parseArgs(argv: string[]): BuildWorkerImageConfig {
     optionalOne(argv, "instance-profile-arn") ??
     bootstrapContext.workerInstanceProfileArn?.trim() ??
     "";
-  const baseAmiId = optionalOne(argv, "base-ami-id");
   const builderInstanceType = optionalOne(argv, "builder-instance-type") ?? "t3.small";
   const profileStorePath =
     optionalOne(argv, "profile-store-path") ?? defaultWorkerImageProfileStorePath;
@@ -148,7 +166,12 @@ function parseArgs(argv: string[]): BuildWorkerImageConfig {
     subnetId,
     securityGroupId,
     instanceProfileArn,
-    baseAmiId: baseAmiId?.trim() || lookupBaseAmiId(region),
+    baseAmiId: resolveBaseAmiId(
+      optionalOne(argv, "base-ami-id"),
+      profile,
+      region,
+      profileStorePath,
+    ),
     builderInstanceType,
     profileStorePath,
   };

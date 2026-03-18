@@ -17,9 +17,9 @@ Usage:
     [--builder-instance-type t3.small] \
     [--image-name agent-swarm-bun-worker-2026-03-18]
 
-This launches a temporary builder EC2, provisions it with the paired
-`provision.sh`, creates an AMI, waits for it to become available, then
-terminates the builder.
+This launches a normal worker candidate from the source worker image,
+provisions it with the paired `provision.sh`, creates an AMI, waits for
+it to become available, then terminates the candidate.
 EOF
 }
 
@@ -232,22 +232,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-RUN_OUTPUT="$(aws ec2 run-instances \
-  --region "$REGION" \
-  --image-id "$BASE_AMI_ID" \
+RUN_OUTPUT="$(bash /opt/agent-swarm/launch-worker.sh \
   --instance-type "$BUILDER_INSTANCE_TYPE" \
-  "${INSTANCE_PROFILE_ARG[@]}" \
-  --subnet-id "$SUBNET_ID" \
-  --security-group-ids "$SECURITY_GROUP_ID" \
-  --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${WORKFLOW_NAME}-builder},{Key=Role,Value=agent-swarm-worker-image-builder},{Key=WorkerImageWorkflow,Value=${WORKFLOW_NAME}}]" \
-  --query '{instanceId:Instances[0].InstanceId}' \
-  --output json)"
+  --image-id "$BASE_AMI_ID" \
+  --name "${WORKFLOW_NAME}-builder" \
+  --tag "WorkerImageWorkflow=${WORKFLOW_NAME}" \
+  --tag "WorkerImageCandidate=true")"
 
-BUILDER_INSTANCE_ID="$(printf '%s' "$RUN_OUTPUT" | jq -r '.instanceId')"
-
-aws ec2 wait instance-running \
-  --region "$REGION" \
-  --instance-ids "$BUILDER_INSTANCE_ID"
+BUILDER_INSTANCE_ID="$(printf '%s' "$RUN_OUTPUT" | jq -r '.Instances[0].InstanceId')"
 
 wait_for_ssm "$BUILDER_INSTANCE_ID" "$REGION" >/dev/null
 
