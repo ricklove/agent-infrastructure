@@ -1,90 +1,56 @@
-/// <reference path="./_agentish.d.ts" />
-
-const Agentish = define.language('Agentish', {
-  purpose: 'ConceptualSystemDefinition'
-});
-
-const AgentishGraphConcept = define.entity('AgentishGraphConcept', {
-  format: Agentish,
-  describes: 'PurposeMeaningAndCoreInvariantsOfAgentishGraph'
-});
-
-const Human = define.actor('Human', {
-  role: 'ReaderAndEditorOfAgentishSystems'
-});
-const GraphSystem = define.system('AgentishGraphSystem', {
-  role: 'VisualProjectionAndEditingSystem'
-});
-
-const Source = {
-  document: define.entity('AgentishDocument', { format: Agentish }),
-  documentSet: define.entity('AgentishDocumentSet', { actsAs: 'WorkspaceSource' }),
-  semanticModel: define.entity('SemanticModel', { actsAs: 'NormalizedMeaningLayer' }),
-  stableIdentity: define.entity('StableIdentity')
-};
-
-const Projection = {
-  workspace: define.entity('GraphWorkspace', { actsAs: 'HumanEditableProjection' }),
-  layer: define.entity('GraphLayer'),
-  node: define.entity('GraphNode'),
-  edge: define.entity('GraphEdge'),
-  portal: define.entity('PortalEdge'),
-  selection: define.entity('SelectionState'),
-  layoutHint: define.entity('LayoutHint')
-};
-
-const Editing = {
-  intent: define.entity('EditIntent'),
-  mutation: define.entity('SourceMutation'),
-  conflict: define.entity('EditConflict'),
-  validation: define.entity('ValidationResult')
-};
-
-const Principles = {
-  sourceAuthority: define.concept('SourceAuthority'),
-  derivedProjection: define.concept('DerivedProjection'),
-  roundTripEditing: define.concept('RoundTripEditing'),
-  stableIdentity: define.concept('StableIdentityAcrossRefresh'),
-  surfacedConflicts: define.concept('SurfacedConflicts')
-};
-
-AgentishGraphConcept.contains(Source.documentSet, Source.semanticModel, Projection.workspace, Editing.intent);
-
-GraphSystem.reads(Source.documentSet);
-GraphSystem.derives(Source.semanticModel).from(Source.documentSet);
-GraphSystem.derives(Projection.workspace).from(Source.semanticModel, Projection.layoutHint);
-GraphSystem.derives(Editing.mutation).from(Editing.intent, Source.documentSet);
-
-Projection.workspace.contains(
-  Projection.layer,
-  Projection.node,
-  Projection.edge,
-  Projection.portal,
-  Projection.selection
-);
-
-AgentishGraphConcept.enforces(
-  Principles.sourceAuthority,
-  Principles.derivedProjection,
-  Principles.roundTripEditing,
-  Principles.stableIdentity,
-  Principles.surfacedConflicts
-);
-
-Principles.sourceAuthority.means('AgentishDocumentsRemainTheSourceOfTruth');
-Principles.derivedProjection.means('GraphWorkspaceIsDerivedFromSourceMeaningRatherThanBeingIndependentTruth');
-Principles.roundTripEditing.means('HumanEditsInTheGraphMustResolveBackIntoSourceMutations');
-Principles.stableIdentity.means('TheSameMeaningShouldReappearAsTheSameVisualIdentityAcrossRefresh');
-Principles.surfacedConflicts.means('AmbiguityAndExternalChangeMustBeShownToTheHumanRatherThanHidden');
-
-when(Human.opens(Source.documentSet))
-  .then(GraphSystem.understands(Source.documentSet))
-  .and(GraphSystem.projects(Projection.workspace));
-
-when(Human.edits(Projection.workspace))
-  .then(GraphSystem.derives(Editing.intent))
-  .and(GraphSystem.returnsTo(Source.documentSet).through(Editing.mutation));
-
-when(GraphSystem.detects(Editing.conflict))
-  .then(GraphSystem.exposes(Editing.conflict).to(Human))
-  .and(GraphSystem.protects(Source.documentSet).through(Principles.sourceAuthority));
+export const agentishGraphConcept = {
+  id: "agentish-graph",
+  purpose:
+    "Project any Agentish document set into a human-editable visual graph without losing source authority.",
+  sourceOfTruth: "AgentishDocumentSet",
+  primaryActors: ["human-reader-editor"] as const,
+  coreModel: {
+    source: ["AgentishDocument", "AgentishDocumentSet"] as const,
+    normalized: ["SemanticModel", "StableIdentity"] as const,
+    projection: [
+      "GraphWorkspace",
+      "GraphLayer",
+      "GraphNode",
+      "GraphEdge",
+      "PortalEdge",
+      "SelectionState",
+      "LayoutHint",
+    ] as const,
+    editing: [
+      "EditIntent",
+      "SourceMutation",
+      "ValidationResult",
+      "EditConflict",
+    ] as const,
+  },
+  truths: {
+    authoritative: ["source-documents"] as const,
+    derived: ["semantic-model", "graph-workspace"] as const,
+    preservedAcrossRefresh: ["stable-identity", "manual-layout-intent"] as const,
+  },
+  invariants: [
+    "Documents remain authoritative; the graph never becomes an independent truth source.",
+    "Projection is derived from source meaning plus layout hints.",
+    "All graph edits must resolve into source mutations or explicit conflicts.",
+    "Equivalent semantic meaning should preserve visual identity across refresh.",
+    "Conflicts and ambiguity must be surfaced, never hidden.",
+  ] as const,
+  capabilities: [
+    "visualize one or more Agentish documents as a graph workspace",
+    "inspect semantic structure without reading raw source first",
+    "edit structure through the graph and round-trip into source",
+    "persist manual layout intent across reprojection",
+    "react to out-of-band source changes",
+  ] as const,
+  nonGoals: [
+    "making the graph the authoritative storage layer",
+    "allowing silent lossy edits",
+    "embedding parser or mutation authority in the browser",
+  ] as const,
+  pipeline: [
+    "documents -> semantic model",
+    "semantic model + layout hints -> projection",
+    "graph edits -> edit intents -> source mutations",
+    "source mutations -> validation -> reprojection",
+  ] as const,
+} as const;
