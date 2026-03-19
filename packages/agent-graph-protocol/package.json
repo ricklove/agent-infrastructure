@@ -1,0 +1,20 @@
+{
+  "name": "@agent-infrastructure/agent-graph-protocol",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./http": "./src/http.ts",
+    "./ws": "./src/ws.ts"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json --noEmit",
+    "check": "tsc --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agent-infrastructure/agent-graph-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

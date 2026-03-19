@@ -1,0 +1,85 @@
+import { observable } from "@legendapp/state";
+import type {
+  ConflictPayload,
+  GraphDiffSnapshot,
+  GraphEdge,
+  GraphNode,
+  GraphSnapshot,
+  GraphIntent,
+  ValidationPayload,
+  WorkspaceSnapshot,
+} from "@agent-infrastructure/agent-graph-core";
+
+export type AgentGraphStoreState = {
+  connection: {
+    status: "idle" | "loading" | "ready" | "error";
+    serverOrigin: string;
+    error: string | null;
+  };
+  workspace: WorkspaceSnapshot | null;
+  graph: GraphSnapshot | null;
+  diff: GraphDiffSnapshot | null;
+  selection: {
+    nodeId: string | null;
+    edgeId: string | null;
+  };
+  inspection: {
+    derivedEdgePathIds: string[];
+    revealedPortalIds: string[];
+  };
+  validation: ValidationPayload | null;
+  conflict: ConflictPayload | null;
+  pendingIntents: string[];
+};
+
+export type AgentGraphStore = ReturnType<typeof createAgentGraphStore>;
+
+export function createAgentGraphStore(serverOrigin: string) {
+  const state$ = observable<AgentGraphStoreState>({
+    connection: {
+      status: "idle",
+      serverOrigin,
+      error: null,
+    },
+    workspace: null,
+    graph: null,
+    diff: null,
+    selection: {
+      nodeId: null,
+      edgeId: null,
+    },
+    inspection: {
+      derivedEdgePathIds: [],
+      revealedPortalIds: [],
+    },
+    validation: null,
+    conflict: null,
+    pendingIntents: [],
+  });
+
+  return { state$ };
+}
+
+export function findSelectedNode(state: AgentGraphStoreState): GraphNode | null {
+  if (!state.graph || !state.selection.nodeId) {
+    return null;
+  }
+
+  return state.graph.nodes.find((node) => node.id === state.selection.nodeId) ?? null;
+}
+
+export function findSelectedEdge(state: AgentGraphStoreState): GraphEdge | null {
+  if (!state.graph || !state.selection.edgeId) {
+    return null;
+  }
+
+  return state.graph.edges.find((edge) => edge.id === state.selection.edgeId) ?? null;
+}
+
+export function nextIntentId(prefix: string): string {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function queueIntent(state$: AgentGraphStore["state$"], intent: GraphIntent): void {
+  state$.pendingIntents.set([...state$.pendingIntents.get(), "intentId" in intent ? intent.intentId : intent.kind]);
+}
