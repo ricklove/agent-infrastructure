@@ -1,13 +1,13 @@
 export type Brand<T, Name extends string> = T & { readonly __brand: Name };
 
 export type StableId = Brand<string, "StableId">;
-export type Revision = number;
-export type MutationId = string;
-export type ConflictId = string;
-export type SessionId = string;
-export type SessionToken = string;
-export type RootId = string;
-export type DocumentPath = string;
+export type Revision = Brand<number, "Revision">;
+export type MutationId = Brand<string, "MutationId">;
+export type ConflictId = Brand<string, "ConflictId">;
+export type SessionId = Brand<string, "SessionId">;
+export type SessionToken = Brand<string, "SessionToken">;
+export type RootId = Brand<string, "RootId">;
+export type DocumentPath = Brand<string, "DocumentPath">;
 
 export type AttributeValue = string | number | boolean | null;
 export type Point = { x: number; y: number };
@@ -22,7 +22,7 @@ type HandleConnection = {
   targetHandleId: HandleRef;
 };
 type DraftConnection = HandleConnection & { relationshipKind: string };
-type WorkspaceSnapshot = {
+export type WorkspaceSnapshot = {
   root: WorkspaceRootConfig | null;
   fileTree: WorkspaceEntry[];
   openDocuments: AgentishDocumentText[];
@@ -272,7 +272,7 @@ export type GraphConflict = {
   message: string;
   entityIds: StableId[];
   documentIds: StableId[];
-  suggestedResolution: "reload" | "manual-edit" | "discard-local-intent";
+  suggestedResolution: GraphConflictResolutionChoice;
 };
 
 export type GraphServerConfigResponse = {
@@ -311,6 +311,11 @@ export type CloseSessionResponse = {
   closed: true;
   sessionId: SessionId;
 };
+
+export type GraphConflictResolutionChoice =
+  | "reload"
+  | "manual-edit"
+  | "discard-local-intent";
 
 export type GraphHttpContracts = {
   "GET /api/agentish-graph/config": {
@@ -358,6 +363,7 @@ export type WsServerEnvelope =
   | Message<"server/error", { code: string; message: string }>
   | Message<"server/pong", { at: number }>;
 
+export type ServerReadyMessage = Extract<WsServerEnvelope, { type: "server/ready" }>;
 export type WorkspaceSnapshotMessage = Extract<
   WsServerEnvelope,
   { type: "server/workspace-snapshot" }
@@ -367,6 +373,20 @@ export type ProjectionSnapshotMessage = Extract<
   WsServerEnvelope,
   { type: "server/projection-snapshot" }
 >;
+export type ProjectionPatchMessage = Extract<
+  WsServerEnvelope,
+  { type: "server/projection-patch" }
+>;
+export type FileChangedMessage = Extract<
+  WsServerEnvelope,
+  { type: "server/file-changed" }
+>;
+export type DocumentPatchedMessage = Extract<
+  WsServerEnvelope,
+  { type: "server/document-patched" }
+>;
+export type ServerErrorMessage = Extract<WsServerEnvelope, { type: "server/error" }>;
+export type PongMessage = Extract<WsServerEnvelope, { type: "server/pong" }>;
 
 export type ConnectionState = "idle" | "connecting" | "open" | "closed" | "error";
 export type SyncStatus = "idle" | "syncing" | "dirty" | "conflicted";
@@ -465,19 +485,17 @@ export type AgentishGraphStoreActions = {
     sessionToken: SessionToken;
     wsUrl: string;
   }): Promise<void>;
-  applyServerReady(message: Extract<WsServerEnvelope, { type: "server/ready" }>): void;
+  applyServerReady(message: ServerReadyMessage): void;
   applyWorkspaceSnapshot(message: WorkspaceSnapshotMessage): void;
   applyProjectionSnapshot(message: ProjectionSnapshotMessage): void;
-  applyServerPatch(message: Extract<WsServerEnvelope, { type: "server/projection-patch" }>): void;
+  applyServerPatch(message: ProjectionPatchMessage): void;
   applyValidationIssues(issues: ValidationIssue[]): void;
   applyConflict(conflict: GraphConflict): void;
-  handleFileChange(message: Extract<WsServerEnvelope, { type: "server/file-changed" }>): void;
-  acknowledgeDocumentPatched(
-    message: Extract<WsServerEnvelope, { type: "server/document-patched" }>,
-  ): void;
-  applyServerError(message: Extract<WsServerEnvelope, { type: "server/error" }>): void;
+  handleFileChange(message: FileChangedMessage): void;
+  acknowledgeDocumentPatched(message: DocumentPatchedMessage): void;
+  applyServerError(message: ServerErrorMessage): void;
   sendPing(at: number): void;
-  receivePong(message: Extract<WsServerEnvelope, { type: "server/pong" }>): void;
+  receivePong(message: PongMessage): void;
   openRoot(rootId: RootId): void;
   openDocument(paths: DocumentPath[], activeDocumentPath?: DocumentPath | null): void;
   saveDocuments(documentIds: StableId[]): void;
@@ -491,7 +509,7 @@ export type AgentishGraphStoreActions = {
   queueGraphIntent(intent: GraphMutationIntent): void;
   resolveConflict(resolution: {
     conflictId: ConflictId;
-    choice: GraphConflict["suggestedResolution"];
+    choice: GraphConflictResolutionChoice;
   }): void;
   persistLayoutHint(hint: GraphLayoutHint): void;
 };
