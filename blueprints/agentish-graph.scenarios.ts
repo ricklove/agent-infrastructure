@@ -51,90 +51,71 @@ AgentishGraphScenarios.contains(
   Scenario.resolveConflict,
 );
 
-Scenario.openWorkspace.requires(
-  "A workspace root or document set is available to open.",
-);
-when(Human.opens(Source.documentSet).through(Scenario.openWorkspace))
+Scenario.openWorkspace
+  .given("A workspace root or document set is available to open.")
+  .when(Human.opens(Source.documentSet))
   .then(GraphSystem.loads(Graph.workspace))
   .and(GraphSystem.projects(Graph.node, Graph.edge, Graph.portal))
-  .and(
-    Scenario.openWorkspace.succeeds(`- The workspace is visible.
-- The projection matches source structure.`),
-  );
+  .succeeds(`- The workspace is visible.
+- The projection matches source structure.`);
 
-Scenario.inspectNode.requires("A projected node is visible and selectable.");
-when(Human.selects(Graph.node).through(Scenario.inspectNode))
+Scenario.inspectNode
+  .given("A projected node is visible and selectable.")
+  .when(Human.selects(Graph.node))
   .then(GraphSystem.updates(Graph.selection))
   .and(GraphSystem.reveals("semantic details"))
-  .and(Scenario.inspectNode.succeeds("Meaning is inspectable without raw source."));
+  .succeeds("Meaning is inspectable without raw source.");
 
-Scenario.editNode.requires("A projected node exposes an editable label or attribute.");
-when(Human.edits(Graph.node).through(Scenario.editNode))
+Scenario.editNode
+  .given("A projected node exposes an editable label or attribute.")
+  .when(Human.edits(Graph.node))
   .then(GraphSystem.derives("edit intent"))
   .and(GraphSystem.derives("validation result"))
-  .and(Scenario.editNode.succeeds("The visual edit round-trips into source."))
-  .and(
-    Scenario.editNode.preserves(
-      "Identity and manual layout are preserved when possible.",
-    ),
-  )
-  .and(Scenario.editNode.conflictsAs("Conflicts are visible instead of silent writes."));
-
-when(GraphSystem.accepts("validation result").through(Scenario.editNode))
+  .whenAccepted("validation result")
   .then(GraphSystem.applies(Source.mutation))
-  .and(GraphSystem.reprojects(Graph.workspace));
+  .and(GraphSystem.reprojects(Graph.workspace))
+  .succeeds("The visual edit round-trips into source.")
+  .preserves("Identity and manual layout are preserved when possible.")
+  .conflictsAs("Conflicts are visible instead of silent writes.");
 
-Scenario.connectNodes.requires(
-  "Two compatible handles are visible or discoverable in the graph.",
-);
-when(Human.connects(Graph.node).to(Graph.node).through(Scenario.connectNodes))
+Scenario.connectNodes
+  .given("Two compatible handles are visible or discoverable in the graph.")
+  .when(Human.connects(Graph.node).to(Graph.node))
   .then(GraphSystem.derives("relation creation intent"))
   .and(GraphSystem.derives("validation result"))
-  .and(
-    Scenario.connectNodes.succeeds(`- The connection becomes a source relationship.
-- A cross-layer relation appears as a portal.`),
-  )
-  .and(
-    Scenario.connectNodes.conflictsAs(
-      "An invalid or ambiguous target is surfaced.",
-    ),
-  );
-
-when(GraphSystem.accepts("validation result").through(Scenario.connectNodes))
+  .whenAccepted("validation result")
   .then(GraphSystem.applies(Source.mutation))
-  .and(GraphSystem.reprojects(Graph.edge, Graph.portal));
+  .and(GraphSystem.reprojects(Graph.edge, Graph.portal))
+  .succeeds(`- The connection becomes a source relationship.
+- A cross-layer relation appears as a portal.`)
+  .conflictsAs("An invalid or ambiguous target is surfaced.");
 
-Scenario.moveNode.requires("A projected node is draggable.");
-when(Human.drags(Graph.node).through(Scenario.moveNode))
+Scenario.moveNode
+  .given("A projected node is draggable.")
+  .when(Human.drags(Graph.node))
   .then(GraphSystem.records(Graph.layoutHint))
   .and(GraphSystem.reprojects(Graph.workspace))
-  .and(Scenario.moveNode.succeeds("Manual layout persists across refresh."))
-  .and(Scenario.moveNode.preserves("Source meaning is preserved."));
+  .succeeds("Manual layout persists across refresh.")
+  .preserves("Source meaning is preserved.");
 
-Scenario.externalChange.requires(
-  "A projected document changes outside the current graph session.",
-);
-when(ExternalEditor.mutates(Source.document).through(Scenario.externalChange))
+Scenario.externalChange
+  .given("A projected document changes outside the current graph session.")
+  .when(ExternalEditor.mutates(Source.document))
   .then(GraphSystem.detects("external source change"))
   .and(GraphSystem.reprojects(Graph.workspace))
-  .and(Scenario.externalChange.succeeds("The graph reflects out-of-band edits."))
-  .and(
-    Scenario.externalChange.preserves(
-      "Selection and viewport are preserved when safe.",
-    ),
-  )
-  .and(
-    Scenario.externalChange.conflictsAs(
-      "A pending mutation that loses its target is surfaced.",
-    ),
-  );
+  .succeeds("The graph reflects out-of-band edits.")
+  .preserves("Selection and viewport are preserved when safe.")
+  .conflictsAs("A pending mutation that loses its target is surfaced.");
 
-Scenario.resolveConflict.requires(
-  "A mutation loses its target or conflicts with a newer source revision.",
-);
-when(GraphSystem.detects(Source.conflict).through(Scenario.resolveConflict))
+Scenario.resolveConflict
+  .given("A mutation loses its target or conflicts with a newer source revision.")
+  .when(GraphSystem.detects(Source.conflict))
   .then(GraphSystem.surfaces(Source.conflict).to(Human))
   .and(GraphSystem.pauses("the affected mutation path"))
-  .and(GraphSystem.requests(Human, { toChoose: "reload, manual edit, or discard local intent" }))
-  .and(Scenario.resolveConflict.succeeds("The conflict is visible and explicitly resolved."))
-  .and(Scenario.resolveConflict.protects("Source authority is protected."));
+  .and(
+    GraphSystem.requests(Human, {
+      toChoose: "reload, manual edit, or discard local intent",
+    }),
+  )
+  .succeeds("The conflict is visible and explicitly resolved.")
+  .protects("Source authority is protected.");
