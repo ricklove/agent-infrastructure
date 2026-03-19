@@ -90,7 +90,10 @@ Decision.mutation.defines(`- Graph mutation intent is the only client write prim
 - Deleting elements removes the owning source declarations or relationships.`);
 Decision.conflicts.defines(`- Conflicts pause the pending mutation queue.
 - A mutation that loses its target becomes a surfaced conflict instead of a silent drop.
-- Conflict resolution choices are reload, manual edit, or discard local intent.`);
+- Conflict resolution choices are reload, manual edit, or discard local intent.
+- Reload replaces stale client state with a fresh snapshot.
+- Discard local intent clears the blocked mutation without mutating source.
+- Manual edit preserves the conflict until the source meaning changes or the user abandons the edit.`);
 Decision.session.defines(`- There is one writable session per workspace root.
 - A missing patch revision forces a full snapshot reload.
 - The server remains authoritative for revision ordering and patch acceptance.`);
@@ -125,6 +128,18 @@ when(GraphSystem.accepts(Editing.validation))
 when(GraphSystem.rejects(Editing.validation))
   .then(GraphSystem.surfaces(Editing.conflict).to(Browser))
   .and(GraphSystem.protects(Source.documentSet));
+
+when(Browser.resolves(Editing.conflict).with("reload"))
+  .then(GraphSystem.reloads("full snapshot"))
+  .and(GraphSystem.replaces("stale client projection state"));
+
+when(Browser.resolves(Editing.conflict).with("discard local intent"))
+  .then(GraphSystem.discards("the blocked local mutation"))
+  .and(GraphSystem.protects(Source.documentSet));
+
+when(Browser.resolves(Editing.conflict).with("manual edit"))
+  .then(GraphSystem.keeps(Editing.conflict).visibleTo(Browser))
+  .and(GraphSystem.waitsFor("source meaning to change"));
 
 when(GraphSystem.detects("external source change"))
   .then(GraphSystem.derives(Source.semanticModel))

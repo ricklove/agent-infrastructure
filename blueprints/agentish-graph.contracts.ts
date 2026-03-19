@@ -457,6 +457,13 @@ export type AgentishGraphStoreActions = {
   }): Promise<void>;
   applyServerSnapshot(snapshot: GetSessionSnapshotResponse): void;
   applyServerPatch(message: Extract<WsServerEnvelope, { type: "server/projection-patch" }>): void;
+  applyValidationIssues(issues: ValidationIssue[]): void;
+  applyConflict(conflict: GraphConflict): void;
+  handleFileChange(message: Extract<WsServerEnvelope, { type: "server/file-changed" }>): void;
+  acknowledgeDocumentPatched(
+    message: Extract<WsServerEnvelope, { type: "server/document-patched" }>,
+  ): void;
+  receivePong(message: Extract<WsServerEnvelope, { type: "server/pong" }>): void;
   openRoot(rootId: RootId): void;
   openDocument(paths: DocumentPath[], activeDocumentPath?: DocumentPath | null): void;
   saveDocuments(documentIds: StableId[]): void;

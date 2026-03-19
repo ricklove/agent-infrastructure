@@ -72,8 +72,6 @@ Scenario.editNode.requires("A projected node exposes an editable label or attrib
 when(Human.edits(Graph.node).through(Scenario.editNode))
   .then(GraphSystem.derives("edit intent"))
   .and(GraphSystem.derives("validation result"))
-  .and(GraphSystem.applies(Source.mutation))
-  .and(GraphSystem.reprojects(Graph.workspace))
   .and(Scenario.editNode.succeeds("The visual edit round-trips into source."))
   .and(
     Scenario.editNode.preserves(
@@ -82,14 +80,16 @@ when(Human.edits(Graph.node).through(Scenario.editNode))
   )
   .and(Scenario.editNode.conflictsAs("Conflicts are visible instead of silent writes."));
 
+when(GraphSystem.accepts("validation result").through(Scenario.editNode))
+  .then(GraphSystem.applies(Source.mutation))
+  .and(GraphSystem.reprojects(Graph.workspace));
+
 Scenario.connectNodes.requires(
   "Two compatible handles are visible or discoverable in the graph.",
 );
 when(Human.connects(Graph.node).to(Graph.node).through(Scenario.connectNodes))
   .then(GraphSystem.derives("relation creation intent"))
   .and(GraphSystem.derives("validation result"))
-  .and(GraphSystem.applies(Source.mutation))
-  .and(GraphSystem.reprojects(Graph.edge, Graph.portal))
   .and(
     Scenario.connectNodes.succeeds(`- The connection becomes a source relationship.
 - A cross-layer relation appears as a portal.`),
@@ -99,6 +99,10 @@ when(Human.connects(Graph.node).to(Graph.node).through(Scenario.connectNodes))
       "An invalid or ambiguous target is surfaced.",
     ),
   );
+
+when(GraphSystem.accepts("validation result").through(Scenario.connectNodes))
+  .then(GraphSystem.applies(Source.mutation))
+  .and(GraphSystem.reprojects(Graph.edge, Graph.portal));
 
 Scenario.moveNode.requires("A projected node is draggable.");
 when(Human.drags(Graph.node).through(Scenario.moveNode))
@@ -131,6 +135,6 @@ Scenario.resolveConflict.requires(
 when(GraphSystem.detects(Source.conflict).through(Scenario.resolveConflict))
   .then(GraphSystem.surfaces(Source.conflict).to(Human))
   .and(GraphSystem.pauses("the affected mutation path"))
-  .and(GraphSystem.requests(Human, { toChoose: "reload or discard local intent" }))
+  .and(GraphSystem.requests(Human, { toChoose: "reload, manual edit, or discard local intent" }))
   .and(Scenario.resolveConflict.succeeds("The conflict is visible and explicitly resolved."))
   .and(Scenario.resolveConflict.protects("Source authority is protected."));

@@ -95,6 +95,7 @@ CodeArchitecture.prescribes(`- The Vite app contains no business logic.
 - The server is authoritative for projection and mutation results.
 - The store contains client session state only.
 - The UI never plans source mutations.
+- Conflict resolution is orchestrated by store actions rather than by a dedicated transport message.
 - The protocol owns all cross-boundary contracts.`);
 
 const File = {
@@ -237,6 +238,11 @@ const Action = {
   connectSocket: define.entity("ConnectSocket"),
   applyServerSnapshot: define.entity("ApplyServerSnapshot"),
   applyServerPatch: define.entity("ApplyServerPatch"),
+  applyValidationIssues: define.entity("ApplyValidationIssues"),
+  applyConflict: define.entity("ApplyConflict"),
+  handleFileChange: define.entity("HandleFileChange"),
+  acknowledgeDocumentPatched: define.entity("AcknowledgeDocumentPatched"),
+  receivePong: define.entity("ReceivePong"),
   openRoot: define.entity("OpenRoot"),
   openDocument: define.entity("OpenDocument"),
   saveDocuments: define.entity("SaveDocuments"),
@@ -259,6 +265,11 @@ File.storeActions.implements(
   Action.connectSocket,
   Action.applyServerSnapshot,
   Action.applyServerPatch,
+  Action.applyValidationIssues,
+  Action.applyConflict,
+  Action.handleFileChange,
+  Action.acknowledgeDocumentPatched,
+  Action.receivePong,
   Action.openRoot,
   Action.openDocument,
   Action.saveDocuments,
@@ -285,10 +296,12 @@ State.workspace.updatedBy(
   Action.openDocument,
   Action.applyServerSnapshot,
   Action.applyServerPatch,
+  Action.handleFileChange,
 );
 State.graph.updatedBy(
   Action.applyServerSnapshot,
   Action.applyServerPatch,
+  Action.handleFileChange,
   Action.setSelection,
   Action.setViewport,
   Action.persistLayoutHint,
@@ -298,11 +311,15 @@ State.inspector.updatedBy(
   Action.setSelection,
   Action.beginInspectorEdit,
   Action.commitInspectorDraft,
+  Action.applyValidationIssues,
+  Action.applyConflict,
   Action.resolveConflict,
 );
 State.ui.updatedBy(Action.bootstrapConfig);
 State.io.updatedBy(
   Action.connectSocket,
+  Action.acknowledgeDocumentPatched,
+  Action.receivePong,
   Action.queueGraphIntent,
   Action.applyServerPatch,
   Action.resolveConflict,
@@ -418,6 +435,11 @@ Action.openDocument.sends(Message.clientOpenDocuments);
 Action.saveDocuments.sends(Message.clientSaveDocuments);
 Action.queueGraphIntent.sends(Message.clientApplyIntent);
 Action.persistLayoutHint.sends(Message.clientPersistLayout);
+Action.resolveConflict.calls(Route.sessionSnapshot).when("the choice is reload");
+Action.createNode.feeds(Action.queueGraphIntent);
+Action.connectHandles.feeds(Action.queueGraphIntent);
+Action.deleteSelection.feeds(Action.queueGraphIntent);
+Action.commitInspectorDraft.feeds(Action.queueGraphIntent);
 Action.connectSocket.receives(
   Message.serverReady,
   Message.serverWorkspaceSnapshot,
@@ -430,6 +452,14 @@ Action.connectSocket.receives(
   Message.serverError,
   Message.serverPong,
 );
+Message.serverWorkspaceSnapshot.drives(Action.applyServerSnapshot);
+Message.serverProjectionSnapshot.drives(Action.applyServerSnapshot);
+Message.serverProjectionPatch.drives(Action.applyServerPatch);
+Message.serverValidation.drives(Action.applyValidationIssues);
+Message.serverConflict.drives(Action.applyConflict);
+Message.serverFileChanged.drives(Action.handleFileChange);
+Message.serverDocumentPatched.drives(Action.acknowledgeDocumentPatched);
+Message.serverPong.drives(Action.receivePong);
 
 Server.serves(Transport.http, Transport.ws);
 Server.authenticates("bearer session token");
