@@ -71,6 +71,7 @@ when(Human.selects(Graph.node).through(Scenario.inspectNode))
 Scenario.editNode.requires("A projected node exposes an editable label or attribute.");
 when(Human.edits(Graph.node).through(Scenario.editNode))
   .then(GraphSystem.derives("edit intent"))
+  .and(GraphSystem.derives("validation result"))
   .and(GraphSystem.applies(Source.mutation))
   .and(GraphSystem.reprojects(Graph.workspace))
   .and(Scenario.editNode.succeeds("The visual edit round-trips into source."))
@@ -86,6 +87,7 @@ Scenario.connectNodes.requires(
 );
 when(Human.connects(Graph.node).to(Graph.node).through(Scenario.connectNodes))
   .then(GraphSystem.derives("relation creation intent"))
+  .and(GraphSystem.derives("validation result"))
   .and(GraphSystem.applies(Source.mutation))
   .and(GraphSystem.reprojects(Graph.edge, Graph.portal))
   .and(

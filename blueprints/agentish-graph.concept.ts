@@ -106,8 +106,11 @@ when(Human.opens(Source.documentSet))
 when(Human.edits(Projection.workspace))
   .then(GraphSystem.derives(Editing.intent))
   .and(GraphSystem.derives(Editing.mutation))
-  .and(GraphSystem.derives(Editing.validation))
-  .and(GraphSystem.applies(Editing.mutation).to(Source.documentSet));
+  .and(GraphSystem.derives(Editing.validation));
+
+when(GraphSystem.accepts(Editing.validation))
+  .then(GraphSystem.applies(Editing.mutation).to(Source.documentSet))
+  .and(GraphSystem.projects(Projection.workspace));
 
 when(GraphSystem.encounters(Editing.conflict))
   .then(GraphSystem.surfaces(Editing.conflict).to(Human))
