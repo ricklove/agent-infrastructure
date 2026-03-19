@@ -21,12 +21,15 @@ const Source = {
 
 const Graph = {
   whole: define.workspace("WholeGraphWorkspace"),
+  plane: define.concept("SharedWorkspacePlane"),
   layer: define.graphLayer("UserLayer"),
+  layerGroup: define.concept("InvisibleLayerParentRegion"),
   node: define.graphNode("GraphNode"),
   edge: define.graphEdge("DirectEdge"),
   derivedEdge: define.graphEdge("DerivedEdge"),
   hiddenContext: define.portal("HiddenContextPortal"),
   diffLayer: define.graphLayer("DiffLayer"),
+  completeness: define.truth("TrustworthyCompleteness"),
 };
 
 const Editing = {
@@ -43,6 +46,37 @@ AgentGraph.enforces(`
 - Edits may begin from any visible layer.
 - External change and conflict handling are first-class.
 - Source documents remain authoritative.
+`);
+
+Graph.whole.contains(
+  Graph.plane,
+  Graph.layer,
+  Graph.node,
+  Graph.edge,
+  Graph.derivedEdge,
+  Graph.hiddenContext,
+  Graph.diffLayer,
+);
+
+Graph.layer.contains(Graph.layerGroup);
+
+AgentGraph.defines(`
+- One complete underlying semantic graph exists for the whole workspace.
+- The user never works with separate truths; every visible layer is a slice of that same graph.
+- All user layers are rendered together in one shared workspace plane.
+- Each user layer is grouped under its own invisible parent region so whole layers can move independently.
+- Direct edges represent relationships visible directly in the current visible graph.
+- Derived edges represent meaningful visible-to-visible relationships that run through hidden intermediate context.
+- Hidden-context portals indicate connected elements that are not currently visible but still exist in the same underlying graph.
+- Diff layers are comparison slices over graph state, not a separate truth model.
+- Trustworthy completeness means the graph must continuously communicate that hidden context is still part of the same complete workspace.
+`);
+
+Graph.completeness.means(`
+- visible layers are partial views, not partial truth
+- hidden context remains real and navigable
+- derived edges must be visibly distinguishable from direct edges
+- users must be able to inspect why a derived connection exists
 `);
 
 // Whole-System Comprehension
@@ -76,9 +110,9 @@ when(User.refines(Graph.layer))
   .and(User.isolates("the semantic slice they care about"));
 
 when(User.arranges(Graph.layer))
-  .then(AgentGraph.groups("each layer under an invisible parent region"))
+  .then(AgentGraph.groups(Graph.layer).under(Graph.layerGroup))
   .and(User.moves("whole layers independently"))
-  .and(AgentGraph.keeps("all layers in one shared React Flow workspace"));
+  .and(AgentGraph.keeps("all layers in one shared React Flow workspace plane"));
 
 when(Graph.layer.connectsTo(Graph.layer))
   .then(AgentGraph.shows(Graph.edge))
@@ -87,6 +121,7 @@ when(Graph.layer.connectsTo(Graph.layer))
 
 when(Graph.derivedEdge.existsBetween("visible nodes"))
   .then(AgentGraph.means("the visible relationship runs through hidden intermediate context"))
+  .and(AgentGraph.distinguishes(Graph.derivedEdge).from(Graph.edge))
   .and(User.mayInspect("the supporting hidden path"));
 
 // Graph-Native Inspection
