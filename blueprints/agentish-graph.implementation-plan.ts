@@ -1,247 +1,371 @@
-export const agentishGraphImplementationPlan = {
-  standard: "resolve-all-non-mechanical-implementation-decisions",
-  appShell: {
-    app: "apps/agentish-studio",
-    rule: "Vite is a thin composition shell only.",
-  },
-  runtime: {
-    browser: "React + Legend State + React Flow + Tailwind",
-    server: "Bun HTTP + WSS authority",
-    authority: {
-      sourceWrites: "server-only",
-      projection: "server-built",
-      clientState: "session-only",
-    },
-  },
-  packages: {
-    "@agentish/graph-core": {
-      path: "packages/agentish-graph-core",
-      owns: [
-        "parser",
-        "semantic-model",
-        "stable-identity",
-        "projection-builder",
-        "mutation-planner",
-      ],
-      dependsOn: [],
-    },
-    "@agentish/graph-protocol": {
-      path: "packages/agentish-graph-protocol",
-      owns: ["http-contracts", "ws-contracts"],
-      dependsOn: ["@agentish/graph-core"],
-    },
-    "@agentish/graph-store": {
-      path: "packages/agentish-graph-store",
-      owns: ["legend-state", "client-actions"],
-      dependsOn: ["@agentish/graph-core", "@agentish/graph-protocol"],
-    },
-    "@agentish/graph-ui": {
-      path: "packages/agentish-graph-ui",
-      owns: ["react-components", "react-flow-adapters", "tailwind-ui"],
-      dependsOn: [
-        "@agentish/graph-core",
-        "@agentish/graph-protocol",
-        "@agentish/graph-store",
-      ],
-    },
-    "@agentish/graph-server": {
-      path: "packages/agentish-graph-server",
-      owns: [
-        "bun-http-server",
-        "bun-ws-server",
-        "workspace-access",
-        "file-watching",
-        "mutation-execution",
-      ],
-      dependsOn: ["@agentish/graph-core", "@agentish/graph-protocol"],
-    },
-  },
-  roots: {
-    core: "packages/agentish-graph-core/src",
-    protocol: "packages/agentish-graph-protocol/src",
-    store: "packages/agentish-graph-store/src",
-    ui: "packages/agentish-graph-ui/src",
-    server: "packages/agentish-graph-server/src",
-    studio: "apps/agentish-studio/src",
-  },
-  fileOwnership: {
-    core: [
-      "contracts/*",
-      "parser/parse-agentish-document.ts",
-      "semantic/build-semantic-model.ts",
-      "identity/build-stable-id.ts",
-      "projection/build-graph-projection.ts",
-      "mutation/plan-source-mutation.ts",
-    ],
-    protocol: ["http.ts", "ws.ts"],
-    store: ["agentish-graph-store.ts", "actions.ts"],
-    ui: [
-      "components/AgentishGraphScreen.tsx",
-      "components/AgentishGraphCanvas.tsx",
-      "components/AgentishGraphInspectorPane.tsx",
-      "components/{AgentishGraphFileTreePane,AgentishGraphLayerPane,AgentishGraphLegendPane,AgentishGraphToolbar,AgentishGraphStatusBar}.tsx",
-      "{renderers,reactflow}/*",
-    ],
-    server: [
-      "config.ts",
-      "http/create-http-server.ts",
-      "ws/create-ws-server.ts",
-      "session/session-registry.ts",
-      "workspace/workspace-service.ts",
-      "workspace/workspace-watcher.ts",
-      "workspace/document-repository.ts",
-      "mutation/apply-source-mutation.ts",
-    ],
-    studio: ["App.tsx", "main.tsx"],
-  },
-  decisions: {
-    parsing: [
-      "Use the TypeScript compiler API to parse Agentish-in-TypeScript.",
-      "Extract define declarations, relationship chains, and when/then chains.",
-    ],
-    identity: [
-      "Stable IDs derive from relative path plus semantic local meaning.",
-      "Layout hints are keyed by stable ID.",
-    ],
-    projection: [
-      "Projection is built on the server, never in the browser.",
-      "Projection is recomputed from source plus layout hints.",
-    ],
-    layering: [
-      "One layer per open document.",
-      "Default layer order is lexicographic by relative path.",
-    ],
-    mutation: [
-      "GraphMutationIntent is the only client write primitive.",
-      "SourcePatchPlan is the only server write primitive.",
-      "Client may be optimistic about selection and viewport, not source authority.",
-    ],
-    session: [
-      "One writable session per workspace root.",
-      "Missing patch revisions force full snapshot reload.",
-    ],
-    conflicts: [
-      "Conflicts pause the pending mutation queue.",
-      "Resolution choices are reload or discard local intent.",
-    ],
-    rendering: [
-      "React Flow is an adapter over projection, never the source of truth.",
-      "Portal edges represent cross-layer references only.",
-    ],
-  },
-  store: {
-    slices: [
-      "session",
-      "workspace",
-      "graph",
-      "inspector",
-      "ui",
-      "io",
-    ] as const,
-    actions: [
-      "bootstrapConfig",
-      "createSession",
-      "connectSocket",
-      "applyServerSnapshot",
-      "applyServerPatch",
-      "openDocument",
-      "setSelection",
-      "setViewport",
-      "beginInspectorEdit",
-      "commitInspectorDraft",
-      "createNode",
-      "connectHandles",
-      "deleteSelection",
-      "queueGraphIntent",
-      "resolveConflict",
-      "persistLayoutHint",
-    ] as const,
-  },
-  transport: {
-    http: [
-      "GET /api/agentish-graph/config",
-      "GET /api/agentish-graph/roots",
-      "POST /api/agentish-graph/sessions",
-      "GET /api/agentish-graph/sessions/:sessionId/snapshot",
-      "DELETE /api/agentish-graph/sessions/:sessionId",
-    ] as const,
-    wss: {
-      endpoint: "/api/agentish-graph/ws",
-      client: [
-        "client/hello",
-        "client/open-root",
-        "client/open-documents",
-        "client/apply-intent",
-        "client/persist-layout",
-        "client/save-documents",
-        "client/ping",
-      ] as const,
-      server: [
-        "server/ready",
-        "server/workspace-snapshot",
-        "server/projection-snapshot",
-        "server/projection-patch",
-        "server/document-patched",
-        "server/validation",
-        "server/conflict",
-        "server/file-changed",
-        "server/error",
-        "server/pong",
-      ] as const,
-    },
-  },
-  ui: {
-    components: [
-      "AgentishGraphScreen",
-      "AgentishGraphCanvas",
-      "AgentishGraphInspectorPane",
-      "AgentishGraphFileTreePane",
-      "AgentishGraphLayerPane",
-      "AgentishGraphLegendPane",
-      "AgentishGraphToolbar",
-      "AgentishGraphStatusBar",
-      "AgentishNodeCard",
-      "AgentishGroupNode",
-      "AgentishPortalEdge",
-    ] as const,
-  },
-  invariants: [
-    "UI and store packages never use filesystem APIs.",
-    "Only the server writes documents.",
-    "Equivalent meaning yields equivalent stable IDs across reprojection.",
-    "Equal documents plus equal layout hints yield equal projection.",
-    "Projection patches apply strictly in revision order.",
-  ] as const,
-  flows: {
-    boot: [
-      "mount graph screen",
-      "fetch config",
-      "fetch roots",
-      "create session",
-      "connect WSS",
-      "exchange hello/ready",
-    ],
-    openRoot: [
-      "open root",
-      "receive workspace snapshot",
-      "receive projection snapshot",
-      "normalize snapshot into store maps",
-    ],
-    edit: [
-      "queue graph intent",
-      "server plans source patch",
-      "server applies source patch",
-      "server emits validation and projection patch",
-    ],
-    externalChange: [
-      "server detects file change",
-      "server reparses affected documents",
-      "server emits projection patch or reload condition",
-    ],
-    conflict: [
-      "server emits conflict",
-      "store pauses affected mutation flow",
-      "human chooses reload or discard local intent",
-    ],
-  },
-} as const;
+/// <reference path="./_agentish.d.ts" />
+
+const Agentish = define.language("Agentish", {
+  purpose: "Decision-complete implementation planning",
+});
+
+const Concept = define.entity("AgentishGraphConcept", { format: Agentish });
+const Scenarios = define.entity("AgentishGraphScenarios", { format: Agentish });
+const Contracts = define.entity("AgentishGraphContracts", { format: Agentish });
+
+const Plan = define.entity("AgentishGraphImplementationPlan", {
+  format: Agentish,
+  implements: Concept,
+  operationalizes: Scenarios,
+  bindsTo: Contracts,
+  standard: "Resolve all non-mechanical architecture decisions",
+});
+
+const Browser = define.actor("BrowserUser", { role: "Graph editor operator" });
+const Studio = define.system("AgentishStudio", {
+  role: "Thin Vite composition shell",
+});
+const Server = define.system("AgentishGraphServer", {
+  role: "Bun HTTP and WSS authority",
+});
+const FileSystem = define.system("WorkspaceFileSystem", {
+  role: "Source of documents",
+});
+
+const Package = {
+  core: define.entity("PackageAgentishGraphCore", {
+    path: "packages/agentish-graph-core",
+  }),
+  protocol: define.entity("PackageAgentishGraphProtocol", {
+    path: "packages/agentish-graph-protocol",
+  }),
+  store: define.entity("PackageAgentishGraphStore", {
+    path: "packages/agentish-graph-store",
+  }),
+  ui: define.entity("PackageAgentishGraphUi", {
+    path: "packages/agentish-graph-ui",
+  }),
+  server: define.entity("PackageAgentishGraphServer", {
+    path: "packages/agentish-graph-server",
+  }),
+  studio: define.entity("PackageAgentishStudio", {
+    path: "apps/agentish-studio",
+  }),
+};
+
+Package.protocol.dependsOn(Package.core);
+Package.store.dependsOn(Package.core, Package.protocol);
+Package.ui.dependsOn(Package.core, Package.protocol, Package.store);
+Package.server.dependsOn(Package.core, Package.protocol);
+Package.studio.dependsOn(Package.ui, Package.store, Package.protocol);
+
+Package.core.owns(`- Parser
+- Semantic model
+- Stable identity
+- Projection builder
+- Mutation planner`);
+Package.protocol.owns(`- HTTP contracts
+- WSS contracts`);
+Package.store.owns(`- Legend State
+- Client actions`);
+Package.ui.owns(`- React components
+- React Flow adapters
+- Tailwind UI`);
+Package.server.owns(`- Bun HTTP server
+- Bun WSS server
+- Workspace access
+- File watching
+- Mutation execution`);
+Package.studio.owns("Entry point only");
+
+Plan.prescribes(`- The Vite app contains no business logic.
+- Reusable code lives under packages.
+- The browser never touches filesystem APIs.
+- Only the server writes source files.
+- The server is authoritative for projection and mutation results.
+- The store contains client session state only.
+- The UI never plans source mutations.
+- The protocol owns all cross-boundary contracts.`);
+
+const File = {
+  coreContracts: define.entity("CoreContracts", {
+    path: "packages/agentish-graph-core/src/contracts/*",
+  }),
+  coreParser: define.entity("CoreParser", {
+    path: "packages/agentish-graph-core/src/parser/parse-agentish-document.ts",
+  }),
+  coreSemantic: define.entity("CoreSemanticBuilder", {
+    path: "packages/agentish-graph-core/src/semantic/build-semantic-model.ts",
+  }),
+  coreIdentity: define.entity("CoreStableIdentity", {
+    path: "packages/agentish-graph-core/src/identity/build-stable-id.ts",
+  }),
+  coreProjection: define.entity("CoreProjectionBuilder", {
+    path: "packages/agentish-graph-core/src/projection/build-graph-projection.ts",
+  }),
+  coreMutation: define.entity("CoreMutationPlanner", {
+    path: "packages/agentish-graph-core/src/mutation/plan-source-mutation.ts",
+  }),
+  protocolHttp: define.entity("ProtocolHttp", {
+    path: "packages/agentish-graph-protocol/src/http.ts",
+  }),
+  protocolWs: define.entity("ProtocolWs", {
+    path: "packages/agentish-graph-protocol/src/ws.ts",
+  }),
+  storeState: define.entity("StoreState", {
+    path: "packages/agentish-graph-store/src/agentish-graph-store.ts",
+  }),
+  storeActions: define.entity("StoreActions", {
+    path: "packages/agentish-graph-store/src/actions.ts",
+  }),
+  uiScreen: define.entity("UiScreen", {
+    path: "packages/agentish-graph-ui/src/components/AgentishGraphScreen.tsx",
+  }),
+  uiCanvas: define.entity("UiCanvas", {
+    path: "packages/agentish-graph-ui/src/components/AgentishGraphCanvas.tsx",
+  }),
+  uiInspector: define.entity("UiInspector", {
+    path: "packages/agentish-graph-ui/src/components/AgentishGraphInspectorPane.tsx",
+  }),
+  uiNavigation: define.entity("UiNavigation", {
+    path: "packages/agentish-graph-ui/src/components/*",
+  }),
+  uiRenderers: define.entity("UiRenderers", {
+    path: "packages/agentish-graph-ui/src/{renderers,reactflow}/*",
+  }),
+  serverConfig: define.entity("ServerConfig", {
+    path: "packages/agentish-graph-server/src/config.ts",
+  }),
+  serverHttp: define.entity("ServerHttp", {
+    path: "packages/agentish-graph-server/src/http/create-http-server.ts",
+  }),
+  serverWs: define.entity("ServerWs", {
+    path: "packages/agentish-graph-server/src/ws/create-ws-server.ts",
+  }),
+  serverSessions: define.entity("ServerSessions", {
+    path: "packages/agentish-graph-server/src/session/session-registry.ts",
+  }),
+  serverWorkspace: define.entity("ServerWorkspace", {
+    path: "packages/agentish-graph-server/src/workspace/workspace-service.ts",
+  }),
+  serverWatch: define.entity("ServerWorkspaceWatcher", {
+    path: "packages/agentish-graph-server/src/workspace/workspace-watcher.ts",
+  }),
+  serverDocuments: define.entity("ServerDocumentRepository", {
+    path: "packages/agentish-graph-server/src/workspace/document-repository.ts",
+  }),
+  serverMutations: define.entity("ServerMutationExecutor", {
+    path: "packages/agentish-graph-server/src/mutation/apply-source-mutation.ts",
+  }),
+  studioApp: define.entity("StudioApp", {
+    path: "apps/agentish-studio/src/App.tsx",
+  }),
+  studioMain: define.entity("StudioMain", {
+    path: "apps/agentish-studio/src/main.tsx",
+  }),
+};
+
+Package.core.contains(
+  File.coreContracts,
+  File.coreParser,
+  File.coreSemantic,
+  File.coreIdentity,
+  File.coreProjection,
+  File.coreMutation,
+);
+Package.protocol.contains(File.protocolHttp, File.protocolWs);
+Package.store.contains(File.storeState, File.storeActions);
+Package.ui.contains(
+  File.uiScreen,
+  File.uiCanvas,
+  File.uiInspector,
+  File.uiNavigation,
+  File.uiRenderers,
+);
+Package.server.contains(
+  File.serverConfig,
+  File.serverHttp,
+  File.serverWs,
+  File.serverSessions,
+  File.serverWorkspace,
+  File.serverWatch,
+  File.serverDocuments,
+  File.serverMutations,
+);
+Package.studio.contains(File.studioApp, File.studioMain);
+
+const State = {
+  session: define.entity("SessionSlice"),
+  workspace: define.entity("WorkspaceSlice"),
+  graph: define.entity("GraphSlice"),
+  inspector: define.entity("InspectorSlice"),
+  ui: define.entity("UiSlice"),
+  io: define.entity("IoSlice"),
+};
+
+File.storeState.defines(
+  State.session,
+  State.workspace,
+  State.graph,
+  State.inspector,
+  State.ui,
+  State.io,
+);
+
+const Action = {
+  bootstrapConfig: define.entity("BootstrapConfig"),
+  createSession: define.entity("CreateSession"),
+  connectSocket: define.entity("ConnectSocket"),
+  applyServerSnapshot: define.entity("ApplyServerSnapshot"),
+  applyServerPatch: define.entity("ApplyServerPatch"),
+  openDocument: define.entity("OpenDocument"),
+  setSelection: define.entity("SetSelection"),
+  setViewport: define.entity("SetViewport"),
+  beginInspectorEdit: define.entity("BeginInspectorEdit"),
+  commitInspectorDraft: define.entity("CommitInspectorDraft"),
+  createNode: define.entity("CreateNode"),
+  connectHandles: define.entity("ConnectHandles"),
+  deleteSelection: define.entity("DeleteSelection"),
+  queueGraphIntent: define.entity("QueueGraphIntent"),
+  resolveConflict: define.entity("ResolveConflict"),
+  persistLayoutHint: define.entity("PersistLayoutHint"),
+};
+
+File.storeActions.implements(
+  Action.bootstrapConfig,
+  Action.createSession,
+  Action.connectSocket,
+  Action.applyServerSnapshot,
+  Action.applyServerPatch,
+  Action.openDocument,
+  Action.setSelection,
+  Action.setViewport,
+  Action.beginInspectorEdit,
+  Action.commitInspectorDraft,
+  Action.createNode,
+  Action.connectHandles,
+  Action.deleteSelection,
+  Action.queueGraphIntent,
+  Action.resolveConflict,
+  Action.persistLayoutHint,
+);
+
+const Transport = {
+  http: define.entity("HttpSurface"),
+  ws: define.entity("WssSurface"),
+};
+
+const Route = {
+  config: define.entity("GetGraphConfigRoute", { path: "GET /api/agentish-graph/config" }),
+  roots: define.entity("ListWorkspaceRootsRoute", { path: "GET /api/agentish-graph/roots" }),
+  createSession: define.entity("CreateGraphSessionRoute", { path: "POST /api/agentish-graph/sessions" }),
+  sessionSnapshot: define.entity("GetGraphSessionSnapshotRoute", { path: "GET /api/agentish-graph/sessions/:sessionId/snapshot" }),
+  closeSession: define.entity("DeleteGraphSessionRoute", { path: "DELETE /api/agentish-graph/sessions/:sessionId" }),
+};
+
+const Message = {
+  clientHello: define.entity("ClientHelloMessage"),
+  clientOpenRoot: define.entity("ClientOpenRootMessage"),
+  clientOpenDocuments: define.entity("ClientOpenDocumentsMessage"),
+  clientApplyIntent: define.entity("ClientApplyIntentMessage"),
+  clientPersistLayout: define.entity("ClientPersistLayoutMessage"),
+  clientSaveDocuments: define.entity("ClientSaveDocumentsMessage"),
+  clientPing: define.entity("ClientPingMessage"),
+  serverReady: define.entity("ServerReadyMessage"),
+  serverWorkspaceSnapshot: define.entity("ServerWorkspaceSnapshotMessage"),
+  serverProjectionSnapshot: define.entity("ServerProjectionSnapshotMessage"),
+  serverProjectionPatch: define.entity("ServerProjectionPatchMessage"),
+  serverDocumentPatched: define.entity("ServerDocumentPatchedMessage"),
+  serverValidation: define.entity("ServerValidationMessage"),
+  serverConflict: define.entity("ServerConflictMessage"),
+  serverFileChanged: define.entity("ServerFileChangedMessage"),
+  serverError: define.entity("ServerErrorMessage"),
+  serverPong: define.entity("ServerPongMessage"),
+};
+
+Transport.http.serves(
+  Route.config,
+  Route.roots,
+  Route.createSession,
+  Route.sessionSnapshot,
+  Route.closeSession,
+);
+Transport.ws.serves("WSS /api/agentish-graph/ws");
+Transport.ws.accepts(
+  Message.clientHello,
+  Message.clientOpenRoot,
+  Message.clientOpenDocuments,
+  Message.clientApplyIntent,
+  Message.clientPersistLayout,
+  Message.clientSaveDocuments,
+  Message.clientPing,
+);
+Transport.ws.emits(
+  Message.serverReady,
+  Message.serverWorkspaceSnapshot,
+  Message.serverProjectionSnapshot,
+  Message.serverProjectionPatch,
+  Message.serverDocumentPatched,
+  Message.serverValidation,
+  Message.serverConflict,
+  Message.serverFileChanged,
+  Message.serverError,
+  Message.serverPong,
+);
+
+Server.serves(Transport.http, Transport.ws);
+Server.authenticates("bearer session token");
+Server.uses("Bun.serve").through(File.serverHttp, File.serverWs);
+Server.uses("fs.watch").through(File.serverWatch);
+File.serverDocuments.accesses(FileSystem).through("normalized real paths");
+File.serverDocuments.rejects(
+  "path traversal",
+  "writes outside allowed roots",
+);
+
+const Decision = {
+  parsing: define.entity("ParsingDecision"),
+  identity: define.entity("StableIdentityDecision"),
+  projection: define.entity("ProjectionDecision"),
+  layering: define.entity("LayeringDecision"),
+  mutation: define.entity("MutationDecision"),
+  conflicts: define.entity("ConflictDecision"),
+  session: define.entity("SessionDecision"),
+  rendering: define.entity("RenderingDecision"),
+};
+
+Decision.parsing.defines(`- Use the TypeScript compiler API.
+- Extract define declarations, relationship chains, and when chains.`);
+Decision.identity.defines(`- Stable IDs derive from relative path and local meaning.
+- Layout hints are keyed by stable ID.`);
+Decision.projection.defines(`- Projection is built on the server.
+- Projection recomputes from source and layout hints.`);
+Decision.layering.defines(`- There is one layer per open document.
+- Default layer order is lexicographic by relative path.`);
+Decision.mutation.defines(`- Graph mutation intent is the only client write primitive.
+- Source patch plan is the only server write primitive.
+- The client may be optimistic about selection and viewport only.`);
+Decision.conflicts.defines(`- Conflicts pause the pending mutation queue.
+- Conflict resolution choices are reload or discard local intent.`);
+Decision.session.defines(`- There is one writable session per workspace root.
+- A missing patch revision forces a full snapshot reload.`);
+Decision.rendering.defines(`- React Flow is an adapter, not a source of truth.
+- Portal edges represent cross-layer references only.`);
+
+Plan.enforces(`- The UI and store never use filesystem APIs.
+- Only the server writes documents.
+- Equivalent meaning yields equivalent stable IDs across reprojection.
+- Equal documents plus equal layout hints yield equal projection.
+- Projection patches apply strictly in revision order.`);
+
+when(Browser.opens(Studio))
+  .then(Action.bootstrapConfig)
+  .and(Action.createSession)
+  .and(Action.connectSocket)
+  .and(Route.config)
+  .and(Route.roots)
+  .and(Route.createSession)
+  .and(Message.clientHello)
+  .and(Message.serverReady);
+
+when(Browser.edits("GraphWorkspace"))
+  .then(Action.queueGraphIntent)
+  .and(File.coreMutation.generates("source patch plan"))
+  .and(File.serverMutations.applies("source patch plan"))
+  .and(Message.serverValidation)
+  .and(Message.serverProjectionPatch);

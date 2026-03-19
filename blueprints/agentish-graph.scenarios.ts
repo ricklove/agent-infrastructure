@@ -1,121 +1,119 @@
-export type GraphScenarioId =
-  | "open-workspace"
-  | "inspect-node"
-  | "edit-node"
-  | "connect-nodes"
-  | "move-node"
-  | "external-change"
-  | "resolve-conflict";
+/// <reference path="./_agentish.d.ts" />
 
-export type GraphScenario = readonly [
-  id: GraphScenarioId,
-  actor: "human" | "external-editor" | "system",
-  preconditions: readonly string[],
-  trigger: string,
-  system: readonly string[],
-  success: readonly string[],
-];
+const Agentish = define.language("Agentish", {
+  purpose: "Canonical behavior definition",
+});
 
-export const agentishGraphScenarios = [
-  [
-    "open-workspace",
-    "human",
-    ["workspace root contains Agentish documents"],
-    "open document set",
-    [
-      "load the workspace",
-      "parse Agentish documents",
-      "build the semantic model",
-      "project graph workspace",
-    ],
-    [
-      "graph is visible for opened documents",
-      "projection follows source structure",
-    ],
-  ],
-  [
-    "inspect-node",
-    "human",
-    ["graph workspace is visible"],
-    "select graph node",
-    [
-      "update selection state",
-      "show semantic details",
-      "retain graph context",
-    ],
-    ["meaning is inspectable without reading raw source first"],
-  ],
-  [
-    "edit-node",
-    "human",
-    ["projected node is selectable and editable"],
-    "edit node label or attribute",
-    [
-      "derive an edit intent",
-      "plan a source mutation",
-      "apply the mutation",
-      "validate and reproject",
-    ],
-    [
-      "visual edit round-trips into source",
-      "refresh preserves identity and layout when possible",
-    ],
-  ],
-  [
-    "connect-nodes",
-    "human",
-    ["compatible graph handles are visible"],
-    "connect one node handle to another",
-    [
-      "derive relation-creation intent",
-      "apply source mutation",
-      "reproject edges and portals",
-    ],
-    [
-      "graph connections become source relationships",
-      "cross-layer relationships appear as portals",
-    ],
-  ],
-  [
-    "move-node",
-    "human",
-    ["graph node is draggable"],
-    "drag node",
-    [
-      "record a layout hint",
-      "keep source meaning unchanged",
-      "reuse hint on reprojection",
-    ],
-    ["manual layout persists across refresh"],
-  ],
-  [
-    "external-change",
-    "external-editor",
-    ["projected document changes outside the graph session"],
-    "source files change out of band",
-    [
-      "detect the file change",
-      "reparse affected documents",
-      "reproject the workspace",
-    ],
-    [
-      "graph reflects out-of-band edits",
-      "selection and viewport are preserved when safe",
-    ],
-  ],
-  [
-    "resolve-conflict",
-    "system",
-    ["an edit cannot round-trip cleanly or loses its target due to revision drift"],
-    "detect mutation conflict",
-    [
-      "surface the conflict",
-      "pause the affected mutation path",
-      "require human resolution",
-    ],
-    [
-      "conflicts are visible and not silently discarded",
-      "source authority is protected",
-    ],
-  ],
-] as const satisfies readonly GraphScenario[];
+const AgentishGraphScenarios = define.entity("AgentishGraphScenarios", {
+  format: Agentish,
+  describes: "Acceptance flows for Agentish graph",
+});
+
+const Human = define.actor("Human", { role: "Graph user" });
+const ExternalEditor = define.actor("ExternalEditor", {
+  role: "Out-of-band source mutator",
+});
+const GraphSystem = define.system("AgentishGraphSystem");
+
+const Source = {
+  documentSet: define.entity("AgentishDocumentSet"),
+  document: define.entity("AgentishDocument"),
+  mutation: define.entity("SourceMutation"),
+  conflict: define.entity("EditConflict"),
+};
+
+const Graph = {
+  workspace: define.entity("GraphWorkspace"),
+  node: define.entity("GraphNode"),
+  edge: define.entity("GraphEdge"),
+  portal: define.entity("PortalEdge"),
+  selection: define.entity("SelectionState"),
+  layoutHint: define.entity("LayoutHint"),
+};
+
+const Scenario = {
+  openWorkspace: define.entity("OpenWorkspaceScenario"),
+  inspectNode: define.entity("InspectNodeScenario"),
+  editNode: define.entity("EditNodeScenario"),
+  connectNodes: define.entity("ConnectNodesScenario"),
+  moveNode: define.entity("MoveNodeScenario"),
+  externalChange: define.entity("ExternalChangeScenario"),
+  resolveConflict: define.entity("ResolveConflictScenario"),
+};
+
+AgentishGraphScenarios.contains(
+  Scenario.openWorkspace,
+  Scenario.inspectNode,
+  Scenario.editNode,
+  Scenario.connectNodes,
+  Scenario.moveNode,
+  Scenario.externalChange,
+  Scenario.resolveConflict,
+);
+
+when(Human.opens(Source.documentSet).through(Scenario.openWorkspace))
+  .then(GraphSystem.loads(Graph.workspace))
+  .and(GraphSystem.projects(Graph.node, Graph.edge, Graph.portal))
+  .and(
+    Scenario.openWorkspace.succeeds(`- The workspace is visible.
+- The projection matches source structure.`),
+  );
+
+when(Human.selects(Graph.node).through(Scenario.inspectNode))
+  .then(GraphSystem.updates(Graph.selection))
+  .and(GraphSystem.reveals("semantic details"))
+  .and(Scenario.inspectNode.succeeds("Meaning is inspectable without raw source."));
+
+when(Human.edits(Graph.node).through(Scenario.editNode))
+  .then(GraphSystem.derives("edit intent"))
+  .and(GraphSystem.applies(Source.mutation))
+  .and(GraphSystem.reprojects(Graph.workspace))
+  .and(Scenario.editNode.succeeds("The visual edit round-trips into source."))
+  .and(
+    Scenario.editNode.preserves(
+      "Identity and manual layout are preserved when possible.",
+    ),
+  )
+  .and(Scenario.editNode.conflictsAs("Conflicts are visible instead of silent writes."));
+
+when(Human.connects(Graph.node).to(Graph.node).through(Scenario.connectNodes))
+  .then(GraphSystem.derives("relation creation intent"))
+  .and(GraphSystem.applies(Source.mutation))
+  .and(GraphSystem.reprojects(Graph.edge, Graph.portal))
+  .and(
+    Scenario.connectNodes.succeeds(`- The connection becomes a source relationship.
+- A cross-layer relation appears as a portal.`),
+  )
+  .and(
+    Scenario.connectNodes.conflictsAs(
+      "An invalid or ambiguous target is surfaced.",
+    ),
+  );
+
+when(Human.drags(Graph.node).through(Scenario.moveNode))
+  .then(GraphSystem.records(Graph.layoutHint))
+  .and(GraphSystem.reprojects(Graph.workspace))
+  .and(Scenario.moveNode.succeeds("Manual layout persists across refresh."))
+  .and(Scenario.moveNode.preserves("Source meaning is preserved."));
+
+when(ExternalEditor.mutates(Source.document).through(Scenario.externalChange))
+  .then(GraphSystem.detects("external source change"))
+  .and(GraphSystem.reprojects(Graph.workspace))
+  .and(Scenario.externalChange.succeeds("The graph reflects out-of-band edits."))
+  .and(
+    Scenario.externalChange.preserves(
+      "Selection and viewport are preserved when safe.",
+    ),
+  )
+  .and(
+    Scenario.externalChange.conflictsAs(
+      "A pending mutation that loses its target is surfaced.",
+    ),
+  );
+
+when(GraphSystem.detects(Source.conflict).through(Scenario.resolveConflict))
+  .then(GraphSystem.surfaces(Source.conflict).to(Human))
+  .and(GraphSystem.pauses("the affected mutation path"))
+  .and(GraphSystem.requests(Human, { toChoose: "reload or discard local intent" }))
+  .and(Scenario.resolveConflict.succeeds("The conflict is visible and explicitly resolved."))
+  .and(Scenario.resolveConflict.protects("Source authority is protected."));
