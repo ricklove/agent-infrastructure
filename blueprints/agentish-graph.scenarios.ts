@@ -1,123 +1,121 @@
-export type GraphScenario = {
-  id:
-    | "open-workspace"
-    | "inspect-node"
-    | "edit-node"
-    | "connect-nodes"
-    | "move-node"
-    | "external-change"
-    | "resolve-conflict";
-  actor: "human" | "external-editor" | "system";
-  preconditions: readonly string[];
-  trigger: string;
-  system: readonly string[];
-  success: readonly string[];
-};
+export type GraphScenarioId =
+  | "open-workspace"
+  | "inspect-node"
+  | "edit-node"
+  | "connect-nodes"
+  | "move-node"
+  | "external-change"
+  | "resolve-conflict";
+
+export type GraphScenario = readonly [
+  id: GraphScenarioId,
+  actor: "human" | "external-editor" | "system",
+  preconditions: readonly string[],
+  trigger: string,
+  system: readonly string[],
+  success: readonly string[],
+];
 
 export const agentishGraphScenarios = [
-  {
-    id: "open-workspace",
-    actor: "human",
-    preconditions: ["a workspace root contains one or more Agentish documents"],
-    trigger: "human opens a document set",
-    system: [
+  [
+    "open-workspace",
+    "human",
+    ["workspace root contains Agentish documents"],
+    "open document set",
+    [
       "load the workspace",
-      "parse openable Agentish documents",
+      "parse Agentish documents",
       "build the semantic model",
-      "project nodes, edges, and portals into a graph workspace",
+      "project graph workspace",
     ],
-    success: [
-      "the human can see the graph for the opened documents",
-      "the graph reflects source structure rather than ad hoc UI state",
+    [
+      "graph is visible for opened documents",
+      "projection follows source structure",
     ],
-  },
-  {
-    id: "inspect-node",
-    actor: "human",
-    preconditions: ["the graph workspace is visible"],
-    trigger: "human selects a graph node",
-    system: [
+  ],
+  [
+    "inspect-node",
+    "human",
+    ["graph workspace is visible"],
+    "select graph node",
+    [
       "update selection state",
-      "show semantic details for the selected node",
-      "retain graph context while exposing source meaning",
+      "show semantic details",
+      "retain graph context",
     ],
-    success: [
-      "the human can inspect meaning without reading raw source first",
-    ],
-  },
-  {
-    id: "edit-node",
-    actor: "human",
-    preconditions: ["a projected node is selectable and editable"],
-    trigger: "human edits a node label or attribute through the graph",
-    system: [
+    ["meaning is inspectable without reading raw source first"],
+  ],
+  [
+    "edit-node",
+    "human",
+    ["projected node is selectable and editable"],
+    "edit node label or attribute",
+    [
       "derive an edit intent",
       "plan a source mutation",
       "apply the mutation",
       "validate and reproject",
     ],
-    success: [
-      "the visual edit round-trips into source",
-      "the refreshed graph preserves identity and manual layout where possible",
+    [
+      "visual edit round-trips into source",
+      "refresh preserves identity and layout when possible",
     ],
-  },
-  {
-    id: "connect-nodes",
-    actor: "human",
-    preconditions: ["two compatible graph handles are visible"],
-    trigger: "human connects one node handle to another",
-    system: [
-      "derive a relation-creation intent",
-      "apply the corresponding source mutation",
+  ],
+  [
+    "connect-nodes",
+    "human",
+    ["compatible graph handles are visible"],
+    "connect one node handle to another",
+    [
+      "derive relation-creation intent",
+      "apply source mutation",
       "reproject edges and portals",
     ],
-    success: [
+    [
       "graph connections become source relationships",
-      "cross-layer relationships appear as portals when appropriate",
+      "cross-layer relationships appear as portals",
     ],
-  },
-  {
-    id: "move-node",
-    actor: "human",
-    preconditions: ["a graph node is draggable"],
-    trigger: "human drags a node",
-    system: [
+  ],
+  [
+    "move-node",
+    "human",
+    ["graph node is draggable"],
+    "drag node",
+    [
       "record a layout hint",
       "keep source meaning unchanged",
-      "reuse the hint on future reprojection",
+      "reuse hint on reprojection",
     ],
-    success: [
-      "manual layout intent persists across refresh",
-    ],
-  },
-  {
-    id: "external-change",
-    actor: "external-editor",
-    preconditions: ["a projected document is changed outside the graph session"],
-    trigger: "source files change out of band",
-    system: [
+    ["manual layout persists across refresh"],
+  ],
+  [
+    "external-change",
+    "external-editor",
+    ["projected document changes outside the graph session"],
+    "source files change out of band",
+    [
       "detect the file change",
       "reparse affected documents",
       "reproject the workspace",
     ],
-    success: [
-      "the graph reflects out-of-band edits",
+    [
+      "graph reflects out-of-band edits",
       "selection and viewport are preserved when safe",
     ],
-  },
-  {
-    id: "resolve-conflict",
-    actor: "system",
-    preconditions: ["an edit cannot round-trip cleanly or loses its target due to revision drift"],
-    trigger: "the system detects a mutation conflict",
-    system: [
-      "surface the conflict explicitly",
+  ],
+  [
+    "resolve-conflict",
+    "system",
+    ["an edit cannot round-trip cleanly or loses its target due to revision drift"],
+    "detect mutation conflict",
+    [
+      "surface the conflict",
       "pause the affected mutation path",
-      "require a human resolution choice",
+      "require human resolution",
     ],
-    success: [
+    [
       "conflicts are visible and not silently discarded",
       "source authority is protected",
     ],
-  },
+  ],
 ] as const satisfies readonly GraphScenario[];

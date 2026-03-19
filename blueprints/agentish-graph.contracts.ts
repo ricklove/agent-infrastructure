@@ -1,15 +1,28 @@
 export type Brand<T, Name extends string> = T & { readonly __brand: Name };
 
 export type StableId = Brand<string, "StableId">;
-export type Revision = Brand<number, "Revision">;
-export type MutationId = Brand<string, "MutationId">;
-export type ConflictId = Brand<string, "ConflictId">;
-export type SessionId = Brand<string, "SessionId">;
-export type SessionToken = Brand<string, "SessionToken">;
-export type RootId = Brand<string, "RootId">;
-export type DocumentPath = Brand<string, "DocumentPath">;
+export type Revision = number;
+export type MutationId = string;
+export type ConflictId = string;
+export type SessionId = string;
+export type SessionToken = string;
+export type RootId = string;
+export type DocumentPath = string;
 
 export type AttributeValue = string | number | boolean | null;
+export type Point = { x: number; y: number };
+export type Size = { width: number; height: number };
+export type IdMap<T> = Partial<Record<StableId, T>>;
+type EntityRef = { id: StableId; documentId: StableId };
+type HandleRef = StableId | null;
+type HandleConnection = {
+  sourceNodeId: StableId;
+  sourceHandleId: HandleRef;
+  targetNodeId: StableId;
+  targetHandleId: HandleRef;
+};
+type Message<T extends string, P = {}> = { type: T } & P;
+type Mutation<T extends string, P = {}> = { kind: T; mutationId: MutationId } & P;
 
 export type SourceRange = {
   startLine: number;
@@ -64,18 +77,14 @@ export type SemanticNodeKind =
   | "state"
   | "concept";
 
-export type SemanticNodeRecord = {
-  id: StableId;
-  documentId: StableId;
+export type SemanticNodeRecord = EntityRef & {
   kind: SemanticNodeKind;
   name: string;
   attributes: Record<string, AttributeValue>;
   sourceRange: SourceRange;
 };
 
-export type SemanticEdgeRecord = {
-  id: StableId;
-  documentId: StableId;
+export type SemanticEdgeRecord = EntityRef & {
   kind: string;
   fromId: StableId;
   toId: StableId;
@@ -96,9 +105,7 @@ export type SemanticRuleEffect = {
   attributes: Record<string, AttributeValue>;
 };
 
-export type SemanticRuleRecord = {
-  id: StableId;
-  documentId: StableId;
+export type SemanticRuleRecord = EntityRef & {
   trigger: SemanticRuleTrigger;
   effects: SemanticRuleEffect[];
   sourceRange: SourceRange;
@@ -150,8 +157,8 @@ export type GraphProjectionNode = {
   layerId: StableId;
   nodeKind: GraphNodeKind;
   label: string;
-  position: { x: number; y: number };
-  size: { width: number; height: number };
+  position: Point;
+  size: Size;
   handles: GraphHandle[];
   badges: string[];
   collapsed: boolean;
@@ -162,10 +169,10 @@ export type GraphEdgeKind = "structural" | "causal" | "ownership" | "reference";
 export type GraphProjectionEdge = {
   id: StableId;
   semanticId: StableId;
-  sourceNodeId: StableId;
-  targetNodeId: StableId;
-  sourceHandleId: StableId | null;
-  targetHandleId: StableId | null;
+  sourceNodeId: HandleConnection["sourceNodeId"];
+  targetNodeId: HandleConnection["targetNodeId"];
+  sourceHandleId: HandleConnection["sourceHandleId"];
+  targetHandleId: HandleConnection["targetHandleId"];
   edgeKind: GraphEdgeKind;
   label: string | null;
   hidden: boolean;
@@ -188,16 +195,12 @@ export type GraphSelection = {
   primaryId: StableId | null;
 };
 
-export type GraphViewport = {
-  x: number;
-  y: number;
-  zoom: number;
-};
+export type GraphViewport = Point & { zoom: number };
 
 export type GraphLayoutHint = {
   nodeId: StableId;
-  x: number;
-  y: number;
+  x: Point["x"];
+  y: Point["y"];
   pinned: boolean;
   updatedAt: number;
 };
@@ -216,57 +219,22 @@ export type GraphProjectionSnapshot = {
 };
 
 export type GraphMutationIntent =
-  | {
-      kind: "set-node-position";
-      mutationId: MutationId;
-      nodeId: StableId;
-      x: number;
-      y: number;
-    }
-  | {
-      kind: "set-node-label";
-      mutationId: MutationId;
-      nodeId: StableId;
-      label: string;
-    }
-  | {
-      kind: "set-node-attribute";
-      mutationId: MutationId;
-      nodeId: StableId;
-      attributeName: string;
-      attributeValue: string;
-    }
-  | {
-      kind: "create-node";
-      mutationId: MutationId;
-      layerId: StableId;
-      nodeKind: GraphNodeKind;
-      name: string;
-      x: number;
-      y: number;
-    }
-  | {
-      kind: "connect-handles";
-      mutationId: MutationId;
-      sourceNodeId: StableId;
-      sourceHandleId: StableId | null;
-      targetNodeId: StableId;
-      targetHandleId: StableId | null;
-      relationshipKind: string;
-    }
-  | {
-      kind: "delete-elements";
-      mutationId: MutationId;
-      nodeIds: StableId[];
-      edgeIds: StableId[];
-      portalIds: StableId[];
-    }
-  | {
-      kind: "toggle-layer-visibility";
-      mutationId: MutationId;
-      layerId: StableId;
-      hidden: boolean;
-    };
+  | Mutation<"set-node-position", { nodeId: StableId } & Point>
+  | Mutation<"set-node-label", { nodeId: StableId; label: string }>
+  | Mutation<
+      "set-node-attribute",
+      { nodeId: StableId; attributeName: string; attributeValue: string }
+    >
+  | Mutation<
+      "create-node",
+      { layerId: StableId; nodeKind: GraphNodeKind; name: string } & Point
+    >
+  | Mutation<"connect-handles", HandleConnection & { relationshipKind: string }>
+  | Mutation<
+      "delete-elements",
+      { nodeIds: StableId[]; edgeIds: StableId[]; portalIds: StableId[] }
+    >
+  | Mutation<"toggle-layer-visibility", { layerId: StableId; hidden: boolean }>;
 
 export type DocumentChange = {
   documentId: StableId;
@@ -334,39 +302,38 @@ export type GetSessionSnapshotResponse = {
 };
 
 export type WsClientEnvelope =
-  | { type: "client/hello"; sessionId: SessionId; sessionToken: SessionToken }
-  | { type: "client/open-root"; rootId: RootId }
-  | {
-      type: "client/open-documents";
-      paths: DocumentPath[];
-      activeDocumentPath: DocumentPath | null;
-    }
-  | { type: "client/apply-intent"; intent: GraphMutationIntent }
-  | { type: "client/persist-layout"; hint: GraphLayoutHint }
-  | { type: "client/save-documents"; documentIds: StableId[] }
-  | { type: "client/ping"; at: number };
+  | Message<"client/hello", { sessionId: SessionId; sessionToken: SessionToken }>
+  | Message<"client/open-root", { rootId: RootId }>
+  | Message<
+      "client/open-documents",
+      { paths: DocumentPath[]; activeDocumentPath: DocumentPath | null }
+    >
+  | Message<"client/apply-intent", { intent: GraphMutationIntent }>
+  | Message<"client/persist-layout", { hint: GraphLayoutHint }>
+  | Message<"client/save-documents", { documentIds: StableId[] }>
+  | Message<"client/ping", { at: number }>;
 
 export type WsServerEnvelope =
-  | { type: "server/ready"; sessionId: SessionId; revision: Revision }
-  | {
-      type: "server/workspace-snapshot";
-      root: WorkspaceRootConfig | null;
-      fileTree: WorkspaceEntry[];
-      openDocuments: AgentishDocumentText[];
-    }
-  | { type: "server/projection-snapshot"; snapshot: GraphProjectionSnapshot }
-  | { type: "server/projection-patch"; patch: SourcePatchPlan; revision: Revision }
-  | {
-      type: "server/document-patched";
-      mutationId: MutationId;
-      documentIds: StableId[];
-      savedRevision: Revision;
-    }
-  | { type: "server/validation"; issues: ValidationIssue[] }
-  | { type: "server/conflict"; conflict: GraphConflict }
-  | { type: "server/file-changed"; documentId: StableId; revision: Revision }
-  | { type: "server/error"; code: string; message: string }
-  | { type: "server/pong"; at: number };
+  | Message<"server/ready", { sessionId: SessionId; revision: Revision }>
+  | Message<
+      "server/workspace-snapshot",
+      {
+        root: WorkspaceRootConfig | null;
+        fileTree: WorkspaceEntry[];
+        openDocuments: AgentishDocumentText[];
+      }
+    >
+  | Message<"server/projection-snapshot", { snapshot: GraphProjectionSnapshot }>
+  | Message<"server/projection-patch", { patch: SourcePatchPlan; revision: Revision }>
+  | Message<
+      "server/document-patched",
+      { mutationId: MutationId; documentIds: StableId[]; savedRevision: Revision }
+    >
+  | Message<"server/validation", { issues: ValidationIssue[] }>
+  | Message<"server/conflict", { conflict: GraphConflict }>
+  | Message<"server/file-changed", { documentId: StableId; revision: Revision }>
+  | Message<"server/error", { code: string; message: string }>
+  | Message<"server/pong", { at: number }>;
 
 export type ConnectionState = "idle" | "connecting" | "open" | "closed" | "error";
 export type SyncStatus = "idle" | "syncing" | "dirty" | "conflicted";
@@ -404,15 +371,15 @@ export type WorkspaceSlice = {
 
 export type GraphSlice = {
   snapshot: GraphProjectionSnapshot | null;
-  nodes: Partial<Record<StableId, GraphProjectionNode>>;
-  edges: Partial<Record<StableId, GraphProjectionEdge>>;
-  portals: Partial<Record<StableId, GraphProjectionPortal>>;
-  layers: Partial<Record<StableId, GraphLayer>>;
+  nodes: IdMap<GraphProjectionNode>;
+  edges: IdMap<GraphProjectionEdge>;
+  portals: IdMap<GraphProjectionPortal>;
+  layers: IdMap<GraphLayer>;
   layerOrder: StableId[];
   hiddenLayerIds: StableId[];
   selection: GraphSelection;
   viewport: GraphViewport;
-  layoutHints: Partial<Record<StableId, GraphLayoutHint>>;
+  layoutHints: IdMap<GraphLayoutHint>;
   legendVisibility: Record<LegendGroup, boolean>;
   filters: { search: string; kinds: string[]; documentIds: StableId[] };
 };
@@ -422,13 +389,7 @@ export type InspectorSlice = {
   selectedEntityKind: string | null;
   draftAttributes: Record<string, string>;
   draftLabel: string;
-  draftConnection: {
-    sourceNodeId: StableId;
-    sourceHandleId: StableId | null;
-    targetNodeId: StableId;
-    targetHandleId: StableId | null;
-    relationshipKind: string;
-  } | null;
+  draftConnection: (HandleConnection & { relationshipKind: string }) | null;
   validationIssues: ValidationIssue[];
   activeConflict: GraphConflict | null;
 };
