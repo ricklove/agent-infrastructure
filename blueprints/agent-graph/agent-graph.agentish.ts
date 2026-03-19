@@ -43,7 +43,7 @@ AgentGraph.enforces(`
 - The graph is graph-only; there is no adjacent source editor in the primary workflow.
 - The graph represents a complete multi-document workspace.
 - User-created layers are slices of the same complete underlying graph.
-- Edits may begin from any visible layer.
+- Edits begin from visible layers.
 - External change and conflict handling are first-class.
 - Source documents remain authoritative.
 `);
@@ -115,14 +115,18 @@ when(User.arranges(Graph.layer))
   .and(AgentGraph.keeps("all layers in one shared React Flow workspace plane"));
 
 when(Graph.layer.connectsTo(Graph.layer))
-  .then(AgentGraph.shows(Graph.edge))
-  .and(AgentGraph.mayShow(Graph.derivedEdge))
+  .then(AgentGraph.shows(Graph.edge).when("the relationship is directly visible"))
+  .and(
+    AgentGraph.shows(Graph.derivedEdge).when(
+      "the relationship is visible only through hidden intermediate context",
+    ),
+  )
   .and(AgentGraph.mustPreserve("the relationship between slices and the whole graph"));
 
 when(Graph.derivedEdge.existsBetween("visible nodes"))
   .then(AgentGraph.means("the visible relationship runs through hidden intermediate context"))
   .and(AgentGraph.distinguishes(Graph.derivedEdge).from(Graph.edge))
-  .and(User.mayInspect("the supporting hidden path"));
+  .and(User.inspects("the supporting hidden path"));
 
 // Graph-Native Inspection
 
@@ -137,7 +141,7 @@ when(User.selects(Graph.edge))
 
 when(User.selects(Graph.hiddenContext))
   .then(AgentGraph.summarizes("what kind of hidden context lies beyond the visible boundary"))
-  .and(User.mayReveal("that hidden context"));
+  .and(User.reveals("that hidden context"));
 
 when(User.selects(Graph.derivedEdge))
   .then(AgentGraph.reveals("the hidden supporting path"))
@@ -173,13 +177,13 @@ when(Source.document.changes("outside the current graph session"))
   .and(AgentGraph.mustPrevent("silent drift from source"));
 
 when(User.inspects("graph diff"))
-  .then(AgentGraph.mayShow(Graph.diffLayer, {
+  .then(AgentGraph.shows(Graph.diffLayer, {
     kind: "old",
   }))
-  .and(AgentGraph.mayShow(Graph.diffLayer, {
+  .and(AgentGraph.shows(Graph.diffLayer, {
     kind: "new",
   }))
-  .and(AgentGraph.mayShow(Graph.diffLayer, {
+  .and(AgentGraph.shows(Graph.diffLayer, {
     kind: "changed-only",
   }))
   .and(User.understands("what changed in graph terms"));
@@ -217,6 +221,82 @@ Package.studio.rejects("business logic outside composition and bootstrapping");
 Package.ui.rejects("direct filesystem access and direct source writes");
 Package.store.rejects("authoritative graph derivation and source mutation planning");
 Package.server.rejects("browser-only state ownership");
+
+AgentGraph.usesFiles(`
+- apps/agentish-studio/src/main.tsx
+- apps/agentish-studio/src/App.tsx
+- packages/agent-graph-ui/src/components/AgentGraphScreen.tsx
+- packages/agent-graph-ui/src/components/AgentGraphCanvas.tsx
+- packages/agent-graph-ui/src/components/LayerWorkspacePanel.tsx
+- packages/agent-graph-ui/src/components/InspectorPanel.tsx
+- packages/agent-graph-ui/src/components/DiffPanel.tsx
+- packages/agent-graph-ui/src/renderers/HiddenContextPortalNode.tsx
+- packages/agent-graph-ui/src/renderers/DerivedEdgeRenderer.tsx
+- packages/agent-graph-ui/src/renderers/DirectEdgeRenderer.tsx
+- packages/agent-graph-store/src/agent-graph-store.ts
+- packages/agent-graph-store/src/actions.ts
+- packages/agent-graph-core/src/build-complete-graph.ts
+- packages/agent-graph-core/src/build-derived-edges.ts
+- packages/agent-graph-core/src/build-hidden-context-portals.ts
+- packages/agent-graph-core/src/plan-source-mutation.ts
+- packages/agent-graph-core/src/build-diff-layers.ts
+- packages/agent-graph-server/src/create-http-server.ts
+- packages/agent-graph-server/src/create-ws-server.ts
+- packages/agent-graph-server/src/workspace-state-repository.ts
+- packages/agent-graph-server/src/document-repository.ts
+- packages/agent-graph-server/src/apply-source-mutation.ts
+- packages/agent-graph-protocol/src/http.ts
+- packages/agent-graph-protocol/src/ws.ts
+`);
+
+AgentGraph.definesUiComponents(`
+- AgentGraphScreen composes the overall workspace shell.
+- AgentGraphCanvas owns the React Flow plane and renderer registration.
+- LayerWorkspacePanel manages persistent user layers and their arrangement controls.
+- InspectorPanel owns graph-native inspection and edit affordances for the current primary selection.
+- DiffPanel owns graph-native diff explanation and conflict-entry flows.
+- HiddenContextPortalNode renders hidden-context portal interaction.
+- DerivedEdgeRenderer renders derived-edge visual semantics and multiplicity badges.
+- DirectEdgeRenderer renders direct relationship edges.
+`);
+
+AgentGraph.definesStoreSlices(`
+- session slice for workspace identity, revision, and connection state
+- graph slice for complete projection, visible layers, and workspace-plane layout
+- inspection slice for selection, hidden-context reveal, and derived-edge path inspection
+- diff slice for old, new, and changed-only comparison layers
+- conflict slice for blocked edits and trust interruption state
+- command slice for pending source-affecting edits and workspace operations
+`);
+
+AgentGraph.definesStoreActions(`
+- openWorkspace
+- cloneLayer
+- refineLayer
+- arrangeLayer
+- revealHiddenContext
+- inspectDerivedEdge
+- editNodeMeaning
+- connectVisibleNodes
+- applyValidationResult
+- applyConflict
+- applyGraphSnapshot
+- applyGraphPatch
+- applyDiffSnapshot
+- acknowledgeExternalChange
+- reloadCurrentTruth
+- discardPendingLocalEdit
+`);
+
+AgentGraph.definesCoreModules(`
+- complete graph derivation
+- layer materialization and persistence logic
+- derived-edge derivation and path ranking
+- hidden-context portal derivation
+- graph-native diff derivation
+- source mutation planning
+- conflict and validation explanation
+`);
 
 // Runtime Architecture
 
@@ -273,6 +353,189 @@ Contract.validationResult.means("accepted or rejected edit state with graph-nati
 Contract.conflictPayload.means("graph-native explanation of stale, ambiguous, or incompatible edits");
 Contract.externalChange.means("notification that authoritative source changed outside the current session");
 
+// Layer Semantics
+
+AgentGraph.definesLayerSemantics(`
+- The whole workspace always contains the complete projected graph for the current source revision.
+- A user layer is a persistent visible slice of that complete graph, not a separate graph.
+- A layer stores its own visible membership, local layout, visibility state, and derivation history from prior views.
+- A layer is a materialized persistent slice, not a live query that automatically changes as the whole graph changes.
+- Cloning a layer copies the current visible slice and layout into a new persistent layer.
+- Filtering removes items from visible membership without deleting them from the underlying graph.
+- Hiding suppresses visibility temporarily without removing membership from the layer definition.
+- Isolating creates a tighter visible slice from an existing visible context.
+- Refining a layer changes only the layer definition, never the underlying source graph by itself.
+- Layers render together in one workspace plane and move independently through their parent regions.
+`);
+
+// Derived Edge Semantics
+
+AgentGraph.definesDerivedEdgeSemantics(`
+- A derived edge appears only between currently visible nodes.
+- A derived edge exists when a meaningful relationship between visible nodes runs through hidden intermediate graph context.
+- Derived edges never replace direct edges; they supplement visible understanding when the direct path is hidden.
+- If a direct edge is visible, the direct edge wins and the equivalent derived edge is suppressed.
+- Multiple hidden supporting paths collapse into one derived edge when they communicate the same visible semantic relationship.
+- When several hidden paths exist, the displayed derived edge uses the shortest path that preserves semantic relationship kind and reports multiplicity separately.
+- Derived edges must remain visually distinct from direct edges.
+- Inspecting a derived edge must reveal the supporting hidden path or paths.
+`);
+
+// Hidden Context Portal Semantics
+
+AgentGraph.definesHiddenContextPortalSemantics(`
+- A hidden-context portal appears when visible graph elements connect to context that is currently outside the visible slice.
+- The portal signals that hidden context still exists in the same complete graph.
+- The portal summarizes what kind of hidden context lies beyond the visible boundary.
+- The portal supports navigation or reveal into the hidden context.
+- Revealed hidden context first appears as temporary workspace state unless the user promotes it into a persistent layer.
+- A portal never implies missing data; it implies intentionally non-visible data.
+- Portals preserve trust in completeness across user layers.
+`);
+
+// Edit Operation Matrix
+
+AgentGraph.allowsEdits(`
+- Edit visible node meaning.
+- Connect visible nodes.
+- Rearrange node layout.
+- Rearrange layer layout.
+- Refine layer visibility and membership.
+`);
+
+AgentGraph.validatesEdits(`
+- Visible edits must be checked against the complete hidden graph and source context.
+- Layer refinement edits affect workspace state only unless they explicitly target source meaning.
+- Layout edits affect workspace or layer layout state only unless explicitly modeled as source-backed layout hints.
+- Meaning edits and connection edits produce source mutations only after validation acceptance.
+- The system must never silently apply an ambiguous source mutation from a partial view.
+`);
+
+AgentGraph.blocksEdits(`
+- Any edit whose target source meaning is ambiguous in the complete graph context.
+- Any edit whose hidden context would make multiple source mutations plausible.
+- Any edit whose required supporting context is stale after external change or revision drift.
+`);
+
+AgentGraph.mapsEditsToSource(`
+- Editing visible node meaning targets the owning semantic declaration of that visible node.
+- Connecting visible nodes targets a relationship between the owning semantic declarations of those visible nodes.
+- Layer refinement never mutates source meaning.
+- Layout movement never mutates source meaning.
+- Source-affecting edits always target semantic ownership, never transient visible graph artifacts.
+`);
+
+AgentGraph.executesEditsThrough(`
+- Source-affecting edits are submitted immediately to the authoritative server for validation and mutation planning.
+- Accepted source-affecting edits persist immediately to authoritative source and return projection updates.
+- Workspace-only edits persist to workspace state and do not require source mutation planning.
+`);
+
+// Interaction And History Semantics
+
+AgentGraph.definesInteractionSemantics(`
+- Selection supports one primary selected element and optional multi-selection of peer elements.
+- Inspection always anchors on the primary selection.
+- Revealing hidden context expands around the currently inspected selection rather than resetting the workspace.
+- Layer clone, filter, hide, isolate, arrange, reveal, and diff toggles are workspace operations.
+- Meaning edits and relationship edits are source-affecting operations.
+`);
+
+AgentGraph.definesHistorySemantics(`
+- Workspace operations are undoable locally.
+- Source-affecting edits are undoable only through inverse validated mutations against the current revision.
+- If the revision changed and inverse mutation is no longer safe, undo becomes a conflict flow rather than a silent rollback.
+- Undo and redo must preserve trust rather than force stale state back into the graph.
+`);
+
+// Client State Model
+
+AgentGraph.organizesClientStateAs(`
+- session state for connection, revision, and workspace identity
+- graph state for complete projection, layer definitions, layout, and selection
+- inspection state for current focus, revealed hidden context, and derived-edge path inspection
+- diff and conflict state for change explanation and blocked edits
+- command state for pending source-affecting edits and local workspace operations
+`);
+
+// Workspace Persistence Model
+
+AgentGraph.persists(`
+- user-created layers
+- layer membership
+- layer-local layout
+- workspace-plane arrangement
+- visibility state
+- diff layers
+`);
+
+AgentGraph.doesNotPersist(`
+- transient hover state
+- temporary reveal state unless promoted into a persistent layer
+`);
+
+AgentGraph.persistsWorkspaceStateAs(`
+- a server-managed workspace sidecar separate from Agentish source documents
+- one canonical persisted workspace state per workspace root
+- persisted state includes layer definitions, layout, diff composition, and workspace-plane arrangement
+`);
+
+// Session And Revision Model
+
+AgentGraph.definesSessionSemantics(`
+- The server is authoritative for revision order.
+- The client always edits against a specific known workspace revision.
+- External change produces a new authoritative revision and stales current visible context when it touches the current visible graph or pending edit.
+- Projection patches apply in revision order only.
+- If a patch or undo targets an outdated revision, the system enters diff or conflict flow rather than guessing.
+`);
+
+// Diff And Conflict Model
+
+AgentGraph.definesDiffSemantics(`
+- A diff view compares graph state across source revisions.
+- Diff is shown through old, new, and changed-only layers in the same workspace.
+- Diff layers are explanatory first and exist to restore trust in changed graph state.
+- Diff layers do not become new source truth by themselves.
+- Diff composition aligns old, new, and changed-only layers by stable identity when possible.
+- Changed-only focuses on added, removed, and semantically changed visible elements.
+`);
+
+AgentGraph.definesConflictSemantics(`
+- A conflict interrupts trust in the current graph state or pending edit.
+- The system explains why trust was interrupted before asking for resolution.
+- Conflict resolution follows change explanation rather than preceding it.
+- A conflict arises from stale revision, hidden-context ambiguity, or incompatible external change.
+- Conflict resolution choices are reload current truth, inspect diff, discard pending local edit, or retry after context reveal.
+`);
+
+// Visual Semantics
+
+AgentGraph.requiresVisualDistinctions(`
+- direct edges and derived edges must be visibly different
+- hidden-context portals must be visibly different from normal nodes and edges
+- diff layers must be visibly different from normal semantic layers
+- layer parent regions must support whole-layer orientation without dominating the visible graph
+`);
+
+AgentGraph.definesVisualSemantics(`
+- Hidden-context portals render at the edge of the current visible boundary rather than as ordinary semantic nodes.
+- Hidden-context portals summarize missing context by relationship kind and hidden-element count.
+- Derived edges render as secondary explanatory relationships rather than primary structural edges.
+- Derived edges show path multiplicity with a badge when several hidden supporting paths collapse into one visible derived edge.
+- Diff layers render as sibling grouped regions with stable spatial alignment against normal semantic layers.
+`);
+
+// Performance And Scale Constraints
+
+AgentGraph.optimizesFor(`
+- multi-document workspace scale as the default case
+- incremental graph updates after accepted edits when possible
+- fast layer refinement without full source mutation planning
+- graph-native diff and hidden-context inspection that remain usable without dropping to source text
+- workspace operations that feel immediate relative to source-affecting reprojection
+`);
+
 // Cross-Family Truths
 
 AgentGraph.preserves(`
@@ -281,13 +544,4 @@ AgentGraph.preserves(`
 - distinction between direct and derived edges
 - inspectability of derived connections
 - trust in the graph as a primary surface rather than a secondary visualization
-`);
-
-// Open Questions
-
-AgentGraph.keepsOpen(`
-- What is the best visible form for a hidden-context portal to the underlying plane?
-- How should derived edges summarize path strength or multiplicity when several hidden paths exist?
-- Which layer manipulations should be reversible as simple workspace operations versus source-affecting edits?
-- What is the most legible graph-native diff composition for old, new, and changed-only layers in one workspace?
 `);
