@@ -1,19 +1,19 @@
 /// <reference path="./_agentish.d.ts" />
 
 const Agentish = define.language("Agentish", {
-  purpose: "Decision-complete implementation planning",
+  purpose: "Code architecture definition",
 });
 
 const Concept = define.entity("AgentishGraphConcept", { format: Agentish });
 const Scenarios = define.entity("AgentishGraphScenarios", { format: Agentish });
 const Contracts = define.entity("AgentishGraphContracts", { format: Agentish });
 
-const Plan = define.entity("AgentishGraphImplementationPlan", {
+const CodeArchitecture = define.entity("AgentishGraphCodeArchitecture", {
   format: Agentish,
   implements: Concept,
   operationalizes: Scenarios,
   bindsTo: Contracts,
-  standard: "Resolve all non-mechanical architecture decisions",
+  standard: "Resolve code structure, ownership, and boundary decisions",
 });
 
 const Browser = define.actor("BrowserUser", { role: "Graph editor operator" });
@@ -86,13 +86,10 @@ Package.server.owns(`- Bun HTTP server
 - Mutation execution`);
 Package.studio.owns("Entry point only");
 
-Plan.prescribes(`- The Vite app contains no business logic.
+CodeArchitecture.prescribes(`- The Vite app contains no business logic.
 - Reusable code lives under packages.
 - The browser never touches filesystem APIs.
 - Only the server writes source files.
-- The server is authoritative for projection and mutation results.
-- The store contains client session state only.
-- The UI never plans source mutations.
 - The protocol owns all cross-boundary contracts.`);
 
 const File = {
@@ -202,6 +199,14 @@ Package.server.contains(
 );
 Package.studio.contains(File.studioApp, File.studioMain);
 
+File.serverWorkspace.uses(
+  File.coreParser,
+  File.coreSemantic,
+  File.coreIdentity,
+  File.coreProjection,
+);
+File.serverMutations.uses(File.coreMutation);
+
 const State = {
   session: define.entity("SessionSlice"),
   workspace: define.entity("WorkspaceSlice"),
@@ -257,13 +262,6 @@ File.storeActions.implements(
   Action.resolveConflict,
   Action.persistLayoutHint,
 );
-File.serverWorkspace.uses(
-  File.coreParser,
-  File.coreSemantic,
-  File.coreIdentity,
-  File.coreProjection,
-);
-File.serverMutations.uses(File.coreMutation);
 
 State.session.updatedBy(
   Action.bootstrapConfig,
@@ -303,11 +301,21 @@ const Transport = {
 };
 
 const Route = {
-  config: define.entity("GetGraphConfigRoute", { path: "GET /api/agentish-graph/config" }),
-  roots: define.entity("ListWorkspaceRootsRoute", { path: "GET /api/agentish-graph/roots" }),
-  createSession: define.entity("CreateGraphSessionRoute", { path: "POST /api/agentish-graph/sessions" }),
-  sessionSnapshot: define.entity("GetGraphSessionSnapshotRoute", { path: "GET /api/agentish-graph/sessions/:sessionId/snapshot" }),
-  closeSession: define.entity("DeleteGraphSessionRoute", { path: "DELETE /api/agentish-graph/sessions/:sessionId" }),
+  config: define.entity("GetGraphConfigRoute", {
+    path: "GET /api/agentish-graph/config",
+  }),
+  roots: define.entity("ListWorkspaceRootsRoute", {
+    path: "GET /api/agentish-graph/roots",
+  }),
+  createSession: define.entity("CreateGraphSessionRoute", {
+    path: "POST /api/agentish-graph/sessions",
+  }),
+  sessionSnapshot: define.entity("GetGraphSessionSnapshotRoute", {
+    path: "GET /api/agentish-graph/sessions/:sessionId/snapshot",
+  }),
+  closeSession: define.entity("DeleteGraphSessionRoute", {
+    path: "DELETE /api/agentish-graph/sessions/:sessionId",
+  }),
 };
 
 const Message = {
@@ -387,9 +395,9 @@ Transport.ws.emits(
   Message.serverPong,
 );
 
-Action.connectSocket.sends(Message.clientHello);
 Action.bootstrapConfig.calls(Route.config, Route.roots);
 Action.createSession.calls(Route.createSession, Route.sessionSnapshot);
+Action.connectSocket.sends(Message.clientHello);
 Action.openDocument.sends(Message.clientOpenDocuments);
 Action.queueGraphIntent.sends(Message.clientApplyIntent);
 Action.persistLayoutHint.sends(Message.clientPersistLayout);
@@ -412,41 +420,6 @@ File.serverDocuments.accesses(FileSystem).through("normalized real paths");
 File.serverDocuments.rejects(`- path traversal
 - writes outside allowed roots`);
 
-const Decision = {
-  parsing: define.entity("ParsingDecision"),
-  identity: define.entity("StableIdentityDecision"),
-  projection: define.entity("ProjectionDecision"),
-  layering: define.entity("LayeringDecision"),
-  mutation: define.entity("MutationDecision"),
-  conflicts: define.entity("ConflictDecision"),
-  session: define.entity("SessionDecision"),
-  rendering: define.entity("RenderingDecision"),
-};
-
-Decision.parsing.defines(`- Use the TypeScript compiler API.
-- Extract define declarations, relationship chains, and when chains.`);
-Decision.identity.defines(`- Stable IDs derive from relative path and local meaning.
-- Layout hints are keyed by stable ID.`);
-Decision.projection.defines(`- Projection is built on the server.
-- Projection recomputes from source and layout hints.`);
-Decision.layering.defines(`- There is one layer per open document.
-- Default layer order is lexicographic by relative path.`);
-Decision.mutation.defines(`- Graph mutation intent is the only client write primitive.
-- Source patch plan is the only server write primitive.
-- The client may be optimistic about selection and viewport only.`);
-Decision.conflicts.defines(`- Conflicts pause the pending mutation queue.
-- Conflict resolution choices are reload or discard local intent.`);
-Decision.session.defines(`- There is one writable session per workspace root.
-- A missing patch revision forces a full snapshot reload.`);
-Decision.rendering.defines(`- React Flow is an adapter, not a source of truth.
-- Portal edges represent cross-layer references only.`);
-
-Plan.enforces(`- The UI and store never use filesystem APIs.
-- Only the server writes documents.
-- Equivalent meaning yields equivalent stable IDs across reprojection.
-- Equal documents plus equal layout hints yield equal projection.
-- Projection patches apply strictly in revision order.`);
-
 when(Browser.opens(Studio))
   .then(Action.bootstrapConfig)
   .and(Action.createSession)
@@ -456,10 +429,3 @@ when(Browser.opens(Studio))
   .and(Route.createSession)
   .and(Message.clientHello)
   .and(Message.serverReady);
-
-when(Browser.edits("graph workspace"))
-  .then(Action.queueGraphIntent)
-  .and(File.coreMutation.generates("source patch plan"))
-  .and(File.serverMutations.applies("source patch plan"))
-  .and(Message.serverValidation)
-  .and(Message.serverProjectionPatch);

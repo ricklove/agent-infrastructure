@@ -19,7 +19,7 @@ const Layer = {
     avoids: "architecture and schema detail",
   }),
   implementationPlan: define.entity("ImplementationPlanLayer", {
-    decides: "architecture and ownership",
+    decides: "all implementation-relevant decisions",
     avoids: "redundant behavior and pseudo-schemas",
   }),
   contracts: define.entity("ContractsLayer", {
@@ -52,9 +52,10 @@ Layer.scenarios.answers(
   "What do conflicts look like?",
 );
 Layer.implementationPlan.answers(
-  "What packages exist?",
+  "What code structure exists?",
   "Where do responsibilities live?",
   "Who owns state, transport, parsing, projection, and mutation?",
+  "How does the implemented system behave?",
   "What implementation choices remain closed?",
 );
 Layer.contracts.answers(
@@ -69,6 +70,8 @@ Layer.scenarios.contains("user stories", {
   renderedAs: "canonical acceptance flows",
   rejects: "loose product prose",
 });
+Layer.implementationPlan.contains(`- agentish-graph.code-architecture.ts
+- agentish-graph.operational-behavior.ts`);
 
 when(Layer.concept.weakens("system meaning"))
   .then(Layer.implementationPlan.invents("architecture semantics"))
