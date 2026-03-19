@@ -21,6 +21,12 @@ type HandleConnection = {
   targetNodeId: StableId;
   targetHandleId: HandleRef;
 };
+type DraftConnection = HandleConnection & { relationshipKind: string };
+type WorkspaceSnapshot = {
+  root: WorkspaceRootConfig | null;
+  fileTree: WorkspaceEntry[];
+  openDocuments: AgentishDocumentText[];
+};
 type Message<T extends string, P = {}> = { type: T } & P;
 type Mutation<T extends string, P = {}> = { kind: T; mutationId: MutationId } & P;
 
@@ -229,7 +235,7 @@ export type GraphMutationIntent =
       "create-node",
       { layerId: StableId; nodeKind: GraphNodeKind; name: string } & Point
     >
-  | Mutation<"connect-handles", HandleConnection & { relationshipKind: string }>
+  | Mutation<"connect-handles", DraftConnection>
   | Mutation<
       "delete-elements",
       { nodeIds: StableId[]; edgeIds: StableId[]; portalIds: StableId[] }
@@ -292,11 +298,7 @@ export type CreateSessionResponse = {
 };
 
 export type GetSessionSnapshotResponse = {
-  workspace: {
-    root: WorkspaceRootConfig | null;
-    fileTree: WorkspaceEntry[];
-    openDocuments: AgentishDocumentText[];
-  };
+  workspace: WorkspaceSnapshot;
   projection: GraphProjectionSnapshot;
   validationIssues: ValidationIssue[];
 };
@@ -315,14 +317,7 @@ export type WsClientEnvelope =
 
 export type WsServerEnvelope =
   | Message<"server/ready", { sessionId: SessionId; revision: Revision }>
-  | Message<
-      "server/workspace-snapshot",
-      {
-        root: WorkspaceRootConfig | null;
-        fileTree: WorkspaceEntry[];
-        openDocuments: AgentishDocumentText[];
-      }
-    >
+  | Message<"server/workspace-snapshot", WorkspaceSnapshot>
   | Message<"server/projection-snapshot", { snapshot: GraphProjectionSnapshot }>
   | Message<"server/projection-patch", { patch: SourcePatchPlan; revision: Revision }>
   | Message<
@@ -389,7 +384,7 @@ export type InspectorSlice = {
   selectedEntityKind: string | null;
   draftAttributes: Record<string, string>;
   draftLabel: string;
-  draftConnection: (HandleConnection & { relationshipKind: string }) | null;
+  draftConnection: DraftConnection | null;
   validationIssues: ValidationIssue[];
   activeConflict: GraphConflict | null;
 };
