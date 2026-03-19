@@ -188,6 +188,91 @@ when(AgentGraph.detects(Editing.conflict))
   .then(AgentGraph.explains("why trust was interrupted"))
   .and(AgentGraph.prioritizes("change explanation before conflict resolution"));
 
+// Code Structure
+
+const Package = {
+  studio: define.package("AgentishStudioApp"),
+  ui: define.package("AgentGraphUi"),
+  store: define.package("AgentGraphStore"),
+  core: define.package("AgentGraphCore"),
+  protocol: define.package("AgentGraphProtocol"),
+  server: define.package("AgentGraphServer"),
+};
+
+Package.ui.dependsOn(Package.store, Package.core, Package.protocol);
+Package.store.dependsOn(Package.core, Package.protocol);
+Package.server.dependsOn(Package.core, Package.protocol);
+Package.studio.dependsOn(Package.ui, Package.store, Package.protocol);
+
+AgentGraph.implementsThrough(`
+- apps/agentish-studio is a thin composition shell.
+- packages/agent-graph-ui owns React Flow rendering, interaction, and view composition.
+- packages/agent-graph-store owns client session, layer, selection, diff, and conflict state.
+- packages/agent-graph-core owns semantic graph derivation, layer logic, hidden-context analysis, derived-edge analysis, validation, and mutation planning.
+- packages/agent-graph-protocol owns shared HTTP, WSS, snapshot, diff, validation, and conflict contracts.
+- packages/agent-graph-server owns Bun HTTP and WSS transport, filesystem access, persistence, reprojection, and external-change detection.
+`);
+
+Package.studio.rejects("business logic outside composition and bootstrapping");
+Package.ui.rejects("direct filesystem access and direct source writes");
+Package.store.rejects("authoritative graph derivation and source mutation planning");
+Package.server.rejects("browser-only state ownership");
+
+// Runtime Architecture
+
+const Runtime = {
+  browser: define.system("BrowserClient"),
+  reactFlow: define.system("ReactFlowCanvas"),
+  legendState: define.system("LegendStateStore"),
+  bun: define.system("BunGraphServer"),
+  filesystem: define.system("WorkspaceFilesystem"),
+};
+
+AgentGraph.runsOn(`
+- React and React Flow in the browser.
+- Legend State for client graph workspace state.
+- Bun HTTP and WSS on the server.
+- Workspace filesystem as the authoritative persistence layer.
+`);
+
+Runtime.browser.uses(Runtime.reactFlow, Runtime.legendState);
+Runtime.bun.accesses(Runtime.filesystem);
+
+when(Runtime.browser.connectsTo(Runtime.bun))
+  .then(Runtime.browser.requests("workspace and graph snapshots"))
+  .and(Runtime.browser.subscribes("to projection, diff, validation, conflict, and external-change events"))
+  .and(Runtime.bun.remains("authoritative for persistence, reprojection, and revision order"));
+
+// Boundary Contracts
+
+const Contract = {
+  workspaceSnapshot: define.concept("WorkspaceSnapshot"),
+  graphSnapshot: define.concept("GraphSnapshot"),
+  graphPatch: define.concept("GraphPatch"),
+  diffSnapshot: define.concept("GraphDiffSnapshot"),
+  validationResult: define.concept("ValidationPayload"),
+  conflictPayload: define.concept("ConflictPayload"),
+  externalChange: define.concept("ExternalChangeEvent"),
+};
+
+AgentGraph.crossesBoundariesThrough(
+  Contract.workspaceSnapshot,
+  Contract.graphSnapshot,
+  Contract.graphPatch,
+  Contract.diffSnapshot,
+  Contract.validationResult,
+  Contract.conflictPayload,
+  Contract.externalChange,
+);
+
+Contract.workspaceSnapshot.means("the open documents, workspace state, and layer persistence context");
+Contract.graphSnapshot.means("the complete projected graph state for the current revision");
+Contract.graphPatch.means("incremental graph-state updates after accepted mutation or reprojection");
+Contract.diffSnapshot.means("old, new, and changed-only graph comparison state");
+Contract.validationResult.means("accepted or rejected edit state with graph-native explanation");
+Contract.conflictPayload.means("graph-native explanation of stale, ambiguous, or incompatible edits");
+Contract.externalChange.means("notification that authoritative source changed outside the current session");
+
 // Cross-Family Truths
 
 AgentGraph.preserves(`
