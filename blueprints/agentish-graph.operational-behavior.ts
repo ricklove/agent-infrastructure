@@ -4,14 +4,14 @@ const Agentish = define.language("Agentish", {
   purpose: "Operational behavior definition",
 });
 
-const Concept = define.entity("AgentishGraphConcept", { format: Agentish });
-const Scenarios = define.entity("AgentishGraphScenarios", { format: Agentish });
-const Contracts = define.entity("AgentishGraphContracts", { format: Agentish });
-const CodeArchitecture = define.entity("AgentishGraphCodeArchitecture", {
+const Concept = define.blueprint("AgentishGraphConcept", { format: Agentish });
+const Scenarios = define.blueprint("AgentishGraphScenarios", { format: Agentish });
+const Contracts = define.blueprint("AgentishGraphContracts", { format: Agentish });
+const CodeArchitecture = define.architecture("AgentishGraphCodeArchitecture", {
   format: Agentish,
 });
 
-const OperationalBehavior = define.entity("AgentishGraphOperationalBehavior", {
+const OperationalBehavior = define.behaviorModel("AgentishGraphOperationalBehavior", {
   format: Agentish,
   implements: Concept,
   operationalizes: Scenarios,
@@ -26,33 +26,33 @@ const GraphSystem = define.system("AgentishGraphSystem", {
 });
 
 const Source = {
-  documentSet: define.entity("AgentishDocumentSet"),
-  semanticModel: define.entity("SemanticModel"),
-  mutation: define.entity("SourceMutation"),
-  patchPlan: define.entity("SourcePatchPlan"),
+  documentSet: define.documentSet("AgentishDocumentSet"),
+  semanticModel: define.semanticModel("SemanticModel"),
+  mutation: define.mutation("SourceMutation"),
+  patchPlan: define.patchPlan("SourcePatchPlan"),
 };
 
 const Projection = {
-  workspace: define.entity("GraphWorkspace"),
-  layoutHint: define.entity("LayoutHint"),
-  stableIdentity: define.entity("StableIdentity"),
+  workspace: define.workspace("GraphWorkspace"),
+  layoutHint: define.layoutHint("LayoutHint"),
+  stableIdentity: define.identity("StableIdentity"),
 };
 
 const Editing = {
-  intent: define.entity("EditIntent"),
-  validation: define.entity("ValidationResult"),
-  conflict: define.entity("EditConflict"),
+  intent: define.intent("EditIntent"),
+  validation: define.validation("ValidationResult"),
+  conflict: define.conflict("EditConflict"),
 };
 
 const Decision = {
-  parsing: define.entity("ParsingDecision"),
-  identity: define.entity("StableIdentityDecision"),
-  projection: define.entity("ProjectionDecision"),
-  layering: define.entity("LayeringDecision"),
-  mutation: define.entity("MutationDecision"),
-  conflicts: define.entity("ConflictDecision"),
-  session: define.entity("SessionDecision"),
-  rendering: define.entity("RenderingDecision"),
+  parsing: define.decision("ParsingDecision"),
+  identity: define.decision("StableIdentityDecision"),
+  projection: define.decision("ProjectionDecision"),
+  layering: define.decision("LayeringDecision"),
+  mutation: define.decision("MutationDecision"),
+  conflicts: define.decision("ConflictDecision"),
+  session: define.decision("SessionDecision"),
+  rendering: define.decision("RenderingDecision"),
 };
 
 OperationalBehavior.contains(

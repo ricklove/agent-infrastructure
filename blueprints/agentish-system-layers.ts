@@ -4,25 +4,25 @@ const Agentish = define.language("Agentish", {
   purpose: "Layered system design",
 });
 
-const SystemLayers = define.entity("AgentishSystemLayers", {
+const SystemLayers = define.layerSystem("AgentishSystemLayers", {
   format: Agentish,
   describes: "How system meaning, behavior, architecture, and contracts separate",
 });
 
 const Layer = {
-  concept: define.entity("ConceptLayer", {
+  concept: define.layer("ConceptLayer", {
     decides: "system meaning",
     avoids: "architecture and schema detail",
   }),
-  scenarios: define.entity("ScenariosLayer", {
+  scenarios: define.layer("ScenariosLayer", {
     decides: "acceptance behavior",
     avoids: "architecture and schema detail",
   }),
-  implementationPlan: define.entity("ImplementationPlanLayer", {
+  implementationPlan: define.layer("ImplementationPlanLayer", {
     decides: "all implementation-relevant decisions",
     avoids: "redundant behavior and pseudo-schemas",
   }),
-  contracts: define.entity("ContractsLayer", {
+  contracts: define.layer("ContractsLayer", {
     decides: "exact machine-readable shapes",
     avoids: "behavior and rationale already modeled above",
   }),
@@ -96,13 +96,13 @@ SystemLayers.prescribes(`- Each lower layer must be mechanical relative to the l
 - Reject abstractions that hide semantic class at the point of use.`);
 
 const Quality = {
-  recoverableStructure: define.concept("RecoverableStructure"),
-  semanticNodeReuse: define.concept("SemanticNodeReuse"),
-  explicitRelations: define.concept("ExplicitRelations"),
-  causalShape: define.concept("CausalShape"),
-  lowOpaqueStrings: define.concept("LowOpaqueStrings"),
-  decisionCompression: define.concept("DecisionCompression"),
-  exactNativeSchemas: define.concept("ExactNativeSchemas"),
+  recoverableStructure: define.quality("RecoverableStructure"),
+  semanticNodeReuse: define.quality("SemanticNodeReuse"),
+  explicitRelations: define.quality("ExplicitRelations"),
+  causalShape: define.quality("CausalShape"),
+  lowOpaqueStrings: define.quality("LowOpaqueStrings"),
+  decisionCompression: define.quality("DecisionCompression"),
+  exactNativeSchemas: define.quality("ExactNativeSchemas"),
 };
 
 SystemLayers.values(

@@ -4,7 +4,7 @@ const Agentish = define.language("Agentish", {
   purpose: "Conceptual system definition",
 });
 
-const AgentishGraphConcept = define.entity("AgentishGraphConcept", {
+const AgentishGraphConcept = define.blueprint("AgentishGraphConcept", {
   format: Agentish,
   describes: "Human visualization and editing of Agentish documents",
 });
@@ -17,39 +17,43 @@ const GraphSystem = define.system("AgentishGraphSystem", {
 });
 
 const Source = {
-  document: define.entity("AgentishDocument", { format: Agentish }),
-  documentSet: define.entity("AgentishDocumentSet", { actsAs: "workspace source" }),
-  semanticModel: define.entity("SemanticModel", { actsAs: "normalized meaning" }),
-  stableIdentity: define.entity("StableIdentity"),
+  document: define.document("AgentishDocument", { format: Agentish }),
+  documentSet: define.documentSet("AgentishDocumentSet", {
+    actsAs: "workspace source",
+  }),
+  semanticModel: define.semanticModel("SemanticModel", {
+    actsAs: "normalized meaning",
+  }),
+  stableIdentity: define.identity("StableIdentity"),
 };
 
 const Projection = {
-  workspace: define.entity("GraphWorkspace", {
+  workspace: define.workspace("GraphWorkspace", {
     actsAs: "human-editable projection",
   }),
-  layer: define.entity("GraphLayer"),
-  node: define.entity("GraphNode"),
-  edge: define.entity("GraphEdge"),
-  portal: define.entity("PortalEdge"),
-  selection: define.entity("SelectionState"),
-  layoutHint: define.entity("LayoutHint"),
+  layer: define.graphLayer("GraphLayer"),
+  node: define.graphNode("GraphNode"),
+  edge: define.graphEdge("GraphEdge"),
+  portal: define.portal("PortalEdge"),
+  selection: define.selection("SelectionState"),
+  layoutHint: define.layoutHint("LayoutHint"),
 };
 
 const Editing = {
-  intent: define.entity("EditIntent"),
-  mutation: define.entity("SourceMutation"),
-  validation: define.entity("ValidationResult"),
-  conflict: define.entity("EditConflict"),
+  intent: define.intent("EditIntent"),
+  mutation: define.mutation("SourceMutation"),
+  validation: define.validation("ValidationResult"),
+  conflict: define.conflict("EditConflict"),
 };
 
 const Truth = {
-  sourceAuthority: define.concept("SourceAuthority"),
-  derivedProjection: define.concept("DerivedProjection"),
-  roundTripEditing: define.concept("RoundTripEditing"),
-  layoutHintsAdvisory: define.concept("LayoutHintsAreAdvisory"),
-  multiDocumentWorkspace: define.concept("WorkspaceMaySpanManyDocuments"),
-  stableIdentity: define.concept("StableIdentityAcrossRefresh"),
-  surfacedConflicts: define.concept("SurfacedConflicts"),
+  sourceAuthority: define.truth("SourceAuthority"),
+  derivedProjection: define.truth("DerivedProjection"),
+  roundTripEditing: define.truth("RoundTripEditing"),
+  layoutHintsAdvisory: define.truth("LayoutHintsAreAdvisory"),
+  multiDocumentWorkspace: define.truth("WorkspaceMaySpanManyDocuments"),
+  stableIdentity: define.truth("StableIdentityAcrossRefresh"),
+  surfacedConflicts: define.truth("SurfacedConflicts"),
 };
 
 Source.documentSet.contains(Source.document);

@@ -4,11 +4,11 @@ const Agentish = define.language("Agentish", {
   purpose: "Code architecture definition",
 });
 
-const Concept = define.entity("AgentishGraphConcept", { format: Agentish });
-const Scenarios = define.entity("AgentishGraphScenarios", { format: Agentish });
-const Contracts = define.entity("AgentishGraphContracts", { format: Agentish });
+const Concept = define.blueprint("AgentishGraphConcept", { format: Agentish });
+const Scenarios = define.blueprint("AgentishGraphScenarios", { format: Agentish });
+const Contracts = define.blueprint("AgentishGraphContracts", { format: Agentish });
 
-const CodeArchitecture = define.entity("AgentishGraphCodeArchitecture", {
+const CodeArchitecture = define.architecture("AgentishGraphCodeArchitecture", {
   format: Agentish,
   implements: Concept,
   operationalizes: Scenarios,
@@ -28,22 +28,22 @@ const FileSystem = define.system("WorkspaceFileSystem", {
 });
 
 const Package = {
-  core: define.entity("PackageAgentishGraphCore", {
+  core: define.package("PackageAgentishGraphCore", {
     path: "packages/agentish-graph-core",
   }),
-  protocol: define.entity("PackageAgentishGraphProtocol", {
+  protocol: define.package("PackageAgentishGraphProtocol", {
     path: "packages/agentish-graph-protocol",
   }),
-  store: define.entity("PackageAgentishGraphStore", {
+  store: define.package("PackageAgentishGraphStore", {
     path: "packages/agentish-graph-store",
   }),
-  ui: define.entity("PackageAgentishGraphUi", {
+  ui: define.package("PackageAgentishGraphUi", {
     path: "packages/agentish-graph-ui",
   }),
-  server: define.entity("PackageAgentishGraphServer", {
+  server: define.package("PackageAgentishGraphServer", {
     path: "packages/agentish-graph-server",
   }),
-  studio: define.entity("PackageAgentishStudio", {
+  studio: define.package("PackageAgentishStudio", {
     path: "apps/agentish-studio",
   }),
 };
@@ -99,79 +99,79 @@ CodeArchitecture.prescribes(`- The Vite app contains no business logic.
 - The protocol owns all cross-boundary contracts.`);
 
 const File = {
-  coreContracts: define.entity("CoreContracts", {
+  coreContracts: define.file("CoreContracts", {
     path: "packages/agentish-graph-core/src/contracts/*",
   }),
-  coreParser: define.entity("CoreParser", {
+  coreParser: define.file("CoreParser", {
     path: "packages/agentish-graph-core/src/parser/parse-agentish-document.ts",
   }),
-  coreSemantic: define.entity("CoreSemanticBuilder", {
+  coreSemantic: define.file("CoreSemanticBuilder", {
     path: "packages/agentish-graph-core/src/semantic/build-semantic-model.ts",
   }),
-  coreIdentity: define.entity("CoreStableIdentity", {
+  coreIdentity: define.file("CoreStableIdentity", {
     path: "packages/agentish-graph-core/src/identity/build-stable-id.ts",
   }),
-  coreProjection: define.entity("CoreProjectionBuilder", {
+  coreProjection: define.file("CoreProjectionBuilder", {
     path: "packages/agentish-graph-core/src/projection/build-graph-projection.ts",
   }),
-  coreMutation: define.entity("CoreMutationPlanner", {
+  coreMutation: define.file("CoreMutationPlanner", {
     path: "packages/agentish-graph-core/src/mutation/plan-source-mutation.ts",
   }),
-  protocolHttp: define.entity("ProtocolHttp", {
+  protocolHttp: define.file("ProtocolHttp", {
     path: "packages/agentish-graph-protocol/src/http.ts",
   }),
-  protocolWs: define.entity("ProtocolWs", {
+  protocolWs: define.file("ProtocolWs", {
     path: "packages/agentish-graph-protocol/src/ws.ts",
   }),
-  storeState: define.entity("StoreState", {
+  storeState: define.file("StoreState", {
     path: "packages/agentish-graph-store/src/agentish-graph-store.ts",
   }),
-  storeActions: define.entity("StoreActions", {
+  storeActions: define.file("StoreActions", {
     path: "packages/agentish-graph-store/src/actions.ts",
   }),
-  uiScreen: define.entity("UiScreen", {
+  uiScreen: define.file("UiScreen", {
     path: "packages/agentish-graph-ui/src/components/AgentishGraphScreen.tsx",
   }),
-  uiCanvas: define.entity("UiCanvas", {
+  uiCanvas: define.file("UiCanvas", {
     path: "packages/agentish-graph-ui/src/components/AgentishGraphCanvas.tsx",
   }),
-  uiInspector: define.entity("UiInspector", {
+  uiInspector: define.file("UiInspector", {
     path: "packages/agentish-graph-ui/src/components/AgentishGraphInspectorPane.tsx",
   }),
-  uiNavigation: define.entity("UiNavigation", {
+  uiNavigation: define.file("UiNavigation", {
     path: "packages/agentish-graph-ui/src/components/*",
   }),
-  uiRenderers: define.entity("UiRenderers", {
+  uiRenderers: define.file("UiRenderers", {
     path: "packages/agentish-graph-ui/src/{renderers,reactflow}/*",
   }),
-  serverConfig: define.entity("ServerConfig", {
+  serverConfig: define.file("ServerConfig", {
     path: "packages/agentish-graph-server/src/config.ts",
   }),
-  serverHttp: define.entity("ServerHttp", {
+  serverHttp: define.file("ServerHttp", {
     path: "packages/agentish-graph-server/src/http/create-http-server.ts",
   }),
-  serverWs: define.entity("ServerWs", {
+  serverWs: define.file("ServerWs", {
     path: "packages/agentish-graph-server/src/ws/create-ws-server.ts",
   }),
-  serverSessions: define.entity("ServerSessions", {
+  serverSessions: define.file("ServerSessions", {
     path: "packages/agentish-graph-server/src/session/session-registry.ts",
   }),
-  serverWorkspace: define.entity("ServerWorkspace", {
+  serverWorkspace: define.file("ServerWorkspace", {
     path: "packages/agentish-graph-server/src/workspace/workspace-service.ts",
   }),
-  serverWatch: define.entity("ServerWorkspaceWatcher", {
+  serverWatch: define.file("ServerWorkspaceWatcher", {
     path: "packages/agentish-graph-server/src/workspace/workspace-watcher.ts",
   }),
-  serverDocuments: define.entity("ServerDocumentRepository", {
+  serverDocuments: define.file("ServerDocumentRepository", {
     path: "packages/agentish-graph-server/src/workspace/document-repository.ts",
   }),
-  serverMutations: define.entity("ServerMutationExecutor", {
+  serverMutations: define.file("ServerMutationExecutor", {
     path: "packages/agentish-graph-server/src/mutation/apply-source-mutation.ts",
   }),
-  studioApp: define.entity("StudioApp", {
+  studioApp: define.file("StudioApp", {
     path: "apps/agentish-studio/src/App.tsx",
   }),
-  studioMain: define.entity("StudioMain", {
+  studioMain: define.file("StudioMain", {
     path: "apps/agentish-studio/src/main.tsx",
   }),
 };
@@ -214,12 +214,12 @@ File.serverWorkspace.uses(
 File.serverMutations.uses(File.coreMutation);
 
 const State = {
-  session: define.entity("SessionSlice"),
-  workspace: define.entity("WorkspaceSlice"),
-  graph: define.entity("GraphSlice"),
-  inspector: define.entity("InspectorSlice"),
-  ui: define.entity("UiSlice"),
-  io: define.entity("IoSlice"),
+  session: define.stateSlice("SessionSlice"),
+  workspace: define.stateSlice("WorkspaceSlice"),
+  graph: define.stateSlice("GraphSlice"),
+  inspector: define.stateSlice("InspectorSlice"),
+  ui: define.stateSlice("UiSlice"),
+  io: define.stateSlice("IoSlice"),
 };
 
 File.storeState.defines(
@@ -232,34 +232,34 @@ File.storeState.defines(
 );
 
 const Action = {
-  bootstrapConfig: define.entity("BootstrapConfig"),
-  createSession: define.entity("CreateSession"),
-  closeSession: define.entity("CloseSession"),
-  connectSocket: define.entity("ConnectSocket"),
-  applyServerReady: define.entity("ApplyServerReady"),
-  applyWorkspaceSnapshot: define.entity("ApplyWorkspaceSnapshot"),
-  applyProjectionSnapshot: define.entity("ApplyProjectionSnapshot"),
-  applyServerPatch: define.entity("ApplyServerPatch"),
-  applyValidationIssues: define.entity("ApplyValidationIssues"),
-  applyConflict: define.entity("ApplyConflict"),
-  handleFileChange: define.entity("HandleFileChange"),
-  acknowledgeDocumentPatched: define.entity("AcknowledgeDocumentPatched"),
-  applyServerError: define.entity("ApplyServerError"),
-  sendPing: define.entity("SendPing"),
-  receivePong: define.entity("ReceivePong"),
-  openRoot: define.entity("OpenRoot"),
-  openDocument: define.entity("OpenDocument"),
-  saveDocuments: define.entity("SaveDocuments"),
-  setSelection: define.entity("SetSelection"),
-  setViewport: define.entity("SetViewport"),
-  beginInspectorEdit: define.entity("BeginInspectorEdit"),
-  commitInspectorDraft: define.entity("CommitInspectorDraft"),
-  createNode: define.entity("CreateNode"),
-  connectHandles: define.entity("ConnectHandles"),
-  deleteSelection: define.entity("DeleteSelection"),
-  queueGraphIntent: define.entity("QueueGraphIntent"),
-  resolveConflict: define.entity("ResolveConflict"),
-  persistLayoutHint: define.entity("PersistLayoutHint"),
+  bootstrapConfig: define.action("BootstrapConfig"),
+  createSession: define.action("CreateSession"),
+  closeSession: define.action("CloseSession"),
+  connectSocket: define.action("ConnectSocket"),
+  applyServerReady: define.action("ApplyServerReady"),
+  applyWorkspaceSnapshot: define.action("ApplyWorkspaceSnapshot"),
+  applyProjectionSnapshot: define.action("ApplyProjectionSnapshot"),
+  applyServerPatch: define.action("ApplyServerPatch"),
+  applyValidationIssues: define.action("ApplyValidationIssues"),
+  applyConflict: define.action("ApplyConflict"),
+  handleFileChange: define.action("HandleFileChange"),
+  acknowledgeDocumentPatched: define.action("AcknowledgeDocumentPatched"),
+  applyServerError: define.action("ApplyServerError"),
+  sendPing: define.action("SendPing"),
+  receivePong: define.action("ReceivePong"),
+  openRoot: define.action("OpenRoot"),
+  openDocument: define.action("OpenDocument"),
+  saveDocuments: define.action("SaveDocuments"),
+  setSelection: define.action("SetSelection"),
+  setViewport: define.action("SetViewport"),
+  beginInspectorEdit: define.action("BeginInspectorEdit"),
+  commitInspectorDraft: define.action("CommitInspectorDraft"),
+  createNode: define.action("CreateNode"),
+  connectHandles: define.action("ConnectHandles"),
+  deleteSelection: define.action("DeleteSelection"),
+  queueGraphIntent: define.action("QueueGraphIntent"),
+  resolveConflict: define.action("ResolveConflict"),
+  persistLayoutHint: define.action("PersistLayoutHint"),
 };
 
 File.storeActions.implements(
@@ -340,46 +340,46 @@ State.io.updatedBy(
 );
 
 const Transport = {
-  http: define.entity("HttpSurface"),
-  ws: define.entity("WssSurface"),
+  http: define.transport("HttpSurface"),
+  ws: define.transport("WssSurface"),
 };
 
 const Route = {
-  config: define.entity("GetGraphConfigRoute", {
+  config: define.route("GetGraphConfigRoute", {
     path: "GET /api/agentish-graph/config",
   }),
-  roots: define.entity("ListWorkspaceRootsRoute", {
+  roots: define.route("ListWorkspaceRootsRoute", {
     path: "GET /api/agentish-graph/roots",
   }),
-  createSession: define.entity("CreateGraphSessionRoute", {
+  createSession: define.route("CreateGraphSessionRoute", {
     path: "POST /api/agentish-graph/sessions",
   }),
-  sessionSnapshot: define.entity("GetGraphSessionSnapshotRoute", {
+  sessionSnapshot: define.route("GetGraphSessionSnapshotRoute", {
     path: "GET /api/agentish-graph/sessions/:sessionId/snapshot",
   }),
-  closeSession: define.entity("DeleteGraphSessionRoute", {
+  closeSession: define.route("DeleteGraphSessionRoute", {
     path: "DELETE /api/agentish-graph/sessions/:sessionId",
   }),
 };
 
 const Message = {
-  clientHello: define.entity("ClientHelloMessage"),
-  clientOpenRoot: define.entity("ClientOpenRootMessage"),
-  clientOpenDocuments: define.entity("ClientOpenDocumentsMessage"),
-  clientApplyIntent: define.entity("ClientApplyIntentMessage"),
-  clientPersistLayout: define.entity("ClientPersistLayoutMessage"),
-  clientSaveDocuments: define.entity("ClientSaveDocumentsMessage"),
-  clientPing: define.entity("ClientPingMessage"),
-  serverReady: define.entity("ServerReadyMessage"),
-  serverWorkspaceSnapshot: define.entity("ServerWorkspaceSnapshotMessage"),
-  serverProjectionSnapshot: define.entity("ServerProjectionSnapshotMessage"),
-  serverProjectionPatch: define.entity("ServerProjectionPatchMessage"),
-  serverDocumentPatched: define.entity("ServerDocumentPatchedMessage"),
-  serverValidation: define.entity("ServerValidationMessage"),
-  serverConflict: define.entity("ServerConflictMessage"),
-  serverFileChanged: define.entity("ServerFileChangedMessage"),
-  serverError: define.entity("ServerErrorMessage"),
-  serverPong: define.entity("ServerPongMessage"),
+  clientHello: define.message("ClientHelloMessage"),
+  clientOpenRoot: define.message("ClientOpenRootMessage"),
+  clientOpenDocuments: define.message("ClientOpenDocumentsMessage"),
+  clientApplyIntent: define.message("ClientApplyIntentMessage"),
+  clientPersistLayout: define.message("ClientPersistLayoutMessage"),
+  clientSaveDocuments: define.message("ClientSaveDocumentsMessage"),
+  clientPing: define.message("ClientPingMessage"),
+  serverReady: define.message("ServerReadyMessage"),
+  serverWorkspaceSnapshot: define.message("ServerWorkspaceSnapshotMessage"),
+  serverProjectionSnapshot: define.message("ServerProjectionSnapshotMessage"),
+  serverProjectionPatch: define.message("ServerProjectionPatchMessage"),
+  serverDocumentPatched: define.message("ServerDocumentPatchedMessage"),
+  serverValidation: define.message("ServerValidationMessage"),
+  serverConflict: define.message("ServerConflictMessage"),
+  serverFileChanged: define.message("ServerFileChangedMessage"),
+  serverError: define.message("ServerErrorMessage"),
+  serverPong: define.message("ServerPongMessage"),
 };
 
 File.protocolHttp.defines(
