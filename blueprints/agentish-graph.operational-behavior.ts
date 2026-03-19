@@ -71,17 +71,23 @@ Decision.parsing.defines(`- Use the TypeScript compiler API.
 - Treat named declarations as semantic nodes and fluent chains as semantic edges.`);
 Decision.identity.defines(`- Stable IDs derive from relative path and local meaning.
 - Equivalent meaning must yield the same stable ID after reprojection.
-- Layout hints are keyed by stable ID rather than by transient render position.`);
+- Layout hints are keyed by stable ID rather than by transient render position.
+- If a stable ID no longer resolves to a projected node, its layout hint is discarded.`);
 Decision.projection.defines(`- Projection is built on the server.
 - Projection recomputes from source and layout hints.
-- Layout hints may influence geometry but may not change source meaning.`);
+- Layout hints may influence geometry but may not change source meaning.
+- A relation becomes a portal when its endpoints land in different document layers.`);
 Decision.layering.defines(`- There is one layer per open document.
 - Default layer order is lexicographic by relative path.
 - Cross-document references appear as portals between layers.`);
 Decision.mutation.defines(`- Graph mutation intent is the only client write primitive.
 - Source patch plan is the only server write primitive.
 - Validation precedes source writes.
-- The client may be optimistic about selection and viewport only.`);
+- The client may be optimistic about selection and viewport only.
+- Setting node position mutates layout hints only.
+- Setting node label or attribute rewrites the corresponding source declaration.
+- Connecting handles rewrites or creates a source relationship.
+- Deleting elements removes the owning source declarations or relationships.`);
 Decision.conflicts.defines(`- Conflicts pause the pending mutation queue.
 - A mutation that loses its target becomes a surfaced conflict instead of a silent drop.
 - Conflict resolution choices are reload, manual edit, or discard local intent.`);
@@ -124,3 +130,12 @@ when(GraphSystem.detects("external source change"))
   .then(GraphSystem.derives(Source.semanticModel))
   .and(GraphSystem.projects(Projection.workspace))
   .and(GraphSystem.preserves("selection and viewport when safe"));
+
+when(GraphSystem.detects("missing patch revision"))
+  .then(GraphSystem.reloads("full snapshot"))
+  .and(GraphSystem.replaces("stale client projection state"));
+
+when(GraphSystem.reprojects(Projection.workspace))
+  .then(GraphSystem.reuses(Projection.stableIdentity))
+  .and(GraphSystem.applies(Projection.layoutHint))
+  .and(GraphSystem.discards("orphaned layout hints"));

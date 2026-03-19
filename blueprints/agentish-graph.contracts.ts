@@ -449,6 +449,7 @@ export type AgentishGraphStoreState = {
 export type AgentishGraphStoreActions = {
   bootstrapConfig(config: GraphServerConfigResponse): void;
   createSession(request: CreateSessionRequest): Promise<CreateSessionResponse>;
+  closeSession(sessionId: SessionId): Promise<CloseSessionResponse>;
   connectSocket(session: {
     sessionId: SessionId;
     sessionToken: SessionToken;
@@ -456,7 +457,9 @@ export type AgentishGraphStoreActions = {
   }): Promise<void>;
   applyServerSnapshot(snapshot: GetSessionSnapshotResponse): void;
   applyServerPatch(message: Extract<WsServerEnvelope, { type: "server/projection-patch" }>): void;
+  openRoot(rootId: RootId): void;
   openDocument(paths: DocumentPath[], activeDocumentPath?: DocumentPath | null): void;
+  saveDocuments(documentIds: StableId[]): void;
   setSelection(selection: GraphSelection): void;
   setViewport(viewport: GraphViewport): void;
   beginInspectorEdit(entityId: StableId): void;

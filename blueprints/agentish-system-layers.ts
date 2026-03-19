@@ -81,7 +81,7 @@ when(Layer.scenarios.weakens("acceptance behavior"))
   .then(Layer.implementationPlan.invents("behavior"))
   .and(SystemLayers.encounters("implementation variance"));
 
-when(Layer.implementationPlan.weakens("architecture decisions"))
+when(Layer.implementationPlan.weakens("architecture or behavior decisions"))
   .then(Layer.contracts.invents("system boundaries"))
   .and(SystemLayers.encounters("spec confusion"));
 

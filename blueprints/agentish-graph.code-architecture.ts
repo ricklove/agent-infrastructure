@@ -59,9 +59,11 @@ Package.core.rejects(`- React
 - Bun runtime APIs`);
 Package.store.rejects(`- parsing source
 - planning source mutations
+- authoritative projection computation
 - direct filesystem access`);
 Package.ui.rejects(`- direct source writes
 - direct filesystem access
+- source mutation planning
 - parser authority`);
 Package.server.rejects(`- React rendering
 - browser-only state ownership`);
@@ -90,6 +92,9 @@ CodeArchitecture.prescribes(`- The Vite app contains no business logic.
 - Reusable code lives under packages.
 - The browser never touches filesystem APIs.
 - Only the server writes source files.
+- The server is authoritative for projection and mutation results.
+- The store contains client session state only.
+- The UI never plans source mutations.
 - The protocol owns all cross-boundary contracts.`);
 
 const File = {
@@ -228,10 +233,13 @@ File.storeState.defines(
 const Action = {
   bootstrapConfig: define.entity("BootstrapConfig"),
   createSession: define.entity("CreateSession"),
+  closeSession: define.entity("CloseSession"),
   connectSocket: define.entity("ConnectSocket"),
   applyServerSnapshot: define.entity("ApplyServerSnapshot"),
   applyServerPatch: define.entity("ApplyServerPatch"),
+  openRoot: define.entity("OpenRoot"),
   openDocument: define.entity("OpenDocument"),
+  saveDocuments: define.entity("SaveDocuments"),
   setSelection: define.entity("SetSelection"),
   setViewport: define.entity("SetViewport"),
   beginInspectorEdit: define.entity("BeginInspectorEdit"),
@@ -247,10 +255,13 @@ const Action = {
 File.storeActions.implements(
   Action.bootstrapConfig,
   Action.createSession,
+  Action.closeSession,
   Action.connectSocket,
   Action.applyServerSnapshot,
   Action.applyServerPatch,
+  Action.openRoot,
   Action.openDocument,
+  Action.saveDocuments,
   Action.setSelection,
   Action.setViewport,
   Action.beginInspectorEdit,
@@ -266,9 +277,11 @@ File.storeActions.implements(
 State.session.updatedBy(
   Action.bootstrapConfig,
   Action.createSession,
+  Action.closeSession,
   Action.connectSocket,
 );
 State.workspace.updatedBy(
+  Action.openRoot,
   Action.openDocument,
   Action.applyServerSnapshot,
   Action.applyServerPatch,
@@ -293,6 +306,7 @@ State.io.updatedBy(
   Action.queueGraphIntent,
   Action.applyServerPatch,
   Action.resolveConflict,
+  Action.saveDocuments,
 );
 
 const Transport = {
@@ -397,8 +411,11 @@ Transport.ws.emits(
 
 Action.bootstrapConfig.calls(Route.config, Route.roots);
 Action.createSession.calls(Route.createSession, Route.sessionSnapshot);
+Action.closeSession.calls(Route.closeSession);
 Action.connectSocket.sends(Message.clientHello);
+Action.openRoot.sends(Message.clientOpenRoot);
 Action.openDocument.sends(Message.clientOpenDocuments);
+Action.saveDocuments.sends(Message.clientSaveDocuments);
 Action.queueGraphIntent.sends(Message.clientApplyIntent);
 Action.persistLayoutHint.sends(Message.clientPersistLayout);
 Action.connectSocket.receives(
@@ -406,10 +423,12 @@ Action.connectSocket.receives(
   Message.serverWorkspaceSnapshot,
   Message.serverProjectionSnapshot,
   Message.serverProjectionPatch,
+  Message.serverDocumentPatched,
   Message.serverValidation,
   Message.serverConflict,
   Message.serverFileChanged,
   Message.serverError,
+  Message.serverPong,
 );
 
 Server.serves(Transport.http, Transport.ws);
