@@ -313,10 +313,8 @@ Server.authenticates("bearer session token");
 Server.uses("Bun.serve").through(File.serverHttp, File.serverWs);
 Server.uses("fs.watch").through(File.serverWatch);
 File.serverDocuments.accesses(FileSystem).through("normalized real paths");
-File.serverDocuments.rejects(
-  "path traversal",
-  "writes outside allowed roots",
-);
+File.serverDocuments.rejects(`- path traversal
+- writes outside allowed roots`);
 
 const Decision = {
   parsing: define.entity("ParsingDecision"),
@@ -363,7 +361,7 @@ when(Browser.opens(Studio))
   .and(Message.clientHello)
   .and(Message.serverReady);
 
-when(Browser.edits("GraphWorkspace"))
+when(Browser.edits("graph workspace"))
   .then(Action.queueGraphIntent)
   .and(File.coreMutation.generates("source patch plan"))
   .and(File.serverMutations.applies("source patch plan"))

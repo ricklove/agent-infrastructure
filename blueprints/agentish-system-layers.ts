@@ -64,7 +64,7 @@ Layer.contracts.answers(
   "What exact schemas cross boundaries?",
 );
 
-Layer.scenarios.contains("UserStories", {
+Layer.scenarios.contains("user stories", {
   renderedAs: "canonical acceptance flows",
   rejects: "loose product prose",
 });
