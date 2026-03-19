@@ -24,7 +24,10 @@ const Source = {
   semanticModel: define.semanticModel("SemanticModel", {
     actsAs: "normalized meaning",
   }),
-  stableIdentity: define.identity("StableIdentity"),
+};
+
+const Identity = {
+  stable: define.identity("StableIdentity"),
 };
 
 const Projection = {
@@ -57,7 +60,7 @@ const Truth = {
 };
 
 Source.documentSet.contains(Source.document);
-Source.semanticModel.contains(Source.stableIdentity);
+Source.semanticModel.contains(Identity.stable);
 Projection.workspace.contains(
   Projection.layer,
   Projection.node,
@@ -71,6 +74,7 @@ GraphSystem.reads(Source.documentSet);
 GraphSystem.derives(Source.semanticModel).from(Source.documentSet);
 GraphSystem.derives(Projection.workspace).from(
   Source.semanticModel,
+  Identity.stable,
   Projection.layoutHint,
 );
 GraphSystem.derives(Editing.validation).from(Editing.intent, Source.documentSet);

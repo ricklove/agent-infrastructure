@@ -32,10 +32,13 @@ const Source = {
   patchPlan: define.patchPlan("SourcePatchPlan"),
 };
 
+const Identity = {
+  stable: define.identity("StableIdentity"),
+};
+
 const Projection = {
   workspace: define.workspace("GraphWorkspace"),
   layoutHint: define.layoutHint("LayoutHint"),
-  stableIdentity: define.identity("StableIdentity"),
 };
 
 const Editing = {
@@ -113,6 +116,7 @@ OperationalBehavior.enforces(`- Only validated mutations may become source patch
 GraphSystem.derives(Source.semanticModel).from(Source.documentSet);
 GraphSystem.derives(Projection.workspace).from(
   Source.semanticModel,
+  Identity.stable,
   Projection.layoutHint,
 );
 GraphSystem.derives(Editing.validation).from(Editing.intent, Source.documentSet);
@@ -165,6 +169,6 @@ when(Browser.connectionTo(GraphSystem).staysOpen())
   .and(GraphSystem.replies("server pong"));
 
 when(GraphSystem.reprojects(Projection.workspace))
-  .then(GraphSystem.reuses(Projection.stableIdentity))
+  .then(GraphSystem.reuses(Identity.stable))
   .and(GraphSystem.applies(Projection.layoutHint))
   .and(GraphSystem.discards("orphaned layout hints"));

@@ -19,6 +19,9 @@ const Source = {
   documentSet: define.documentSet("AgentishDocumentSet"),
   document: define.document("AgentishDocument"),
   mutation: define.mutation("SourceMutation"),
+};
+
+const Editing = {
   validation: define.validation("ValidationResult"),
   conflict: define.conflict("EditConflict"),
 };
@@ -59,8 +62,8 @@ EditNodeScenario
   .given("A projected node exposes an editable label or attribute.")
   .when(Human.edits(Graph.node))
   .then(GraphSystem.derives("edit intent"))
-  .and(GraphSystem.derives(Source.validation))
-  .whenAccepted(Source.validation)
+  .and(GraphSystem.derives(Editing.validation))
+  .whenAccepted(Editing.validation)
   .then(GraphSystem.applies(Source.mutation))
   .and(GraphSystem.reprojects(Graph.workspace))
   .succeeds("The visual edit round-trips into source.")
@@ -71,8 +74,8 @@ ConnectNodesScenario
   .given("Two compatible handles are visible or discoverable in the graph.")
   .when(Human.connects(Graph.node).to(Graph.node))
   .then(GraphSystem.derives("relation creation intent"))
-  .and(GraphSystem.derives(Source.validation))
-  .whenAccepted(Source.validation)
+  .and(GraphSystem.derives(Editing.validation))
+  .whenAccepted(Editing.validation)
   .then(GraphSystem.applies(Source.mutation))
   .and(GraphSystem.reprojects(Graph.edge, Graph.portal))
   .succeeds(`- The connection becomes a source relationship.
@@ -98,8 +101,8 @@ ExternalChangeScenario
 
 ResolveConflictScenario
   .given("A mutation loses its target or conflicts with a newer source revision.")
-  .when(GraphSystem.detects(Source.conflict))
-  .then(GraphSystem.surfaces(Source.conflict).to(Human))
+  .when(GraphSystem.detects(Editing.conflict))
+  .then(GraphSystem.surfaces(Editing.conflict).to(Human))
   .and(GraphSystem.pauses("the affected mutation path"))
   .and(
     GraphSystem.requests(Human, {
