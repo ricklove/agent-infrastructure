@@ -73,9 +73,9 @@ GraphSystem.derives(Projection.workspace).from(
   Source.semanticModel,
   Projection.layoutHint,
 );
-GraphSystem.derives(Editing.mutation).from(Editing.intent, Source.documentSet);
-GraphSystem.derives(Editing.validation).from(Editing.mutation, Source.documentSet);
-GraphSystem.derives(Editing.conflict).from(Editing.validation);
+GraphSystem.derives(Editing.validation).from(Editing.intent, Source.documentSet);
+GraphSystem.derives(Editing.mutation).from(Editing.validation, Editing.intent);
+GraphSystem.derives(Editing.conflict).from(Editing.validation, Editing.intent);
 
 AgentishGraphConcept.enforces(
   Truth.sourceAuthority,
@@ -109,11 +109,11 @@ when(Human.opens(Source.documentSet))
 
 when(Human.edits(Projection.workspace))
   .then(GraphSystem.derives(Editing.intent))
-  .and(GraphSystem.derives(Editing.mutation))
   .and(GraphSystem.derives(Editing.validation));
 
 when(GraphSystem.accepts(Editing.validation))
-  .then(GraphSystem.applies(Editing.mutation).to(Source.documentSet))
+  .then(GraphSystem.derives(Editing.mutation))
+  .and(GraphSystem.applies(Editing.mutation).to(Source.documentSet))
   .and(GraphSystem.projects(Projection.workspace));
 
 when(GraphSystem.encounters(Editing.conflict))

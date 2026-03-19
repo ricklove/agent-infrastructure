@@ -116,6 +116,7 @@ GraphSystem.derives(Projection.workspace).from(
   Projection.layoutHint,
 );
 GraphSystem.derives(Editing.validation).from(Editing.intent, Source.documentSet);
+GraphSystem.derives(Editing.conflict).from(Editing.validation, Editing.intent);
 GraphSystem.derives(Source.patchPlan).from(Editing.validation, Editing.intent);
 GraphSystem.derives(Source.mutation).from(Source.patchPlan);
 
@@ -125,11 +126,13 @@ when(Browser.edits(Projection.workspace))
 
 when(GraphSystem.accepts(Editing.validation))
   .then(GraphSystem.derives(Source.patchPlan))
+  .and(GraphSystem.derives(Source.mutation))
   .and(GraphSystem.applies(Source.mutation).to(Source.documentSet))
   .and(GraphSystem.projects(Projection.workspace));
 
 when(GraphSystem.rejects(Editing.validation))
-  .then(GraphSystem.surfaces(Editing.conflict).to(Browser))
+  .then(GraphSystem.derives(Editing.conflict))
+  .and(GraphSystem.surfaces(Editing.conflict).to(Browser))
   .and(GraphSystem.protects(Source.documentSet));
 
 when(Browser.resolves(Editing.conflict).with("reload"))

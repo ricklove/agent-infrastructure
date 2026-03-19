@@ -66,10 +66,8 @@ Layer.contracts.answers(
   "What exact schemas cross boundaries?",
 );
 
-Layer.scenarios.contains("user stories", {
-  renderedAs: "canonical acceptance flows",
-  rejects: "loose product prose",
-});
+Layer.scenarios.contains("canonical acceptance flows");
+Layer.scenarios.rejects("loose product prose");
 Layer.implementationPlan.contains(`- agentish-graph.code-architecture.ts
 - agentish-graph.operational-behavior.ts`);
 

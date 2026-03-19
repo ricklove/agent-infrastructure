@@ -377,6 +377,14 @@ export type ProjectionPatchMessage = Extract<
   WsServerEnvelope,
   { type: "server/projection-patch" }
 >;
+export type ValidationMessage = Extract<
+  WsServerEnvelope,
+  { type: "server/validation" }
+>;
+export type ConflictMessage = Extract<
+  WsServerEnvelope,
+  { type: "server/conflict" }
+>;
 export type FileChangedMessage = Extract<
   WsServerEnvelope,
   { type: "server/file-changed" }
@@ -488,16 +496,19 @@ export type AgentishGraphStoreActions = {
   applyServerReady(message: ServerReadyMessage): void;
   applyWorkspaceSnapshot(message: WorkspaceSnapshotMessage): void;
   applyProjectionSnapshot(message: ProjectionSnapshotMessage): void;
-  applyServerPatch(message: ProjectionPatchMessage): void;
-  applyValidationIssues(issues: ValidationIssue[]): void;
-  applyConflict(conflict: GraphConflict): void;
+  applyProjectionPatch(message: ProjectionPatchMessage): void;
+  applyValidationResult(message: ValidationMessage): void;
+  applyConflict(message: ConflictMessage): void;
   handleFileChange(message: FileChangedMessage): void;
   acknowledgeDocumentPatched(message: DocumentPatchedMessage): void;
   applyServerError(message: ServerErrorMessage): void;
   sendPing(at: number): void;
   receivePong(message: PongMessage): void;
   openRoot(rootId: RootId): void;
-  openDocument(paths: DocumentPath[], activeDocumentPath?: DocumentPath | null): void;
+  openDocuments(
+    paths: DocumentPath[],
+    activeDocumentPath?: DocumentPath | null,
+  ): void;
   saveDocuments(documentIds: StableId[]): void;
   setSelection(selection: GraphSelection): void;
   setViewport(viewport: GraphViewport): void;

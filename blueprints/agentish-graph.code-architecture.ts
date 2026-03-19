@@ -239,8 +239,8 @@ const Action = {
   applyServerReady: define.action("ApplyServerReady"),
   applyWorkspaceSnapshot: define.action("ApplyWorkspaceSnapshot"),
   applyProjectionSnapshot: define.action("ApplyProjectionSnapshot"),
-  applyServerPatch: define.action("ApplyServerPatch"),
-  applyValidationIssues: define.action("ApplyValidationIssues"),
+  applyProjectionPatch: define.action("ApplyProjectionPatch"),
+  applyValidationResult: define.action("ApplyValidationResult"),
   applyConflict: define.action("ApplyConflict"),
   handleFileChange: define.action("HandleFileChange"),
   acknowledgeDocumentPatched: define.action("AcknowledgeDocumentPatched"),
@@ -248,7 +248,7 @@ const Action = {
   sendPing: define.action("SendPing"),
   receivePong: define.action("ReceivePong"),
   openRoot: define.action("OpenRoot"),
-  openDocument: define.action("OpenDocument"),
+  openDocuments: define.action("OpenDocuments"),
   saveDocuments: define.action("SaveDocuments"),
   setSelection: define.action("SetSelection"),
   setViewport: define.action("SetViewport"),
@@ -270,8 +270,8 @@ File.storeActions.implements(
   Action.applyServerReady,
   Action.applyWorkspaceSnapshot,
   Action.applyProjectionSnapshot,
-  Action.applyServerPatch,
-  Action.applyValidationIssues,
+  Action.applyProjectionPatch,
+  Action.applyValidationResult,
   Action.applyConflict,
   Action.handleFileChange,
   Action.acknowledgeDocumentPatched,
@@ -279,7 +279,7 @@ File.storeActions.implements(
   Action.sendPing,
   Action.receivePong,
   Action.openRoot,
-  Action.openDocument,
+  Action.openDocuments,
   Action.saveDocuments,
   Action.setSelection,
   Action.setViewport,
@@ -303,14 +303,14 @@ State.session.updatedBy(
 );
 State.workspace.updatedBy(
   Action.openRoot,
-  Action.openDocument,
+  Action.openDocuments,
   Action.applyWorkspaceSnapshot,
-  Action.applyServerPatch,
+  Action.applyProjectionPatch,
   Action.handleFileChange,
 );
 State.graph.updatedBy(
   Action.applyProjectionSnapshot,
-  Action.applyServerPatch,
+  Action.applyProjectionPatch,
   Action.handleFileChange,
   Action.setSelection,
   Action.setViewport,
@@ -321,7 +321,7 @@ State.inspector.updatedBy(
   Action.setSelection,
   Action.beginInspectorEdit,
   Action.commitInspectorDraft,
-  Action.applyValidationIssues,
+  Action.applyValidationResult,
   Action.applyConflict,
   Action.resolveConflict,
 );
@@ -334,7 +334,7 @@ State.io.updatedBy(
   Action.sendPing,
   Action.receivePong,
   Action.queueGraphIntent,
-  Action.applyServerPatch,
+  Action.applyProjectionPatch,
   Action.resolveConflict,
   Action.saveDocuments,
 );
@@ -444,7 +444,7 @@ Action.createSession.calls(Route.createSession, Route.sessionSnapshot);
 Action.closeSession.calls(Route.closeSession);
 Action.connectSocket.sends(Message.clientHello);
 Action.openRoot.sends(Message.clientOpenRoot);
-Action.openDocument.sends(Message.clientOpenDocuments);
+Action.openDocuments.sends(Message.clientOpenDocuments);
 Action.saveDocuments.sends(Message.clientSaveDocuments);
 Action.sendPing.sends(Message.clientPing);
 Action.queueGraphIntent.sends(Message.clientApplyIntent);
@@ -469,8 +469,8 @@ Action.connectSocket.receives(
 Message.serverWorkspaceSnapshot.drives(Action.applyWorkspaceSnapshot);
 Message.serverReady.drives(Action.applyServerReady);
 Message.serverProjectionSnapshot.drives(Action.applyProjectionSnapshot);
-Message.serverProjectionPatch.drives(Action.applyServerPatch);
-Message.serverValidation.drives(Action.applyValidationIssues);
+Message.serverProjectionPatch.drives(Action.applyProjectionPatch);
+Message.serverValidation.drives(Action.applyValidationResult);
 Message.serverConflict.drives(Action.applyConflict);
 Message.serverFileChanged.drives(Action.handleFileChange);
 Message.serverDocumentPatched.drives(Action.acknowledgeDocumentPatched);

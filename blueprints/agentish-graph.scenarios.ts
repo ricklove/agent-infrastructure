@@ -19,13 +19,14 @@ const Source = {
   documentSet: define.documentSet("AgentishDocumentSet"),
   document: define.document("AgentishDocument"),
   mutation: define.mutation("SourceMutation"),
+  validation: define.validation("ValidationResult"),
   conflict: define.conflict("EditConflict"),
 };
 
 const Graph = {
   workspace: define.workspace("GraphWorkspace"),
-  node: define.node("GraphNode"),
-  edge: define.edge("GraphEdge"),
+  node: define.graphNode("GraphNode"),
+  edge: define.graphEdge("GraphEdge"),
   portal: define.portal("PortalEdge"),
   selection: define.selection("SelectionState"),
   layoutHint: define.layoutHint("LayoutHint"),
@@ -58,8 +59,8 @@ EditNodeScenario
   .given("A projected node exposes an editable label or attribute.")
   .when(Human.edits(Graph.node))
   .then(GraphSystem.derives("edit intent"))
-  .and(GraphSystem.derives("validation result"))
-  .whenAccepted("validation result")
+  .and(GraphSystem.derives(Source.validation))
+  .whenAccepted(Source.validation)
   .then(GraphSystem.applies(Source.mutation))
   .and(GraphSystem.reprojects(Graph.workspace))
   .succeeds("The visual edit round-trips into source.")
@@ -70,8 +71,8 @@ ConnectNodesScenario
   .given("Two compatible handles are visible or discoverable in the graph.")
   .when(Human.connects(Graph.node).to(Graph.node))
   .then(GraphSystem.derives("relation creation intent"))
-  .and(GraphSystem.derives("validation result"))
-  .whenAccepted("validation result")
+  .and(GraphSystem.derives(Source.validation))
+  .whenAccepted(Source.validation)
   .then(GraphSystem.applies(Source.mutation))
   .and(GraphSystem.reprojects(Graph.edge, Graph.portal))
   .succeeds(`- The connection becomes a source relationship.
@@ -105,5 +106,5 @@ ResolveConflictScenario
       toChoose: "reload, manual edit, or discard local intent",
     }),
   )
-  .succeeds("The conflict is visible and explicitly resolved.")
+  .succeeds("The conflict is visible and its handling path is explicit.")
   .protects("Source authority is protected.");
