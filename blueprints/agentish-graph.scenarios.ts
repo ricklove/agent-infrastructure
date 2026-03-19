@@ -44,7 +44,7 @@ const ExternalChangeScenario = define.scenario("ExternalChangeScenario");
 const ResolveConflictScenario = define.scenario("ResolveConflictScenario");
 
 OpenWorkspaceScenario
-  .given("A workspace root or document set is available to open.")
+  .given("An Agentish document set is available to open.")
   .when(Human.opens(Source.documentSet))
   .then(GraphSystem.loads(Graph.workspace))
   .and(GraphSystem.projects(Graph.node, Graph.edge, Graph.portal))

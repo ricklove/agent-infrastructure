@@ -6,7 +6,7 @@ const Agentish = define.language("Agentish", {
 
 const AgentishGraphConcept = define.blueprint("AgentishGraphConcept", {
   format: Agentish,
-  describes: "Human visualization and editing of Agentish documents",
+  describes: "Human visualization and editing of Agentish documents and document sets",
 });
 
 const Human = define.actor("Human", {
