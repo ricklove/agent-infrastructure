@@ -358,6 +358,16 @@ export type WsServerEnvelope =
   | Message<"server/error", { code: string; message: string }>
   | Message<"server/pong", { at: number }>;
 
+export type WorkspaceSnapshotMessage = Extract<
+  WsServerEnvelope,
+  { type: "server/workspace-snapshot" }
+>;
+
+export type ProjectionSnapshotMessage = Extract<
+  WsServerEnvelope,
+  { type: "server/projection-snapshot" }
+>;
+
 export type ConnectionState = "idle" | "connecting" | "open" | "closed" | "error";
 export type SyncStatus = "idle" | "syncing" | "dirty" | "conflicted";
 export type PaneMode = "files" | "layers" | "legend" | "inspector";
@@ -455,7 +465,9 @@ export type AgentishGraphStoreActions = {
     sessionToken: SessionToken;
     wsUrl: string;
   }): Promise<void>;
-  applyServerSnapshot(snapshot: GetSessionSnapshotResponse): void;
+  applyServerReady(message: Extract<WsServerEnvelope, { type: "server/ready" }>): void;
+  applyWorkspaceSnapshot(message: WorkspaceSnapshotMessage): void;
+  applyProjectionSnapshot(message: ProjectionSnapshotMessage): void;
   applyServerPatch(message: Extract<WsServerEnvelope, { type: "server/projection-patch" }>): void;
   applyValidationIssues(issues: ValidationIssue[]): void;
   applyConflict(conflict: GraphConflict): void;
@@ -463,6 +475,8 @@ export type AgentishGraphStoreActions = {
   acknowledgeDocumentPatched(
     message: Extract<WsServerEnvelope, { type: "server/document-patched" }>,
   ): void;
+  applyServerError(message: Extract<WsServerEnvelope, { type: "server/error" }>): void;
+  sendPing(at: number): void;
   receivePong(message: Extract<WsServerEnvelope, { type: "server/pong" }>): void;
   openRoot(rootId: RootId): void;
   openDocument(paths: DocumentPath[], activeDocumentPath?: DocumentPath | null): void;

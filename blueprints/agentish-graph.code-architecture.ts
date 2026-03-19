@@ -236,12 +236,16 @@ const Action = {
   createSession: define.entity("CreateSession"),
   closeSession: define.entity("CloseSession"),
   connectSocket: define.entity("ConnectSocket"),
-  applyServerSnapshot: define.entity("ApplyServerSnapshot"),
+  applyServerReady: define.entity("ApplyServerReady"),
+  applyWorkspaceSnapshot: define.entity("ApplyWorkspaceSnapshot"),
+  applyProjectionSnapshot: define.entity("ApplyProjectionSnapshot"),
   applyServerPatch: define.entity("ApplyServerPatch"),
   applyValidationIssues: define.entity("ApplyValidationIssues"),
   applyConflict: define.entity("ApplyConflict"),
   handleFileChange: define.entity("HandleFileChange"),
   acknowledgeDocumentPatched: define.entity("AcknowledgeDocumentPatched"),
+  applyServerError: define.entity("ApplyServerError"),
+  sendPing: define.entity("SendPing"),
   receivePong: define.entity("ReceivePong"),
   openRoot: define.entity("OpenRoot"),
   openDocument: define.entity("OpenDocument"),
@@ -263,12 +267,16 @@ File.storeActions.implements(
   Action.createSession,
   Action.closeSession,
   Action.connectSocket,
-  Action.applyServerSnapshot,
+  Action.applyServerReady,
+  Action.applyWorkspaceSnapshot,
+  Action.applyProjectionSnapshot,
   Action.applyServerPatch,
   Action.applyValidationIssues,
   Action.applyConflict,
   Action.handleFileChange,
   Action.acknowledgeDocumentPatched,
+  Action.applyServerError,
+  Action.sendPing,
   Action.receivePong,
   Action.openRoot,
   Action.openDocument,
@@ -290,16 +298,18 @@ State.session.updatedBy(
   Action.createSession,
   Action.closeSession,
   Action.connectSocket,
+  Action.applyServerReady,
+  Action.applyServerError,
 );
 State.workspace.updatedBy(
   Action.openRoot,
   Action.openDocument,
-  Action.applyServerSnapshot,
+  Action.applyWorkspaceSnapshot,
   Action.applyServerPatch,
   Action.handleFileChange,
 );
 State.graph.updatedBy(
-  Action.applyServerSnapshot,
+  Action.applyProjectionSnapshot,
   Action.applyServerPatch,
   Action.handleFileChange,
   Action.setSelection,
@@ -319,6 +329,9 @@ State.ui.updatedBy(Action.bootstrapConfig);
 State.io.updatedBy(
   Action.connectSocket,
   Action.acknowledgeDocumentPatched,
+  Action.applyServerReady,
+  Action.applyServerError,
+  Action.sendPing,
   Action.receivePong,
   Action.queueGraphIntent,
   Action.applyServerPatch,
@@ -433,6 +446,7 @@ Action.connectSocket.sends(Message.clientHello);
 Action.openRoot.sends(Message.clientOpenRoot);
 Action.openDocument.sends(Message.clientOpenDocuments);
 Action.saveDocuments.sends(Message.clientSaveDocuments);
+Action.sendPing.sends(Message.clientPing);
 Action.queueGraphIntent.sends(Message.clientApplyIntent);
 Action.persistLayoutHint.sends(Message.clientPersistLayout);
 Action.resolveConflict.calls(Route.sessionSnapshot).when("the choice is reload");
@@ -452,13 +466,15 @@ Action.connectSocket.receives(
   Message.serverError,
   Message.serverPong,
 );
-Message.serverWorkspaceSnapshot.drives(Action.applyServerSnapshot);
-Message.serverProjectionSnapshot.drives(Action.applyServerSnapshot);
+Message.serverWorkspaceSnapshot.drives(Action.applyWorkspaceSnapshot);
+Message.serverReady.drives(Action.applyServerReady);
+Message.serverProjectionSnapshot.drives(Action.applyProjectionSnapshot);
 Message.serverProjectionPatch.drives(Action.applyServerPatch);
 Message.serverValidation.drives(Action.applyValidationIssues);
 Message.serverConflict.drives(Action.applyConflict);
 Message.serverFileChanged.drives(Action.handleFileChange);
 Message.serverDocumentPatched.drives(Action.acknowledgeDocumentPatched);
+Message.serverError.drives(Action.applyServerError);
 Message.serverPong.drives(Action.receivePong);
 
 Server.serves(Transport.http, Transport.ws);

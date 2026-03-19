@@ -72,6 +72,7 @@ Decision.parsing.defines(`- Use the TypeScript compiler API.
 Decision.identity.defines(`- Stable IDs derive from relative path and local meaning.
 - Equivalent meaning must yield the same stable ID after reprojection.
 - Layout hints are keyed by stable ID rather than by transient render position.
+- Stable ID precedence is relative path, declaration kind, declaration name, then local structural position.
 - If a stable ID no longer resolves to a projected node, its layout hint is discarded.`);
 Decision.projection.defines(`- Projection is built on the server.
 - Projection recomputes from source and layout hints.
@@ -87,7 +88,8 @@ Decision.mutation.defines(`- Graph mutation intent is the only client write prim
 - Setting node position mutates layout hints only.
 - Setting node label or attribute rewrites the corresponding source declaration.
 - Connecting handles rewrites or creates a source relationship.
-- Deleting elements removes the owning source declarations or relationships.`);
+- Deleting elements removes the owning source declarations or relationships.
+- When multiple source declarations could satisfy one edit intent, validation fails as non-round-trippable instead of guessing.`);
 Decision.conflicts.defines(`- Conflicts pause the pending mutation queue.
 - A mutation that loses its target becomes a surfaced conflict instead of a silent drop.
 - Conflict resolution choices are reload, manual edit, or discard local intent.
@@ -96,7 +98,8 @@ Decision.conflicts.defines(`- Conflicts pause the pending mutation queue.
 - Manual edit preserves the conflict until the source meaning changes or the user abandons the edit.`);
 Decision.session.defines(`- There is one writable session per workspace root.
 - A missing patch revision forces a full snapshot reload.
-- The server remains authoritative for revision ordering and patch acceptance.`);
+- The server remains authoritative for revision ordering and patch acceptance.
+- Heartbeat uses client ping and server pong to keep connection state current.`);
 Decision.rendering.defines(`- React Flow is an adapter, not a source of truth.
 - Portal edges represent cross-layer references only.
 - Manual layout is preserved when stable identity persists.`);
@@ -149,6 +152,14 @@ when(GraphSystem.detects("external source change"))
 when(GraphSystem.detects("missing patch revision"))
   .then(GraphSystem.reloads("full snapshot"))
   .and(GraphSystem.replaces("stale client projection state"));
+
+when(GraphSystem.detects("ambiguous source rewrite target"))
+  .then(GraphSystem.rejects(Editing.validation))
+  .and(GraphSystem.surfaces(Editing.conflict).to(Browser));
+
+when(Browser.connectionTo(GraphSystem).staysOpen())
+  .then(Browser.sends("client ping"))
+  .and(GraphSystem.replies("server pong"));
 
 when(GraphSystem.reprojects(Projection.workspace))
   .then(GraphSystem.reuses(Projection.stableIdentity))
