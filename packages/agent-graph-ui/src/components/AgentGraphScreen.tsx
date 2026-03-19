@@ -6,6 +6,7 @@ import { AgentGraphCanvas } from "./AgentGraphCanvas";
 import { DiffPanel } from "./DiffPanel";
 import { InspectorPanel } from "./InspectorPanel";
 import { LayerWorkspacePanel } from "./LayerWorkspacePanel";
+import { NodesToolPanel } from "./NodesToolPanel";
 
 export type AgentGraphScreenProps = {
   serverOrigin?: string;
@@ -39,6 +40,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
         <div className="flex h-full items-start justify-between gap-3">
           <div className="pointer-events-auto w-[280px] max-w-[28vw]">
             <LayerWorkspacePanel store={store} actions={actions} />
+            <NodesToolPanel store={store} actions={actions} />
             {(connection.error || (validation && !validation.accepted) || conflict) ? (
               <section className="mt-3 rounded-3xl border border-stone-800 bg-stone-900/80 p-3 text-sm">
                 <div className="space-y-2">
@@ -63,11 +65,11 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
           </div>
 
           <div className="pointer-events-auto flex w-[300px] max-w-[30vw] flex-col gap-3">
-            <InspectorPanel
-              actions={actions}
-              selectedNode={selectedNode}
-              selectedEdge={selectedEdge}
-            />
+          <InspectorPanel
+            actions={actions}
+            selectedNode={selectedNode}
+            selectedEdge={selectedEdge}
+          />
             <DiffPanel store={store} actions={actions} />
           </div>
         </div>

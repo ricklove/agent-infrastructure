@@ -35,6 +35,7 @@ export async function createHttpServer(repository: DocumentRepository) {
               revision: sourceWorkspace.revision,
             },
             documents: sourceWorkspace.documents,
+            nodes: sourceWorkspace.nodes,
             workspaceStateRevision: workspaceState.revision,
           },
           graph: buildCompleteGraph({

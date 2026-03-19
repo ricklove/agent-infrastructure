@@ -39,6 +39,7 @@ type CanvasProps = {
     selectEdge(edgeId: string | null): void;
     moveLayer(layerId: string, x: number, y: number): void;
     moveNode(nodeId: string, x: number, y: number): void;
+    hideNodeFromLayer(layerId: string, sourceNodeId: string): void;
     revealHiddenContext(portalNodeId: string): void;
     inspectDerivedEdge(edgeId: string, supportingPathIds: string[]): void;
   };
@@ -71,11 +72,14 @@ function mapNodesWithOverrides(
   graph: GraphSnapshot,
   positionOverrides: Record<string, { x: number; y: number }>,
   activeLayerId: string | null,
+  hideNodeFromLayer: (layerId: string, sourceNodeId: string) => void,
 ): Node[] {
   const nodes = mapLayerNodes(graph);
   return nodes.map((node) => {
     const isGroup = node.type === "group";
-    const nodeLayerId = isGroup ? node.id : String(node.parentId ?? "");
+    const nodeLayerId = isGroup
+      ? node.id
+      : String((node.data as { layerId?: string }).layerId ?? node.parentId ?? "");
     const isActiveLayer = !activeLayerId || nodeLayerId === activeLayerId;
     const override = positionOverrides[node.id];
     const nextNode: Node = {
@@ -89,6 +93,10 @@ function mapNodesWithOverrides(
       data: {
         ...(node.data as object),
         isActiveLayer,
+        onHide:
+          !isGroup && isActiveLayer && node.type === "semanticNode"
+            ? () => hideNodeFromLayer(nodeLayerId, String((node.data as { sourceId?: string }).sourceId))
+            : undefined,
       },
     };
 
@@ -107,13 +115,13 @@ function mapSemanticNode(node: AgentGraphNode): Node {
   if (node.kind === "hidden-context-portal") {
     return {
       id: node.id,
-      parentId: node.parentLayerId,
-      extent: "parent",
+      parentId: node.ownerNodeId ?? node.parentLayerId,
       type: "hiddenContextPortal",
       data: {
         label: node.label,
         summary: node.summary,
         hiddenCount: node.hiddenCount ?? 0,
+        layerId: node.parentLayerId,
       },
       position: node.position,
       draggable: true,
@@ -123,12 +131,12 @@ function mapSemanticNode(node: AgentGraphNode): Node {
   return {
     id: node.id,
     parentId: node.parentLayerId,
-    extent: "parent",
     type: "semanticNode",
     data: {
       label: node.label,
       summary: node.summary,
       sourceId: node.sourceId,
+      layerId: node.parentLayerId,
     },
     position: node.position,
     draggable: true,
@@ -201,13 +209,24 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   }, [graph]);
 
   const nodes = useMemo(
-    () => (graph ? mapNodesWithOverrides(graph, positionOverrides, activeLayerId) : []),
-    [graph, positionOverrides, activeLayerId],
+    () =>
+      graph
+        ? mapNodesWithOverrides(
+            graph,
+            positionOverrides,
+            activeLayerId,
+            actions.hideNodeFromLayer,
+          )
+        : [],
+    [actions.hideNodeFromLayer, graph, positionOverrides, activeLayerId],
   );
   const edges = useMemo(() => (graph ? mapEdges(graph.edges) : []), [graph]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
-    const nodeLayerId = node.type === "group" ? node.id : String(node.parentId ?? "");
+    const nodeLayerId =
+      node.type === "group"
+        ? node.id
+        : String((node.data as { layerId?: string }).layerId ?? node.parentId ?? "");
     if (activeLayerId && nodeLayerId !== activeLayerId) {
       return;
     }
@@ -238,7 +257,10 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
             }
           }}
           onNodeDragStop={(_, node) => {
-            const nodeLayerId = node.type === "group" ? node.id : String(node.parentId ?? "");
+            const nodeLayerId =
+              node.type === "group"
+                ? node.id
+                : String((node.data as { layerId?: string }).layerId ?? node.parentId ?? "");
             if (activeLayerId && nodeLayerId !== activeLayerId) {
               return;
             }
@@ -257,7 +279,10 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
             }
           }}
           onNodeDrag={(_, node) => {
-            const nodeLayerId = node.type === "group" ? node.id : String(node.parentId ?? "");
+            const nodeLayerId =
+              node.type === "group"
+                ? node.id
+                : String((node.data as { layerId?: string }).layerId ?? node.parentId ?? "");
             if (activeLayerId && nodeLayerId !== activeLayerId) {
               return;
             }

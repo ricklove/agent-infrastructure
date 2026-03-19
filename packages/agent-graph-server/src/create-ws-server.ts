@@ -21,6 +21,7 @@ function snapshotMessage(repository: DocumentRepository): ServerMessage {
         revision: sourceWorkspace.revision,
       },
       documents: sourceWorkspace.documents,
+      nodes: sourceWorkspace.nodes,
       workspaceStateRevision: workspaceState.revision,
     },
     graph: buildCompleteGraph({
@@ -127,7 +128,11 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
     }
     case "reveal-hidden-context": {
       const portalNodeId = intent.portalNodeId;
-      const [_, sourceNodeId, layerId] = portalNodeId.split(":");
+      const renderedNodeId = portalNodeId.replace(/^portal:/, "");
+      const [sourceNodeId, layerId] = renderedNodeId.split("::");
+      if (!sourceNodeId || !layerId) {
+        return [];
+      }
       const sourceWorkspace = repository.getSourceWorkspace();
       const revealedNodeIds = sourceWorkspace.edges
         .filter((edge) => edge.sourceId === sourceNodeId)

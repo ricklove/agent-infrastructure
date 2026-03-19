@@ -77,6 +77,7 @@ export type GraphNode = {
   id: string;
   sourceId: string;
   parentLayerId: string;
+  ownerNodeId?: string;
   label: string;
   kind: GraphNodeKind;
   position: {
@@ -126,6 +127,7 @@ export type WorkspaceSnapshot = {
     revision: number;
   };
   documents: SourceDocument[];
+  nodes: SourceNode[];
   workspaceStateRevision: number;
 };
 

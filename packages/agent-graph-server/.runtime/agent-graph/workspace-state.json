@@ -1,21 +1,25 @@
 {
   "rootId": "agent-graph",
-  "revision": 102,
+  "revision": 257,
   "layers": [
     {
       "id": "layer-overview",
       "label": "Overview",
       "kind": "overview",
       "nodeIds": [
-        "family-comprehension",
         "family-compose",
         "family-inspection",
         "family-editing",
-        "family-change"
+        "family-change",
+        "component-layers",
+        "component-inspector",
+        "component-diff",
+        "contract-validation",
+        "family-comprehension"
       ],
       "visible": true,
-      "x": -665.0236051130348,
-      "y": 679.0678947952404,
+      "x": -319.6938301461971,
+      "y": -62.67377464673709,
       "derivedFromLayerId": null
     },
     {
@@ -30,9 +34,67 @@
         "family-change"
       ],
       "visible": true,
-      "x": -562.3137445388735,
-      "y": 1138.9949934869176,
+      "x": -1047.681378092295,
+      "y": 1144.825235331403,
       "derivedFromLayerId": "layer-overview"
     }
-  ]
+  ],
+  "nodePositions": {
+    "portal:family-comprehension::layer-overview": {
+      "x": 156.8183561862573,
+      "y": -587.2493084683437
+    },
+    "family-comprehension::layer-overview": {
+      "x": -843.8099057691356,
+      "y": -62.61183740698557
+    },
+    "family-compose::layer-overview": {
+      "x": 536.3514079972182,
+      "y": 0
+    },
+    "family-change::layer-overview": {
+      "x": 178.12391564884638,
+      "y": -221.83874251337852
+    },
+    "component-screen::layer-overview": {
+      "x": -133.7214920544178,
+      "y": -397.83218538977064
+    },
+    "portal:component-screen::layer-overview": {
+      "x": 325.6428259156072,
+      "y": -536.3347608748267
+    },
+    "portal:component-inspector::layer-overview": {
+      "x": 220,
+      "y": 380
+    },
+    "component-inspector::layer-overview": {
+      "x": -215.05578373262028,
+      "y": -247.65635691903333
+    },
+    "component-diff::layer-overview": {
+      "x": 470.70826490055487,
+      "y": 477.3170345841039
+    },
+    "component-canvas::layer-overview": {
+      "x": -1068.5824408939498,
+      "y": -182.79396570710435
+    },
+    "portal:outgoing:component-canvas::layer-overview": {
+      "x": 207.26072943378676,
+      "y": 15.863683873684437
+    },
+    "portal:incoming:component-canvas::layer-overview": {
+      "x": -219.75176042218663,
+      "y": -4.17133059297683
+    },
+    "portal:incoming:component-inspector::layer-overview": {
+      "x": -54,
+      "y": 22
+    },
+    "family-comprehension::layer-1773962513293": {
+      "x": -228.4397711518984,
+      "y": -36.60080752067506
+    }
+  }
 }

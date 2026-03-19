@@ -1,8 +1,8 @@
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from "reactflow";
+import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "reactflow";
 import type { GraphEdge } from "@agent-infrastructure/agent-graph-core";
 
 export function DirectEdgeRenderer(props: EdgeProps) {
-  const [path, labelX, labelY] = getSmoothStepPath(props);
+  const [path, labelX, labelY] = getBezierPath(props);
   const edge = props.data as GraphEdge | undefined;
   const isHiddenContext = edge?.kind === "hidden-context";
 

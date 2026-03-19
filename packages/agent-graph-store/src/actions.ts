@@ -143,6 +143,18 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       });
     },
 
+    hideNodeFromLayer(layerId: string, sourceNodeId: string): void {
+      sendIntent(ws, store, {
+        kind: "toggle-layer-node",
+        layerId,
+        sourceNodeId,
+        include: false,
+      });
+      if (store.state$.selection.nodeId.get()?.startsWith(`${sourceNodeId}::`)) {
+        store.state$.selection.assign({ nodeId: null, edgeId: null });
+      }
+    },
+
     revealHiddenContext(portalNodeId: string): void {
       store.state$.inspection.revealedPortalIds.set([
         ...store.state$.inspection.revealedPortalIds.get(),
