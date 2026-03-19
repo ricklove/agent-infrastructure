@@ -46,6 +46,8 @@ const Truth = {
   sourceAuthority: define.concept("SourceAuthority"),
   derivedProjection: define.concept("DerivedProjection"),
   roundTripEditing: define.concept("RoundTripEditing"),
+  layoutHintsAdvisory: define.concept("LayoutHintsAreAdvisory"),
+  multiDocumentWorkspace: define.concept("WorkspaceMaySpanManyDocuments"),
   stableIdentity: define.concept("StableIdentityAcrossRefresh"),
   surfacedConflicts: define.concept("SurfacedConflicts"),
 };
@@ -68,11 +70,15 @@ GraphSystem.derives(Projection.workspace).from(
   Projection.layoutHint,
 );
 GraphSystem.derives(Editing.mutation).from(Editing.intent, Source.documentSet);
+GraphSystem.derives(Editing.validation).from(Editing.mutation, Source.documentSet);
+GraphSystem.derives(Editing.conflict).from(Editing.validation);
 
 AgentishGraphConcept.enforces(
   Truth.sourceAuthority,
   Truth.derivedProjection,
   Truth.roundTripEditing,
+  Truth.layoutHintsAdvisory,
+  Truth.multiDocumentWorkspace,
   Truth.stableIdentity,
   Truth.surfacedConflicts,
 );
@@ -80,6 +86,12 @@ AgentishGraphConcept.enforces(
 Truth.sourceAuthority.means("Documents remain authoritative.");
 Truth.derivedProjection.means("The graph workspace is derived rather than primary truth.");
 Truth.roundTripEditing.means("Graph edits return to source as mutations.");
+Truth.layoutHintsAdvisory.means(
+  "Layout hints shape the projection without changing source meaning.",
+);
+Truth.multiDocumentWorkspace.means(
+  "A workspace may project one document or many documents together.",
+);
 Truth.stableIdentity.means(
   "Equivalent meaning reappears as equivalent visual identity.",
 );
@@ -94,6 +106,7 @@ when(Human.opens(Source.documentSet))
 when(Human.edits(Projection.workspace))
   .then(GraphSystem.derives(Editing.intent))
   .and(GraphSystem.derives(Editing.mutation))
+  .and(GraphSystem.derives(Editing.validation))
   .and(GraphSystem.applies(Editing.mutation).to(Source.documentSet));
 
 when(GraphSystem.encounters(Editing.conflict))

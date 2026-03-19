@@ -54,6 +54,19 @@ Package.ui.dependsOn(Package.core, Package.protocol, Package.store);
 Package.server.dependsOn(Package.core, Package.protocol);
 Package.studio.dependsOn(Package.ui, Package.store, Package.protocol);
 
+Package.core.rejects(`- React
+- Legend State
+- Bun runtime APIs`);
+Package.store.rejects(`- parsing source
+- planning source mutations
+- direct filesystem access`);
+Package.ui.rejects(`- direct source writes
+- direct filesystem access
+- parser authority`);
+Package.server.rejects(`- React rendering
+- browser-only state ownership`);
+Package.studio.rejects("Business logic outside composition and bootstrapping.");
+
 Package.core.owns(`- Parser
 - Semantic model
 - Stable identity
@@ -244,6 +257,45 @@ File.storeActions.implements(
   Action.resolveConflict,
   Action.persistLayoutHint,
 );
+File.serverWorkspace.uses(
+  File.coreParser,
+  File.coreSemantic,
+  File.coreIdentity,
+  File.coreProjection,
+);
+File.serverMutations.uses(File.coreMutation);
+
+State.session.updatedBy(
+  Action.bootstrapConfig,
+  Action.createSession,
+  Action.connectSocket,
+);
+State.workspace.updatedBy(
+  Action.openDocument,
+  Action.applyServerSnapshot,
+  Action.applyServerPatch,
+);
+State.graph.updatedBy(
+  Action.applyServerSnapshot,
+  Action.applyServerPatch,
+  Action.setSelection,
+  Action.setViewport,
+  Action.persistLayoutHint,
+  Action.deleteSelection,
+);
+State.inspector.updatedBy(
+  Action.setSelection,
+  Action.beginInspectorEdit,
+  Action.commitInspectorDraft,
+  Action.resolveConflict,
+);
+State.ui.updatedBy(Action.bootstrapConfig);
+State.io.updatedBy(
+  Action.connectSocket,
+  Action.queueGraphIntent,
+  Action.applyServerPatch,
+  Action.resolveConflict,
+);
 
 const Transport = {
   http: define.entity("HttpSurface"),
@@ -278,6 +330,33 @@ const Message = {
   serverPong: define.entity("ServerPongMessage"),
 };
 
+File.protocolHttp.defines(
+  Route.config,
+  Route.roots,
+  Route.createSession,
+  Route.sessionSnapshot,
+  Route.closeSession,
+);
+File.protocolWs.defines(
+  Message.clientHello,
+  Message.clientOpenRoot,
+  Message.clientOpenDocuments,
+  Message.clientApplyIntent,
+  Message.clientPersistLayout,
+  Message.clientSaveDocuments,
+  Message.clientPing,
+  Message.serverReady,
+  Message.serverWorkspaceSnapshot,
+  Message.serverProjectionSnapshot,
+  Message.serverProjectionPatch,
+  Message.serverDocumentPatched,
+  Message.serverValidation,
+  Message.serverConflict,
+  Message.serverFileChanged,
+  Message.serverError,
+  Message.serverPong,
+);
+
 Transport.http.serves(
   Route.config,
   Route.roots,
@@ -306,6 +385,23 @@ Transport.ws.emits(
   Message.serverFileChanged,
   Message.serverError,
   Message.serverPong,
+);
+
+Action.connectSocket.sends(Message.clientHello);
+Action.bootstrapConfig.calls(Route.config, Route.roots);
+Action.createSession.calls(Route.createSession, Route.sessionSnapshot);
+Action.openDocument.sends(Message.clientOpenDocuments);
+Action.queueGraphIntent.sends(Message.clientApplyIntent);
+Action.persistLayoutHint.sends(Message.clientPersistLayout);
+Action.connectSocket.receives(
+  Message.serverReady,
+  Message.serverWorkspaceSnapshot,
+  Message.serverProjectionSnapshot,
+  Message.serverProjectionPatch,
+  Message.serverValidation,
+  Message.serverConflict,
+  Message.serverFileChanged,
+  Message.serverError,
 );
 
 Server.serves(Transport.http, Transport.ws);

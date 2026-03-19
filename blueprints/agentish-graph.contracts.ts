@@ -297,10 +297,38 @@ export type CreateSessionResponse = {
   snapshotUrl: string;
 };
 
+export type ListWorkspaceRootsResponse = {
+  roots: WorkspaceRootConfig[];
+};
+
 export type GetSessionSnapshotResponse = {
   workspace: WorkspaceSnapshot;
   projection: GraphProjectionSnapshot;
   validationIssues: ValidationIssue[];
+};
+
+export type CloseSessionResponse = {
+  closed: true;
+  sessionId: SessionId;
+};
+
+export type GraphHttpContracts = {
+  "GET /api/agentish-graph/config": {
+    response: GraphServerConfigResponse;
+  };
+  "GET /api/agentish-graph/roots": {
+    response: ListWorkspaceRootsResponse;
+  };
+  "POST /api/agentish-graph/sessions": {
+    request: CreateSessionRequest;
+    response: CreateSessionResponse;
+  };
+  "GET /api/agentish-graph/sessions/:sessionId/snapshot": {
+    response: GetSessionSnapshotResponse;
+  };
+  "DELETE /api/agentish-graph/sessions/:sessionId": {
+    response: CloseSessionResponse;
+  };
 };
 
 export type WsClientEnvelope =
@@ -416,4 +444,40 @@ export type AgentishGraphStoreState = {
   inspector: InspectorSlice;
   ui: UiSlice;
   io: IoSlice;
+};
+
+export type AgentishGraphStoreActions = {
+  bootstrapConfig(config: GraphServerConfigResponse): void;
+  createSession(request: CreateSessionRequest): Promise<CreateSessionResponse>;
+  connectSocket(session: {
+    sessionId: SessionId;
+    sessionToken: SessionToken;
+    wsUrl: string;
+  }): Promise<void>;
+  applyServerSnapshot(snapshot: GetSessionSnapshotResponse): void;
+  applyServerPatch(message: Extract<WsServerEnvelope, { type: "server/projection-patch" }>): void;
+  openDocument(paths: DocumentPath[], activeDocumentPath?: DocumentPath | null): void;
+  setSelection(selection: GraphSelection): void;
+  setViewport(viewport: GraphViewport): void;
+  beginInspectorEdit(entityId: StableId): void;
+  commitInspectorDraft(): void;
+  createNode(intent: Extract<GraphMutationIntent, { kind: "create-node" }>): void;
+  connectHandles(intent: Extract<GraphMutationIntent, { kind: "connect-handles" }>): void;
+  deleteSelection(intent: Extract<GraphMutationIntent, { kind: "delete-elements" }>): void;
+  queueGraphIntent(intent: GraphMutationIntent): void;
+  resolveConflict(resolution: {
+    conflictId: ConflictId;
+    choice: GraphConflict["suggestedResolution"];
+  }): void;
+  persistLayoutHint(hint: GraphLayoutHint): void;
+};
+
+export type AgentishGraphStoreContract = {
+  state: AgentishGraphStoreState;
+  actions: AgentishGraphStoreActions;
+};
+
+export type AgentishGraphWsContracts = {
+  client: WsClientEnvelope;
+  server: WsServerEnvelope;
 };

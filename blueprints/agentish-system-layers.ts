@@ -60,6 +60,7 @@ Layer.implementationPlan.answers(
 Layer.contracts.answers(
   "What exact types exist?",
   "What exact messages exist?",
+  "What exact action contracts exist?",
   "What exact store shape exists?",
   "What exact schemas cross boundaries?",
 );
