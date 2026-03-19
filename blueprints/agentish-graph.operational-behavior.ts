@@ -27,8 +27,14 @@ const GraphSystem = define.system("AgentishGraphSystem", {
 
 const Source = {
   documentSet: define.documentSet("AgentishDocumentSet"),
-  semanticModel: define.semanticModel("SemanticModel"),
   mutation: define.mutation("SourceMutation"),
+};
+
+const Semantics = {
+  model: define.semanticModel("SemanticModel"),
+};
+
+const Planning = {
   patchPlan: define.patchPlan("SourcePatchPlan"),
 };
 
@@ -113,23 +119,23 @@ OperationalBehavior.enforces(`- Only validated mutations may become source patch
 - Conflicts and ambiguity are surfaced rather than hidden.
 - Source meaning remains authoritative across reprojection.`);
 
-GraphSystem.derives(Source.semanticModel).from(Source.documentSet);
+GraphSystem.derives(Semantics.model).from(Source.documentSet);
 GraphSystem.derives(Projection.workspace).from(
-  Source.semanticModel,
+  Semantics.model,
   Identity.stable,
   Projection.layoutHint,
 );
 GraphSystem.derives(Editing.validation).from(Editing.intent, Source.documentSet);
 GraphSystem.derives(Editing.conflict).from(Editing.validation, Editing.intent);
-GraphSystem.derives(Source.patchPlan).from(Editing.validation, Editing.intent);
-GraphSystem.derives(Source.mutation).from(Source.patchPlan);
+GraphSystem.derives(Planning.patchPlan).from(Editing.validation, Editing.intent);
+GraphSystem.derives(Source.mutation).from(Planning.patchPlan);
 
 when(Browser.edits(Projection.workspace))
   .then(GraphSystem.derives(Editing.intent))
   .and(GraphSystem.derives(Editing.validation));
 
 when(GraphSystem.accepts(Editing.validation))
-  .then(GraphSystem.derives(Source.patchPlan))
+  .then(GraphSystem.derives(Planning.patchPlan))
   .and(GraphSystem.derives(Source.mutation))
   .and(GraphSystem.applies(Source.mutation).to(Source.documentSet))
   .and(GraphSystem.projects(Projection.workspace));
@@ -152,7 +158,7 @@ when(Browser.resolves(Editing.conflict).with("manual edit"))
   .and(GraphSystem.waitsFor("source meaning to change"));
 
 when(GraphSystem.detects("external source change"))
-  .then(GraphSystem.derives(Source.semanticModel))
+  .then(GraphSystem.derives(Semantics.model))
   .and(GraphSystem.projects(Projection.workspace))
   .and(GraphSystem.preserves("selection and viewport when safe"));
 

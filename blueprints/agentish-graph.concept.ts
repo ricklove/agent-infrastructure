@@ -21,7 +21,10 @@ const Source = {
   documentSet: define.documentSet("AgentishDocumentSet", {
     actsAs: "workspace source",
   }),
-  semanticModel: define.semanticModel("SemanticModel", {
+};
+
+const Semantics = {
+  model: define.semanticModel("SemanticModel", {
     actsAs: "normalized meaning",
   }),
 };
@@ -60,7 +63,7 @@ const Truth = {
 };
 
 Source.documentSet.contains(Source.document);
-Source.semanticModel.contains(Identity.stable);
+Semantics.model.contains(Identity.stable);
 Projection.workspace.contains(
   Projection.layer,
   Projection.node,
@@ -71,9 +74,9 @@ Projection.workspace.contains(
 );
 
 GraphSystem.reads(Source.documentSet);
-GraphSystem.derives(Source.semanticModel).from(Source.documentSet);
+GraphSystem.derives(Semantics.model).from(Source.documentSet);
 GraphSystem.derives(Projection.workspace).from(
-  Source.semanticModel,
+  Semantics.model,
   Identity.stable,
   Projection.layoutHint,
 );
@@ -108,7 +111,7 @@ Truth.surfacedConflicts.means(
 );
 
 when(Human.opens(Source.documentSet))
-  .then(GraphSystem.normalizes(Source.documentSet).into(Source.semanticModel))
+  .then(GraphSystem.normalizes(Source.documentSet).into(Semantics.model))
   .and(GraphSystem.projects(Projection.workspace));
 
 when(Human.edits(Projection.workspace))
