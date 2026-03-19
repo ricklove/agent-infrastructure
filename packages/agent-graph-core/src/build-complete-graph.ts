@@ -4,20 +4,45 @@ import type {
   GraphEdge,
   GraphLayer,
   GraphNode,
-  LayerDefinition,
   SourceWorkspace,
   WorkspaceState,
   GraphSnapshot,
 } from "./types.js";
 
-function computeLayerDimensions(layer: LayerDefinition, nodeCount: number): GraphLayer {
-  const columns = Math.max(1, Math.ceil(Math.sqrt(Math.max(nodeCount, 1))));
+const LAYER_PADDING_X = 32;
+const LAYER_PADDING_Y = 40;
+const NODE_WIDTH = 168;
+const NODE_COLUMN_GAP = 360;
+const NODE_ROW_GAP = 156;
+const PORTAL_OFFSET_X = 188;
+const PORTAL_WIDTH = 112;
+
+function computeLayerLayout(layer: WorkspaceState["layers"][number], nodeCount: number): {
+  columns: number;
+  rows: number;
+  graphLayer: GraphLayer;
+} {
+  const columns =
+    layer.kind === "overview"
+      ? Math.min(3, Math.max(1, nodeCount))
+      : Math.max(1, Math.ceil(Math.sqrt(Math.max(nodeCount, 1))));
   const rows = Math.max(1, Math.ceil(Math.max(nodeCount, 1) / columns));
 
   return {
-    ...layer,
-    width: 440,
-    height: Math.max(240, rows * 144 + 96),
+    columns,
+    rows,
+    graphLayer: {
+      ...layer,
+      width: Math.max(
+        520,
+        LAYER_PADDING_X * 2 +
+          NODE_WIDTH +
+          PORTAL_OFFSET_X +
+          PORTAL_WIDTH +
+          Math.max(0, columns - 1) * NODE_COLUMN_GAP,
+      ),
+      height: Math.max(260, LAYER_PADDING_Y * 2 + 96 + Math.max(0, rows - 1) * NODE_ROW_GAP),
+    },
   };
 }
 
@@ -29,18 +54,20 @@ export function buildCompleteGraph(args: {
   const layers = workspaceState.layers.filter((layer) => layer.visible);
   const visibleSourceIds = new Set(layers.flatMap((layer) => layer.nodeIds));
   const renderedNodeIdsBySourceId = new Map<string, string[]>();
-  const graphLayers = layers.map((layer) => computeLayerDimensions(layer, layer.nodeIds.length));
+  const layerLayouts = layers.map((layer) => computeLayerLayout(layer, layer.nodeIds.length));
+  const graphLayers = layerLayouts.map((layout) => layout.graphLayer);
   const graphNodes: GraphNode[] = [];
 
-  for (const layer of graphLayers) {
+  for (const layerLayout of layerLayouts) {
+    const layer = layerLayout.graphLayer;
     layer.nodeIds.forEach((sourceId, index) => {
       const sourceNode = sourceWorkspace.nodes.find((node) => node.id === sourceId);
       if (!sourceNode) {
         return;
       }
 
-      const col = index % 2;
-      const row = Math.floor(index / 2);
+      const col = index % layerLayout.columns;
+      const row = Math.floor(index / layerLayout.columns);
       const id = `${sourceId}::${layer.id}`;
       const graphNode: GraphNode = {
         id,
@@ -48,10 +75,11 @@ export function buildCompleteGraph(args: {
         parentLayerId: layer.id,
         label: sourceNode.label,
         kind: "semantic-node",
-        position: {
-          x: 28 + col * 196,
-          y: 56 + row * 124,
-        },
+        position:
+          workspaceState.nodePositions[id] ?? {
+          x: LAYER_PADDING_X + col * NODE_COLUMN_GAP,
+          y: LAYER_PADDING_Y + 16 + row * NODE_ROW_GAP,
+          },
         summary: sourceNode.summary,
       };
       graphNodes.push(graphNode);
@@ -91,10 +119,11 @@ export function buildCompleteGraph(args: {
 
   const { portals, portalEdges } = buildHiddenContextPortals({
     renderedNodes: graphNodes,
-    layers,
+    layers: graphLayers,
     sourceNodes: sourceWorkspace.nodes,
     sourceEdges: sourceWorkspace.edges,
     visibleSourceIds,
+    nodePositions: workspaceState.nodePositions,
   });
 
   return {

@@ -19,8 +19,8 @@ export function InspectorPanel({
   const [targetNodeId, setTargetNodeId] = useState("");
 
   return (
-    <section className="rounded-3xl border border-stone-800 bg-stone-900/80 p-4">
-      <h2 className="font-['Space_Grotesk'] text-lg font-medium text-stone-50">
+    <section className="rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
+      <h2 className="font-['Space_Grotesk'] text-base font-medium text-stone-50">
         Inspector
       </h2>
       {!selectedNode && !selectedEdge ? (
@@ -30,13 +30,13 @@ export function InspectorPanel({
       ) : null}
 
       {selectedNode ? (
-        <div className="mt-4 space-y-4">
+        <div className="mt-3 space-y-3">
           <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-3">
             <div className="text-xs uppercase tracking-[0.2em] text-stone-500">
               Node
             </div>
-            <h3 className="mt-2 text-base font-medium text-stone-100">{selectedNode.label}</h3>
-            <p className="mt-2 text-sm leading-6 text-stone-300">{selectedNode.summary}</p>
+            <h3 className="mt-1 text-sm font-medium text-stone-100">{selectedNode.label}</h3>
+            <p className="mt-1 text-xs leading-5 text-stone-300">{selectedNode.summary}</p>
           </div>
 
           {selectedNode.kind === "semantic-node" ? (
@@ -58,7 +58,7 @@ export function InspectorPanel({
                     setLabelDraft("");
                   }
                 }}
-                className="mt-3 rounded-full bg-emerald-400 px-4 py-2 text-sm font-medium text-stone-950 hover:bg-emerald-300"
+                className="mt-2 rounded-full bg-emerald-400 px-4 py-1.5 text-sm font-medium text-stone-950 hover:bg-emerald-300"
               >
                 Apply rename
               </button>
@@ -84,7 +84,7 @@ export function InspectorPanel({
                     setTargetNodeId("");
                   }
                 }}
-                className="mt-3 rounded-full border border-sky-500/40 px-4 py-2 text-sm font-medium text-sky-200 hover:bg-sky-500/10"
+                className="mt-2 rounded-full border border-sky-500/40 px-4 py-1.5 text-sm font-medium text-sky-200 hover:bg-sky-500/10"
               >
                 Connect
               </button>
@@ -94,10 +94,10 @@ export function InspectorPanel({
       ) : null}
 
       {selectedEdge ? (
-        <div className="mt-4 rounded-2xl border border-stone-800 bg-stone-950/70 p-3">
+        <div className="mt-3 rounded-2xl border border-stone-800 bg-stone-950/70 p-3">
           <div className="text-xs uppercase tracking-[0.2em] text-stone-500">Edge</div>
-          <h3 className="mt-2 text-base font-medium text-stone-100">{selectedEdge.label}</h3>
-          <p className="mt-2 text-sm leading-6 text-stone-300">
+          <h3 className="mt-1 text-sm font-medium text-stone-100">{selectedEdge.label}</h3>
+          <p className="mt-1 text-xs leading-5 text-stone-300">
             {selectedEdge.kind === "derived"
               ? "Derived connection through hidden context."
               : selectedEdge.kind === "hidden-context"

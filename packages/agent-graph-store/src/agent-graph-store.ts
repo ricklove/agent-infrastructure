@@ -19,6 +19,7 @@ export type AgentGraphStoreState = {
   workspace: WorkspaceSnapshot | null;
   graph: GraphSnapshot | null;
   diff: GraphDiffSnapshot | null;
+  activeLayerId: string | null;
   selection: {
     nodeId: string | null;
     edgeId: string | null;
@@ -44,6 +45,7 @@ export function createAgentGraphStore(serverOrigin: string) {
     workspace: null,
     graph: null,
     diff: null,
+    activeLayerId: null,
     selection: {
       nodeId: null,
       edgeId: null,

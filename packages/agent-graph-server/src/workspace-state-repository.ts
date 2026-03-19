@@ -10,7 +10,17 @@ const SIDE_CAR_PATH = resolve(
 export async function loadWorkspaceState(): Promise<WorkspaceState | null> {
   try {
     const content = await readFile(SIDE_CAR_PATH, "utf8");
-    return JSON.parse(content) as WorkspaceState;
+    const parsed = JSON.parse(content) as Partial<WorkspaceState>;
+    if (!parsed.rootId || !parsed.layers || typeof parsed.revision !== "number") {
+      return null;
+    }
+
+    return {
+      rootId: parsed.rootId,
+      revision: parsed.revision,
+      layers: parsed.layers,
+      nodePositions: parsed.nodePositions ?? {},
+    };
   } catch {
     return null;
   }

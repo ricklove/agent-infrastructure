@@ -298,5 +298,6 @@ export function createInitialWorkspaceState(): WorkspaceState {
     rootId: "agent-graph",
     revision: 1,
     layers,
+    nodePositions: {},
   };
 }

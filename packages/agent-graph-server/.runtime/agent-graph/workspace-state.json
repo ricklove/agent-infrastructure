@@ -1,0 +1,38 @@
+{
+  "rootId": "agent-graph",
+  "revision": 102,
+  "layers": [
+    {
+      "id": "layer-overview",
+      "label": "Overview",
+      "kind": "overview",
+      "nodeIds": [
+        "family-comprehension",
+        "family-compose",
+        "family-inspection",
+        "family-editing",
+        "family-change"
+      ],
+      "visible": true,
+      "x": -665.0236051130348,
+      "y": 679.0678947952404,
+      "derivedFromLayerId": null
+    },
+    {
+      "id": "layer-1773962513293",
+      "label": "Overview Copy",
+      "kind": "overview",
+      "nodeIds": [
+        "family-comprehension",
+        "family-compose",
+        "family-inspection",
+        "family-editing",
+        "family-change"
+      ],
+      "visible": true,
+      "x": -562.3137445388735,
+      "y": 1138.9949934869176,
+      "derivedFromLayerId": "layer-overview"
+    }
+  ]
+}

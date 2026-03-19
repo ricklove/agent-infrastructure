@@ -70,6 +70,7 @@ export type WorkspaceState = {
   rootId: string;
   revision: number;
   layers: LayerDefinition[];
+  nodePositions: Record<string, { x: number; y: number }>;
 };
 
 export type GraphNode = {
@@ -156,6 +157,13 @@ export type MoveLayerIntent = {
   y: number;
 };
 
+export type MoveNodeIntent = {
+  kind: "move-node";
+  nodeId: string;
+  x: number;
+  y: number;
+};
+
 export type ToggleLayerNodeIntent = {
   kind: "toggle-layer-node";
   layerId: string;
@@ -177,6 +185,7 @@ export type GraphIntent =
   | ConnectVisibleNodesIntent
   | CloneLayerIntent
   | MoveLayerIntent
+  | MoveNodeIntent
   | ToggleLayerNodeIntent
   | RevealHiddenContextIntent
   | RequestDiffIntent;

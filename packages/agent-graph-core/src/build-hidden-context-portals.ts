@@ -1,20 +1,22 @@
 import type {
   GraphEdge,
+  GraphLayer,
   GraphNode,
-  LayerDefinition,
   SourceEdge,
   SourceNode,
 } from "./types.js";
 
 export function buildHiddenContextPortals(args: {
   renderedNodes: GraphNode[];
-  layers: LayerDefinition[];
+  layers: GraphLayer[];
   sourceNodes: SourceNode[];
   sourceEdges: SourceEdge[];
   visibleSourceIds: Set<string>;
+  nodePositions?: Record<string, { x: number; y: number }>;
 }): { portals: GraphNode[]; portalEdges: GraphEdge[] } {
-  const { renderedNodes, sourceNodes, sourceEdges, visibleSourceIds } = args;
+  const { renderedNodes, layers, sourceNodes, sourceEdges, visibleSourceIds, nodePositions } = args;
   const sourceNodeById = new Map(sourceNodes.map((node) => [node.id, node]));
+  const layerById = new Map(layers.map((layer) => [layer.id, layer]));
   const portals: GraphNode[] = [];
   const portalEdges: GraphEdge[] = [];
 
@@ -38,16 +40,21 @@ export function buildHiddenContextPortals(args: {
     }
 
     const portalId = `portal:${renderedNode.id}`;
+    const parentLayer = layerById.get(renderedNode.parentLayerId);
     portals.push({
       id: portalId,
       sourceId: renderedNode.sourceId,
       parentLayerId: renderedNode.parentLayerId,
       label: `${hiddenNeighbors.length} hidden`,
       kind: "hidden-context-portal",
-      position: {
-        x: renderedNode.position.x + 220,
-        y: renderedNode.position.y,
-      },
+      position:
+        nodePositions?.[portalId] ?? {
+          x: Math.min(
+            renderedNode.position.x + 188,
+            Math.max(36, (parentLayer?.width ?? 480) - 144),
+          ),
+          y: renderedNode.position.y + 12,
+        },
       summary: hiddenNeighbors
         .map((entry) => `${entry.edge.kind} -> ${entry.neighbor.label}`)
         .join(", "),
@@ -61,7 +68,7 @@ export function buildHiddenContextPortals(args: {
       source: renderedNode.id,
       target: portalId,
       kind: "hidden-context",
-      label: "hidden context",
+      label: "",
       multiplicity: hiddenNeighbors.length,
       supportingPathIds: hiddenNeighbors.map((entry) => entry.edge.id),
     });

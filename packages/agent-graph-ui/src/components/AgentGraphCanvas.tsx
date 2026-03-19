@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Background,
   Controls,
@@ -20,6 +20,17 @@ import type {
 import { DerivedEdgeRenderer } from "../renderers/DerivedEdgeRenderer";
 import { DirectEdgeRenderer } from "../renderers/DirectEdgeRenderer";
 import { HiddenContextPortalNode } from "../renderers/HiddenContextPortalNode";
+import { SemanticGraphNode } from "../renderers/SemanticGraphNode";
+
+const nodeTypes = {
+  semanticNode: SemanticGraphNode,
+  hiddenContextPortal: HiddenContextPortalNode,
+};
+
+const edgeTypes = {
+  direct: DirectEdgeRenderer,
+  derived: DerivedEdgeRenderer,
+};
 
 type CanvasProps = {
   store: AgentGraphStore;
@@ -27,6 +38,7 @@ type CanvasProps = {
     selectNode(nodeId: string | null): void;
     selectEdge(edgeId: string | null): void;
     moveLayer(layerId: string, x: number, y: number): void;
+    moveNode(nodeId: string, x: number, y: number): void;
     revealHiddenContext(portalNodeId: string): void;
     inspectDerivedEdge(edgeId: string, supportingPathIds: string[]): void;
   };
@@ -55,6 +67,42 @@ function mapLayerNodes(graph: GraphSnapshot): Node[] {
   return [...groupNodes, ...semanticNodes];
 }
 
+function mapNodesWithOverrides(
+  graph: GraphSnapshot,
+  positionOverrides: Record<string, { x: number; y: number }>,
+  activeLayerId: string | null,
+): Node[] {
+  const nodes = mapLayerNodes(graph);
+  return nodes.map((node) => {
+    const isGroup = node.type === "group";
+    const nodeLayerId = isGroup ? node.id : String(node.parentId ?? "");
+    const isActiveLayer = !activeLayerId || nodeLayerId === activeLayerId;
+    const override = positionOverrides[node.id];
+    const nextNode: Node = {
+      ...node,
+      draggable: isGroup ? isActiveLayer : isActiveLayer && node.draggable !== false,
+      selectable: isActiveLayer,
+      style: {
+        ...node.style,
+        opacity: isActiveLayer ? 1 : 0.38,
+      },
+      data: {
+        ...(node.data as object),
+        isActiveLayer,
+      },
+    };
+
+    if (!override) {
+      return nextNode;
+    }
+
+    return {
+      ...nextNode,
+      position: override,
+    };
+  });
+}
+
 function mapSemanticNode(node: AgentGraphNode): Node {
   if (node.kind === "hidden-context-portal") {
     return {
@@ -68,7 +116,7 @@ function mapSemanticNode(node: AgentGraphNode): Node {
         hiddenCount: node.hiddenCount ?? 0,
       },
       position: node.position,
-      draggable: false,
+      draggable: true,
     };
   }
 
@@ -76,23 +124,14 @@ function mapSemanticNode(node: AgentGraphNode): Node {
     id: node.id,
     parentId: node.parentLayerId,
     extent: "parent",
-    type: "default",
+    type: "semanticNode",
     data: {
       label: node.label,
       summary: node.summary,
       sourceId: node.sourceId,
     },
     position: node.position,
-    draggable: false,
-    style: {
-      width: 168,
-      borderRadius: "16px",
-      border: "1px solid rgba(90, 81, 72, 0.7)",
-      background: "rgba(24, 24, 27, 0.96)",
-      color: "#f5f5f4",
-      padding: "10px 12px",
-      fontSize: 12,
-    },
+    draggable: true,
   };
 }
 
@@ -125,11 +164,54 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   actions,
 }: CanvasProps) {
   const graph = useSelector(store.state$.graph);
+  const activeLayerId = useSelector(store.state$.activeLayerId);
+  const [positionOverrides, setPositionOverrides] = useState<
+    Record<string, { x: number; y: number }>
+  >({});
 
-  const nodes = useMemo(() => (graph ? mapLayerNodes(graph) : []), [graph]);
+  useEffect(() => {
+    if (!graph) {
+      setPositionOverrides({});
+      return;
+    }
+
+    setPositionOverrides((current) => {
+      const next: Record<string, { x: number; y: number }> = {};
+      const basePositions = new Map<string, { x: number; y: number }>();
+
+      for (const layer of graph.layers) {
+        basePositions.set(layer.id, { x: layer.x, y: layer.y });
+      }
+      for (const node of graph.nodes) {
+        basePositions.set(node.id, node.position);
+      }
+
+      for (const [id, override] of Object.entries(current)) {
+        const base = basePositions.get(id);
+        if (!override) {
+          continue;
+        }
+
+        if (!base || override.x !== base.x || override.y !== base.y) {
+          next[id] = override;
+        }
+      }
+      return next;
+    });
+  }, [graph]);
+
+  const nodes = useMemo(
+    () => (graph ? mapNodesWithOverrides(graph, positionOverrides, activeLayerId) : []),
+    [graph, positionOverrides, activeLayerId],
+  );
   const edges = useMemo(() => (graph ? mapEdges(graph.edges) : []), [graph]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
+    const nodeLayerId = node.type === "group" ? node.id : String(node.parentId ?? "");
+    if (activeLayerId && nodeLayerId !== activeLayerId) {
+      return;
+    }
+
     actions.selectEdge(null);
     actions.selectNode(node.id);
     if (node.type === "hiddenContextPortal") {
@@ -138,22 +220,14 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   };
 
   return (
-    <section className="min-h-[720px] overflow-hidden rounded-3xl border border-stone-800 bg-stone-900/80">
-      <div className="flex items-center justify-between border-b border-stone-800 px-5 py-3">
-        <div>
-          <h2 className="font-['Space_Grotesk'] text-lg font-medium text-stone-50">
-            Shared graph plane
-          </h2>
-          <p className="text-sm text-stone-400">
-            Persistent layers render together in one complete graph workspace.
-          </p>
-        </div>
-      </div>
-      <div className="h-[760px]">
+    <section className="h-full min-h-[720px] overflow-hidden">
+      <div className="h-full w-full">
         <ReactFlow
+          className="[&_.react-flow__pane]:bg-transparent [&_.react-flow__renderer]:bg-transparent [&_.react-flow__viewport]:bg-transparent"
           fitView
           nodes={nodes}
           edges={edges}
+          proOptions={{ hideAttribution: true }}
           onNodeClick={onNodeClick}
           onEdgeClick={(_, edge) => {
             actions.selectNode(null);
@@ -164,17 +238,40 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
             }
           }}
           onNodeDragStop={(_, node) => {
+            const nodeLayerId = node.type === "group" ? node.id : String(node.parentId ?? "");
+            if (activeLayerId && nodeLayerId !== activeLayerId) {
+              return;
+            }
+
+            setPositionOverrides((current) => ({
+              ...current,
+              [node.id]: {
+                x: node.position.x,
+                y: node.position.y,
+              },
+            }));
             if (graph?.layers.some((layer) => layer.id === node.id)) {
               actions.moveLayer(node.id, node.position.x, node.position.y);
+            } else {
+              actions.moveNode(node.id, node.position.x, node.position.y);
             }
           }}
-          nodeTypes={{
-            hiddenContextPortal: HiddenContextPortalNode,
+          onNodeDrag={(_, node) => {
+            const nodeLayerId = node.type === "group" ? node.id : String(node.parentId ?? "");
+            if (activeLayerId && nodeLayerId !== activeLayerId) {
+              return;
+            }
+
+            setPositionOverrides((current) => ({
+              ...current,
+              [node.id]: {
+                x: node.position.x,
+                y: node.position.y,
+              },
+            }));
           }}
-          edgeTypes={{
-            direct: DirectEdgeRenderer,
-            derived: DerivedEdgeRenderer,
-          }}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           minZoom={0.2}
           maxZoom={1.8}
           defaultEdgeOptions={{

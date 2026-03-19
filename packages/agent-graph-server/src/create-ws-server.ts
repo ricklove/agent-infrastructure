@@ -82,6 +82,24 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         },
       ];
     }
+    case "move-node": {
+      workspaceState.nodePositions[intent.nodeId] = {
+        x: intent.x,
+        y: intent.y,
+      };
+      workspaceState.revision += 1;
+      repository.setWorkspaceState(workspaceState);
+      await saveWorkspaceState(workspaceState);
+      return [
+        {
+          type: "server/graph",
+          graph: buildCompleteGraph({
+            sourceWorkspace: repository.getSourceWorkspace(),
+            workspaceState,
+          }),
+        },
+      ];
+    }
     case "toggle-layer-node": {
       workspaceState.layers = workspaceState.layers.map((layer) => {
         if (layer.id !== intent.layerId) {

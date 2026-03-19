@@ -42,6 +42,10 @@ function applySnapshot(
   store.state$.workspace.set(workspace);
   store.state$.graph.set(graph);
   store.state$.diff.set(diff);
+  const activeLayerId = store.state$.activeLayerId.get();
+  if (!activeLayerId || !graph.layers.some((layer) => layer.id === activeLayerId)) {
+    store.state$.activeLayerId.set(graph.layers[0]?.id ?? null);
+  }
   store.state$.connection.status.set("ready");
 }
 
@@ -84,12 +88,25 @@ export function createAgentGraphActions(store: AgentGraphStore) {
     async openWorkspace(): Promise<void> {
       store.state$.connection.status.set("loading");
       store.state$.connection.error.set(null);
-      const response = await fetch(
-        `${store.state$.connection.serverOrigin.get()}/api/agent-graph/workspace`,
-      );
-      const payload = (await response.json()) as GetWorkspaceResponse;
-      applySnapshot(store, payload.workspace, payload.graph, payload.diff);
-      ws = connect(store);
+      try {
+        const response = await fetch(
+          `${store.state$.connection.serverOrigin.get()}/api/agent-graph/workspace`,
+        );
+        if (!response.ok) {
+          throw new Error(`Workspace request failed with status ${response.status}.`);
+        }
+
+        const payload = (await response.json()) as GetWorkspaceResponse;
+        applySnapshot(store, payload.workspace, payload.graph, payload.diff);
+        ws = connect(store);
+      } catch (error) {
+        store.state$.connection.status.set("error");
+        store.state$.connection.error.set(
+          error instanceof Error
+            ? error.message
+            : "Workspace request failed before the graph could load.",
+        );
+      }
     },
 
     selectNode(nodeId: string | null): void {
@@ -100,12 +117,21 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       store.state$.selection.assign({ nodeId: null, edgeId });
     },
 
+    setActiveLayer(layerId: string): void {
+      store.state$.activeLayerId.set(layerId);
+      store.state$.selection.assign({ nodeId: null, edgeId: null });
+    },
+
     cloneLayer(layerId: string): void {
       sendIntent(ws, store, { kind: "clone-layer", layerId });
     },
 
     moveLayer(layerId: string, x: number, y: number): void {
       sendIntent(ws, store, { kind: "move-layer", layerId, x, y });
+    },
+
+    moveNode(nodeId: string, x: number, y: number): void {
+      sendIntent(ws, store, { kind: "move-node", nodeId, x, y });
     },
 
     toggleLayerNode(layerId: string, sourceNodeId: string, include: boolean): void {
