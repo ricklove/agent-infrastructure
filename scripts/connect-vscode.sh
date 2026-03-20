@@ -38,6 +38,11 @@ require_command() {
   command -v "$cmd" >/dev/null 2>&1 || fail "required command not found: ${cmd}"
 }
 
+has_command() {
+  local cmd="$1"
+  command -v "$cmd" >/dev/null 2>&1
+}
+
 require_session_manager_plugin() {
   if command -v session-manager-plugin >/dev/null 2>&1; then
     return 0
@@ -60,6 +65,39 @@ EOF
 
 base64_no_wrap() {
   base64 | tr -d '\n'
+}
+
+launch_vscode_remote() {
+  local folder_uri="$1"
+
+  if has_command code; then
+    if code --list-extensions >/dev/null 2>&1; then
+      if ! code --list-extensions | grep -qx 'ms-vscode-remote.remote-ssh'; then
+        log "installing VS Code Remote - SSH extension"
+        code --install-extension ms-vscode-remote.remote-ssh >/dev/null
+      fi
+    fi
+    code --new-window --folder-uri "$folder_uri" >/dev/null 2>&1 &
+    disown || true
+    return 0
+  fi
+
+  if has_command powershell.exe; then
+    powershell.exe -NoProfile -NonInteractive -Command \
+      "code --install-extension ms-vscode-remote.remote-ssh | Out-Null; code --new-window --folder-uri '$folder_uri'" \
+      >/dev/null 2>&1 &
+    disown || true
+    return 0
+  fi
+
+  if has_command cmd.exe; then
+    cmd.exe /c "code --install-extension ms-vscode-remote.remote-ssh >nul 2>nul & code --new-window --folder-uri \"$folder_uri\"" \
+      >/dev/null 2>&1 &
+    disown || true
+    return 0
+  fi
+
+  return 1
 }
 
 aws_cmd=(
@@ -132,7 +170,6 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_command aws
-require_command code
 require_command ssh
 require_command ssh-keygen
 require_session_manager_plugin
@@ -365,11 +402,6 @@ else
 fi
 mv "$tmp_config" "$config_file"
 
-if ! code --list-extensions | grep -qx 'ms-vscode-remote.remote-ssh'; then
-  log "installing VS Code Remote - SSH extension"
-  code --install-extension ms-vscode-remote.remote-ssh >/dev/null
-fi
-
 log "validating SSH connectivity to ${host_alias}"
 ssh_output="$(ssh -o ConnectTimeout=20 "$host_alias" 'printf "%s\n" "$HOSTNAME"' 2>&1)" || fail "SSH validation failed: ${ssh_output}"
 log "SSH connected to ${ssh_output}"
@@ -378,9 +410,13 @@ log "SSH host alias: ${host_alias}"
 log "remote path: ${remote_path}"
 
 if [[ "$launch_vscode" == "true" ]]; then
-  code --new-window --folder-uri "vscode-remote://ssh-remote+${host_alias}${remote_path}" >/dev/null 2>&1 &
-  disown || true
-  log "launched VS Code remote window"
+  folder_uri="vscode-remote://ssh-remote+${host_alias}${remote_path}"
+  if launch_vscode_remote "$folder_uri"; then
+    log "launched VS Code remote window"
+  else
+    log "VS Code CLI was not available in this shell"
+    log "open manually with: code --new-window --folder-uri ${folder_uri}"
+  fi
 else
   log "skipped VS Code launch because --no-launch was set"
 fi
