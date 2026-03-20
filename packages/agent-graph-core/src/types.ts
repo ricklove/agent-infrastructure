@@ -18,6 +18,7 @@ export type SourceNode = {
   label: string;
   kind: SourceNodeKind;
   summary: string;
+  sourcePath?: string;
 };
 
 export type SourceEdge = {
@@ -68,6 +69,7 @@ export type GraphNode = {
   parentLayerId: string;
   ownerNodeId?: string;
   label: string;
+  sourcePath?: string;
   kind: GraphNodeKind;
   position: {
     x: number;

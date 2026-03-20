@@ -17,22 +17,65 @@ function summarize(kind: string, name: string, label: string): string {
   return `${kind} ${label} declared as ${name}`;
 }
 
+function extractSections(source: string): Array<{ start: number; label: string }> {
+  const sections: Array<{ start: number; label: string }> = [];
+  for (const match of source.matchAll(/^\/\/\s+(.+)$/gm)) {
+    const label = match[1]?.trim();
+    if (!label || label.startsWith("/")) {
+      continue;
+    }
+    sections.push({
+      start: match.index ?? 0,
+      label,
+    });
+  }
+  return sections;
+}
+
+function sectionForIndex(
+  sections: Array<{ start: number; label: string }>,
+  index: number,
+): string {
+  let current = "top-level";
+  for (const section of sections) {
+    if (section.start > index) {
+      break;
+    }
+    current = section.label;
+  }
+  return current;
+}
+
 function extractObjectDefinitions(source: string): Array<{
   reference: string;
   label: string;
   kind: string;
+  section: string;
+  sourcePath: string;
 }> {
-  const definitions: Array<{ reference: string; label: string; kind: string }> = [];
+  const documentLabel = basename(AGENT_GRAPH_BLUEPRINT_PATH);
+  const sections = extractSections(source);
+  const definitions: Array<{
+    reference: string;
+    label: string;
+    kind: string;
+    section: string;
+    sourcePath: string;
+  }> = [];
   for (const objectMatch of source.matchAll(/const\s+([A-Za-z][A-Za-z0-9]*)\s*=\s*{([\s\S]*?)};/g)) {
     const objectName = objectMatch[1];
     const objectBody = objectMatch[2];
     for (const propertyMatch of objectBody.matchAll(
       /([A-Za-z][A-Za-z0-9]*)\s*:\s*define\.([A-Za-z][A-Za-z0-9]*)\("([^"]+)"/g,
     )) {
+      const definitionIndex = (objectMatch.index ?? 0) + (propertyMatch.index ?? 0);
+      const section = sectionForIndex(sections, definitionIndex);
       definitions.push({
         reference: `${objectName}.${propertyMatch[1]}`,
         kind: propertyMatch[2],
         label: propertyMatch[3],
+        section,
+        sourcePath: `${documentLabel}/${section}`,
       });
     }
   }
@@ -43,15 +86,28 @@ function extractTopLevelDefinitions(source: string): Array<{
   reference: string;
   label: string;
   kind: string;
+  section: string;
+  sourcePath: string;
 }> {
-  const definitions: Array<{ reference: string; label: string; kind: string }> = [];
+  const documentLabel = basename(AGENT_GRAPH_BLUEPRINT_PATH);
+  const sections = extractSections(source);
+  const definitions: Array<{
+    reference: string;
+    label: string;
+    kind: string;
+    section: string;
+    sourcePath: string;
+  }> = [];
   for (const match of source.matchAll(
     /const\s+([A-Za-z][A-Za-z0-9]*)\s*=\s*define\.([A-Za-z][A-Za-z0-9]*)\("([^"]+)"/g,
   )) {
+    const section = sectionForIndex(sections, match.index ?? 0);
     definitions.push({
       reference: match[1],
       kind: match[2],
       label: match[3],
+      section,
+      sourcePath: `${documentLabel}/${section}`,
     });
   }
   return definitions;
@@ -118,7 +174,10 @@ export async function loadAgentishSourceWorkspace(): Promise<SourceWorkspace> {
     path: AGENT_GRAPH_BLUEPRINT_PATH,
   };
 
-  const definitionMap = new Map<string, { reference: string; label: string; kind: string }>();
+  const definitionMap = new Map<
+    string,
+    { reference: string; label: string; kind: string; section: string; sourcePath: string }
+  >();
   for (const definition of [
     ...extractTopLevelDefinitions(source),
     ...extractObjectDefinitions(source),
@@ -132,6 +191,7 @@ export async function loadAgentishSourceWorkspace(): Promise<SourceWorkspace> {
     label: definition.label,
     kind: definition.kind,
     summary: summarize(definition.kind, definition.reference, definition.label),
+    sourcePath: definition.sourcePath,
   }));
 
   const nodesByReference = new Map<string, SourceNode>();

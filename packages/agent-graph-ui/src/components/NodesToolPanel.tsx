@@ -71,6 +71,9 @@ export const NodesToolPanel = observer(function NodesToolPanel({
                     <div className="truncate text-sm font-medium text-stone-100">
                       {node.label}
                     </div>
+                    <div className="truncate text-[11px] text-stone-500">
+                      {node.sourcePath}
+                    </div>
                     <div className="text-[11px] uppercase tracking-[0.18em] text-stone-500">
                       {node.kind}
                     </div>

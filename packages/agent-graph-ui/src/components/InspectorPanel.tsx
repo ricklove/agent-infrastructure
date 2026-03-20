@@ -39,7 +39,10 @@ export function InspectorPanel({
             </div>
             <div className="mt-2 flex items-center gap-3">
               <NodeAvatar nodeKey={selectedNode.sourceId} label={selectedNode.label} />
-              <h3 className="text-sm font-medium text-stone-100">{selectedNode.label}</h3>
+              <div>
+                <h3 className="text-sm font-medium text-stone-100">{selectedNode.label}</h3>
+                <div className="text-[11px] text-stone-500">{selectedNode.sourcePath}</div>
+              </div>
             </div>
             <p className="mt-1 text-xs leading-5 text-stone-300">{selectedNode.summary}</p>
           </div>

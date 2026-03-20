@@ -6,6 +6,9 @@ export function SemanticGraphNode({
 }: NodeProps<{
   label: string;
   sourceId: string;
+  sourcePath?: string;
+  kind?: string;
+  summary?: string;
   isActiveLayer?: boolean;
   isPinned?: boolean;
   onHide?: () => void;
@@ -13,7 +16,7 @@ export function SemanticGraphNode({
 }>) {
   return (
     <div
-      className={`relative w-[168px] rounded-2xl px-4 py-4 text-center text-sm text-stone-50 shadow-[0_10px_40px_rgba(0,0,0,0.22)] ${
+      className={`group relative min-w-[168px] max-w-[320px] rounded-2xl px-4 py-4 text-center text-sm text-stone-50 shadow-[0_10px_40px_rgba(0,0,0,0.22)] ${
         data.isPinned
           ? "border border-emerald-500/70 bg-emerald-950/25"
           : "border border-stone-700/80 bg-zinc-950/95"
@@ -31,10 +34,10 @@ export function SemanticGraphNode({
             event.stopPropagation();
             data.onTogglePin?.();
           }}
-          className={`absolute -left-2.5 -top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] ${
+          className={`absolute -left-2.5 -top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-opacity ${
             data.isPinned
-              ? "border-emerald-400/70 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
-              : "border-stone-600 bg-stone-900/90 text-stone-300 hover:bg-stone-800"
+              ? "border-emerald-400/70 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 opacity-100"
+              : "border-stone-600 bg-stone-900/90 text-stone-300 hover:bg-stone-800 opacity-0 group-hover:opacity-100"
           }`}
           title={data.isPinned ? "Unpin node" : "Pin node"}
         >
@@ -63,7 +66,7 @@ export function SemanticGraphNode({
             event.stopPropagation();
             data.onHide?.();
           }}
-          className="absolute -right-2.5 -top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full border border-amber-500/50 bg-amber-950/90 text-amber-200 shadow-[0_10px_24px_rgba(0,0,0,0.28)] hover:bg-amber-900"
+          className="absolute -right-2.5 -top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full border border-amber-500/50 bg-amber-950/90 text-amber-200 opacity-0 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-opacity hover:bg-amber-900 group-hover:opacity-100"
           title="Hide from active layer"
         >
           <svg
@@ -87,6 +90,21 @@ export function SemanticGraphNode({
           <div className="text-base font-medium leading-5 tracking-tight text-stone-50">
             {data.label}
           </div>
+          {data.sourcePath ? (
+            <div className="mt-1 truncate text-[10px] leading-4 text-stone-500">
+              {data.sourcePath}
+            </div>
+          ) : null}
+          {data.kind ? (
+            <div className="mt-1 text-[10px] uppercase tracking-[0.16em] text-stone-500">
+              {data.kind}
+            </div>
+          ) : null}
+          {data.summary ? (
+            <div className="mt-1 line-clamp-3 text-[11px] leading-4 text-stone-400">
+              {data.summary}
+            </div>
+          ) : null}
         </div>
       </div>
       <Handle

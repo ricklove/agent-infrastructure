@@ -74,6 +74,7 @@ export function buildCompleteGraph(args: {
         sourceId,
         parentLayerId: layer.id,
         label: sourceNode.label,
+        sourcePath: sourceNode.sourcePath,
         kind: "semantic-node",
         position:
           workspaceState.nodePositions[id] ?? {

@@ -78,6 +78,7 @@ export function buildHiddenContextPortals(args: {
         parentLayerId: renderedNode.parentLayerId,
         ownerNodeId: renderedNode.id,
         label: `${portalGroup.neighbors.length} hidden`,
+        sourcePath: renderedNode.sourcePath,
         kind: "hidden-context-portal",
         position:
           nodePositions?.[portalId] ?? {
