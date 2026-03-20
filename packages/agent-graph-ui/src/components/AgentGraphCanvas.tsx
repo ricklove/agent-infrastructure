@@ -57,10 +57,18 @@ type CanvasProps = {
     moveLayer(layerId: string, x: number, y: number): void;
     moveNode(nodeId: string, x: number, y: number): void;
     hideNodeFromLayer(layerId: string, sourceNodeId: string): void;
+    revealHiddenNode(
+      portalNodeId: string,
+      hiddenNodeId: string,
+      position?: { x: number; y: number },
+    ): void;
     revealHiddenContext(portalNodeId: string): void;
     inspectDerivedEdge(edgeId: string, supportingPathIds: string[]): void;
   };
 };
+
+const REVEALED_HIDDEN_NODE_GAP = 28;
+const SEMANTIC_NODE_WIDTH = 168;
 
 type ForceNodeDatum = SimulationNodeDatum & {
   id: string;
@@ -77,7 +85,7 @@ function nodeDimensions(node: Node): { width: number; height: number } {
     return { width: node.width, height: node.height };
   }
   if (node.type === "hiddenContextPortal") {
-    return { width: 44, height: 44 };
+    return { width: 96, height: 40 };
   }
   if (node.type === "group") {
     return {
@@ -168,6 +176,7 @@ function mapNodes(
   pinnedNodeIds: string[],
   hideNodeFromLayer: (layerId: string, sourceNodeId: string) => void,
   toggleNodePinned: (nodeId: string, pinned: boolean, fallbackPosition: { x: number; y: number }) => void,
+  revealHiddenNode: (portalNodeId: string, hiddenNodeId: string) => void,
 ): Node[] {
   const pinnedSet = new Set(pinnedNodeIds);
   const nodes = mapLayerNodes(graph);
@@ -202,6 +211,10 @@ function mapNodes(
                   String((node.data as { sourceId?: string }).sourceId),
                 )
             : undefined,
+        onRevealHiddenNode:
+          !isGroup && isActiveLayer && node.type === "hiddenContextPortal"
+            ? (hiddenNodeId: string) => revealHiddenNode(node.id, hiddenNodeId)
+            : undefined,
       },
     } satisfies Node;
   });
@@ -217,12 +230,13 @@ function mapSemanticNode(node: AgentGraphNode): Node {
         label: node.label,
         summary: node.summary,
         hiddenCount: node.hiddenCount ?? 0,
+        hiddenNodes: node.hiddenNodes ?? [],
         layerId: node.parentLayerId,
         sourcePath: node.sourcePath,
         independentlyPositioned: node.independentlyPositioned ?? false,
       },
       position: node.position,
-      draggable: true,
+      draggable: false,
     };
   }
 
@@ -269,10 +283,34 @@ function mapEdges(graphEdges: GraphEdge[]): Edge[] {
 
 function mergeMappedNodesWithLocalPositions(mappedNodes: Node[], currentNodes: Node[]): Node[] {
   const currentNodeById = new Map(currentNodes.map((node) => [node.id, node]));
+  const mappedNodeById = new Map(mappedNodes.map((node) => [node.id, node]));
   return mappedNodes.map((mappedNode) => {
     const currentNode = currentNodeById.get(mappedNode.id);
     if (!currentNode) {
       return mappedNode;
+    }
+
+    if (mappedNode.type === "hiddenContextPortal") {
+      const ownerNodeId = String(mappedNode.parentId ?? "");
+      const ownerNode = currentNodeById.get(ownerNodeId) ?? mappedNodeById.get(ownerNodeId);
+      const ownerWidth = ownerNode ? nodeDimensions(ownerNode).width : SEMANTIC_NODE_WIDTH;
+      const portalWidth = currentNode.width ?? nodeDimensions(mappedNode).width;
+      const anchoredPosition = {
+        x:
+          mappedNode.id.startsWith("portal:incoming:")
+            ? -portalWidth - REVEALED_HIDDEN_NODE_GAP
+            : ownerWidth + REVEALED_HIDDEN_NODE_GAP,
+        y: 0,
+      };
+
+      return {
+        ...mappedNode,
+        position: anchoredPosition,
+        selected: currentNode.selected,
+        dragging: false,
+        width: currentNode.width,
+        height: currentNode.height,
+      };
     }
 
     return {
@@ -284,6 +322,45 @@ function mergeMappedNodesWithLocalPositions(mappedNodes: Node[], currentNodes: N
       height: currentNode.height,
     };
   });
+}
+
+function anchorHiddenPortalNodes(nodes: Node[]): Node[] {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  let changed = false;
+
+  const nextNodes = nodes.map((node) => {
+    if (node.type !== "hiddenContextPortal") {
+      return node;
+    }
+
+    const ownerNodeId = String(node.parentId ?? "");
+    const ownerNode = nodeById.get(ownerNodeId);
+    const ownerWidth = ownerNode ? nodeDimensions(ownerNode).width : SEMANTIC_NODE_WIDTH;
+    const portalWidth = node.width ?? nodeDimensions(node).width;
+    const anchoredPosition = {
+      x:
+        node.id.startsWith("portal:incoming:")
+          ? -portalWidth - REVEALED_HIDDEN_NODE_GAP
+          : ownerWidth + REVEALED_HIDDEN_NODE_GAP,
+      y: 0,
+    };
+
+    if (
+      node.position.x === anchoredPosition.x &&
+      node.position.y === anchoredPosition.y
+    ) {
+      return node;
+    }
+
+    changed = true;
+    return {
+      ...node,
+      position: anchoredPosition,
+      dragging: false,
+    };
+  });
+
+  return changed ? nextNodes : nodes;
 }
 
 export const AgentGraphCanvas = observer(function AgentGraphCanvas({
@@ -329,9 +406,42 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
               }
               actions.setNodePinned(nodeId, pinned, currentPosition);
             },
+            (portalNodeId, hiddenNodeId) => {
+              const portalNode =
+                reactFlowRef.current?.getNode(portalNodeId) ??
+                localNodesRef.current.find((candidate) => candidate.id === portalNodeId);
+              if (!portalNode) {
+                actions.revealHiddenNode(portalNodeId, hiddenNodeId);
+                return;
+              }
+
+              const layerId = String(
+                (portalNode.data as { layerId?: string } | undefined)?.layerId ?? portalNode.parentId ?? "",
+              );
+              const layerNode =
+                reactFlowRef.current?.getNode(layerId) ??
+                localNodesRef.current.find((candidate) => candidate.id === layerId);
+              const portalAbsolutePosition =
+                portalNode.positionAbsolute ?? portalNode.position;
+              const layerAbsolutePosition =
+                layerNode?.positionAbsolute ?? layerNode?.position ?? { x: 0, y: 0 };
+              const direction = String(
+                portalNode.id.startsWith("portal:incoming:") ? "incoming" : "outgoing",
+              );
+              const nextPosition = {
+                x:
+                  portalAbsolutePosition.x -
+                  layerAbsolutePosition.x +
+                  (direction === "incoming"
+                    ? -SEMANTIC_NODE_WIDTH - REVEALED_HIDDEN_NODE_GAP
+                    : (portalNode.width ?? 56) + REVEALED_HIDDEN_NODE_GAP),
+                y: portalAbsolutePosition.y - layerAbsolutePosition.y,
+              };
+              actions.revealHiddenNode(portalNodeId, hiddenNodeId, nextPosition);
+            },
           )
         : [],
-    [actions.hideNodeFromLayer, actions.setNodePinned, graph, activeLayerId, pinnedNodeIds],
+    [actions.hideNodeFromLayer, actions.revealHiddenNode, actions.setNodePinned, graph, activeLayerId, pinnedNodeIds],
   );
   const mappedEdges = useMemo(() => (graph ? mapEdges(graph.edges) : []), [graph]);
   const [localNodes, setLocalNodes, onNodesChange] = useNodesState(mappedNodes);
@@ -346,6 +456,10 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   useEffect(() => {
     setLocalNodes((current) => mergeMappedNodesWithLocalPositions(mappedNodes, current));
   }, [mappedNodes, physicsEnabled, setLocalNodes]);
+
+  useEffect(() => {
+    setLocalNodes((current) => anchorHiddenPortalNodes(current));
+  }, [localNodes, setLocalNodes]);
 
   useEffect(() => {
     setLocalEdges(mappedEdges);
@@ -385,9 +499,6 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
       return;
     }
 
-    if (node.type === "hiddenContextPortal") {
-      actions.revealHiddenContext(node.id);
-    }
   };
 
   function schedulePersistence(nodes: ForceNodeDatum[], movableNodeIds: string[]): void {

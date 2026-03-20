@@ -12,6 +12,12 @@ export type LayerKind =
 export type GraphNodeKind = "semantic-node" | "hidden-context-portal";
 export type GraphEdgeKind = "direct" | "derived" | "hidden-context";
 
+export type HiddenContextPreview = {
+  sourceId: string;
+  label: string;
+  sourcePath?: string;
+};
+
 export type SourceNode = {
   id: string;
   documentId: string;
@@ -78,6 +84,7 @@ export type GraphNode = {
   summary: string;
   hiddenCount?: number;
   hiddenKinds?: string[];
+  hiddenNodes?: HiddenContextPreview[];
   independentlyPositioned?: boolean;
 };
 
@@ -177,6 +184,22 @@ export type RevealHiddenContextIntent = {
   portalNodeId: string;
 };
 
+export type RevealHiddenNodeIntent = {
+  kind: "reveal-hidden-node";
+  portalNodeId: string;
+  hiddenNodeId: string;
+  position?: {
+    x: number;
+    y: number;
+  };
+};
+
+export type RevealConnectedHiddenContextIntent = {
+  kind: "reveal-connected-hidden-context";
+  sourceNodeId: string;
+  layerId: string;
+};
+
 export type RequestDiffIntent = {
   kind: "request-diff";
 };
@@ -190,6 +213,8 @@ export type GraphIntent =
   | SetNodePinnedIntent
   | ToggleLayerNodeIntent
   | RevealHiddenContextIntent
+  | RevealHiddenNodeIntent
+  | RevealConnectedHiddenContextIntent
   | RequestDiffIntent;
 
 export type ValidationPayload = {

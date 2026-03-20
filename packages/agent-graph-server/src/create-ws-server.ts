@@ -37,6 +37,42 @@ function snapshotMessage(repository: DocumentRepository): ServerMessage {
   };
 }
 
+function addNodesToLayer(
+  workspaceState: ReturnType<DocumentRepository["getWorkspaceState"]>,
+  layerId: string,
+  sourceNodeIds: string[],
+): void {
+  workspaceState.layers = workspaceState.layers.map((layer) =>
+    layer.id === layerId
+      ? {
+          ...layer,
+          nodeIds: [...new Set([...layer.nodeIds, ...sourceNodeIds])],
+        }
+      : layer,
+  );
+}
+
+function parsePortalNodeId(
+  portalNodeId: string,
+): { direction: "incoming" | "outgoing"; sourceNodeId: string; layerId: string } | null {
+  const match = /^portal:(incoming|outgoing):(.+?)::(.+)$/.exec(portalNodeId);
+  if (!match) {
+    return null;
+  }
+
+  const [, rawDirection, sourceNodeId, layerId] = match;
+  if (!sourceNodeId || !layerId) {
+    return null;
+  }
+
+  const direction = rawDirection === "incoming" ? "incoming" : "outgoing";
+  return { direction, sourceNodeId, layerId };
+}
+
+function graphNodeId(sourceNodeId: string, layerId: string): string {
+  return `${sourceNodeId}::${layerId}`;
+}
+
 async function applyWorkspaceIntent(repository: DocumentRepository, intent: GraphIntent): Promise<ServerMessage[]> {
   const workspaceState = structuredClone(repository.getWorkspaceState());
 
@@ -145,24 +181,71 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
       ];
     }
     case "reveal-hidden-context": {
-      const portalNodeId = intent.portalNodeId;
-      const renderedNodeId = portalNodeId.replace(/^portal:/, "");
-      const [sourceNodeId, layerId] = renderedNodeId.split("::");
-      if (!sourceNodeId || !layerId) {
+      const portal = parsePortalNodeId(intent.portalNodeId);
+      if (!portal) {
         return [];
       }
+
       const sourceWorkspace = repository.getSourceWorkspace();
       const revealedNodeIds = sourceWorkspace.edges
-        .filter((edge) => edge.sourceId === sourceNodeId)
-        .map((edge) => edge.targetId);
-      workspaceState.layers = workspaceState.layers.map((layer) =>
-        layer.id === layerId
-          ? {
-              ...layer,
-              nodeIds: [...new Set([...layer.nodeIds, ...revealedNodeIds])],
-            }
-          : layer,
-      );
+        .filter((edge) =>
+          portal.direction === "incoming"
+            ? edge.targetId === portal.sourceNodeId
+            : edge.sourceId === portal.sourceNodeId,
+        )
+        .map((edge) =>
+          portal.direction === "incoming" ? edge.sourceId : edge.targetId,
+        );
+      addNodesToLayer(workspaceState, portal.layerId, revealedNodeIds);
+      workspaceState.revision += 1;
+      repository.setWorkspaceState(workspaceState);
+      await saveWorkspaceState(workspaceState);
+      return [
+        {
+          type: "server/graph",
+          graph: buildCompleteGraph({
+            sourceWorkspace,
+            workspaceState,
+          }),
+        },
+      ];
+    }
+    case "reveal-hidden-node": {
+      const portal = parsePortalNodeId(intent.portalNodeId);
+      if (!portal) {
+        return [];
+      }
+
+      addNodesToLayer(workspaceState, portal.layerId, [intent.hiddenNodeId]);
+      const revealedGraphNodeId = graphNodeId(intent.hiddenNodeId, portal.layerId);
+      if (intent.position && !workspaceState.nodePositions[revealedGraphNodeId]) {
+        workspaceState.nodePositions[revealedGraphNodeId] = intent.position;
+      }
+      workspaceState.revision += 1;
+      repository.setWorkspaceState(workspaceState);
+      await saveWorkspaceState(workspaceState);
+      return [
+        {
+          type: "server/graph",
+          graph: buildCompleteGraph({
+            sourceWorkspace: repository.getSourceWorkspace(),
+            workspaceState,
+          }),
+        },
+      ];
+    }
+    case "reveal-connected-hidden-context": {
+      const sourceWorkspace = repository.getSourceWorkspace();
+      const revealedNodeIds = sourceWorkspace.edges.flatMap((edge) => {
+        if (edge.sourceId === intent.sourceNodeId) {
+          return [edge.targetId];
+        }
+        if (edge.targetId === intent.sourceNodeId) {
+          return [edge.sourceId];
+        }
+        return [];
+      });
+      addNodesToLayer(workspaceState, intent.layerId, revealedNodeIds);
       workspaceState.revision += 1;
       repository.setWorkspaceState(workspaceState);
       await saveWorkspaceState(workspaceState);

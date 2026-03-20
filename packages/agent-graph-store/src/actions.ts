@@ -241,6 +241,27 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       });
     },
 
+    revealHiddenNode(
+      portalNodeId: string,
+      hiddenNodeId: string,
+      position?: { x: number; y: number },
+    ): void {
+      sendIntent(ws, store, {
+        kind: "reveal-hidden-node",
+        portalNodeId,
+        hiddenNodeId,
+        position,
+      });
+    },
+
+    revealConnectedHiddenContext(sourceNodeId: string, layerId: string): void {
+      sendIntent(ws, store, {
+        kind: "reveal-connected-hidden-context",
+        sourceNodeId,
+        layerId,
+      });
+    },
+
     inspectDerivedEdge(edgeId: string, supportingPathIds: string[]): void {
       this.selectEdge(edgeId);
       store.state$.inspection.derivedEdgePathIds.set(supportingPathIds);

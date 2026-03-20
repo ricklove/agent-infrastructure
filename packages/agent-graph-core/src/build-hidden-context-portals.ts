@@ -18,9 +18,8 @@ export function buildHiddenContextPortals(args: {
   sourceNodes: SourceNode[];
   sourceEdges: SourceEdge[];
   visibleSourceIds: Set<string>;
-  nodePositions?: Record<string, { x: number; y: number }>;
 }): { portals: GraphNode[]; portalEdges: GraphEdge[] } {
-  const { renderedNodes, layers, sourceNodes, sourceEdges, visibleSourceIds, nodePositions } = args;
+  const { renderedNodes, layers, sourceNodes, sourceEdges, visibleSourceIds } = args;
   const sourceNodeById = new Map(sourceNodes.map((node) => [node.id, node]));
   const layerById = new Map(layers.map((layer) => [layer.id, layer]));
   const portals: GraphNode[] = [];
@@ -80,14 +79,13 @@ export function buildHiddenContextPortals(args: {
         label: `${portalGroup.neighbors.length} hidden`,
         sourcePath: renderedNode.sourcePath,
         kind: "hidden-context-portal",
-        position:
-          nodePositions?.[portalId] ?? {
-            x:
-              portalGroup.direction === "incoming"
-                ? -54
-                : 132,
-            y: 22,
-          },
+        position: {
+          x:
+            portalGroup.direction === "incoming"
+              ? -54
+              : 178,
+          y: 0,
+        },
         summary: portalGroup.neighbors
           .map((entry) =>
             portalGroup.direction === "incoming"
@@ -97,7 +95,12 @@ export function buildHiddenContextPortals(args: {
           .join(", "),
         hiddenCount: portalGroup.neighbors.length,
         hiddenKinds: [...new Set(portalGroup.neighbors.map((entry) => entry.edge.kind))],
-        independentlyPositioned: Boolean(nodePositions?.[portalId]),
+        hiddenNodes: portalGroup.neighbors.map((entry) => ({
+          sourceId: entry.neighbor.id,
+          label: entry.neighbor.label,
+          sourcePath: entry.neighbor.sourcePath,
+        })),
+        independentlyPositioned: false,
       });
 
       portalEdges.push({

@@ -124,7 +124,6 @@ export function buildCompleteGraph(args: {
     sourceNodes: sourceWorkspace.nodes,
     sourceEdges: sourceWorkspace.edges,
     visibleSourceIds,
-    nodePositions: workspaceState.nodePositions,
   });
 
   return {

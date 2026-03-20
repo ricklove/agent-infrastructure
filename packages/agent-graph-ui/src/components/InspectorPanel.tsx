@@ -9,6 +9,7 @@ type InspectorPanelProps = {
     editNodeMeaning(sourceNodeId: string, label: string): void;
     connectVisibleNodes(sourceNodeId: string, targetNodeId: string): void;
     hideNodeFromLayer(layerId: string, sourceNodeId: string): void;
+    revealConnectedHiddenContext(sourceNodeId: string, layerId: string): void;
   };
 };
 
@@ -95,6 +96,29 @@ export function InspectorPanel({
                 className="mt-2 rounded-full border border-sky-500/40 px-4 py-1.5 text-sm font-medium text-sky-200 hover:bg-sky-500/10"
               >
                 Connect
+              </button>
+            </div>
+          ) : null}
+
+          {selectedNode.kind === "semantic-node" ? (
+            <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-3">
+              <label className="block text-xs uppercase tracking-[0.2em] text-stone-500">
+                Expand hidden context
+              </label>
+              <p className="mt-2 text-xs leading-5 text-stone-400">
+                Reveals every hidden incoming and outgoing neighbor connected to this node in the active layer.
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  actions.revealConnectedHiddenContext(
+                    selectedNode.sourceId,
+                    selectedNode.parentLayerId,
+                  )
+                }
+                className="mt-2 rounded-full border border-emerald-500/40 px-4 py-1.5 text-sm font-medium text-emerald-200 hover:bg-emerald-500/10"
+              >
+                Expand connected hidden nodes
               </button>
             </div>
           ) : null}

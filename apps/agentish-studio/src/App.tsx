@@ -1,5 +1,5 @@
 import { AgentGraphScreen } from "@agent-infrastructure/agent-graph-ui";
-import { AGENT_GRAPH_APP_VERSION } from "./app-version";
+import { AGENT_GRAPH_APP_VERSION } from "virtual:agent-graph-app-version";
 
 export function App() {
   return (

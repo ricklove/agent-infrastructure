@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { observer, useMount, useValue } from "@legendapp/state/react";
 import { createAgentGraphStore, findSelectedEdge, findSelectedNode } from "@agent-infrastructure/agent-graph-store";
 import { createAgentGraphActions } from "@agent-infrastructure/agent-graph-store";
@@ -22,7 +22,9 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
   const [store] = useState(() => createAgentGraphStore(serverOrigin));
   const [actions] = useState(() => createAgentGraphActions(store));
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
-  const [panelHeights, setPanelHeights] = useState([0.26, 0.28, 0.46]);
+  const rightColumnRef = useRef<HTMLDivElement | null>(null);
+  const [leftPanelHeights, setLeftPanelHeights] = useState([0.26, 0.28, 0.46]);
+  const [rightPanelHeights, setRightPanelHeights] = useState([0.18, 0.52, 0.3]);
 
   useMount(() => {
     void actions.openWorkspace();
@@ -60,15 +62,20 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
         : "text-amber-200";
   const workspaceLabel = workspace ? "Loaded" : "Loading...";
 
-  function beginResize(handleIndex: 0 | 1): void {
-    const column = leftColumnRef.current;
+  function beginResize(
+    columnRef: RefObject<HTMLDivElement | null>,
+    panelHeights: number[],
+    setPanelHeights: Dispatch<SetStateAction<number[]>>,
+    handleIndex: 0 | 1,
+  ): void {
+    const column = columnRef.current;
     if (!column) {
       return;
     }
 
     const rect = column.getBoundingClientRect();
     const totalHeight = rect.height - 16;
-    const startFractions = panelHeights;
+    const startFractions = [...panelHeights];
     const startY = rect.top;
 
     function onPointerMove(event: PointerEvent): void {
@@ -88,8 +95,6 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
         ]);
         return;
       }
-
-      const currentOffset = first + 8 + second;
       const desiredSecond = Math.min(
         Math.max(pointerY - first - 8, minPanel),
         second + third - minPanel,
@@ -123,25 +128,29 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
             ref={leftColumnRef}
             className="pointer-events-auto flex h-full w-[280px] max-w-[28vw] flex-col"
           >
-            <div className="min-h-0" style={{ height: `${panelHeights[0] * 100}%` }}>
+            <div className="min-h-0" style={{ height: `${leftPanelHeights[0] * 100}%` }}>
               <DocumentsToolPanel store={store} />
             </div>
             <button
               type="button"
               aria-label="Resize documents and layers panels"
-              onPointerDown={() => beginResize(0)}
+              onPointerDown={() =>
+                beginResize(leftColumnRef, leftPanelHeights, setLeftPanelHeights, 0)
+              }
               className="my-1 h-2 cursor-row-resize rounded-full bg-stone-800/80 transition hover:bg-stone-700"
             />
-            <div className="min-h-0" style={{ height: `${panelHeights[1] * 100}%` }}>
+            <div className="min-h-0" style={{ height: `${leftPanelHeights[1] * 100}%` }}>
               <LayerWorkspacePanel store={store} actions={actions} />
             </div>
             <button
               type="button"
               aria-label="Resize layers and nodes panels"
-              onPointerDown={() => beginResize(1)}
+              onPointerDown={() =>
+                beginResize(leftColumnRef, leftPanelHeights, setLeftPanelHeights, 1)
+              }
               className="my-1 h-2 cursor-row-resize rounded-full bg-stone-800/80 transition hover:bg-stone-700"
             />
-            <div className="min-h-0" style={{ height: `${panelHeights[2] * 100}%` }}>
+            <div className="min-h-0" style={{ height: `${leftPanelHeights[2] * 100}%` }}>
               <NodesToolPanel store={store} actions={actions} />
             </div>
             {(connection.error || (validation && !validation.accepted) || conflict) ? (
@@ -176,27 +185,54 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
                 <span>Revision: {revisionLabel}</span>
               </div>
             </div>
-            <div className="shrink-0">
-              <LayoutPhysicsPanel
-                pinnedNodeCount={pinnedVisibleNodeCount}
-                movableNodeCount={movableNodeCount}
-                physicsEnabled={physicsEnabled}
-                springStrength={springStrength}
-                springLength={springLength}
-                straightenStrength={straightenStrength}
-                repulsionStrength={repulsionStrength}
-                actions={actions}
+            <div ref={rightColumnRef} className="flex min-h-0 flex-1 flex-col">
+              <div
+                className="min-h-0 overflow-y-auto"
+                style={{ height: `${rightPanelHeights[0] * 100}%` }}
+              >
+                <LayoutPhysicsPanel
+                  pinnedNodeCount={pinnedVisibleNodeCount}
+                  movableNodeCount={movableNodeCount}
+                  physicsEnabled={physicsEnabled}
+                  springStrength={springStrength}
+                  springLength={springLength}
+                  straightenStrength={straightenStrength}
+                  repulsionStrength={repulsionStrength}
+                  actions={actions}
+                />
+              </div>
+              <button
+                type="button"
+                aria-label="Resize physics and inspector panels"
+                onPointerDown={() =>
+                  beginResize(rightColumnRef, rightPanelHeights, setRightPanelHeights, 0)
+                }
+                className="my-1 h-2 cursor-row-resize rounded-full bg-stone-800/80 transition hover:bg-stone-700"
               />
-            </div>
-            <div className="min-h-0 flex-1">
-              <InspectorPanel
-                actions={actions}
-                selectedNode={selectedNode}
-                selectedEdge={selectedEdge}
+              <div
+                className="min-h-0 overflow-y-auto"
+                style={{ height: `${rightPanelHeights[1] * 100}%` }}
+              >
+                <InspectorPanel
+                  actions={actions}
+                  selectedNode={selectedNode}
+                  selectedEdge={selectedEdge}
+                />
+              </div>
+              <button
+                type="button"
+                aria-label="Resize inspector and diff panels"
+                onPointerDown={() =>
+                  beginResize(rightColumnRef, rightPanelHeights, setRightPanelHeights, 1)
+                }
+                className="my-1 h-2 cursor-row-resize rounded-full bg-stone-800/80 transition hover:bg-stone-700"
               />
-            </div>
-            <div className="shrink-0">
-              <DiffPanel store={store} actions={actions} />
+              <div
+                className="min-h-0 overflow-y-auto"
+                style={{ height: `${rightPanelHeights[2] * 100}%` }}
+              >
+                <DiffPanel store={store} actions={actions} />
+              </div>
             </div>
           </div>
         </div>
