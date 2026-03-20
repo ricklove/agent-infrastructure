@@ -4,13 +4,11 @@ type LayoutPhysicsPanelProps = {
   physicsEnabled: boolean;
   springStrength: number;
   springLength: number;
-  straightenStrength: number;
   repulsionStrength: number;
   actions: {
     setPhysicsEnabled(enabled: boolean): void;
     setSpringStrength(value: number): void;
     setSpringLength(value: number): void;
-    setStraightenStrength(value: number): void;
     setRepulsionStrength(value: number): void;
   };
 };
@@ -21,7 +19,6 @@ export function LayoutPhysicsPanel({
   physicsEnabled,
   springStrength,
   springLength,
-  straightenStrength,
   repulsionStrength,
   actions,
 }: LayoutPhysicsPanelProps) {
@@ -59,7 +56,7 @@ export function LayoutPhysicsPanel({
       <div className="mt-3 space-y-3">
         <label className="block">
           <div className="mb-1 flex items-center justify-between text-[11px] text-stone-400">
-            <span>Spring force</span>
+            <span>Slot force</span>
             <span>{springStrength.toFixed(2)}</span>
           </div>
           <input
@@ -75,7 +72,7 @@ export function LayoutPhysicsPanel({
 
         <label className="block">
           <div className="mb-1 flex items-center justify-between text-[11px] text-stone-400">
-            <span>Spring length</span>
+            <span>Neighbor gap</span>
             <span>{springLength}</span>
           </div>
           <input
@@ -86,22 +83,6 @@ export function LayoutPhysicsPanel({
             value={springLength}
             onChange={(event) => actions.setSpringLength(Number(event.target.value))}
             className="w-full accent-sky-400"
-          />
-        </label>
-
-        <label className="block">
-          <div className="mb-1 flex items-center justify-between text-[11px] text-stone-400">
-            <span>Straighten</span>
-            <span>{straightenStrength.toFixed(2)}</span>
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="0.6"
-            step="0.01"
-            value={straightenStrength}
-            onChange={(event) => actions.setStraightenStrength(Number(event.target.value))}
-            className="w-full accent-amber-400"
           />
         </label>
 

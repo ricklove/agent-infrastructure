@@ -2,11 +2,14 @@ import { useMemo, useState } from "react";
 import { observer, useSelector } from "@legendapp/state/react";
 import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
 import { NodeAvatar } from "./NodeAvatar";
+import { VisibilityIcon } from "./VisibilityIcon";
 
 type NodesToolPanelProps = {
   store: AgentGraphStore;
   actions: {
     toggleLayerNode(layerId: string, sourceNodeId: string, include: boolean): void;
+    beginHidePreview(layerId: string, sourceNodeIds: string[]): void;
+    endHidePreview(): void;
   };
 };
 
@@ -64,8 +67,38 @@ export const NodesToolPanel = observer(function NodesToolPanel({
               key={node.id}
               className="rounded-2xl border border-stone-800 bg-stone-950/70 p-2.5"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  disabled={!activeLayer}
+                  onClick={() => {
+                    if (!activeLayer) {
+                      return;
+                    }
+                    actions.toggleLayerNode(activeLayer.id, node.id, !isVisible);
+                  }}
+                  className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                    isVisible
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15"
+                      : "border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15"
+                  } disabled:border-stone-800 disabled:bg-stone-900/60 disabled:text-stone-600`}
+                  title={isVisible ? "Hide from active layer" : "Show in active layer"}
+                  onMouseEnter={() => {
+                    if (activeLayer && isVisible) {
+                      actions.beginHidePreview(activeLayer.id, [node.id]);
+                    }
+                  }}
+                  onMouseLeave={actions.endHidePreview}
+                  onFocus={() => {
+                    if (activeLayer && isVisible) {
+                      actions.beginHidePreview(activeLayer.id, [node.id]);
+                    }
+                  }}
+                  onBlur={actions.endHidePreview}
+                >
+                  <VisibilityIcon visible={isVisible} />
+                </button>
+                <div className="flex min-w-0 flex-1 items-start gap-3">
                   <NodeAvatar nodeKey={node.id} label={node.label} size="sm" />
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-stone-100">
@@ -79,23 +112,6 @@ export const NodesToolPanel = observer(function NodesToolPanel({
                     </div>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  disabled={!activeLayer}
-                  onClick={() => {
-                    if (!activeLayer) {
-                      return;
-                    }
-                    actions.toggleLayerNode(activeLayer.id, node.id, !isVisible);
-                  }}
-                  className={
-                    isVisible
-                      ? "rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-200"
-                      : "rounded-full border border-stone-700 px-3 py-1 text-[11px] font-medium text-stone-300"
-                  }
-                >
-                  {isVisible ? "Visible" : "Hidden"}
-                </button>
               </div>
               <p className="mt-2 text-xs leading-5 text-stone-400">{node.summary}</p>
             </div>

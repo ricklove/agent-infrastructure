@@ -179,6 +179,13 @@ export type ToggleLayerNodeIntent = {
   include: boolean;
 };
 
+export type ToggleLayerNodesIntent = {
+  kind: "toggle-layer-nodes";
+  layerId: string;
+  sourceNodeIds: string[];
+  include: boolean;
+};
+
 export type RevealHiddenContextIntent = {
   kind: "reveal-hidden-context";
   portalNodeId: string;
@@ -212,6 +219,7 @@ export type GraphIntent =
   | MoveNodeIntent
   | SetNodePinnedIntent
   | ToggleLayerNodeIntent
+  | ToggleLayerNodesIntent
   | RevealHiddenContextIntent
   | RevealHiddenNodeIntent
   | RevealConnectedHiddenContextIntent

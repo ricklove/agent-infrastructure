@@ -1,11 +1,11 @@
-import { useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { observer, useMount, useValue } from "@legendapp/state/react";
 import { createAgentGraphStore, findSelectedEdge, findSelectedNode } from "@agent-infrastructure/agent-graph-store";
 import { createAgentGraphActions } from "@agent-infrastructure/agent-graph-store";
 import { AgentGraphCanvas } from "./AgentGraphCanvas";
 import { DiffPanel } from "./DiffPanel";
 import { DocumentsToolPanel } from "./DocumentsToolPanel";
-import { InspectorPanel } from "./InspectorPanel";
+import { InspectorPanel, type InspectorSelectionItem } from "./InspectorPanel";
 import { LayerWorkspacePanel } from "./LayerWorkspacePanel";
 import { LayoutPhysicsPanel } from "./LayoutPhysicsPanel";
 import { NodesToolPanel } from "./NodesToolPanel";
@@ -14,6 +14,26 @@ export type AgentGraphScreenProps = {
   appVersion?: string;
   serverOrigin?: string;
 };
+
+const DEFAULT_LEFT_COLUMN_WIDTH = 280;
+const DEFAULT_RIGHT_COLUMN_WIDTH = 300;
+const MIN_COLUMN_WIDTH = 240;
+const MAX_COLUMN_WIDTH = 480;
+
+function clampColumnWidth(width: number): number {
+  if (typeof window === "undefined") {
+    return width;
+  }
+  const maxWidth = Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, Math.floor(window.innerWidth * 0.4)));
+  return Math.min(
+    Math.max(width, MIN_COLUMN_WIDTH),
+    maxWidth,
+  );
+}
+
+function columnWidthsStorageKey(workspaceId: string): string {
+  return `agent-graph:column-widths:${workspaceId}`;
+}
 
 export const AgentGraphScreen = observer(function AgentGraphScreen({
   appVersion = "dev",
@@ -25,6 +45,13 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
   const rightColumnRef = useRef<HTMLDivElement | null>(null);
   const [leftPanelHeights, setLeftPanelHeights] = useState([0.26, 0.28, 0.46]);
   const [rightPanelHeights, setRightPanelHeights] = useState([0.18, 0.52, 0.3]);
+  const [leftColumnWidth, setLeftColumnWidth] = useState(DEFAULT_LEFT_COLUMN_WIDTH);
+  const [rightColumnWidth, setRightColumnWidth] = useState(DEFAULT_RIGHT_COLUMN_WIDTH);
+  const [columnWidthsReady, setColumnWidthsReady] = useState(false);
+  const [hidePreview, setHidePreview] = useState<{ layerId: string | null; sourceNodeIds: string[] }>({
+    layerId: null,
+    sourceNodeIds: [],
+  });
 
   useMount(() => {
     void actions.openWorkspace();
@@ -40,10 +67,24 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
   const physicsEnabled = useValue(store.state$.layout.physicsEnabled);
   const springStrength = useValue(store.state$.layout.springStrength);
   const springLength = useValue(store.state$.layout.springLength);
-  const straightenStrength = useValue(store.state$.layout.straightenStrength);
   const repulsionStrength = useValue(store.state$.layout.repulsionStrength);
   const selectedNode = useValue(() => findSelectedNode(store.state$.get()));
   const selectedEdge = useValue(() => findSelectedEdge(store.state$.get()));
+  const selectedNodeIds = useValue(store.state$.selection.nodeIds);
+  const selectedNodes: InspectorSelectionItem[] =
+    graph && selectedNodeIds.length > 0
+      ? graph.nodes
+          .filter((node) => selectedNodeIds.includes(node.id))
+          .map((node) => ({
+            id: node.id,
+            sourceId: node.sourceId,
+            parentLayerId: node.parentLayerId,
+            label: node.label,
+            sourcePath: node.sourcePath,
+            kind: node.kind,
+            isVisible: true,
+          }))
+      : [];
   const activeLayerVisibleSemanticNodes = graph
     ? graph.nodes.filter(
         (node) => node.kind === "semantic-node" && (!activeLayerId || node.parentLayerId === activeLayerId),
@@ -54,6 +95,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
   ).length;
   const movableNodeCount = activeLayerVisibleSemanticNodes.length - pinnedVisibleNodeCount;
   const revisionLabel = graph ? String(graph.revision) : "--";
+  const workspaceId = workspace?.workspace.id ?? null;
   const connectionTone =
     connection.status === "ready"
       ? "text-emerald-300"
@@ -61,6 +103,70 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
         ? "text-rose-300"
         : "text-amber-200";
   const workspaceLabel = workspace ? "Loaded" : "Loading...";
+  const beginHidePreview = (layerId: string | null, sourceNodeIds: string[]) => {
+    setHidePreview({ layerId, sourceNodeIds });
+  };
+  const endHidePreview = () => {
+    setHidePreview((current) =>
+      current.sourceNodeIds.length === 0 ? current : { layerId: null, sourceNodeIds: [] },
+    );
+  };
+
+  useEffect(() => {
+    if (!workspaceId || typeof window === "undefined") {
+      setColumnWidthsReady(false);
+      return;
+    }
+
+    setColumnWidthsReady(false);
+    const raw = window.localStorage.getItem(columnWidthsStorageKey(workspaceId));
+    if (!raw) {
+      setLeftColumnWidth(clampColumnWidth(DEFAULT_LEFT_COLUMN_WIDTH));
+      setRightColumnWidth(clampColumnWidth(DEFAULT_RIGHT_COLUMN_WIDTH));
+      setColumnWidthsReady(true);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<{ left: number; right: number }>;
+      setLeftColumnWidth(clampColumnWidth(parsed.left ?? DEFAULT_LEFT_COLUMN_WIDTH));
+      setRightColumnWidth(clampColumnWidth(parsed.right ?? DEFAULT_RIGHT_COLUMN_WIDTH));
+    } catch {
+      setLeftColumnWidth(clampColumnWidth(DEFAULT_LEFT_COLUMN_WIDTH));
+      setRightColumnWidth(clampColumnWidth(DEFAULT_RIGHT_COLUMN_WIDTH));
+    }
+    setColumnWidthsReady(true);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !columnWidthsReady || typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      columnWidthsStorageKey(workspaceId),
+      JSON.stringify({
+        left: leftColumnWidth,
+        right: rightColumnWidth,
+      }),
+    );
+  }, [columnWidthsReady, leftColumnWidth, rightColumnWidth, workspaceId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    function handleResize(): void {
+      setLeftColumnWidth((current) => clampColumnWidth(current));
+      setRightColumnWidth((current) => clampColumnWidth(current));
+    }
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
 
   function beginResize(
     columnRef: RefObject<HTMLDivElement | null>,
@@ -116,17 +222,49 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
     window.addEventListener("pointerup", onPointerUp);
   }
 
+  function beginColumnResize(side: "left" | "right", startClientX: number): void {
+    const startX = startClientX;
+    const startWidth = side === "left" ? leftColumnWidth : rightColumnWidth;
+
+    function onPointerMove(event: PointerEvent): void {
+      const deltaX = event.clientX - startX;
+      const nextWidth = side === "left" ? startWidth + deltaX : startWidth - deltaX;
+      if (side === "left") {
+        setLeftColumnWidth(clampColumnWidth(nextWidth));
+        return;
+      }
+      setRightColumnWidth(clampColumnWidth(nextWidth));
+    }
+
+    function onPointerUp(): void {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  }
+
   return (
     <div className="relative h-screen overflow-hidden bg-stone-950 text-stone-100">
       <div className="h-full w-full">
-        <AgentGraphCanvas store={store} actions={actions} />
+        <AgentGraphCanvas
+          store={store}
+          leftSidebarWidth={leftColumnWidth}
+          rightSidebarWidth={rightColumnWidth}
+          hidePreview={hidePreview}
+          beginHidePreview={(layerId, sourceNodeIds) => beginHidePreview(layerId, sourceNodeIds)}
+          endHidePreview={endHidePreview}
+          actions={actions}
+        />
       </div>
 
       <div className="pointer-events-none absolute inset-0 p-3">
-        <div className="flex h-full items-start justify-between gap-3">
+        <div className="flex h-full items-start">
           <div
             ref={leftColumnRef}
-            className="pointer-events-auto flex h-full w-[280px] max-w-[28vw] flex-col"
+            className="pointer-events-auto flex h-full flex-col"
+            style={{ width: leftColumnWidth }}
           >
             <div className="min-h-0" style={{ height: `${leftPanelHeights[0] * 100}%` }}>
               <DocumentsToolPanel store={store} />
@@ -151,7 +289,15 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
               className="my-1 h-2 cursor-row-resize rounded-full bg-stone-800/80 transition hover:bg-stone-700"
             />
             <div className="min-h-0" style={{ height: `${leftPanelHeights[2] * 100}%` }}>
-              <NodesToolPanel store={store} actions={actions} />
+              <NodesToolPanel
+                store={store}
+                actions={{
+                  ...actions,
+                  beginHidePreview: (layerId, sourceNodeIds) =>
+                    beginHidePreview(layerId, sourceNodeIds),
+                  endHidePreview,
+                }}
+              />
             </div>
             {(connection.error || (validation && !validation.accepted) || conflict) ? (
               <section className="mt-3 rounded-3xl border border-stone-800 bg-stone-900/80 p-3 text-sm">
@@ -175,8 +321,24 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
               </section>
             ) : null}
           </div>
+          <button
+            type="button"
+            aria-label="Resize left column width"
+            onPointerDown={(event) => beginColumnResize("left", event.clientX)}
+            className="pointer-events-auto mx-1.5 h-full w-2 cursor-col-resize rounded-full bg-stone-800/80 transition hover:bg-stone-700"
+          />
+          <div className="min-w-0 flex-1" />
 
-          <div className="pointer-events-auto flex h-full min-h-0 w-[300px] max-w-[30vw] flex-col gap-3">
+          <button
+            type="button"
+            aria-label="Resize right column width"
+            onPointerDown={(event) => beginColumnResize("right", event.clientX)}
+            className="pointer-events-auto mx-1.5 h-full w-2 cursor-col-resize rounded-full bg-stone-800/80 transition hover:bg-stone-700"
+          />
+          <div
+            className="pointer-events-auto flex h-full min-h-0 flex-col gap-3"
+            style={{ width: rightColumnWidth }}
+          >
             <div className="self-end rounded-2xl border border-stone-800/90 bg-stone-950/88 px-3 py-2 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
               <div className="flex items-center justify-end gap-3 whitespace-nowrap">
                 <span>Version: {appVersion}</span>
@@ -196,7 +358,6 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
                   physicsEnabled={physicsEnabled}
                   springStrength={springStrength}
                   springLength={springLength}
-                  straightenStrength={straightenStrength}
                   repulsionStrength={repulsionStrength}
                   actions={actions}
                 />
@@ -214,8 +375,14 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
                 style={{ height: `${rightPanelHeights[1] * 100}%` }}
               >
                 <InspectorPanel
-                  actions={actions}
+                  actions={{
+                    ...actions,
+                    beginHidePreview: (layerId, sourceNodeIds) =>
+                      beginHidePreview(layerId, sourceNodeIds),
+                    endHidePreview,
+                  }}
                   selectedNode={selectedNode}
+                  selectedNodes={selectedNodes}
                   selectedEdge={selectedEdge}
                 />
               </div>

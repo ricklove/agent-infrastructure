@@ -180,6 +180,32 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         },
       ];
     }
+    case "toggle-layer-nodes": {
+      const sourceNodeIdSet = new Set(intent.sourceNodeIds);
+      workspaceState.layers = workspaceState.layers.map((layer) => {
+        if (layer.id !== intent.layerId) {
+          return layer;
+        }
+        return {
+          ...layer,
+          nodeIds: intent.include
+            ? [...new Set([...layer.nodeIds, ...intent.sourceNodeIds])]
+            : layer.nodeIds.filter((nodeId) => !sourceNodeIdSet.has(nodeId)),
+        };
+      });
+      workspaceState.revision += 1;
+      repository.setWorkspaceState(workspaceState);
+      await saveWorkspaceState(workspaceState);
+      return [
+        {
+          type: "server/graph",
+          graph: buildCompleteGraph({
+            sourceWorkspace: repository.getSourceWorkspace(),
+            workspaceState,
+          }),
+        },
+      ];
+    }
     case "reveal-hidden-context": {
       const portal = parsePortalNodeId(intent.portalNodeId);
       if (!portal) {

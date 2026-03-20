@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
 import {
-  forceCollide,
-  forceLink,
-  forceManyBody,
   forceSimulation,
   type Simulation,
   type SimulationLinkDatum,
@@ -48,6 +45,14 @@ const edgeTypes = {
 
 type CanvasProps = {
   store: AgentGraphStore;
+  leftSidebarWidth?: number;
+  rightSidebarWidth?: number;
+  hidePreview?: {
+    layerId: string | null;
+    sourceNodeIds: string[];
+  };
+  beginHidePreview(layerId: string | null, sourceNodeIds: string[]): void;
+  endHidePreview(): void;
   actions: {
     selectNode(nodeId: string | null): void;
     selectEdge(edgeId: string | null): void;
@@ -57,6 +62,8 @@ type CanvasProps = {
     moveLayer(layerId: string, x: number, y: number): void;
     moveNode(nodeId: string, x: number, y: number): void;
     hideNodeFromLayer(layerId: string, sourceNodeId: string): void;
+    toggleLayerNodes(layerId: string, sourceNodeIds: string[], include: boolean): void;
+    revealConnectedHiddenContext(sourceNodeId: string, layerId: string): void;
     revealHiddenNode(
       portalNodeId: string,
       hiddenNodeId: string,
@@ -69,7 +76,6 @@ type CanvasProps = {
 
 const REVEALED_HIDDEN_NODE_GAP = 28;
 const SEMANTIC_NODE_WIDTH = 168;
-
 type ForceNodeDatum = SimulationNodeDatum & {
   id: string;
   x: number;
@@ -96,36 +102,467 @@ function nodeDimensions(node: Node): { width: number; height: number } {
   return { width: 168, height: 88 };
 }
 
-function createHandleStraightenForce(
-  links: Array<SimulationLinkDatum<ForceNodeDatum>>,
-  strength = 0.14,
-  gap = 96,
-) {
+function clampSlotRows(count: number): number {
+  if (count <= 0) {
+    return 1;
+  }
+  return Math.min(8, Math.max(4, Math.ceil(Math.sqrt(count * 4))));
+}
+
+function dominantSideForNode(args: {
+  nodeId: string;
+  outgoing: Map<string, string[]>;
+  incoming: Map<string, string[]>;
+  nodesById: Map<string, ForceNodeDatum>;
+}): "incoming" | "outgoing" {
+  const { nodeId, outgoing, incoming, nodesById } = args;
+  const outgoingCount = outgoing.get(nodeId)?.length ?? 0;
+  const incomingCount = incoming.get(nodeId)?.length ?? 0;
+  if (outgoingCount !== incomingCount) {
+    return outgoingCount > incomingCount ? "outgoing" : "incoming";
+  }
+
+  const node = nodesById.get(nodeId);
+  if (!node) {
+    return "outgoing";
+  }
+
+  let outgoingScore = 0;
+  for (const neighborId of outgoing.get(nodeId) ?? []) {
+    const neighbor = nodesById.get(neighborId);
+    if (!neighbor) {
+      continue;
+    }
+    outgoingScore += (neighbor.x ?? 0) - (node.x ?? 0);
+  }
+
+  let incomingScore = 0;
+  for (const neighborId of incoming.get(nodeId) ?? []) {
+    const neighbor = nodesById.get(neighborId);
+    if (!neighbor) {
+      continue;
+    }
+    incomingScore += (node.x ?? 0) - (neighbor.x ?? 0);
+  }
+
+  return outgoingScore >= incomingScore ? "outgoing" : "incoming";
+}
+
+function sortChildIdsByRelativePosition(args: {
+  childIds: string[];
+  ownerTarget: { x: number; y: number };
+  side: "incoming" | "outgoing";
+  nodesById: Map<string, ForceNodeDatum>;
+}): string[] {
+  const { childIds, ownerTarget, side, nodesById } = args;
+  const sideMultiplier = side === "incoming" ? -1 : 1;
+
+  return [...childIds].sort((leftId, rightId) => {
+    const left = nodesById.get(leftId);
+    const right = nodesById.get(rightId);
+    if (!left || !right) {
+      return leftId.localeCompare(rightId);
+    }
+
+    const leftDx = ((left.x ?? 0) - ownerTarget.x) * sideMultiplier;
+    const rightDx = ((right.x ?? 0) - ownerTarget.x) * sideMultiplier;
+    const leftOnPreferredSide = leftDx >= 0 ? 0 : 1;
+    const rightOnPreferredSide = rightDx >= 0 ? 0 : 1;
+    if (leftOnPreferredSide !== rightOnPreferredSide) {
+      return leftOnPreferredSide - rightOnPreferredSide;
+    }
+
+    const byY = (left.y ?? 0) - (right.y ?? 0);
+    if (Math.abs(byY) > 1) {
+      return byY;
+    }
+
+    const byDepth = Math.abs(leftDx) - Math.abs(rightDx);
+    if (Math.abs(byDepth) > 1) {
+      return byDepth;
+    }
+
+    return (left.x ?? 0) - (right.x ?? 0);
+  });
+}
+
+function createHandleSlotForce(args: {
+  links: Array<{ source: string; target: string }>;
+  nodesById: Map<string, ForceNodeDatum>;
+  pinnedNodeIds: Set<string>;
+  assignmentCache: Map<
+    string,
+    {
+      signature: string;
+      orderedNeighborIds: string[];
+    }
+  >;
+  relationCache: Map<
+    string,
+    {
+      parentId: string | null;
+      side: "incoming" | "outgoing" | null;
+    }
+  >;
+  dirtyOwnerIds: Set<string>;
+  strength?: number;
+  gap?: number;
+  rowGap?: number;
+  columnGap?: number;
+}) {
+  const {
+    links,
+    nodesById,
+    pinnedNodeIds,
+    assignmentCache,
+    relationCache,
+    dirtyOwnerIds,
+    strength = 0.18,
+    gap = 138,
+    rowGap = 92,
+    columnGap = 140,
+  } = args;
+
   return (alpha: number) => {
+    if (strength <= 0) {
+      return;
+    }
+
+    const outgoing = new Map<string, string[]>();
+    const incoming = new Map<string, string[]>();
+    const undirected = new Map<string, Set<string>>();
+
     for (const link of links) {
-      const source = link.source as ForceNodeDatum;
-      const target = link.target as ForceNodeDatum;
-      if (!source || !target) {
+      if (!nodesById.has(link.source) || !nodesById.has(link.target)) {
+        continue;
+      }
+      outgoing.set(link.source, [...(outgoing.get(link.source) ?? []), link.target]);
+      incoming.set(link.target, [...(incoming.get(link.target) ?? []), link.source]);
+      undirected.set(link.source, new Set([...(undirected.get(link.source) ?? []), link.target]));
+      undirected.set(link.target, new Set([...(undirected.get(link.target) ?? []), link.source]));
+    }
+
+    const visited = new Set<string>();
+    const parentByNode = new Map<string, { parentId: string; side: "incoming" | "outgoing" }>();
+    const traversalOrder: string[] = [];
+    const rootIds: string[] = [];
+
+    function sortNodeIds(ids: string[]): string[] {
+      return [...ids].sort((leftId, rightId) => {
+        const left = nodesById.get(leftId);
+        const right = nodesById.get(rightId);
+        if (!left || !right) {
+          return leftId.localeCompare(rightId);
+        }
+        const byX = (left.x ?? 0) - (right.x ?? 0);
+        if (Math.abs(byX) > 1) {
+          return byX;
+        }
+        const byY = (left.y ?? 0) - (right.y ?? 0);
+        if (Math.abs(byY) > 1) {
+          return byY;
+        }
+        const byDegree =
+          ((undirected.get(rightId)?.size ?? 0) - (undirected.get(leftId)?.size ?? 0));
+        if (byDegree !== 0) {
+          return byDegree;
+        }
+        return (
+          Math.abs((outgoing.get(rightId)?.length ?? 0) - (incoming.get(rightId)?.length ?? 0)) -
+          Math.abs((outgoing.get(leftId)?.length ?? 0) - (incoming.get(leftId)?.length ?? 0))
+        );
+      });
+    }
+
+    function sortRootIds(ids: string[]): string[] {
+      return [...ids].sort((leftId, rightId) => {
+        const leftWasRoot = relationCache.get(leftId)?.parentId === null ? 0 : 1;
+        const rightWasRoot = relationCache.get(rightId)?.parentId === null ? 0 : 1;
+        if (leftWasRoot !== rightWasRoot) {
+          return leftWasRoot - rightWasRoot;
+        }
+        return sortNodeIds([leftId, rightId])[0] === leftId ? -1 : 1;
+      });
+    }
+
+    function rootComponent(startRootIds: string[]): void {
+      const queue = [...sortNodeIds(startRootIds)];
+      for (const rootId of queue) {
+        if (!visited.has(rootId)) {
+          visited.add(rootId);
+          rootIds.push(rootId);
+          traversalOrder.push(rootId);
+        }
+      }
+
+        for (let index = 0; index < queue.length; index += 1) {
+          const currentId = queue[index];
+        const dominantSide = dominantSideForNode({
+          nodeId: currentId,
+          outgoing,
+          incoming,
+          nodesById,
+        });
+        const sideOrder =
+          dominantSide === "outgoing"
+            ? (["outgoing", "incoming"] as const)
+            : (["incoming", "outgoing"] as const);
+
+          for (const side of sideOrder) {
+          const neighbors = [
+            ...(side === "outgoing" ? outgoing.get(currentId) ?? [] : incoming.get(currentId) ?? []),
+          ].sort((leftId, rightId) => {
+            const leftMatchesCache =
+              relationCache.get(leftId)?.parentId === currentId &&
+              relationCache.get(leftId)?.side === side
+                ? 0
+                : 1;
+            const rightMatchesCache =
+              relationCache.get(rightId)?.parentId === currentId &&
+              relationCache.get(rightId)?.side === side
+                ? 0
+                : 1;
+            if (leftMatchesCache !== rightMatchesCache) {
+              return leftMatchesCache - rightMatchesCache;
+            }
+            return sortNodeIds([leftId, rightId])[0] === leftId ? -1 : 1;
+          });
+          for (const neighborId of neighbors) {
+            if (visited.has(neighborId)) {
+              continue;
+            }
+            visited.add(neighborId);
+            parentByNode.set(neighborId, { parentId: currentId, side });
+            queue.push(neighborId);
+            traversalOrder.push(neighborId);
+          }
+        }
+      }
+    }
+
+    const pinnedRoots = sortRootIds(
+      [...nodesById.keys()].filter((nodeId) => pinnedNodeIds.has(nodeId)),
+    );
+    if (pinnedRoots.length > 0) {
+      rootComponent(pinnedRoots);
+    }
+
+    const remainingNodeIds = [...nodesById.keys()].filter((nodeId) => !visited.has(nodeId));
+    for (const nodeId of sortRootIds(remainingNodeIds)) {
+      if (visited.has(nodeId)) {
+        continue;
+      }
+      rootComponent([nodeId]);
+    }
+
+    const childrenByParent = new Map<string, { incoming: string[]; outgoing: string[] }>();
+    for (const [childId, relation] of parentByNode) {
+      const groups = childrenByParent.get(relation.parentId) ?? { incoming: [], outgoing: [] };
+      groups[relation.side].push(childId);
+      childrenByParent.set(relation.parentId, groups);
+    }
+
+    const nextTargets = new Map<string, { x: number; y: number }>();
+    for (const rootId of rootIds) {
+      const root = nodesById.get(rootId);
+      if (!root) {
+        continue;
+      }
+      nextTargets.set(rootId, { x: root.x ?? 0, y: root.y ?? 0 });
+    }
+
+    relationCache.clear();
+    for (const rootId of rootIds) {
+      relationCache.set(rootId, { parentId: null, side: null });
+    }
+    for (const [childId, relation] of parentByNode) {
+      relationCache.set(childId, relation);
+    }
+
+    for (const ownerId of traversalOrder) {
+      const owner = nodesById.get(ownerId);
+      if (!owner) {
+        continue;
+      }
+      const ownerTarget = nextTargets.get(ownerId) ?? { x: owner.x ?? 0, y: owner.y ?? 0 };
+      const groups = childrenByParent.get(ownerId);
+      if (!groups) {
         continue;
       }
 
-      const sourceHandleX = (source.x ?? 0) + source.width / 2;
-      const sourceHandleY = source.y ?? 0;
-      const targetHandleX = (target.x ?? 0) - target.width / 2;
-      const targetHandleY = target.y ?? 0;
+        for (const side of ["incoming", "outgoing"] as const) {
+          const childIds = groups[side].filter((childId) => nodesById.has(childId));
+          if (childIds.length === 0) {
+            continue;
+          }
 
-      const handleDx = targetHandleX - sourceHandleX;
-      const handleDy = targetHandleY - sourceHandleY;
-      const targetDx = gap;
-      const targetDy = 0;
+          const cacheKey = `${ownerId}:${side}`;
+          const childSignature = [...childIds].sort().join("|");
+          const cachedAssignment = assignmentCache.get(cacheKey);
+          const childIdSet = new Set(childIds);
+          const isDirtyOwner = dirtyOwnerIds.has(ownerId);
+          const canReuseCachedAssignment =
+            !isDirtyOwner &&
+            cachedAssignment &&
+            cachedAssignment.signature === childSignature &&
+            cachedAssignment.orderedNeighborIds.length === childIds.length &&
+            cachedAssignment.orderedNeighborIds.every((childId) => childIdSet.has(childId));
 
-      const nudgeX = (handleDx - targetDx) * strength * alpha;
-      const nudgeY = (handleDy - targetDy) * strength * alpha;
+          const orderedChildIds = canReuseCachedAssignment
+            ? cachedAssignment.orderedNeighborIds
+            : (() => {
+                const geometryOrderedChildIds = sortChildIdsByRelativePosition({
+                  childIds,
+                  ownerTarget,
+                  side,
+                  nodesById,
+                });
+                if (!cachedAssignment) {
+                  return geometryOrderedChildIds;
+                }
 
-      source.vx = (source.vx ?? 0) + nudgeX * 0.5;
-      target.vx = (target.vx ?? 0) - nudgeX * 0.5;
-      source.vy = (source.vy ?? 0) + nudgeY * 0.5;
-      target.vy = (target.vy ?? 0) - nudgeY * 0.5;
+                const previousOrderedChildIds = cachedAssignment.orderedNeighborIds.filter((childId) =>
+                  childIdSet.has(childId),
+                );
+                const seenChildIds = new Set(previousOrderedChildIds);
+                const newChildIds = geometryOrderedChildIds.filter((childId) => !seenChildIds.has(childId));
+                return [...previousOrderedChildIds, ...newChildIds];
+              })();
+
+          if (!canReuseCachedAssignment) {
+            assignmentCache.set(cacheKey, {
+              signature: childSignature,
+              orderedNeighborIds: orderedChildIds,
+            });
+          }
+
+          const rowCount = clampSlotRows(orderedChildIds.length);
+          const columnCount = Math.ceil(orderedChildIds.length / rowCount);
+          const ownerLeft = ownerTarget.x - owner.width / 2;
+          const ownerRight = ownerTarget.x + owner.width / 2;
+          const ownerTop = ownerTarget.y - owner.height / 2;
+          const rowHeights = Array.from({ length: rowCount }, () => 0);
+          const columnWidths = Array.from({ length: columnCount }, () => 0);
+
+          for (const [index, childId] of orderedChildIds.entries()) {
+            const child = nodesById.get(childId);
+            if (!child) {
+              continue;
+            }
+            const row = index % rowCount;
+            const column = Math.floor(index / rowCount);
+            rowHeights[row] = Math.max(rowHeights[row], child.height);
+            columnWidths[column] = Math.max(columnWidths[column], child.width);
+          }
+
+          const rowOffsets = rowHeights.map((height, row) => {
+            const previousHeights = rowHeights
+              .slice(0, row)
+              .reduce((total, current) => total + current, 0);
+            return previousHeights + row * rowGap + height / 2;
+          });
+          const outgoingColumnOffsets = columnWidths.map((width, column) => {
+            const previousWidths = columnWidths
+              .slice(0, column)
+              .reduce((total, current) => total + current, 0);
+            return previousWidths + column * columnGap + width / 2;
+          });
+          const incomingColumnOffsets = columnWidths.map((width, column) => {
+            const previousWidths = columnWidths
+              .slice(0, column)
+              .reduce((total, current) => total + current, 0);
+            return previousWidths + column * columnGap + width / 2;
+          });
+
+          for (const [index, childId] of orderedChildIds.entries()) {
+            const child = nodesById.get(childId);
+            if (!child) {
+              continue;
+            }
+            const row = index % rowCount;
+            const column = Math.floor(index / rowCount);
+            const targetX =
+              side === "incoming"
+                ? ownerLeft - gap - incomingColumnOffsets[column]
+                : ownerRight + gap + outgoingColumnOffsets[column];
+            const targetY = ownerTop + rowOffsets[row];
+            nextTargets.set(childId, { x: targetX, y: targetY });
+          }
+        }
+        dirtyOwnerIds.delete(ownerId);
+      }
+
+    for (const [nodeId, target] of nextTargets) {
+      if (pinnedNodeIds.has(nodeId)) {
+        continue;
+      }
+      const node = nodesById.get(nodeId);
+      if (!node) {
+        continue;
+      }
+      const nudgeX = (target.x - (node.x ?? 0)) * strength * alpha;
+      const nudgeY = (target.y - (node.y ?? 0)) * strength * alpha;
+      node.vx = (node.vx ?? 0) + nudgeX;
+      node.vy = (node.vy ?? 0) + nudgeY;
+    }
+  };
+}
+
+function createRectRepelForce(args: {
+  nodes: ForceNodeDatum[];
+  pinnedNodeIds: Set<string>;
+  strength?: number;
+  padding?: number;
+}) {
+  const {
+    nodes,
+    pinnedNodeIds,
+    strength = 420,
+    padding = 24,
+  } = args;
+
+  return (alpha: number) => {
+    const normalizedStrength = Math.max(0, strength) / 420;
+    if (normalizedStrength <= 0) {
+      return;
+    }
+
+    for (let index = 0; index < nodes.length; index += 1) {
+      const left = nodes[index];
+      for (let otherIndex = index + 1; otherIndex < nodes.length; otherIndex += 1) {
+        const right = nodes[otherIndex];
+
+        const dx = (right.x ?? 0) - (left.x ?? 0);
+        const dy = (right.y ?? 0) - (left.y ?? 0);
+        const overlapX = left.width / 2 + right.width / 2 + padding - Math.abs(dx);
+        const overlapY = left.height / 2 + right.height / 2 + padding - Math.abs(dy);
+
+        if (overlapX <= 0 || overlapY <= 0) {
+          continue;
+        }
+
+        const leftPinned = pinnedNodeIds.has(left.id);
+        const rightPinned = pinnedNodeIds.has(right.id);
+        if (leftPinned && rightPinned) {
+          continue;
+        }
+
+        const pushX = overlapX <= overlapY;
+        const directionX = dx === 0 ? (index % 2 === 0 ? -1 : 1) : Math.sign(dx);
+        const directionY = dy === 0 ? (otherIndex % 2 === 0 ? -1 : 1) : Math.sign(dy);
+        const magnitude = (pushX ? overlapX : overlapY) * normalizedStrength * alpha * 0.5;
+        const impulseX = pushX ? directionX * magnitude : 0;
+        const impulseY = pushX ? 0 : directionY * magnitude;
+
+        if (!leftPinned) {
+          left.vx = (left.vx ?? 0) - impulseX;
+          left.vy = (left.vy ?? 0) - impulseY;
+        }
+        if (!rightPinned) {
+          right.vx = (right.vx ?? 0) + impulseX;
+          right.vy = (right.vy ?? 0) + impulseY;
+        }
+      }
     }
   };
 }
@@ -174,11 +611,20 @@ function mapNodes(
   graph: GraphSnapshot,
   activeLayerId: string | null,
   pinnedNodeIds: string[],
+  selectedSemanticNodeIds: string[],
+  selectedHiddenNeighborCount: number,
+  hidePreview: { layerId: string | null; sourceNodeIds: string[] },
   hideNodeFromLayer: (layerId: string, sourceNodeId: string) => void,
   toggleNodePinned: (nodeId: string, pinned: boolean, fallbackPosition: { x: number; y: number }) => void,
   revealHiddenNode: (portalNodeId: string, hiddenNodeId: string) => void,
+  expandSelectionHidden: () => void,
+  hideSelection: () => void,
+  beginHidePreview: (layerId: string | null, sourceNodeIds: string[]) => void,
+  endHidePreview: () => void,
 ): Node[] {
   const pinnedSet = new Set(pinnedNodeIds);
+  const selectionToolbarAnchorId = selectedSemanticNodeIds[0] ?? null;
+  const previewSourceNodeIds = new Set(hidePreview.sourceNodeIds);
   const nodes = mapLayerNodes(graph);
   return nodes.map((node) => {
     const isGroup = node.type === "group";
@@ -186,6 +632,13 @@ function mapNodes(
       ? node.id
       : String((node.data as { layerId?: string }).layerId ?? node.parentId ?? "");
     const isActiveLayer = !activeLayerId || nodeLayerId === activeLayerId;
+    const sourceId = String((node.data as { sourceId?: string }).sourceId ?? "");
+    const isHidePreviewTarget =
+      !isGroup &&
+      ((!hidePreview.layerId || hidePreview.layerId === nodeLayerId) &&
+        ((node.type === "semanticNode" && previewSourceNodeIds.has(sourceId)) ||
+          (node.type === "hiddenContextPortal" &&
+            previewSourceNodeIds.has(sourceId))));
 
     return {
       ...node,
@@ -193,7 +646,7 @@ function mapNodes(
       selectable: isGroup ? false : isActiveLayer,
       style: {
         ...node.style,
-        opacity: isActiveLayer ? 1 : 0.38,
+        opacity: isActiveLayer ? (isHidePreviewTarget ? 0.25 : 1) : 0.38,
       },
       data: {
         ...(node.data as object),
@@ -203,6 +656,33 @@ function mapNodes(
           !isGroup && node.type === "semanticNode"
             ? () => toggleNodePinned(node.id, !pinnedSet.has(node.id), node.position)
             : undefined,
+        showSelectionToolbar:
+          !isGroup &&
+          node.type === "semanticNode" &&
+          node.id === selectionToolbarAnchorId &&
+          selectedSemanticNodeIds.length > 0,
+        selectionToolbarNodeIds:
+          !isGroup && node.type === "semanticNode" && node.id === selectionToolbarAnchorId
+            ? selectedSemanticNodeIds
+            : undefined,
+        selectionHiddenCount:
+          !isGroup && node.type === "semanticNode" && node.id === selectionToolbarAnchorId
+            ? selectedHiddenNeighborCount
+            : undefined,
+        onExpandSelectionHidden:
+          !isGroup &&
+          node.type === "semanticNode" &&
+          node.id === selectionToolbarAnchorId &&
+          selectedSemanticNodeIds.length > 0
+            ? expandSelectionHidden
+            : undefined,
+        onHideSelection:
+          !isGroup &&
+          node.type === "semanticNode" &&
+          node.id === selectionToolbarAnchorId &&
+          selectedSemanticNodeIds.length > 0
+            ? hideSelection
+            : undefined,
         onHide:
           !isGroup && isActiveLayer && node.type === "semanticNode"
             ? () =>
@@ -211,10 +691,28 @@ function mapNodes(
                   String((node.data as { sourceId?: string }).sourceId),
                 )
             : undefined,
+        onPreviewHide:
+          !isGroup && isActiveLayer && node.type === "semanticNode"
+            ? () => beginHidePreview(nodeLayerId, [sourceId])
+            : undefined,
+        onPreviewHideSelection:
+          !isGroup &&
+          node.type === "semanticNode" &&
+          node.id === selectionToolbarAnchorId &&
+          selectedSemanticNodeIds.length > 0
+            ? () => {
+                const sourceIds = graph.nodes
+                  .filter((candidate) => selectedSemanticNodeIds.includes(candidate.id))
+                  .map((candidate) => candidate.sourceId);
+                beginHidePreview(activeLayerId, sourceIds);
+              }
+            : undefined,
+        onClearHidePreview: endHidePreview,
         onRevealHiddenNode:
           !isGroup && isActiveLayer && node.type === "hiddenContextPortal"
             ? (hiddenNodeId: string) => revealHiddenNode(node.id, hiddenNodeId)
             : undefined,
+        isHidePreview: isHidePreviewTarget,
       },
     } satisfies Node;
   });
@@ -229,6 +727,7 @@ function mapSemanticNode(node: AgentGraphNode): Node {
       data: {
         label: node.label,
         summary: node.summary,
+        sourceId: node.sourceId,
         hiddenCount: node.hiddenCount ?? 0,
         hiddenNodes: node.hiddenNodes ?? [],
         layerId: node.parentLayerId,
@@ -257,7 +756,10 @@ function mapSemanticNode(node: AgentGraphNode): Node {
   };
 }
 
-function mapEdges(graphEdges: GraphEdge[]): Edge[] {
+function mapEdges(
+  graphEdges: GraphEdge[],
+  hidePreviewNodeIds: Set<string>,
+): Edge[] {
   return graphEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
@@ -276,8 +778,15 @@ function mapEdges(graphEdges: GraphEdge[]): Edge[] {
       type: MarkerType.ArrowClosed,
       color: edge.kind === "derived" ? "#fbbf24" : "#60a5fa",
     },
-    data: edge,
+    data: {
+      ...edge,
+      hidePreview: hidePreviewNodeIds.has(edge.source) || hidePreviewNodeIds.has(edge.target),
+    },
     animated: edge.kind === "derived",
+    style:
+      hidePreviewNodeIds.has(edge.source) || hidePreviewNodeIds.has(edge.target)
+        ? { opacity: 0.4 }
+        : undefined,
   }));
 }
 
@@ -365,21 +874,46 @@ function anchorHiddenPortalNodes(nodes: Node[]): Node[] {
 
 export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   store,
+  leftSidebarWidth = 280,
+  rightSidebarWidth = 300,
+  hidePreview = { layerId: null, sourceNodeIds: [] },
+  beginHidePreview,
+  endHidePreview,
   actions,
 }: CanvasProps) {
   const graph = useSelector(store.state$.graph);
   const activeLayerId = useSelector(store.state$.activeLayerId);
+  const selectedNodeIds = useSelector(store.state$.selection.nodeIds);
+  const selectedEdgeId = useSelector(store.state$.selection.edgeId);
   const physicsEnabled = useSelector(store.state$.layout.physicsEnabled);
   const pinnedNodeIds = useSelector(store.state$.layout.pinnedNodeIds);
   const springStrength = useSelector(store.state$.layout.springStrength);
   const springLength = useSelector(store.state$.layout.springLength);
-  const straightenStrength = useSelector(store.state$.layout.straightenStrength);
   const repulsionStrength = useSelector(store.state$.layout.repulsionStrength);
   const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const hasFittedInitialViewRef = useRef(false);
   const localNodesRef = useRef<Node[]>([]);
   const localEdgesRef = useRef<Edge[]>([]);
   const pinnedNodeIdsRef = useRef<string[]>([]);
+  const slotAssignmentCacheRef = useRef<
+    Map<
+      string,
+      {
+        signature: string;
+        orderedNeighborIds: string[];
+      }
+    >
+  >(new Map());
+  const slotRelationCacheRef = useRef<
+    Map<
+      string,
+      {
+        parentId: string | null;
+        side: "incoming" | "outgoing" | null;
+      }
+    >
+  >(new Map());
+  const dirtySlotOwnerIdsRef = useRef<Set<string>>(new Set());
   const physicsModelRef = useRef<{
     nodes: ForceNodeDatum[];
     movableNodeIds: string[];
@@ -388,6 +922,84 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   const persistenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heldNodeTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
+  const selectedSemanticNodeIds = useMemo(
+    () =>
+      graph
+        ? graph.nodes
+            .filter(
+              (node) =>
+                selectedNodeIds.includes(node.id) &&
+                node.kind === "semantic-node" &&
+                (!activeLayerId || node.parentLayerId === activeLayerId),
+            )
+            .map((node) => node.id)
+        : [],
+    [activeLayerId, graph, selectedNodeIds],
+  );
+  const selectedHiddenNeighborCount = useMemo(() => {
+    if (!graph || selectedSemanticNodeIds.length === 0) {
+      return 0;
+    }
+
+    const selectedNodeIdSet = new Set(selectedSemanticNodeIds);
+    const hiddenNodeSourceIds = new Set<string>();
+    for (const node of graph.nodes) {
+      if (
+        node.kind !== "hidden-context-portal" ||
+        !node.ownerNodeId ||
+        !selectedNodeIdSet.has(node.ownerNodeId)
+      ) {
+        continue;
+      }
+      for (const hiddenNode of node.hiddenNodes ?? []) {
+        hiddenNodeSourceIds.add(hiddenNode.sourceId);
+      }
+    }
+    return hiddenNodeSourceIds.size;
+  }, [graph, selectedSemanticNodeIds]);
+  const hidePreviewNodeIds = useMemo(
+    () =>
+      new Set(
+        (graph?.nodes ?? []).flatMap((node) => {
+          if (hidePreview.layerId && node.parentLayerId !== hidePreview.layerId) {
+            return [];
+          }
+
+          if (
+            node.kind === "semantic-node" &&
+            hidePreview.sourceNodeIds.includes(node.sourceId)
+          ) {
+            return [node.id];
+          }
+
+          if (
+            node.kind === "hidden-context-portal" &&
+            hidePreview.sourceNodeIds.includes(node.sourceId)
+          ) {
+            return [node.id];
+          }
+
+          return [];
+        }),
+      ),
+    [graph, hidePreview],
+  );
+
+  function markConnectedSlotOwnersDirty(nodeId: string): void {
+    const dirtyOwnerIds = dirtySlotOwnerIdsRef.current;
+    dirtyOwnerIds.add(nodeId);
+    for (const edge of localEdgesRef.current) {
+      const sourceId = String(edge.source);
+      const targetId = String(edge.target);
+      if (sourceId === nodeId) {
+        dirtyOwnerIds.add(targetId);
+      }
+      if (targetId === nodeId) {
+        dirtyOwnerIds.add(sourceId);
+      }
+    }
+  }
+
   const mappedNodes = useMemo(
     () =>
       graph
@@ -395,6 +1007,9 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
             graph,
             activeLayerId,
             pinnedNodeIds,
+            selectedSemanticNodeIds,
+            selectedHiddenNeighborCount,
+            hidePreview,
             actions.hideNodeFromLayer,
             (nodeId, pinned, fallbackPosition) => {
               const currentPosition =
@@ -404,6 +1019,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
               if (pinned) {
                 lockNodeToCurrentPosition(nodeId, currentPosition.x, currentPosition.y);
               }
+              markConnectedSlotOwnersDirty(nodeId);
               actions.setNodePinned(nodeId, pinned, currentPosition);
             },
             (portalNodeId, hiddenNodeId) => {
@@ -439,11 +1055,60 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
               };
               actions.revealHiddenNode(portalNodeId, hiddenNodeId, nextPosition);
             },
+            () => {
+              if (!activeLayerId) {
+                return;
+              }
+
+              const selectedNodeIdSet = new Set(selectedSemanticNodeIds);
+              const revealedSourceNodeIds = new Set<string>();
+              for (const node of graph.nodes) {
+                if (
+                  node.kind !== "hidden-context-portal" ||
+                  !node.ownerNodeId ||
+                  !selectedNodeIdSet.has(node.ownerNodeId)
+                ) {
+                  continue;
+                }
+                for (const hiddenNode of node.hiddenNodes ?? []) {
+                  revealedSourceNodeIds.add(hiddenNode.sourceId);
+                }
+              }
+
+              if (revealedSourceNodeIds.size > 0) {
+                actions.toggleLayerNodes(activeLayerId, [...revealedSourceNodeIds], true);
+              }
+            },
+            () => {
+              if (!activeLayerId) {
+                return;
+              }
+
+              const sourceNodeIds = [
+                ...new Set(
+                  graph.nodes
+                    .filter(
+                      (node) =>
+                        node.kind === "semantic-node" && selectedSemanticNodeIds.includes(node.id),
+                    )
+                    .map((node) => node.sourceId),
+                ),
+              ];
+              if (sourceNodeIds.length > 0) {
+                actions.toggleLayerNodes(activeLayerId, sourceNodeIds, false);
+              }
+              actions.setCanvasSelection([], []);
+            },
+            beginHidePreview,
+            endHidePreview,
           )
         : [],
-    [actions.hideNodeFromLayer, actions.revealHiddenNode, actions.setNodePinned, graph, activeLayerId, pinnedNodeIds],
+    [actions.hideNodeFromLayer, actions.revealHiddenNode, actions.setCanvasSelection, actions.setNodePinned, actions.toggleLayerNodes, beginHidePreview, endHidePreview, graph, activeLayerId, hidePreview, pinnedNodeIds, selectedHiddenNeighborCount, selectedSemanticNodeIds],
   );
-  const mappedEdges = useMemo(() => (graph ? mapEdges(graph.edges) : []), [graph]);
+  const mappedEdges = useMemo(
+    () => (graph ? mapEdges(graph.edges, hidePreviewNodeIds) : []),
+    [graph, hidePreviewNodeIds],
+  );
   const [localNodes, setLocalNodes, onNodesChange] = useNodesState(mappedNodes);
   const [localEdges, setLocalEdges, onEdgesChange] = useEdgesState(mappedEdges);
 
@@ -464,6 +1129,22 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   useEffect(() => {
     setLocalEdges(mappedEdges);
   }, [mappedEdges, setLocalEdges]);
+
+  useEffect(() => {
+    const selectedNodeIdSet = new Set(selectedNodeIds);
+    setLocalNodes((current) =>
+      current.map((node) => {
+        const nextSelected = selectedNodeIdSet.has(node.id);
+        return node.selected === nextSelected ? node : { ...node, selected: nextSelected };
+      }),
+    );
+    setLocalEdges((current) =>
+      current.map((edge) => {
+        const nextSelected = edge.id === selectedEdgeId;
+        return edge.selected === nextSelected ? edge : { ...edge, selected: nextSelected };
+      }),
+    );
+  }, [selectedEdgeId, selectedNodeIds, setLocalEdges, setLocalNodes]);
 
   useEffect(() => {
     localNodesRef.current = localNodes;
@@ -489,6 +1170,44 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     });
     hasFittedInitialViewRef.current = true;
   }, [graph]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if ((!event.ctrlKey && !event.metaKey) || event.key.toLowerCase() !== "a") {
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const selectableNodeIds = (graph?.nodes ?? [])
+        .filter(
+          (node) =>
+            node.kind === "semantic-node" &&
+            (!activeLayerId || node.parentLayerId === activeLayerId),
+        )
+        .map((node) => node.id);
+
+      if (selectableNodeIds.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      actions.setCanvasSelection(selectableNodeIds, []);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [actions, activeLayerId, graph]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
     const nodeLayerId =
@@ -591,11 +1310,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     }
 
     const movableSet = new Set(movableNodeIds);
-    const nodes: ForceNodeDatum[] = layerNodes.map((node, index) => {
-      const movableIndex = movableNodeIds.indexOf(node.id);
-      const angle =
-        movableIndex >= 0 ? (movableIndex / Math.max(movableNodeIds.length, 1)) * Math.PI * 2 : 0;
-      const radius = 24 + movableIndex * 4;
+    const nodes: ForceNodeDatum[] = layerNodes.map((node) => {
       const { width, height } = nodeDimensions(node);
       const centerX = node.position.x + width / 2;
       const centerY = node.position.y + height / 2;
@@ -603,8 +1318,8 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
         id: node.id,
         width,
         height,
-        x: centerX + (movableSet.has(node.id) ? Math.cos(angle) * radius : 0),
-        y: centerY + (movableSet.has(node.id) ? Math.sin(angle) * radius : 0),
+        x: centerX,
+        y: centerY,
         fx: movableSet.has(node.id) ? null : centerX,
         fy: movableSet.has(node.id) ? null : centerY,
       };
@@ -616,22 +1331,40 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
         source: String(edge.source),
         target: String(edge.target),
       }));
+    const semanticNodeIds = new Set(
+      layerNodes.filter((node) => node.type === "semanticNode").map((node) => node.id),
+    );
+    const semanticLinks = localEdgesRef.current
+      .filter(
+        (edge) => semanticNodeIds.has(String(edge.source)) && semanticNodeIds.has(String(edge.target)),
+      )
+      .map((edge) => ({
+        source: String(edge.source),
+        target: String(edge.target),
+      }));
 
     const simulation = forceSimulation(nodes)
       .force(
-        "link",
-        forceLink(links)
-          .id((node) => (node as ForceNodeDatum).id)
-          .distance((link) => {
-            const source = link.source as ForceNodeDatum;
-            const target = link.target as ForceNodeDatum;
-            return source.width / 2 + target.width / 2 + springLength;
-          })
-          .strength(springStrength),
+        "handleSlot",
+        createHandleSlotForce({
+          links: semanticLinks,
+          nodesById: nodeMap,
+          pinnedNodeIds: pinnedSet,
+          assignmentCache: slotAssignmentCacheRef.current,
+          relationCache: slotRelationCacheRef.current,
+          dirtyOwnerIds: dirtySlotOwnerIdsRef.current,
+          strength: springStrength,
+          gap: springLength + 28,
+        }),
       )
-      .force("handleStraighten", createHandleStraightenForce(links, straightenStrength, springLength))
-      .force("charge", forceManyBody().strength(-repulsionStrength))
-      .force("collide", forceCollide(92));
+      .force(
+        "rectRepel",
+        createRectRepelForce({
+          nodes,
+          pinnedNodeIds: pinnedSet,
+          strength: repulsionStrength,
+        }),
+      );
 
     return { nodes, movableNodeIds, simulation };
   }
@@ -708,7 +1441,6 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     pinnedNodeIds.join("|"),
     springStrength,
     springLength,
-    straightenStrength,
     repulsionStrength,
   ]);
 
@@ -748,7 +1480,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   );
 
   return (
-    <section className="h-full min-h-[720px] overflow-hidden">
+    <section className="relative h-full min-h-[720px] overflow-hidden">
       <div className="h-full w-full">
         <ReactFlow
           className="[&_.react-flow__pane]:bg-transparent [&_.react-flow__renderer]:bg-transparent [&_.react-flow__viewport]:bg-transparent"
@@ -804,6 +1536,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
               actions.moveLayer(node.id, node.position.x, node.position.y);
             } else {
               actions.moveNode(node.id, node.position.x, node.position.y);
+              markConnectedSlotOwnersDirty(node.id);
               if (physicsEnabled) {
                 releaseNodeAfterTimeout(node.id);
               }
@@ -851,7 +1584,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
             nodeBorderRadius={8}
             style={{
               zIndex: 30,
-              right: 324,
+              right: rightSidebarWidth + 24,
               bottom: 12,
               backgroundColor: "rgba(18, 17, 15, 0.88)",
               border: "1px solid rgba(41, 37, 36, 0.95)",
@@ -862,7 +1595,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
             position="bottom-left"
             style={{
               zIndex: 30,
-              left: 292,
+              left: leftSidebarWidth + 24,
               bottom: 12,
               background: "rgba(18, 17, 15, 0.88)",
               border: "1px solid rgba(41, 37, 36, 0.95)",

@@ -30,7 +30,6 @@ export type AgentGraphStoreState = {
     pinnedNodeIds: string[];
     springStrength: number;
     springLength: number;
-    straightenStrength: number;
     repulsionStrength: number;
   };
   inspection: {
@@ -65,7 +64,6 @@ export function createAgentGraphStore(serverOrigin: string) {
       pinnedNodeIds: [],
       springStrength: 0.35,
       springLength: 110,
-      straightenStrength: 0.16,
       repulsionStrength: 420,
     },
     inspection: {

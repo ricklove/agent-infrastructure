@@ -164,10 +164,6 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       store.state$.layout.springLength.set(value);
     },
 
-    setStraightenStrength(value: number): void {
-      store.state$.layout.straightenStrength.set(value);
-    },
-
     setRepulsionStrength(value: number): void {
       store.state$.layout.repulsionStrength.set(value);
     },
@@ -218,6 +214,18 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       });
     },
 
+    toggleLayerNodes(layerId: string, sourceNodeIds: string[], include: boolean): void {
+      if (sourceNodeIds.length === 0) {
+        return;
+      }
+      sendIntent(ws, store, {
+        kind: "toggle-layer-nodes",
+        layerId,
+        sourceNodeIds,
+        include,
+      });
+    },
+
     hideNodeFromLayer(layerId: string, sourceNodeId: string): void {
       sendIntent(ws, store, {
         kind: "toggle-layer-node",
@@ -225,9 +233,15 @@ export function createAgentGraphActions(store: AgentGraphStore) {
         sourceNodeId,
         include: false,
       });
-      if (store.state$.selection.nodeId.get()?.startsWith(`${sourceNodeId}::`)) {
-        store.state$.selection.assign({ nodeId: null, nodeIds: [], edgeId: null });
-      }
+    },
+
+    showNodeInLayer(layerId: string, sourceNodeId: string): void {
+      sendIntent(ws, store, {
+        kind: "toggle-layer-node",
+        layerId,
+        sourceNodeId,
+        include: true,
+      });
     },
 
     revealHiddenContext(portalNodeId: string): void {

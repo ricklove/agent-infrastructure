@@ -5,6 +5,7 @@ import { Handle, Position, type NodeProps } from "reactflow";
 export function HiddenContextPortalNode({ data }: NodeProps<{
   label: string;
   summary: string;
+  sourceId: string;
   hiddenCount: number;
   hiddenNodes?: Array<{
     sourceId: string;
@@ -12,6 +13,7 @@ export function HiddenContextPortalNode({ data }: NodeProps<{
     sourcePath?: string;
   }>;
   onRevealHiddenNode?: (hiddenNodeId: string) => void;
+  isHidePreview?: boolean;
 }>) {
   const [expanded, setExpanded] = useState(false);
   const hiddenNodes = data.hiddenNodes ?? [];
@@ -24,7 +26,9 @@ export function HiddenContextPortalNode({ data }: NodeProps<{
   return (
     <div
       title={data.summary}
-      className="nodrag nopan relative rounded-2xl border border-amber-500/50 bg-amber-950/90 px-2 py-2 text-sm font-semibold text-amber-100 shadow-[0_8px_24px_rgba(120,53,15,0.32)]"
+      className={`nodrag nopan relative rounded-2xl border border-amber-500/50 bg-amber-950/90 px-2 py-2 text-sm font-semibold text-amber-100 shadow-[0_8px_24px_rgba(120,53,15,0.32)] ${
+        data.isHidePreview ? "opacity-25" : ""
+      }`}
     >
       <Handle
         type="target"
