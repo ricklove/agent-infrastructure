@@ -43,6 +43,29 @@ has_command() {
   command -v "$cmd" >/dev/null 2>&1
 }
 
+windows_command_path() {
+  local cmd="$1"
+
+  if has_command "$cmd"; then
+    command -v "$cmd"
+    return 0
+  fi
+
+  local candidate="/mnt/c/Windows/System32/${cmd}"
+  if [[ -x "$candidate" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  candidate="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/${cmd}"
+  if [[ -x "$candidate" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  return 1
+}
+
 is_wsl() {
   [[ -n "${WSL_DISTRO_NAME:-}" ]] && return 0
   grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null
@@ -106,11 +129,19 @@ launch_vscode_remote() {
 }
 
 resolve_windows_home() {
-  if ! has_command powershell.exe; then
-    return 1
+  local ps_cmd
+  if ps_cmd="$(windows_command_path powershell.exe 2>/dev/null)"; then
+    "$ps_cmd" -NoProfile -NonInteractive -Command '$env:USERPROFILE' 2>/dev/null | tr -d '\r' | tail -n 1
+    return 0
   fi
 
-  powershell.exe -NoProfile -NonInteractive -Command '$env:USERPROFILE' 2>/dev/null | tr -d '\r' | tail -n 1
+  local cmd_cmd
+  if cmd_cmd="$(windows_command_path cmd.exe 2>/dev/null)"; then
+    "$cmd_cmd" /c "echo %USERPROFILE%" 2>/dev/null | tr -d '\r' | tail -n 1
+    return 0
+  fi
+
+  return 1
 }
 
 to_windows_path() {
