@@ -1,6 +1,6 @@
 {
   "rootId": "agent-graph",
-  "revision": 29935,
+  "revision": 37431,
   "layers": [
     {
       "id": "layer-overview",
@@ -23,7 +23,6 @@
         "editing-validation",
         "editing-conflict",
         "editing-mutation",
-        "package-studio",
         "package-ui",
         "package-store",
         "package-core",
@@ -43,11 +42,22 @@
         "contract-external-change",
         "source-document",
         "agentish",
-        "agent-graph"
+        "agent-graph",
+        "package-studio",
+        "detail-agent-graph-enforces-0",
+        "detail-agent-graph-enforces-2",
+        "detail-agent-graph-enforces-1",
+        "detail-agent-graph-enforces-3",
+        "detail-agent-graph-defines-layer-semantics-2",
+        "detail-agent-graph-defines-layer-semantics-3",
+        "detail-agent-graph-defines-hidden-context-portal-semantics-1",
+        "detail-contract-graph-snapshot-means-0",
+        "detail-contract-conflict-payload-means-0",
+        "detail-contract-validation-result-means-0"
       ],
       "visible": true,
-      "x": 978.0012015290101,
-      "y": -415.58195628046735,
+      "x": 1390.0012015290101,
+      "y": -300.58195628046735,
       "derivedFromLayerId": null
     }
   ],
@@ -113,20 +123,20 @@
       "y": 22
     },
     "agentish::layer-overview": {
-      "x": -4377.36383420041,
-      "y": -558.751338962392
+      "x": -7141.939488831218,
+      "y": -1297.1969518025903
     },
     "agent-graph::layer-overview": {
-      "x": -4487.145631938255,
-      "y": -658.4215768250509
+      "x": -7323.918320317795,
+      "y": -1079.7172839493091
     },
     "source-document::layer-overview": {
-      "x": -4562.113580116797,
-      "y": -1095.5881637760522
+      "x": -7097.730543733988,
+      "y": -1140.5706833313793
     },
     "source-truth::layer-overview": {
-      "x": 12085.292869811892,
-      "y": -1794.3163584052377
+      "x": 12807.161593024945,
+      "y": -1816.7739036253715
     },
     "portal:incoming:source-document::layer-overview": {
       "x": -54,
@@ -137,148 +147,215 @@
       "y": 22
     },
     "graph-layer::layer-overview": {
-      "x": -3711.279605912273,
-      "y": -334.9382292012228
+      "x": -4102.625677249847,
+      "y": 424.0976747752846
     },
     "user::layer-overview": {
-      "x": -4196.201010219848,
-      "y": -153.17763678507174
+      "x": -4193.31989271606,
+      "y": 737.2406501877368
     },
     "graph-whole::layer-overview": {
-      "x": -3221.118634431784,
-      "y": -485.20241561428384
+      "x": -4385.394653316321,
+      "y": -108.1691252080825
     },
     "graph-layer-group::layer-overview": {
-      "x": -3587.343202631272,
-      "y": -109.0269862558696
+      "x": -3797.751477303681,
+      "y": 641.6173259840233
     },
     "graph-edge::layer-overview": {
-      "x": -3537.966225938316,
-      "y": -281.12893381853644
+      "x": -3792.3695339920773,
+      "y": 374.03205500190205
     },
     "source-workspace::layer-overview": {
-      "x": -3763.328891209764,
-      "y": -162.76890626397955
+      "x": -3854.9303733436755,
+      "y": 821.4501777451085
     },
     "graph-derived-edge::layer-overview": {
-      "x": -3370.1233205102158,
-      "y": -317.22069123118985
+      "x": -3983.8161555031747,
+      "y": 122.87292485252945
     },
     "graph-diff-layer::layer-overview": {
-      "x": -3682.266906034227,
-      "y": -615.2752784432982
+      "x": -4131.47089294808,
+      "y": 237.4020524020831
     },
     "graph-completeness::layer-overview": {
-      "x": -872.4191701860454,
-      "y": 14475.522752212102
+      "x": -807.0033741558166,
+      "y": 15436.459059079685
     },
     "package-studio::layer-overview": {
-      "x": -1308.06600002681,
-      "y": 136.88814901925593
+      "x": -1069.407223539372,
+      "y": 664.2680992767635
     },
     "package-server::layer-overview": {
-      "x": -1205.6065104805098,
-      "y": 549.6664840903679
+      "x": -1511.160272909721,
+      "y": 478.4471860805518
     },
     "runtime-legend-state::layer-overview": {
-      "x": -17803.035341336923,
-      "y": -4531.587051903447
+      "x": -19287.84366940291,
+      "y": -4727.092601237694
     },
     "editing-conflict::layer-overview": {
-      "x": -4225.499736641804,
-      "y": -508.82900796328204
+      "x": -6901.645327124557,
+      "y": -1113.3306901951894
     },
     "editing-mutation::layer-overview": {
-      "x": -4002.8227923154395,
-      "y": -740.4045349988679
+      "x": -5847.207052716777,
+      "y": -142.77538761167946
     },
     "graph-node::layer-overview": {
-      "x": -3582.4089654803543,
-      "y": -459.9929949334135
+      "x": -3938.756476444652,
+      "y": 494.41394914623004
     },
     "graph-hidden-context::layer-overview": {
-      "x": -3507.944890562681,
-      "y": -631.3656274211747
+      "x": -3974.9752803626498,
+      "y": 308.7832366502934
     },
     "graph-plane::layer-overview": {
-      "x": -2831.525540857057,
-      "y": -497.6073996075726
+      "x": -3949.4659793254777,
+      "y": -174.49657834239403
     },
     "editing-validation::layer-overview": {
-      "x": -4181.570150093841,
-      "y": -696.6223937658185
+      "x": -5719.3544554345435,
+      "y": -275.0981936078155
     },
     "package-ui::layer-overview": {
-      "x": -919.7279479270883,
-      "y": 422.59548533735193
+      "x": -805.0577063535688,
+      "y": 509.7232494471873
     },
     "package-store::layer-overview": {
-      "x": -754.9800330651491,
-      "y": 293.07784576821143
+      "x": -606.133055713389,
+      "y": 517.0028082076852
     },
     "package-core::layer-overview": {
-      "x": -347.0453104940018,
-      "y": 371.4991872346253
+      "x": -239.04531049400146,
+      "y": 361.49918723462525
     },
     "package-protocol::layer-overview": {
-      "x": -516.2413618513464,
-      "y": 630.2107129203566
+      "x": -583.2413618513466,
+      "y": 793.2107129203571
     },
     "runtime-browser::layer-overview": {
-      "x": -18185.97934985137,
-      "y": -4355.0387142128
+      "x": -19670.916184174297,
+      "y": -4550.574451382105
     },
     "runtime-react-flow::layer-overview": {
-      "x": -17802.77260455806,
-      "y": -4194.635966090118
+      "x": -19287.4320288581,
+      "y": -4390.446837273754
     },
     "runtime-bun::layer-overview": {
-      "x": -17720.999108604447,
-      "y": -4355.139326359048
+      "x": -19206.355647480155,
+      "y": -4550.404989371787
     },
     "runtime-filesystem::layer-overview": {
-      "x": -17296.068517849035,
-      "y": -4363.403275859725
+      "x": -18781.364051577602,
+      "y": -4558.3484252988055
     },
     "contract-workspace-snapshot::layer-overview": {
-      "x": -4898.276668073825,
-      "y": -920.760199892963
+      "x": -7257.7846913048,
+      "y": -1467.6047685391538
     },
     "contract-graph-snapshot::layer-overview": {
-      "x": -4383.396256827775,
-      "y": -1139.1217686079124
+      "x": -6856.175522165377,
+      "y": -796.355540428932
     },
     "contract-graph-patch::layer-overview": {
-      "x": -4435.627859955455,
-      "y": -962.3545261642574
+      "x": -7076.949510852595,
+      "y": -1459.8501946983642
     },
     "contract-diff-snapshot::layer-overview": {
-      "x": -4129.500128513235,
-      "y": -873.1871599069788
+      "x": -6998.839468292618,
+      "y": -1289.0236601025292
     },
     "contract-validation-result::layer-overview": {
-      "x": -4541.09503934615,
-      "y": -331.1163018912787
+      "x": -6896.583711364429,
+      "y": -1442.3498317205983
     },
     "contract-conflict-payload::layer-overview": {
-      "x": -3662.8089544401964,
-      "y": -1103.4205632400785
+      "x": -6730.232761439534,
+      "y": -1127.638782921538
     },
     "contract-external-change::layer-overview": {
-      "x": -4308.442613428665,
-      "y": -829.6122324229942
+      "x": -6798.505622782157,
+      "y": -963.9820788514221
     },
     "portal:outgoing:agent-graph::layer-overview": {
-      "x": 335.7117140909879,
-      "y": 10.389487797923039
+      "x": -2633.4317718935854,
+      "y": -573.6079255364639
     },
     "portal:incoming:contract-graph-snapshot::layer-overview": {
       "x": -54,
       "y": 22
+    },
+    "portal:outgoing:package-studio::layer-overview": {
+      "x": 348.54945261991037,
+      "y": -4.116516898883674
+    },
+    "portal:outgoing:package-ui::layer-overview": {
+      "x": 325.0949436955557,
+      "y": 1.9286825490844848
+    },
+    "portal:incoming:package-store::layer-overview": {
+      "x": -705.0624516887241,
+      "y": 359.0951341762757
+    },
+    "portal:outgoing:package-store::layer-overview": {
+      "x": -257.307518535257,
+      "y": 326.9928360597481
+    },
+    "portal:outgoing:graph-derived-edge::layer-overview": {
+      "x": -3507.7600382972005,
+      "y": 140.24714416769237
+    },
+    "detail-package-ui-rejects-0::layer-overview": {
+      "x": -926.5644557072694,
+      "y": 260.8903430405157
+    },
+    "detail-graph-whole-hides-1::layer-overview": {
+      "x": -3955.3946533163207,
+      "y": -108.1691252080825
+    },
+    "detail-agent-graph-enforces-0::layer-overview": {
+      "x": -6822.818331788543,
+      "y": -1283.7380997279367
+    },
+    "detail-agent-graph-enforces-2::layer-overview": {
+      "x": -6981.013424539773,
+      "y": -951.3522045096355
+    },
+    "detail-agent-graph-enforces-1::layer-overview": {
+      "x": -7035.021625173455,
+      "y": -787.4742583169425
+    },
+    "detail-agent-graph-enforces-3::layer-overview": {
+      "x": -7537.54461950307,
+      "y": -1291.549960030078
+    },
+    "detail-agent-graph-defines-layer-semantics-2::layer-overview": {
+      "x": -7439.112912808597,
+      "y": -1470.9218995491458
+    },
+    "detail-agent-graph-defines-layer-semantics-3::layer-overview": {
+      "x": -7351.541892077629,
+      "y": -1309.0978547412572
+    },
+    "detail-agent-graph-defines-hidden-context-portal-semantics-1::layer-overview": {
+      "x": -7199.898216994156,
+      "y": -713.7985348390689
+    },
+    "detail-contract-conflict-payload-means-0::layer-overview": {
+      "x": -6230.44882572468,
+      "y": -1136.9309145063792
+    },
+    "detail-contract-validation-result-means-0::layer-overview": {
+      "x": -6416.120570155377,
+      "y": -1443.6167325546483
+    },
+    "detail-contract-graph-snapshot-means-0::layer-overview": {
+      "x": -6367.891847868072,
+      "y": -748.6165977779542
     }
   },
   "pinnedNodeIds": [
-    "package-studio::layer-overview",
     "package-server::layer-overview",
     "package-core::layer-overview",
     "agent-graph::layer-overview",

@@ -8,9 +8,9 @@
   "scripts": {
     "build": "bun run --filter '*' build",
     "check": "bun run --filter '*' check",
-    "dev:agent-graph": "bun run --filter @agent-infrastructure/agentish-studio dev",
-    "build:agent-graph": "bun run --filter @agent-infrastructure/agentish-studio build",
-    "start:agent-graph": "bun run --filter @agent-infrastructure/agent-graph-server start",
+    "dev:agent-graph": "cd apps/agentish-studio && bun run dev --host 0.0.0.0",
+    "build:agent-graph": "cd apps/agentish-studio && bun run build",
+    "start:agent-graph": "cd packages/agent-graph-server && bun run start",
     "dev:dashboard": "bun run --filter @agent-infrastructure/dashboard-app dev",
     "build:dashboard": "bun run --filter @agent-infrastructure/dashboard-app build",
     "start:dashboard": "bun run --filter @agent-infrastructure/dashboard start",

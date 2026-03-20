@@ -17,6 +17,14 @@ function summarize(kind: string, name: string, label: string): string {
   return `${kind} ${label} declared as ${name}`;
 }
 
+type ExtractedDefinition = {
+  reference: string;
+  label: string;
+  kind: string;
+  section: string;
+  sourcePath: string;
+};
+
 function extractSections(source: string): Array<{ start: number; label: string }> {
   const sections: Array<{ start: number; label: string }> = [];
   for (const match of source.matchAll(/^\/\/\s+(.+)$/gm)) {
@@ -46,22 +54,10 @@ function sectionForIndex(
   return current;
 }
 
-function extractObjectDefinitions(source: string): Array<{
-  reference: string;
-  label: string;
-  kind: string;
-  section: string;
-  sourcePath: string;
-}> {
+function extractObjectDefinitions(source: string): ExtractedDefinition[] {
   const documentLabel = basename(AGENT_GRAPH_BLUEPRINT_PATH);
   const sections = extractSections(source);
-  const definitions: Array<{
-    reference: string;
-    label: string;
-    kind: string;
-    section: string;
-    sourcePath: string;
-  }> = [];
+  const definitions: ExtractedDefinition[] = [];
   for (const objectMatch of source.matchAll(/const\s+([A-Za-z][A-Za-z0-9]*)\s*=\s*{([\s\S]*?)};/g)) {
     const objectName = objectMatch[1];
     const objectBody = objectMatch[2];
@@ -82,22 +78,10 @@ function extractObjectDefinitions(source: string): Array<{
   return definitions;
 }
 
-function extractTopLevelDefinitions(source: string): Array<{
-  reference: string;
-  label: string;
-  kind: string;
-  section: string;
-  sourcePath: string;
-}> {
+function extractTopLevelDefinitions(source: string): ExtractedDefinition[] {
   const documentLabel = basename(AGENT_GRAPH_BLUEPRINT_PATH);
   const sections = extractSections(source);
-  const definitions: Array<{
-    reference: string;
-    label: string;
-    kind: string;
-    section: string;
-    sourcePath: string;
-  }> = [];
+  const definitions: ExtractedDefinition[] = [];
   for (const match of source.matchAll(
     /const\s+([A-Za-z][A-Za-z0-9]*)\s*=\s*define\.([A-Za-z][A-Za-z0-9]*)\("([^"]+)"/g,
   )) {
@@ -166,6 +150,81 @@ function extractRelationshipEdges(
   return edges;
 }
 
+function extractStringEntries(args: string): string[] {
+  const entries: string[] = [];
+
+  for (const match of args.matchAll(/`([\s\S]*?)`/g)) {
+    const block = match[1] ?? "";
+    for (const rawLine of block.split("\n")) {
+      const line = rawLine.trim();
+      if (!line) {
+        continue;
+      }
+      entries.push(line.startsWith("- ") ? line.slice(2).trim() : line);
+    }
+  }
+
+  for (const match of args.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+    const value = match[1]?.trim();
+    if (!value) {
+      continue;
+    }
+    entries.push(value);
+  }
+
+  return [...new Set(entries)];
+}
+
+function extractDetailNodesAndEdges(args: {
+  source: string;
+  document: SourceDocument;
+  nodesByReference: Map<string, SourceNode>;
+}): { nodes: SourceNode[]; edges: SourceEdge[] } {
+  const { source, document, nodesByReference } = args;
+  const sections = extractSections(source);
+  const nodes: SourceNode[] = [];
+  const edges: SourceEdge[] = [];
+
+  for (const match of source.matchAll(
+    /([A-Z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)*)\.([a-z][A-Za-zA-Z0-9]*)\(([\s\S]*?)\);/g,
+  )) {
+    const subjectReference = match[1];
+    const relationship = match[2];
+    const callArgs = match[3];
+    const subject = nodesByReference.get(subjectReference);
+    if (!subject) {
+      continue;
+    }
+
+    const strings = extractStringEntries(callArgs);
+    if (strings.length === 0) {
+      continue;
+    }
+
+    const section = sectionForIndex(sections, match.index ?? 0);
+    for (const [index, entry] of strings.entries()) {
+      const nodeId = `detail-${toId(`${subjectReference}-${relationship}-${index}`)}`;
+      nodes.push({
+        id: nodeId,
+        documentId: document.id,
+        label: entry,
+        kind: "detail",
+        summary: `Detail from ${subjectReference}.${relationship}`,
+        sourcePath: `${document.label}/${section}`,
+      });
+      edges.push({
+        id: `edge-${toId(`${subject.id}-${relationship}-${nodeId}`)}`,
+        sourceId: subject.id,
+        targetId: nodeId,
+        kind: relationship,
+        label: relationship.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase(),
+      });
+    }
+  }
+
+  return { nodes, edges };
+}
+
 export async function loadAgentishSourceWorkspace(): Promise<SourceWorkspace> {
   const source = await readFile(AGENT_GRAPH_BLUEPRINT_PATH, "utf8");
   const document: SourceDocument = {
@@ -174,10 +233,7 @@ export async function loadAgentishSourceWorkspace(): Promise<SourceWorkspace> {
     path: AGENT_GRAPH_BLUEPRINT_PATH,
   };
 
-  const definitionMap = new Map<
-    string,
-    { reference: string; label: string; kind: string; section: string; sourcePath: string }
-  >();
+  const definitionMap = new Map<string, ExtractedDefinition>();
   for (const definition of [
     ...extractTopLevelDefinitions(source),
     ...extractObjectDefinitions(source),
@@ -202,13 +258,19 @@ export async function loadAgentishSourceWorkspace(): Promise<SourceWorkspace> {
     }
   }
 
+  const detailGraph = extractDetailNodesAndEdges({
+    source,
+    document,
+    nodesByReference,
+  });
+
   return {
     id: "agent-graph",
     label: "Agent Graph Workspace",
     revision: 1,
     documents: [document],
-    nodes,
-    edges: extractRelationshipEdges(source, nodesByReference),
+    nodes: [...nodes, ...detailGraph.nodes],
+    edges: [...extractRelationshipEdges(source, nodesByReference), ...detailGraph.edges],
   };
 }
 
