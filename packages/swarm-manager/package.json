@@ -9,6 +9,13 @@
     "run:manager": "bun run src/manager/server.ts",
     "run:issue-dashboard-session": "bun run src/manager/issue-dashboard-session.ts",
     "run:open-dashboard": "bun run src/manager/open-dashboard.ts",
+    "run:update-runtime": "bun run src/manager/update-runtime.ts",
+    "run:install-host-scripts": "bun run src/manager/install-host-scripts.ts",
+    "run:publish-worker-runtime-release": "bun run src/manager/publish-worker-runtime-release.ts",
+    "run:build-worker-image": "bun run src/manager/build-worker-image.ts",
+    "run:test-worker-image-lifecycle": "bun run src/manager/test-worker-image-lifecycle.ts",
+    "run:hibernate-workers": "bun run src/manager/worker-power.ts --action hibernate",
+    "run:wake-workers": "bun run src/manager/worker-power.ts --action wake",
     "run:launch-service": "bun run src/manager/launch-service.ts",
     "run:worker-agent": "bun run src/worker/agent.ts"
   },

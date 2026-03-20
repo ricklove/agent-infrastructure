@@ -52,6 +52,43 @@ type ServicesResponse = {
   }>;
 };
 
+type WorkerLifecycleEventType =
+  | "launch_requested"
+  | "create"
+  | "launch"
+  | "ec2_running"
+  | "instance_status_ok"
+  | "bootstrap_started"
+  | "runtime_download_started"
+  | "runtime_download_completed"
+  | "docker_ready"
+  | "telemetry_started"
+  | "running"
+  | "connected"
+  | "stale"
+  | "disconnected"
+  | "hibernate_requested"
+  | "hibernating"
+  | "hibernated"
+  | "wakeup_requested"
+  | "wakeup"
+  | "shutdown_requested"
+  | "shutdown"
+  | "terminated";
+
+type WorkerLifecycleEventsResponse = {
+  ok: boolean;
+  events: Array<{
+    workerId: string;
+    instanceId: string;
+    privateIp: string;
+    nodeRole: "manager" | "worker";
+    eventType: WorkerLifecycleEventType;
+    eventTsMs: number;
+    details: Record<string, unknown> | null;
+  }>;
+};
+
 type AccessEnrollmentResponse = {
   ok: boolean;
   registrationUrl: string;
@@ -68,6 +105,8 @@ type DashboardSessionRecord = {
   createdAtMs: number;
   kind: "bootstrap" | "browser";
   usedAtMs?: number;
+  lastAccessAtMs?: number;
+  idleTimeoutMs?: number;
 };
 
 type DashboardSessionStore = {
@@ -85,6 +124,22 @@ const sessionStorePath =
   process.env.DASHBOARD_SESSION_STORE_PATH?.trim() ||
   "/var/lib/agent-swarm-monitor/dashboard-sessions.json";
 const port = Number.parseInt(process.env.DASHBOARD_PORT ?? "3000", 10);
+const browserSessionIdleTimeoutMs =
+  Math.max(
+    60,
+    Number.parseInt(
+      process.env.DASHBOARD_SESSION_IDLE_TIMEOUT_SECONDS ?? "900",
+      10,
+    ) || 900,
+  ) * 1000;
+const browserSessionRenewIntervalMs =
+  Math.max(
+    30,
+    Number.parseInt(
+      process.env.DASHBOARD_SESSION_RENEW_INTERVAL_SECONDS ?? "300",
+      10,
+    ) || 300,
+  ) * 1000;
 
 if (!Number.isInteger(port) || port <= 0) {
   throw new Error("DASHBOARD_PORT must be a positive integer");
@@ -145,6 +200,19 @@ function validateBrowserSessionToken(token: string): boolean {
 
     if (session.kind === "browser" && session.tokenHash === tokenHash) {
       matched = true;
+      const idleTimeoutMs = session.idleTimeoutMs ?? browserSessionIdleTimeoutMs;
+      const lastAccessAtMs = session.lastAccessAtMs ?? session.createdAtMs;
+      if (currentTime - lastAccessAtMs >= browserSessionRenewIntervalMs) {
+        nextStore.sessions.push({
+          ...session,
+          lastAccessAtMs: currentTime,
+          expiresAtMs: currentTime + idleTimeoutMs,
+          idleTimeoutMs,
+        });
+      } else {
+        nextStore.sessions.push(session);
+      }
+      continue;
     }
 
     nextStore.sessions.push(session);
@@ -195,17 +263,20 @@ function exchangeBootstrapSessionKey(sessionKey: string): {
   }
 
   const sessionToken = randomBytes(32).toString("hex");
+  const browserExpiresAtMs = currentTime + browserSessionIdleTimeoutMs;
   nextStore.sessions.push({
     tokenHash: hashSessionToken(sessionToken),
-    expiresAtMs: matchedExpiry,
+    expiresAtMs: browserExpiresAtMs,
     createdAtMs: currentTime,
     kind: "browser",
+    lastAccessAtMs: currentTime,
+    idleTimeoutMs: browserSessionIdleTimeoutMs,
   });
   writeSessionStore(nextStore);
 
   return {
     sessionToken,
-    expiresAtMs: matchedExpiry,
+    expiresAtMs: browserExpiresAtMs,
   };
 }
 
@@ -376,6 +447,37 @@ async function handleApi(request: Request): Promise<Response> {
           ok: false,
           error:
             error instanceof Error ? error.message : "failed to fetch workers",
+        },
+        502,
+      );
+    }
+  }
+
+  if (url.pathname === "/api/workers/events") {
+    try {
+      const search = new URLSearchParams();
+      const workerId = url.searchParams.get("workerId")?.trim() ?? "";
+      const limit = url.searchParams.get("limit")?.trim() ?? "";
+
+      if (workerId) {
+        search.set("workerId", workerId);
+      }
+
+      if (limit) {
+        search.set("limit", limit);
+      }
+
+      const suffix = search.toString();
+      const events = await fetchManagerJson<WorkerLifecycleEventsResponse>(
+        `/workers/events${suffix ? `?${suffix}` : ""}`,
+      );
+      return jsonResponse(events);
+    } catch (error) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            error instanceof Error ? error.message : "failed to fetch worker events",
         },
         502,
       );

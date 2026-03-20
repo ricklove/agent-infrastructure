@@ -34,6 +34,12 @@ type HeartbeatPayload = {
   containers: ContainerMetrics[];
 };
 
+type LifecycleEventType =
+  | "telemetry_process_started"
+  | "telemetry_connect_started"
+  | "shutdown"
+  | "disconnected";
+
 const config: {
   managerUrl: string;
   sharedToken: string;
@@ -173,13 +179,18 @@ function parseBytes(value: string): number {
 }
 
 function readContainerMetrics(): ContainerMetrics[] {
-  const result = Bun.spawnSync([
-    "docker",
-    "stats",
-    "--no-stream",
-    "--format",
-    "{{json .}}",
-  ]);
+  let result: Bun.SyncSubprocess;
+  try {
+    result = Bun.spawnSync([
+      "docker",
+      "stats",
+      "--no-stream",
+      "--format",
+      "{{json .}}",
+    ]);
+  } catch {
+    return [];
+  }
 
   if (result.exitCode !== 0) {
     return [];
@@ -242,6 +253,36 @@ function sendAuth(): void {
   );
 }
 
+function managerHttpBaseUrl(): string {
+  return config.managerUrl
+    .replace(/^wss?:\/\//, (match) => (match === "wss://" ? "https://" : "http://"))
+    .replace(/\/workers\/stream$/, "");
+}
+
+async function emitLifecycleEvent(
+  eventType: LifecycleEventType,
+  details?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await fetch(`${managerHttpBaseUrl()}/workers/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "x-swarm-token": config.sharedToken,
+      },
+      body: JSON.stringify({
+        workerId,
+        instanceId,
+        privateIp,
+        nodeRole: config.nodeRole,
+        eventType,
+        eventTsMs: Date.now(),
+        details: details ?? {},
+      }),
+    });
+  } catch {}
+}
+
 function connect(): void {
   const socket = new WebSocket(config.managerUrl);
   currentSocket = socket;
@@ -251,6 +292,7 @@ function connect(): void {
   });
 
   socket.addEventListener("close", () => {
+    void emitLifecycleEvent("disconnected");
     if (currentSocket === socket) {
       currentSocket = null;
     }
@@ -295,6 +337,11 @@ if (
   workerId = instanceId;
 }
 
+await emitLifecycleEvent("telemetry_process_started", {
+  managerUrl: config.managerUrl,
+  nodeRole: config.nodeRole,
+});
+await emitLifecycleEvent("telemetry_connect_started");
 connect();
 setInterval(() => {
   void tick();

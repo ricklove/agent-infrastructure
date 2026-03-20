@@ -1,0 +1,27 @@
+@import "tailwindcss";
+@source "../../../packages/agent-graph-ui/src";
+@source "./";
+
+:root {
+  color-scheme: dark;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(251, 191, 36, 0.16), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.18), transparent 26%),
+    linear-gradient(180deg, #0c0a09 0%, #14110f 46%, #09090b 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: transparent;
+}

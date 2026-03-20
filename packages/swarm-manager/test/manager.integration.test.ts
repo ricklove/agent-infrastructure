@@ -8,6 +8,15 @@ const managerPort = 8877;
 const sharedToken = "test-token";
 const metricsDbPath = join(testRoot, "metrics.sqlite");
 const workerUrl = `ws://127.0.0.1:${managerPort}/workers/stream`;
+const fakeZombieWorkerId = "i-zombie-worker";
+const fakeZombieInventory = JSON.stringify([
+  {
+    instanceId: fakeZombieWorkerId,
+    privateIp: "10.0.0.33",
+    state: "running",
+    launchTimeMs: Date.now() - 10 * 60 * 1000,
+  },
+]);
 
 let managerProcess: Bun.Subprocess<"ignore", "pipe", "pipe"> | null = null;
 const workerProcesses: Bun.Subprocess<"ignore", "pipe", "pipe">[] = [];
@@ -81,6 +90,9 @@ beforeAll(async () => {
         SWARM_SHARED_TOKEN: sharedToken,
         MANAGER_WS_PORT: String(managerPort),
         METRICS_DB_PATH: metricsDbPath,
+        SWARM_EC2_INVENTORY_JSON: fakeZombieInventory,
+        SWARM_EC2_INVENTORY_REFRESH_SECONDS: "1",
+        SWARM_WORKER_ZOMBIE_THRESHOLD_SECONDS: "1",
       },
     },
   );
@@ -338,5 +350,90 @@ describe("manager integration", () => {
     );
 
     expect(reusedLease.hostPort).toBe(firstLease.hostPort);
+  });
+
+  test("worker lifecycle events can be recorded and queried", async () => {
+    await fetchJson(
+      `http://127.0.0.1:${managerPort}/workers/events`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-swarm-token": sharedToken,
+        },
+        body: JSON.stringify({
+          workerId: "worker-a",
+          instanceId: "i-worker-a",
+          privateIp: "10.0.0.21",
+          nodeRole: "worker",
+          eventType: "hibernated",
+          eventTsMs: Date.now(),
+          details: {
+            reason: "idle",
+          },
+        }),
+      },
+    );
+
+    const events = await fetchJson<{
+      ok: boolean;
+      events: Array<{
+        workerId: string;
+        eventType: string;
+        details: { reason?: string } | null;
+      }>;
+    }>(`http://127.0.0.1:${managerPort}/workers/events?workerId=worker-a&limit=20`);
+
+    expect(events.ok).toBe(true);
+    expect(
+      events.events.some(
+        (event) =>
+          event.workerId === "worker-a" &&
+          event.eventType === "hibernated" &&
+          event.details?.reason === "idle",
+      ),
+    ).toBe(true);
+  });
+
+  test("running EC2 workers without telemetry are marked zombie", async () => {
+    await waitFor(async () => {
+      const payload = await fetchJson<{
+        workers: Array<{
+          workerId: string;
+          status: string;
+          privateIp: string;
+          nodeRole: "manager" | "worker";
+        }>;
+      }>(`http://127.0.0.1:${managerPort}/workers`);
+
+      return payload.workers.some(
+        (worker) =>
+          worker.workerId === fakeZombieWorkerId &&
+          worker.nodeRole === "worker" &&
+          worker.status === "zombie" &&
+          worker.privateIp === "10.0.0.33",
+      );
+    }, 5_000);
+
+    const events = await fetchJson<{
+      ok: boolean;
+      events: Array<{
+        workerId: string;
+        eventType: string;
+        details: { reason?: string } | null;
+      }>;
+    }>(
+      `http://127.0.0.1:${managerPort}/workers/events?workerId=${fakeZombieWorkerId}&limit=20`,
+    );
+
+    expect(events.ok).toBe(true);
+    expect(
+      events.events.some(
+        (event) =>
+          event.workerId === fakeZombieWorkerId &&
+          event.eventType === "zombie" &&
+          event.details?.reason === "running_without_telemetry",
+      ),
+    ).toBe(true);
   });
 });

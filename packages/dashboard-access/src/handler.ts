@@ -491,6 +491,28 @@ async function issueDashboardAccess(): Promise<string> {
   throw new Error("dashboard session command timed out");
 }
 
+async function waitForDashboardAccessReady(dashboardUrl: string): Promise<void> {
+  const url = new URL(dashboardUrl);
+  const readinessUrl = `${url.origin}/api/config`;
+  const deadline = Date.now() + 30_000;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(readinessUrl, {
+        method: "GET",
+      });
+
+      if (response.ok) {
+        return;
+      }
+    } catch {}
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  throw new Error("dashboard access URL did not become ready in time");
+}
+
 async function finishAuthentication(
   event: APIGatewayProxyEventV2,
   body: JsonBody,
@@ -546,6 +568,7 @@ async function finishAuthentication(
   );
 
   const dashboardUrl = await issueDashboardAccess();
+  await waitForDashboardAccessReady(dashboardUrl);
   return jsonResponse({
     ok: true,
     dashboardUrl,
@@ -825,7 +848,7 @@ function renderPage(
           return;
         }
 
-        setMessage("Access granted. Redirecting to the dashboard...");
+        setMessage("Access granted. Waiting for the dashboard link to become ready...");
         window.location.href = finishPayload.dashboardUrl;
       }
 

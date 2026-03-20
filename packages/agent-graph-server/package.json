@@ -1,0 +1,22 @@
+{
+  "name": "@agent-infrastructure/agent-graph-server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json --noEmit",
+    "check": "tsc --project tsconfig.json --noEmit",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@agent-infrastructure/agent-graph-core": "workspace:*",
+    "@agent-infrastructure/agent-graph-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "bun-types": "^1.3.10",
+    "typescript": "^5.4.5"
+  }
+}

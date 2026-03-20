@@ -1,0 +1,24 @@
+{
+  "name": "@agent-infrastructure/agentish-studio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b && vite build",
+    "check": "tsc -b",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@agent-infrastructure/agent-graph-ui": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.12",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "tailwindcss": "^4.1.12",
+    "typescript": "^5.4.5",
+    "vite": "^5.4.2"
+  }
+}
