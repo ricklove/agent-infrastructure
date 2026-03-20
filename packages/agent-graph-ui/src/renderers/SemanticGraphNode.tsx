@@ -2,6 +2,24 @@ import { Handle, NodeToolbar, Position, type NodeProps } from "reactflow";
 import { NodeAvatar } from "../components/NodeAvatar";
 import { VisibilityIcon } from "../components/VisibilityIcon";
 
+function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 export function SemanticGraphNode({
   data,
   selected,
@@ -20,6 +38,7 @@ export function SemanticGraphNode({
   selectionHiddenCount?: number;
   onExpandSelectionHidden?: () => void;
   onHideSelection?: () => void;
+  onCopySelectionReferences?: () => void;
   onPreviewHide?: () => void;
   onClearHidePreview?: () => void;
   onPreviewHideSelection?: () => void;
@@ -74,6 +93,17 @@ export function SemanticGraphNode({
             >
               <VisibilityIcon visible={false} className="h-3.5 w-3.5" />
               <span>{selectionCount}</span>
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                data.onCopySelectionReferences?.();
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-stone-600/90 text-stone-200 hover:bg-stone-800/80"
+              title={`Copy references for ${selectionCount} selected node${selectionCount === 1 ? "" : "s"}`}
+            >
+              <CopyIcon />
             </button>
           </div>
         </NodeToolbar>

@@ -51,15 +51,18 @@ export function buildCompleteGraph(args: {
   workspaceState: WorkspaceState;
 }): GraphSnapshot {
   const { sourceWorkspace, workspaceState } = args;
-  const layers = workspaceState.layers.filter((layer) => layer.visible);
-  const visibleSourceIds = new Set(layers.flatMap((layer) => layer.nodeIds));
+  const visibleLayers = workspaceState.layers.filter((layer) => layer.visible);
+  const visibleSourceIds = new Set(visibleLayers.flatMap((layer) => layer.nodeIds));
   const renderedNodeIdsBySourceId = new Map<string, string[]>();
-  const layerLayouts = layers.map((layer) => computeLayerLayout(layer, layer.nodeIds.length));
+  const layerLayouts = workspaceState.layers.map((layer) => computeLayerLayout(layer, layer.nodeIds.length));
   const graphLayers = layerLayouts.map((layout) => layout.graphLayer);
   const graphNodes: GraphNode[] = [];
 
   for (const layerLayout of layerLayouts) {
     const layer = layerLayout.graphLayer;
+    if (!layer.visible) {
+      continue;
+    }
     layer.nodeIds.forEach((sourceId, index) => {
       const sourceNode = sourceWorkspace.nodes.find((node) => node.id === sourceId);
       if (!sourceNode) {

@@ -39,6 +39,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
   appVersion = "dev",
   serverOrigin = "http://localhost:8788",
 }: AgentGraphScreenProps) {
+  const [copiedVersion, setCopiedVersion] = useState(false);
   const [store] = useState(() => createAgentGraphStore(serverOrigin));
   const [actions] = useState(() => createAgentGraphActions(store));
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
@@ -245,6 +246,13 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
     window.addEventListener("pointerup", onPointerUp);
   }
 
+  function copyVersionLabel(): void {
+    const value = `Version: ${appVersion}`;
+    void navigator.clipboard.writeText(value);
+    setCopiedVersion(true);
+    window.setTimeout(() => setCopiedVersion(false), 1200);
+  }
+
   return (
     <div className="relative h-screen overflow-hidden bg-stone-950 text-stone-100">
       <div className="h-full w-full">
@@ -341,7 +349,17 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
           >
             <div className="self-end rounded-2xl border border-stone-800/90 bg-stone-950/88 px-3 py-2 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
               <div className="flex items-center justify-end gap-3 whitespace-nowrap">
-                <span>Version: {appVersion}</span>
+                <span className="inline-flex items-center gap-2">
+                  <span>Version: {appVersion}</span>
+                  <button
+                    type="button"
+                    onClick={copyVersionLabel}
+                    className="rounded-full border border-stone-700 px-2 py-0.5 text-[10px] text-stone-200 hover:bg-stone-800"
+                    title="Copy version"
+                  >
+                    {copiedVersion ? "Copied" : "Copy"}
+                  </button>
+                </span>
                 <span className={connectionTone}>Connection: {connection.status}</span>
                 <span>Workspace: {workspaceLabel}</span>
                 <span>Revision: {revisionLabel}</span>

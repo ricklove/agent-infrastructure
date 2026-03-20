@@ -6,6 +6,7 @@ import {
   type SimulationNodeDatum,
 } from "d3-force";
 import {
+  applyNodeChanges,
   Background,
   Controls,
   MarkerType,
@@ -17,6 +18,7 @@ import {
   useNodesState,
   type Edge,
   type Node,
+  type NodeChange,
   type NodeMouseHandler,
   type ReactFlowInstance,
 } from "reactflow";
@@ -61,6 +63,7 @@ type CanvasProps = {
     setNodePinned(nodeId: string, pinned: boolean, position?: { x: number; y: number }): void;
     moveLayer(layerId: string, x: number, y: number): void;
     moveNode(nodeId: string, x: number, y: number): void;
+    moveNodes(positions: Array<{ nodeId: string; x: number; y: number }>): void;
     hideNodeFromLayer(layerId: string, sourceNodeId: string): void;
     toggleLayerNodes(layerId: string, sourceNodeIds: string[], include: boolean): void;
     revealConnectedHiddenContext(sourceNodeId: string, layerId: string): void;
@@ -76,6 +79,7 @@ type CanvasProps = {
 
 const REVEALED_HIDDEN_NODE_GAP = 28;
 const SEMANTIC_NODE_WIDTH = 168;
+const MAX_CLUSTER_VELOCITY = 42;
 type ForceNodeDatum = SimulationNodeDatum & {
   id: string;
   x: number;
@@ -91,6 +95,19 @@ type ClusterForceDatum = ForceNodeDatum & {
   internalOffsets: Map<string, { x: number; y: number }>;
   pinned: boolean;
 };
+
+function clampVelocity(node: SimulationNodeDatum, maxVelocity: number): void {
+  const vx = node.vx ?? 0;
+  const vy = node.vy ?? 0;
+  const speed = Math.hypot(vx, vy);
+  if (speed <= maxVelocity || speed === 0) {
+    return;
+  }
+
+  const scale = maxVelocity / speed;
+  node.vx = vx * scale;
+  node.vy = vy * scale;
+}
 
 function nodeDimensions(node: Node): { width: number; height: number } {
   if (typeof node.width === "number" && typeof node.height === "number") {
@@ -680,23 +697,25 @@ function SelectionSync({
 }
 
 function mapLayerNodes(graph: GraphSnapshot): Node[] {
-  const groupNodes: Node[] = graph.layers.map((layer) => ({
-    id: layer.id,
-    type: "group",
-    data: { label: layer.label },
-    position: { x: layer.x, y: layer.y },
-    style: {
-      width: layer.width,
-      height: layer.height,
-      background: "rgba(28, 25, 23, 0.6)",
-      border: "1px dashed rgba(168, 162, 158, 0.28)",
-      borderRadius: "20px",
-      color: "rgba(245, 245, 244, 0.9)",
-      padding: 12,
-    },
-    draggable: true,
-    selectable: false,
-  }));
+  const groupNodes: Node[] = graph.layers
+    .filter((layer) => layer.visible)
+    .map((layer) => ({
+      id: layer.id,
+      type: "group",
+      data: { label: layer.label },
+      position: { x: layer.x, y: layer.y },
+      style: {
+        width: layer.width,
+        height: layer.height,
+        background: "rgba(28, 25, 23, 0.6)",
+        border: "1px dashed rgba(168, 162, 158, 0.28)",
+        borderRadius: "20px",
+        color: "rgba(245, 245, 244, 0.9)",
+        padding: 12,
+      },
+      draggable: true,
+      selectable: false,
+    }));
 
   const semanticNodes: Node[] = graph.nodes.map((node) => mapSemanticNode(node));
   return [...groupNodes, ...semanticNodes];
@@ -713,6 +732,7 @@ function mapNodes(
   toggleNodePinned: (nodeId: string, pinned: boolean, fallbackPosition: { x: number; y: number }) => void,
   revealHiddenNode: (portalNodeId: string, hiddenNodeId: string) => void,
   expandSelectionHidden: () => void,
+  copySelectionReferences: () => void,
   hideSelection: () => void,
   beginHidePreview: (layerId: string | null, sourceNodeIds: string[]) => void,
   endHidePreview: () => void,
@@ -777,6 +797,13 @@ function mapNodes(
           node.id === selectionToolbarAnchorId &&
           selectedSemanticNodeIds.length > 0
             ? hideSelection
+            : undefined,
+        onCopySelectionReferences:
+          !isGroup &&
+          node.type === "semanticNode" &&
+          node.id === selectionToolbarAnchorId &&
+          selectedSemanticNodeIds.length > 0
+            ? copySelectionReferences
             : undefined,
         onHide:
           !isGroup && isActiveLayer && node.type === "semanticNode"
@@ -990,6 +1017,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   const localNodesRef = useRef<Node[]>([]);
   const localEdgesRef = useRef<Edge[]>([]);
   const pinnedNodeIdsRef = useRef<string[]>([]);
+  const dirtyPersistNodeIdsRef = useRef<Set<string>>(new Set());
   const physicsModelRef = useRef<{
     nodes: ClusterForceDatum[];
     movableNodeIds: string[];
@@ -1033,6 +1061,23 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     }
     return hiddenNodeSourceIds.size;
   }, [graph, selectedSemanticNodeIds]);
+  const selectedNodeReferenceText = useMemo(() => {
+    const selectedNodes = (graph?.nodes ?? []).filter(
+      (node) =>
+        node.kind === "semantic-node" &&
+        selectedSemanticNodeIds.includes(node.id) &&
+        (!activeLayerId || node.parentLayerId === activeLayerId),
+    );
+    return selectedNodes
+      .map((node) => {
+        const parts = [`- ${node.label}`, `[${node.sourceId}]`];
+        if (node.sourcePath) {
+          parts.push(node.sourcePath);
+        }
+        return parts.join(" ");
+      })
+      .join("\n");
+  }, [activeLayerId, graph, selectedSemanticNodeIds]);
   const hidePreviewNodeIds = useMemo(
     () =>
       new Set(
@@ -1060,6 +1105,45 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
       ),
     [graph, hidePreview],
   );
+
+  function selectedSemanticDragTargets(
+    draggedNode: Node,
+  ): Array<{ nodeId: string; x: number; y: number }> {
+    const selectedNodeIdSet = new Set(selectedNodeIds);
+    const currentNodes = reactFlowRef.current?.getNodes() ?? localNodesRef.current;
+    const draggedIsPartOfSelection = selectedNodeIdSet.has(draggedNode.id);
+    const selectedSemanticNodes = currentNodes.filter(
+      (node) =>
+        selectedNodeIdSet.has(node.id) &&
+        node.type === "semanticNode" &&
+        String((node.data as { layerId?: string } | undefined)?.layerId ?? node.parentId ?? "") ===
+          (activeLayerId ?? String((draggedNode.data as { layerId?: string } | undefined)?.layerId ?? draggedNode.parentId ?? "")),
+    );
+
+    if (!draggedIsPartOfSelection || selectedSemanticNodes.length <= 1) {
+      return [
+        {
+          nodeId: draggedNode.id,
+          x: draggedNode.position.x,
+          y: draggedNode.position.y,
+        },
+      ];
+    }
+
+    return selectedSemanticNodes.map((node) =>
+      node.id === draggedNode.id
+        ? {
+            nodeId: node.id,
+            x: draggedNode.position.x,
+            y: draggedNode.position.y,
+          }
+        : {
+            nodeId: node.id,
+            x: node.position.x,
+            y: node.position.y,
+          },
+    );
+  }
 
   const mappedNodes = useMemo(
     () =>
@@ -1140,6 +1224,13 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
               }
             },
             () => {
+              if (!selectedNodeReferenceText) {
+                return;
+              }
+
+              void navigator.clipboard.writeText(selectedNodeReferenceText);
+            },
+            () => {
               if (!activeLayerId) {
                 return;
               }
@@ -1163,14 +1254,73 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
             endHidePreview,
           )
         : [],
-    [actions.hideNodeFromLayer, actions.revealHiddenNode, actions.setCanvasSelection, actions.setNodePinned, actions.toggleLayerNodes, beginHidePreview, endHidePreview, graph, activeLayerId, hidePreview, pinnedNodeIds, selectedHiddenNeighborCount, selectedSemanticNodeIds],
+    [actions.hideNodeFromLayer, actions.revealHiddenNode, actions.setCanvasSelection, actions.setNodePinned, actions.toggleLayerNodes, beginHidePreview, endHidePreview, graph, activeLayerId, hidePreview, pinnedNodeIds, selectedHiddenNeighborCount, selectedNodeReferenceText, selectedSemanticNodeIds],
   );
   const mappedEdges = useMemo(
     () => (graph ? mapEdges(graph.edges, hidePreviewNodeIds) : []),
     [graph, hidePreviewNodeIds],
   );
-  const [localNodes, setLocalNodes, onNodesChange] = useNodesState(mappedNodes);
+  const graphTopologyKey = useMemo(
+    () =>
+      graph
+        ? `${graph.revision}:${graph.nodes.map((node) => node.id).join("|")}:${graph.edges
+            .map((edge) => edge.id)
+            .join("|")}`
+        : "no-graph",
+    [graph],
+  );
+  const [localNodes, setLocalNodes] = useNodesState(mappedNodes);
   const [localEdges, setLocalEdges, onEdgesChange] = useEdgesState(mappedEdges);
+
+  function handleNodesChange(changes: NodeChange[]): void {
+    setLocalNodes((current) => applyNodeChanges(changes, current));
+
+    if (physicsEnabled) {
+      return;
+    }
+
+    const completedDragNodeIds = changes
+      .filter(
+        (change): change is Extract<NodeChange, { type: "position" }> =>
+          change.type === "position" && change.dragging === false,
+      )
+      .map((change) => change.id);
+
+    if (completedDragNodeIds.length === 0) {
+      return;
+    }
+
+    const currentNodes = reactFlowRef.current?.getNodes() ?? localNodesRef.current;
+    const selectedNodeIdSet = new Set(selectedNodeIds);
+    const persistedTargets = new Map<string, { nodeId: string; x: number; y: number }>();
+
+    for (const completedNodeId of completedDragNodeIds) {
+      const draggedNode = currentNodes.find((node) => node.id === completedNodeId);
+      if (!draggedNode || draggedNode.type !== "semanticNode") {
+        continue;
+      }
+
+      const selectedSemanticNodes = currentNodes.filter(
+        (node) => selectedNodeIdSet.has(node.id) && node.type === "semanticNode",
+      );
+      const nodesToPersist =
+        selectedNodeIdSet.has(completedNodeId) && selectedSemanticNodes.length > 1
+          ? selectedSemanticNodes
+          : [draggedNode];
+
+      for (const node of nodesToPersist) {
+        persistedTargets.set(node.id, {
+          nodeId: node.id,
+          x: node.position.x,
+          y: node.position.y,
+        });
+      }
+    }
+
+    if (persistedTargets.size > 0) {
+      actions.moveNodes([...persistedTargets.values()]);
+    }
+  }
 
   useEffect(() => {
     if (!graph) {
@@ -1233,10 +1383,6 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
-      if ((!event.ctrlKey && !event.metaKey) || event.key.toLowerCase() !== "a") {
-        return;
-      }
-
       const target = event.target;
       if (
         target instanceof HTMLInputElement ||
@@ -1244,6 +1390,24 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
         target instanceof HTMLSelectElement ||
         (target instanceof HTMLElement && target.isContentEditable)
       ) {
+        return;
+      }
+
+      if (!event.ctrlKey && !event.metaKey) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      if (key === "c") {
+        if (!selectedNodeReferenceText) {
+          return;
+        }
+        event.preventDefault();
+        void navigator.clipboard.writeText(selectedNodeReferenceText);
+        return;
+      }
+
+      if (key !== "a") {
         return;
       }
 
@@ -1267,7 +1431,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [actions, activeLayerId, graph]);
+  }, [actions, activeLayerId, graph, selectedNodeReferenceText]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
     const nodeLayerId =
@@ -1386,17 +1550,25 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     const incomingByNode = new Map<string, string[]>();
     const outgoingByNode = new Map<string, string[]>();
     for (const link of semanticLinks) {
-      outgoingByNode.set(link.source, [...(outgoingByNode.get(link.source) ?? []), link.target]);
-      incomingByNode.set(link.target, [...(incomingByNode.get(link.target) ?? []), link.source]);
+      outgoingByNode.set(link.source, [
+        ...(outgoingByNode.get(link.source) ?? []),
+        link.target,
+      ]);
+      incomingByNode.set(link.target, [
+        ...(incomingByNode.get(link.target) ?? []),
+        link.source,
+      ]);
     }
 
     const groupsBySignature = new Map<string, Node[]>();
     for (const node of layerNodes) {
       const incomingSignature = [...new Set(incomingByNode.get(node.id) ?? [])].sort().join("|");
       const outgoingSignature = [...new Set(outgoingByNode.get(node.id) ?? [])].sort().join("|");
-      const signature = pinnedSet.has(node.id)
-        ? `pinned:${node.id}`
-        : `in:${incomingSignature}::out:${outgoingSignature}`;
+      const hasAnyAttachment = incomingSignature.length > 0 || outgoingSignature.length > 0;
+      const signature =
+        pinnedSet.has(node.id) || !hasAnyAttachment
+          ? `singleton:${node.id}`
+          : `in:${incomingSignature}::out:${outgoingSignature}`;
       groupsBySignature.set(signature, [...(groupsBySignature.get(signature) ?? []), node]);
     }
 
@@ -1503,6 +1675,10 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
         });
       }
     }
+    const dirtyNodeIds = dirtyPersistNodeIdsRef.current;
+    for (const nodeId of nextPositions.keys()) {
+      dirtyNodeIds.add(nodeId);
+    }
 
     setLocalNodes((current) =>
       current.map((node) =>
@@ -1520,17 +1696,25 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     const movableSet = new Set(movableNodeIds);
     const pinnedSet = new Set(pinnedNodeIdsRef.current);
     const currentNodeById = new Map(localNodesRef.current.map((node) => [node.id, node]));
-    for (const cluster of nodes) {
-      for (const nodeId of cluster.memberNodeIds) {
-        if (movableSet.has(nodeId) && !pinnedSet.has(nodeId)) {
-          const currentNode = currentNodeById.get(nodeId);
-          actions.moveNode(
-            nodeId,
-            currentNode?.position.x ?? 0,
-            currentNode?.position.y ?? 0,
-          );
-        }
+    const dirtyNodeIds = dirtyPersistNodeIdsRef.current;
+    const positions: Array<{ nodeId: string; x: number; y: number }> = [];
+    for (const nodeId of dirtyNodeIds) {
+      if (!movableSet.has(nodeId) || pinnedSet.has(nodeId)) {
+        continue;
       }
+      const currentNode = currentNodeById.get(nodeId);
+      if (!currentNode) {
+        continue;
+      }
+      positions.push({
+        nodeId,
+        x: currentNode.position.x,
+        y: currentNode.position.y,
+      });
+    }
+    dirtyNodeIds.clear();
+    if (positions.length > 0) {
+      actions.moveNodes(positions);
     }
   }
 
@@ -1551,6 +1735,9 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     const simulation = model.simulation;
     simulation.alpha(0.9);
     simulation.on("tick", () => {
+      for (const node of model.nodes) {
+        clampVelocity(node, MAX_CLUSTER_VELOCITY);
+      }
       applyForcePositions(model.nodes);
       schedulePersistence(model.nodes, model.movableNodeIds);
     });
@@ -1563,6 +1750,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     };
   }, [
     physicsEnabled,
+    graphTopologyKey,
     activeLayerId,
     pinnedNodeIds.join("|"),
     springStrength,
@@ -1618,7 +1806,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
           autoPanOnNodeDrag
           selectionOnDrag
           selectionMode={SelectionMode.Partial}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onInit={(instance) => {
             reactFlowRef.current = instance;
@@ -1661,7 +1849,18 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
             if (graph?.layers.some((layer) => layer.id === node.id)) {
               actions.moveLayer(node.id, node.position.x, node.position.y);
             } else {
-              actions.moveNode(node.id, node.position.x, node.position.y);
+              const persistedTargets = selectedSemanticDragTargets(node);
+              if (physicsEnabled) {
+                for (const target of persistedTargets) {
+                  dirtyPersistNodeIdsRef.current.add(target.nodeId);
+                }
+                schedulePersistence(
+                  physicsModelRef.current?.nodes ?? [],
+                  physicsModelRef.current?.movableNodeIds ?? [],
+                );
+              } else {
+                actions.moveNodes(persistedTargets);
+              }
               if (physicsEnabled) {
                 releaseNodeAfterTimeout(node.id);
               }

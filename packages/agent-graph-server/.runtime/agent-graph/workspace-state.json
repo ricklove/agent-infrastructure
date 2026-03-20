@@ -1,10 +1,124 @@
 {
   "rootId": "agent-graph",
-  "revision": 37431,
+  "revision": 115136,
   "layers": [
     {
       "id": "layer-overview",
       "label": "Overview",
+      "kind": "overview",
+      "nodeIds": [
+        "user",
+        "source-truth",
+        "graph-whole",
+        "graph-completeness",
+        "package-core",
+        "contract-workspace-snapshot",
+        "package-studio",
+        "detail-contract-conflict-payload-means-0",
+        "detail-package-studio-rejects-0",
+        "detail-package-server-rejects-0",
+        "package-server",
+        "detail-runtime-browser-connects-to-0",
+        "detail-runtime-browser-connects-to-1",
+        "detail-runtime-browser-connects-to-2",
+        "detail-user-opens-0",
+        "detail-user-opens-1",
+        "detail-user-opens-2",
+        "detail-user-explores-0",
+        "detail-user-explores-1",
+        "detail-user-clones-0",
+        "detail-user-clones-1",
+        "detail-user-clones-2",
+        "detail-user-refines-0",
+        "detail-user-refines-2",
+        "detail-user-arranges-0",
+        "detail-user-arranges-1",
+        "detail-user-selects-0",
+        "detail-user-selects-1",
+        "detail-user-edits-0",
+        "detail-user-edits-1",
+        "detail-user-connects-0",
+        "detail-user-inspects-0",
+        "detail-user-inspects-1",
+        "detail-user-inspects-2",
+        "detail-user-inspects-3",
+        "detail-user-inspects-4",
+        "detail-graph-layer-connects-to-0",
+        "detail-graph-layer-connects-to-1",
+        "detail-graph-layer-connects-to-2",
+        "detail-graph-derived-edge-exists-between-0",
+        "detail-graph-derived-edge-exists-between-1",
+        "detail-graph-derived-edge-exists-between-2",
+        "detail-agent-graph-enforces-4",
+        "detail-agent-graph-enforces-5",
+        "detail-agent-graph-enforces-6",
+        "detail-agent-graph-defines-0",
+        "detail-agent-graph-defines-1",
+        "detail-agent-graph-defines-2",
+        "detail-agent-graph-defines-3",
+        "detail-agent-graph-defines-4",
+        "detail-agent-graph-defines-5",
+        "detail-agent-graph-defines-6",
+        "detail-agent-graph-defines-7",
+        "detail-agent-graph-defines-8",
+        "detail-agent-graph-accepts-0",
+        "detail-agent-graph-rejects-0",
+        "detail-agent-graph-rejects-1",
+        "detail-agent-graph-detects-0",
+        "detail-agent-graph-detects-1",
+        "detail-agent-graph-implements-through-0",
+        "detail-agent-graph-implements-through-1",
+        "detail-agent-graph-implements-through-2",
+        "detail-agent-graph-implements-through-3",
+        "detail-agent-graph-implements-through-5",
+        "detail-agent-graph-uses-files-0",
+        "detail-agent-graph-uses-files-1",
+        "detail-agent-graph-uses-files-2",
+        "detail-agent-graph-uses-files-3",
+        "detail-agent-graph-uses-files-4",
+        "detail-agent-graph-uses-files-5",
+        "detail-agent-graph-uses-files-6",
+        "detail-agent-graph-uses-files-7",
+        "detail-agent-graph-uses-files-8",
+        "detail-agent-graph-uses-files-9",
+        "detail-agent-graph-uses-files-10",
+        "detail-agent-graph-uses-files-11",
+        "detail-agent-graph-uses-files-12",
+        "detail-agent-graph-uses-files-13",
+        "detail-agent-graph-uses-files-14",
+        "detail-agent-graph-uses-files-15",
+        "detail-agent-graph-uses-files-16",
+        "detail-agent-graph-uses-files-17",
+        "detail-agent-graph-uses-files-19",
+        "detail-agent-graph-uses-files-20",
+        "detail-agent-graph-uses-files-21",
+        "detail-agent-graph-uses-files-22",
+        "detail-agent-graph-defines-ui-components-3",
+        "detail-agent-graph-defines-ui-components-5",
+        "detail-agent-graph-defines-ui-components-6",
+        "detail-agent-graph-defines-ui-components-7",
+        "detail-agent-graph-defines-store-slices-0",
+        "detail-agent-graph-defines-store-slices-1",
+        "detail-agent-graph-defines-store-slices-2",
+        "detail-agent-graph-defines-store-slices-5",
+        "detail-agent-graph-defines-store-actions-1",
+        "detail-agent-graph-defines-store-actions-3",
+        "detail-agent-graph-defines-store-actions-5",
+        "detail-agent-graph-defines-store-actions-6",
+        "detail-agent-graph-defines-store-actions-9",
+        "detail-agent-graph-defines-store-actions-15",
+        "detail-agent-graph-defines-core-modules-2",
+        "agent-graph",
+        "runtime-browser"
+      ],
+      "visible": true,
+      "x": 1971.7257878831426,
+      "y": -358.17194094532624,
+      "derivedFromLayerId": null
+    },
+    {
+      "id": "layer-1774024439785",
+      "label": "Overview Copy",
       "kind": "overview",
       "nodeIds": [
         "user",
@@ -27,7 +141,6 @@
         "package-store",
         "package-core",
         "package-protocol",
-        "package-server",
         "runtime-browser",
         "runtime-react-flow",
         "runtime-legend-state",
@@ -42,7 +155,6 @@
         "contract-external-change",
         "source-document",
         "agentish",
-        "agent-graph",
         "package-studio",
         "detail-agent-graph-enforces-0",
         "detail-agent-graph-enforces-2",
@@ -53,12 +165,16 @@
         "detail-agent-graph-defines-hidden-context-portal-semantics-1",
         "detail-contract-graph-snapshot-means-0",
         "detail-contract-conflict-payload-means-0",
-        "detail-contract-validation-result-means-0"
+        "detail-contract-validation-result-means-0",
+        "detail-contract-diff-snapshot-means-0",
+        "detail-package-studio-rejects-0",
+        "detail-package-server-rejects-0",
+        "package-server"
       ],
-      "visible": true,
-      "x": 1390.0012015290101,
-      "y": -300.58195628046735,
-      "derivedFromLayerId": null
+      "visible": false,
+      "x": 3780.0012015290104,
+      "y": -1565.5819562804672,
+      "derivedFromLayerId": "layer-overview"
     }
   ],
   "nodePositions": {
@@ -123,20 +239,20 @@
       "y": 22
     },
     "agentish::layer-overview": {
-      "x": -7141.939488831218,
-      "y": -1297.1969518025903
+      "x": -8404.503348406282,
+      "y": -2331.0138159549
     },
     "agent-graph::layer-overview": {
-      "x": -7323.918320317795,
-      "y": -1079.7172839493091
+      "x": -175272386.68358144,
+      "y": 982.1477956479471
     },
     "source-document::layer-overview": {
-      "x": -7097.730543733988,
-      "y": -1140.5706833313793
+      "x": -8373.259712650424,
+      "y": -1296.2699580158192
     },
     "source-truth::layer-overview": {
-      "x": 12807.161593024945,
-      "y": -1816.7739036253715
+      "x": -6934.017027846169,
+      "y": 2387.9726433297424
     },
     "portal:incoming:source-document::layer-overview": {
       "x": -54,
@@ -147,84 +263,84 @@
       "y": 22
     },
     "graph-layer::layer-overview": {
-      "x": -4102.625677249847,
-      "y": 424.0976747752846
+      "x": -4785.707438798408,
+      "y": 502.91815996212654
     },
     "user::layer-overview": {
-      "x": -4193.31989271606,
-      "y": 737.2406501877368
+      "x": -9784.253453432171,
+      "y": -639.2431520847499
     },
     "graph-whole::layer-overview": {
-      "x": -4385.394653316321,
-      "y": -108.1691252080825
+      "x": -875.394653316321,
+      "y": 391.8308747919175
     },
     "graph-layer-group::layer-overview": {
-      "x": -3797.751477303681,
-      "y": 641.6173259840233
+      "x": -4553.112387645877,
+      "y": 758.925219970236
     },
     "graph-edge::layer-overview": {
-      "x": -3792.3695339920773,
-      "y": 374.03205500190205
+      "x": -4476.600015344222,
+      "y": 579.7442464892524
     },
     "source-workspace::layer-overview": {
-      "x": -3854.9303733436755,
-      "y": 821.4501777451085
+      "x": -4846.0430923565145,
+      "y": 1066.3331032476533
     },
     "graph-derived-edge::layer-overview": {
-      "x": -3983.8161555031747,
-      "y": 122.87292485252945
+      "x": -4501.033549499864,
+      "y": 328.9799373439288
     },
     "graph-diff-layer::layer-overview": {
-      "x": -4131.47089294808,
-      "y": 237.4020524020831
+      "x": -4724.385603278194,
+      "y": 327.0927888753193
     },
     "graph-completeness::layer-overview": {
-      "x": -807.0033741558166,
-      "y": 15436.459059079685
+      "x": -4181.211813894225,
+      "y": 1283.8863084955074
     },
     "package-studio::layer-overview": {
-      "x": -1069.407223539372,
-      "y": 664.2680992767635
+      "x": -578.0450460768777,
+      "y": 422.69395250580055
     },
     "package-server::layer-overview": {
-      "x": -1511.160272909721,
-      "y": 478.4471860805518
+      "x": -629.160272909721,
+      "y": 751.4471860805518
     },
     "runtime-legend-state::layer-overview": {
-      "x": -19287.84366940291,
-      "y": -4727.092601237694
+      "x": -19254.759451483736,
+      "y": -4356.40525851092
     },
     "editing-conflict::layer-overview": {
-      "x": -6901.645327124557,
-      "y": -1113.3306901951894
+      "x": -7984.320500880502,
+      "y": -160.2916829030102
     },
     "editing-mutation::layer-overview": {
-      "x": -5847.207052716777,
-      "y": -142.77538761167946
+      "x": -4679.329692107376,
+      "y": 991.4251891054103
     },
     "graph-node::layer-overview": {
-      "x": -3938.756476444652,
-      "y": 494.41394914623004
+      "x": -4668.554844960496,
+      "y": 630.1956102394844
     },
     "graph-hidden-context::layer-overview": {
-      "x": -3974.9752803626498,
-      "y": 308.7832366502934
+      "x": -4625.711354460224,
+      "y": 467.8843237483952
     },
     "graph-plane::layer-overview": {
-      "x": -3949.4659793254777,
-      "y": -174.49657834239403
+      "x": -3942.8580668813197,
+      "y": -132.81200031802211
     },
     "editing-validation::layer-overview": {
-      "x": -5719.3544554345435,
-      "y": -275.0981936078155
+      "x": -4729.0858938199335,
+      "y": 814.2805303288519
     },
     "package-ui::layer-overview": {
-      "x": -805.0577063535688,
-      "y": 509.7232494471873
+      "x": -808.1335193349191,
+      "y": 493.39662927352833
     },
     "package-store::layer-overview": {
-      "x": -606.133055713389,
-      "y": 517.0028082076852
+      "x": -609.0942600187296,
+      "y": 462.3945657670655
     },
     "package-core::layer-overview": {
       "x": -239.04531049400146,
@@ -232,51 +348,51 @@
     },
     "package-protocol::layer-overview": {
       "x": -583.2413618513466,
-      "y": 793.2107129203571
+      "y": 792.2107129203571
     },
     "runtime-browser::layer-overview": {
-      "x": -19670.916184174297,
-      "y": -4550.574451382105
+      "x": -13852.077433161941,
+      "y": -1346.4699740152269
     },
     "runtime-react-flow::layer-overview": {
-      "x": -19287.4320288581,
-      "y": -4390.446837273754
+      "x": -19235.633776634226,
+      "y": -4028.637069875475
     },
     "runtime-bun::layer-overview": {
-      "x": -19206.355647480155,
-      "y": -4550.404989371787
+      "x": -19156.610839625555,
+      "y": -4188.005598952388
     },
     "runtime-filesystem::layer-overview": {
-      "x": -18781.364051577602,
-      "y": -4558.3484252988055
+      "x": -18726.25907245731,
+      "y": -4192.444657703909
     },
     "contract-workspace-snapshot::layer-overview": {
-      "x": -7257.7846913048,
-      "y": -1467.6047685391538
+      "x": -9075.138275458346,
+      "y": -1521.3742533345917
     },
     "contract-graph-snapshot::layer-overview": {
-      "x": -6856.175522165377,
-      "y": -796.355540428932
+      "x": -6666.9443378202,
+      "y": -580.3601330485983
     },
     "contract-graph-patch::layer-overview": {
-      "x": -7076.949510852595,
-      "y": -1459.8501946983642
+      "x": -7872.840330764597,
+      "y": -2416.0211222528274
     },
     "contract-diff-snapshot::layer-overview": {
-      "x": -6998.839468292618,
-      "y": -1289.0236601025292
+      "x": -7260.761162323537,
+      "y": -1779.845495681849
     },
     "contract-validation-result::layer-overview": {
-      "x": -6896.583711364429,
-      "y": -1442.3498317205983
+      "x": -6482.140957333298,
+      "y": -2746.5285415195076
     },
     "contract-conflict-payload::layer-overview": {
-      "x": -6730.232761439534,
-      "y": -1127.638782921538
+      "x": -6174.894397569487,
+      "y": -1657.9814937057633
     },
     "contract-external-change::layer-overview": {
-      "x": -6798.505622782157,
-      "y": -963.9820788514221
+      "x": -7745.726928573459,
+      "y": -1163.9031400737583
     },
     "portal:outgoing:agent-graph::layer-overview": {
       "x": -2633.4317718935854,
@@ -315,52 +431,1156 @@
       "y": -108.1691252080825
     },
     "detail-agent-graph-enforces-0::layer-overview": {
-      "x": -6822.818331788543,
-      "y": -1283.7380997279367
+      "x": -6692.7244337950915,
+      "y": -2394.184061736246
     },
     "detail-agent-graph-enforces-2::layer-overview": {
-      "x": -6981.013424539773,
-      "y": -951.3522045096355
+      "x": -7180.620068876339,
+      "y": -2185.2005690068963
     },
     "detail-agent-graph-enforces-1::layer-overview": {
-      "x": -7035.021625173455,
-      "y": -787.4742583169425
+      "x": -7174.32260538645,
+      "y": -1042.2709375750937
     },
     "detail-agent-graph-enforces-3::layer-overview": {
-      "x": -7537.54461950307,
-      "y": -1291.549960030078
+      "x": -8089.239038590436,
+      "y": -3012.3359129233404
     },
     "detail-agent-graph-defines-layer-semantics-2::layer-overview": {
-      "x": -7439.112912808597,
-      "y": -1470.9218995491458
+      "x": -7294.672323369511,
+      "y": -3379.328824491886
     },
     "detail-agent-graph-defines-layer-semantics-3::layer-overview": {
-      "x": -7351.541892077629,
-      "y": -1309.0978547412572
+      "x": -8134.8806447661345,
+      "y": -1852.557198575169
     },
     "detail-agent-graph-defines-hidden-context-portal-semantics-1::layer-overview": {
-      "x": -7199.898216994156,
-      "y": -713.7985348390689
+      "x": -7371.602881025789,
+      "y": -470.2074066098457
     },
     "detail-contract-conflict-payload-means-0::layer-overview": {
-      "x": -6230.44882572468,
-      "y": -1136.9309145063792
+      "x": 167989546.26383358,
+      "y": 289.09198226069213
     },
     "detail-contract-validation-result-means-0::layer-overview": {
-      "x": -6416.120570155377,
-      "y": -1443.6167325546483
+      "x": -6047.865740326107,
+      "y": -2743.3343855380017
     },
     "detail-contract-graph-snapshot-means-0::layer-overview": {
-      "x": -6367.891847868072,
-      "y": -748.6165977779542
+      "x": -6176.216202645719,
+      "y": -636.456405763927
+    },
+    "detail-contract-diff-snapshot-means-0::layer-overview": {
+      "x": -6825.40779422643,
+      "y": -1784.040562288612
+    },
+    "detail-package-studio-rejects-0::layer-overview": {
+      "x": -120.04513534285226,
+      "y": 487.8247592773249
+    },
+    "detail-package-server-rejects-0::layer-overview": {
+      "x": -171.16034778482424,
+      "y": 759.5112124779679
+    },
+    "detail-runtime-browser-connects-to-0::layer-overview": {
+      "x": -13054.077433621156,
+      "y": -1427.4699217708908
+    },
+    "detail-runtime-browser-connects-to-1::layer-overview": {
+      "x": -13402.077433621156,
+      "y": -1437.4699217708908
+    },
+    "detail-runtime-browser-connects-to-2::layer-overview": {
+      "x": -13402.077433621156,
+      "y": -1275.4699217708908
+    },
+    "detail-user-opens-0::layer-overview": {
+      "x": -8292.753453703579,
+      "y": -781.2431523711388
+    },
+    "detail-user-opens-1::layer-overview": {
+      "x": -8645.253453703579,
+      "y": -953.2431523711388
+    },
+    "detail-user-opens-2::layer-overview": {
+      "x": -8292.753453703579,
+      "y": -629.2431523711388
+    },
+    "detail-user-explores-0::layer-overview": {
+      "x": -7949.253453703579,
+      "y": -629.2431523711388
+    },
+    "detail-user-explores-1::layer-overview": {
+      "x": -9341.253453703579,
+      "y": -953.2431523711388
+    },
+    "detail-user-clones-0::layer-overview": {
+      "x": -9341.253453703579,
+      "y": -325.24315237113876
+    },
+    "detail-user-clones-1::layer-overview": {
+      "x": -8993.253453703579,
+      "y": -325.24315237113876
+    },
+    "detail-user-clones-2::layer-overview": {
+      "x": -8297.253453703579,
+      "y": -943.2431523711388
+    },
+    "detail-user-refines-0::layer-overview": {
+      "x": -8297.253453703579,
+      "y": -477.24315237113876
+    },
+    "detail-user-refines-1::layer-overview": {
+      "x": -5498.307334780737,
+      "y": -401.8168612223733
+    },
+    "detail-user-refines-2::layer-overview": {
+      "x": -8993.253453703579,
+      "y": -477.24315237113876
+    },
+    "detail-user-arranges-0::layer-overview": {
+      "x": -8645.253453703579,
+      "y": -477.24315237113876
+    },
+    "detail-user-arranges-1::layer-overview": {
+      "x": -9341.253453703579,
+      "y": -791.2431523711388
+    },
+    "detail-user-selects-0::layer-overview": {
+      "x": -8974.253453703579,
+      "y": -629.2431523711388
+    },
+    "detail-user-selects-1::layer-overview": {
+      "x": -8993.253453703579,
+      "y": -791.2431523711388
+    },
+    "detail-user-selects-2::layer-overview": {
+      "x": -5419.909549782397,
+      "y": -233.32344466612162
+    },
+    "detail-user-edits-0::layer-overview": {
+      "x": -8993.253453703579,
+      "y": -953.2431523711388
+    },
+    "detail-user-edits-1::layer-overview": {
+      "x": -7938.253453703579,
+      "y": -477.24315237113876
+    },
+    "detail-user-connects-0::layer-overview": {
+      "x": -9341.253453703579,
+      "y": -487.24315237113876
+    },
+    "detail-user-inspects-0::layer-overview": {
+      "x": -9312.253453703579,
+      "y": -629.2431523711388
+    },
+    "detail-user-inspects-1::layer-overview": {
+      "x": -7924.753453703579,
+      "y": -781.2431523711388
+    },
+    "detail-user-inspects-2::layer-overview": {
+      "x": -8616.253453703579,
+      "y": -781.2431523711388
+    },
+    "detail-user-inspects-3::layer-overview": {
+      "x": -7924.753453703579,
+      "y": -943.2431523711388
+    },
+    "detail-user-inspects-4::layer-overview": {
+      "x": -8616.253453703579,
+      "y": -629.2431523711388
+    },
+    "detail-graph-layer-connects-to-0::layer-overview": {
+      "x": -4183.324053378498,
+      "y": -200.71120368176076
+    },
+    "detail-graph-layer-connects-to-1::layer-overview": {
+      "x": -4879.324053378498,
+      "y": -48.71120368176078
+    },
+    "detail-graph-layer-connects-to-2::layer-overview": {
+      "x": -4879.324053378498,
+      "y": -210.71120368176076
+    },
+    "detail-graph-derived-edge-exists-between-0::layer-overview": {
+      "x": -4183.324053378498,
+      "y": -38.71120368176078
+    },
+    "detail-graph-derived-edge-exists-between-1::layer-overview": {
+      "x": -4531.324053378498,
+      "y": -48.71120368176078
+    },
+    "detail-graph-derived-edge-exists-between-2::layer-overview": {
+      "x": -4531.324053378498,
+      "y": -200.71120368176076
+    },
+    "detail-agent-graph-enforces-4::layer-overview": {
+      "x": 167990255.76383358,
+      "y": 461.09198226069213
+    },
+    "detail-agent-graph-enforces-5::layer-overview": {
+      "x": 167988850.26383358,
+      "y": 289.09198226069213
+    },
+    "detail-agent-graph-enforces-6::layer-overview": {
+      "x": 167988502.26383358,
+      "y": 451.09198226069213
+    },
+    "detail-agent-graph-defines-0::layer-overview": {
+      "x": 167989198.26383358,
+      "y": 451.09198226069213
+    },
+    "detail-agent-graph-defines-1::layer-overview": {
+      "x": 167988850.26383358,
+      "y": -518.9080177393079
+    },
+    "detail-agent-graph-defines-2::layer-overview": {
+      "x": 167989546.26383358,
+      "y": 107.09198226069213
+    },
+    "detail-agent-graph-defines-3::layer-overview": {
+      "x": 167987806.26383358,
+      "y": -316.90801773930787
+    },
+    "detail-agent-graph-defines-4::layer-overview": {
+      "x": 167988850.26383358,
+      "y": -114.90801773930787
+    },
+    "detail-agent-graph-defines-5::layer-overview": {
+      "x": 167988154.26383358,
+      "y": -114.90801773930787
+    },
+    "detail-agent-graph-defines-6::layer-overview": {
+      "x": 167987806.26383358,
+      "y": 87.09198226069213
+    },
+    "detail-agent-graph-defines-7::layer-overview": {
+      "x": 167989198.26383358,
+      "y": -114.90801773930787
+    },
+    "detail-agent-graph-defines-8::layer-overview": {
+      "x": 167987806.26383358,
+      "y": 775.0919822606921
+    },
+    "detail-agent-graph-accepts-0::layer-overview": {
+      "x": 167989546.26383358,
+      "y": -104.90801773930787
+    },
+    "detail-agent-graph-rejects-0::layer-overview": {
+      "x": 167990244.26383358,
+      "y": -498.90801773930787
+    },
+    "detail-agent-graph-rejects-1::layer-overview": {
+      "x": 167990244.26383358,
+      "y": 117.09198226069213
+    },
+    "detail-agent-graph-detects-0::layer-overview": {
+      "x": -5083.403774410293,
+      "y": 2060.3353748177606
+    },
+    "detail-agent-graph-detects-1::layer-overview": {
+      "x": 167988502.26383358,
+      "y": 613.0919822606921
+    },
+    "detail-agent-graph-implements-through-0::layer-overview": {
+      "x": 167988502.26383358,
+      "y": 289.09198226069213
+    },
+    "detail-agent-graph-implements-through-1::layer-overview": {
+      "x": 167988154.26383358,
+      "y": -316.90801773930787
+    },
+    "detail-agent-graph-implements-through-2::layer-overview": {
+      "x": 167988502.26383358,
+      "y": -114.90801773930787
+    },
+    "detail-agent-graph-implements-through-3::layer-overview": {
+      "x": 167987806.26383358,
+      "y": -134.90801773930787
+    },
+    "detail-agent-graph-implements-through-4::layer-overview": {
+      "x": -6895.344957076211,
+      "y": -317.47196921366776
+    },
+    "detail-agent-graph-implements-through-5::layer-overview": {
+      "x": 167987806.26383358,
+      "y": -538.9080177393079
+    },
+    "detail-agent-graph-uses-files-0::layer-overview": {
+      "x": 167990242.26383358,
+      "y": -94.90801773930787
+    },
+    "detail-agent-graph-uses-files-1::layer-overview": {
+      "x": 167988518.26383358,
+      "y": 815.0919822606921
+    },
+    "detail-agent-graph-uses-files-2::layer-overview": {
+      "x": 167988850.26383358,
+      "y": 107.09198226069213
+    },
+    "detail-agent-graph-uses-files-3::layer-overview": {
+      "x": 167987806.26383358,
+      "y": 613.0919822606921
+    },
+    "detail-agent-graph-uses-files-4::layer-overview": {
+      "x": 167988502.26383358,
+      "y": 97.09198226069213
+    },
+    "detail-agent-graph-uses-files-5::layer-overview": {
+      "x": 167989198.26383358,
+      "y": 289.09198226069213
+    },
+    "detail-agent-graph-uses-files-6::layer-overview": {
+      "x": 167987806.26383358,
+      "y": 289.09198226069213
+    },
+    "detail-agent-graph-uses-files-7::layer-overview": {
+      "x": 167988850.26383358,
+      "y": -316.90801773930787
+    },
+    "detail-agent-graph-uses-files-8::layer-overview": {
+      "x": 167989198.26383358,
+      "y": 613.0919822606921
+    },
+    "detail-agent-graph-uses-files-9::layer-overview": {
+      "x": 167989198.26383358,
+      "y": 107.09198226069213
+    },
+    "detail-agent-graph-uses-files-10::layer-overview": {
+      "x": 167989198.26383358,
+      "y": -306.90801773930787
+    },
+    "detail-agent-graph-uses-files-11::layer-overview": {
+      "x": 167988154.26383358,
+      "y": 613.0919822606921
+    },
+    "detail-agent-graph-uses-files-12::layer-overview": {
+      "x": 167989546.26383358,
+      "y": 613.0919822606921
+    },
+    "detail-agent-graph-uses-files-13::layer-overview": {
+      "x": 167989894.26383358,
+      "y": 289.09198226069213
+    },
+    "detail-agent-graph-uses-files-14::layer-overview": {
+      "x": 167988850.26383358,
+      "y": 451.09198226069213
+    },
+    "detail-agent-graph-uses-files-15::layer-overview": {
+      "x": 167988154.26383358,
+      "y": 289.09198226069213
+    },
+    "detail-agent-graph-uses-files-16::layer-overview": {
+      "x": 167988154.26383358,
+      "y": 451.09198226069213
+    },
+    "detail-agent-graph-uses-files-17::layer-overview": {
+      "x": 167988154.26383358,
+      "y": 805.0919822606921
+    },
+    "detail-agent-graph-uses-files-18::layer-overview": {
+      "x": -5984.926068514516,
+      "y": -435.32433140857336
+    },
+    "detail-agent-graph-uses-files-19::layer-overview": {
+      "x": 167989894.26383358,
+      "y": -306.90801773930787
+    },
+    "detail-agent-graph-uses-files-20::layer-overview": {
+      "x": 167988850.26383358,
+      "y": 613.0919822606921
+    },
+    "detail-agent-graph-uses-files-21::layer-overview": {
+      "x": 167989894.26383358,
+      "y": -508.90801773930787
+    },
+    "detail-agent-graph-uses-files-22::layer-overview": {
+      "x": 167989546.26383358,
+      "y": -306.90801773930787
+    },
+    "detail-agent-graph-uses-files-23::layer-overview": {
+      "x": -7054.886722035974,
+      "y": 76.55019598161661
+    },
+    "detail-agent-graph-defines-ui-components-0::layer-overview": {
+      "x": -6899.674025607154,
+      "y": -342.2231788470694
+    },
+    "detail-agent-graph-defines-ui-components-1::layer-overview": {
+      "x": -7179.189166840636,
+      "y": -349.7665256989428
+    },
+    "detail-agent-graph-defines-ui-components-2::layer-overview": {
+      "x": -6455.967669825201,
+      "y": -299.7883580094427
+    },
+    "detail-agent-graph-defines-ui-components-3::layer-overview": {
+      "x": 167988502.26383358,
+      "y": -518.9080177393079
+    },
+    "detail-agent-graph-defines-ui-components-4::layer-overview": {
+      "x": -6565.132757562494,
+      "y": -320.0305341075335
+    },
+    "detail-agent-graph-defines-ui-components-5::layer-overview": {
+      "x": 167989546.26383358,
+      "y": 451.09198226069213
+    },
+    "detail-agent-graph-defines-ui-components-6::layer-overview": {
+      "x": 167988502.26383358,
+      "y": -316.90801773930787
+    },
+    "detail-agent-graph-defines-ui-components-7::layer-overview": {
+      "x": 167989894.26383358,
+      "y": -104.90801773930787
+    },
+    "detail-agent-graph-defines-store-slices-0::layer-overview": {
+      "x": 167987806.26383358,
+      "y": 451.09198226069213
+    },
+    "detail-agent-graph-defines-store-slices-1::layer-overview": {
+      "x": 167988154.26383358,
+      "y": 97.09198226069213
+    },
+    "detail-agent-graph-defines-store-slices-2::layer-overview": {
+      "x": 167989198.26383358,
+      "y": -518.9080177393079
+    },
+    "detail-agent-graph-defines-store-slices-3::layer-overview": {
+      "x": -7191.508716446423,
+      "y": -80.87776374682981
+    },
+    "detail-agent-graph-defines-store-slices-4::layer-overview": {
+      "x": -6055.28065686393,
+      "y": -308.21146062764035
+    },
+    "detail-agent-graph-defines-store-slices-5::layer-overview": {
+      "x": 167988154.26383358,
+      "y": -518.9080177393079
+    },
+    "detail-agent-graph-defines-store-actions-0::layer-overview": {
+      "x": -6307.908459819398,
+      "y": 32.41710532129517
+    },
+    "detail-agent-graph-defines-store-actions-1::layer-overview": {
+      "x": 167990248.26383358,
+      "y": 299.09198226069213
+    },
+    "detail-agent-graph-defines-store-actions-2::layer-overview": {
+      "x": -7589.974892996966,
+      "y": -428.3751037989333
+    },
+    "detail-agent-graph-defines-store-actions-3::layer-overview": {
+      "x": 167990248.26383358,
+      "y": -296.90801773930787
+    },
+    "detail-agent-graph-defines-store-actions-4::layer-overview": {
+      "x": -6148.410329690261,
+      "y": -432.8267259850425
+    },
+    "detail-agent-graph-defines-store-actions-5::layer-overview": {
+      "x": 167989913.76383358,
+      "y": 623.0919822606921
+    },
+    "detail-agent-graph-defines-store-actions-6::layer-overview": {
+      "x": 167989913.76383358,
+      "y": 461.09198226069213
+    },
+    "detail-agent-graph-defines-store-actions-7::layer-overview": {
+      "x": -6311.7191828965615,
+      "y": -394.9217518546958
+    },
+    "detail-agent-graph-defines-store-actions-8::layer-overview": {
+      "x": -7608.347160125932,
+      "y": -249.20012954122686
+    },
+    "detail-agent-graph-defines-store-actions-9::layer-overview": {
+      "x": 167990248.26383358,
+      "y": 623.0919822606921
+    },
+    "detail-agent-graph-defines-store-actions-10::layer-overview": {
+      "x": -6722.396385114572,
+      "y": 49.65076562960732
+    },
+    "detail-agent-graph-defines-store-actions-11::layer-overview": {
+      "x": -7452.143097758345,
+      "y": -370.7537874290129
+    },
+    "detail-agent-graph-defines-store-actions-12::layer-overview": {
+      "x": -7253.988845433246,
+      "y": -391.32981730909887
+    },
+    "detail-agent-graph-defines-store-actions-13::layer-overview": {
+      "x": -6641.974555281801,
+      "y": -368.79170640506914
+    },
+    "detail-agent-graph-defines-store-actions-14::layer-overview": {
+      "x": -7396.519205026985,
+      "y": -221.415123703181
+    },
+    "detail-agent-graph-defines-store-actions-15::layer-overview": {
+      "x": 167989913.76383358,
+      "y": 117.09198226069213
+    },
+    "detail-agent-graph-defines-core-modules-0::layer-overview": {
+      "x": -6301.36294682143,
+      "y": -150.92169547726076
+    },
+    "detail-agent-graph-defines-core-modules-1::layer-overview": {
+      "x": -7268.258288012621,
+      "y": -305.33888429044714
+    },
+    "detail-agent-graph-defines-core-modules-2::layer-overview": {
+      "x": 167989546.26383358,
+      "y": -508.90801773930787
+    },
+    "detail-agent-graph-defines-core-modules-3::layer-overview": {
+      "x": -6673.315458442878,
+      "y": -106.76930025041167
+    },
+    "detail-agent-graph-defines-core-modules-4::layer-overview": {
+      "x": -7478.201731968061,
+      "y": -219.03089668564536
+    },
+    "detail-agent-graph-defines-core-modules-5::layer-overview": {
+      "x": -6946.953512021438,
+      "y": -76.49958611609183
+    },
+    "detail-agent-graph-defines-core-modules-6::layer-overview": {
+      "x": -6441.140712764415,
+      "y": -405.69336592895894
+    },
+    "detail-agent-graph-runs-on-0::layer-overview": {
+      "x": -7231.576108989854,
+      "y": -184.72271181099092
+    },
+    "detail-agent-graph-runs-on-1::layer-overview": {
+      "x": -7076.1826408719335,
+      "y": -405.0989919965912
+    },
+    "detail-agent-graph-runs-on-2::layer-overview": {
+      "x": -6811.939540890904,
+      "y": -36.99533193069793
+    },
+    "detail-agent-graph-runs-on-3::layer-overview": {
+      "x": -7646.906778568226,
+      "y": -90.27958911242834
+    },
+    "detail-agent-graph-defines-layer-semantics-0::layer-overview": {
+      "x": -6945.146709652289,
+      "y": -333.5941657619136
+    },
+    "detail-agent-graph-defines-layer-semantics-1::layer-overview": {
+      "x": -5916.938147731711,
+      "y": -268.0546605710364
+    },
+    "detail-agent-graph-defines-layer-semantics-4::layer-overview": {
+      "x": -7498.877826640632,
+      "y": -83.81910298074854
+    },
+    "detail-agent-graph-defines-layer-semantics-5::layer-overview": {
+      "x": -6539.671877482394,
+      "y": 196.798180559589
+    },
+    "detail-agent-graph-defines-layer-semantics-6::layer-overview": {
+      "x": -6605.531890264899,
+      "y": -306.19755179583274
+    },
+    "detail-agent-graph-defines-layer-semantics-7::layer-overview": {
+      "x": -7591.716531013474,
+      "y": 62.475959443359386
+    },
+    "detail-agent-graph-defines-layer-semantics-8::layer-overview": {
+      "x": -6761.116930133701,
+      "y": -398.8382526816782
+    },
+    "detail-agent-graph-defines-layer-semantics-9::layer-overview": {
+      "x": -6381.043114339963,
+      "y": -299.03055683086205
+    },
+    "detail-agent-graph-defines-derived-edge-semantics-0::layer-overview": {
+      "x": -7144.865066399176,
+      "y": -186.94130634098738
+    },
+    "detail-agent-graph-defines-derived-edge-semantics-1::layer-overview": {
+      "x": -6962.679389666151,
+      "y": 209.05960944107545
+    },
+    "detail-agent-graph-defines-derived-edge-semantics-2::layer-overview": {
+      "x": -6596.800958228351,
+      "y": -227.36593487203976
+    },
+    "detail-agent-graph-defines-derived-edge-semantics-3::layer-overview": {
+      "x": -7442.049577034365,
+      "y": 55.057409479360416
+    },
+    "detail-agent-graph-defines-derived-edge-semantics-4::layer-overview": {
+      "x": -7345.033957065686,
+      "y": -173.3988990014447
+    },
+    "detail-agent-graph-defines-derived-edge-semantics-5::layer-overview": {
+      "x": -6800.92535042403,
+      "y": -309.8548567992423
+    },
+    "detail-agent-graph-defines-derived-edge-semantics-6::layer-overview": {
+      "x": -7158.4853242910895,
+      "y": 116.19302551310435
+    },
+    "detail-agent-graph-defines-derived-edge-semantics-7::layer-overview": {
+      "x": -6968.886284355974,
+      "y": 19.974896752952972
+    },
+    "detail-agent-graph-defines-hidden-context-portal-semantics-0::layer-overview": {
+      "x": -6564.291677169967,
+      "y": -240.90613377985198
+    },
+    "detail-agent-graph-defines-hidden-context-portal-semantics-2::layer-overview": {
+      "x": -7627.758305704782,
+      "y": 226.98139547513728
+    },
+    "detail-agent-graph-defines-hidden-context-portal-semantics-3::layer-overview": {
+      "x": -7046.85196698536,
+      "y": -256.1387332648707
+    },
+    "detail-agent-graph-defines-hidden-context-portal-semantics-4::layer-overview": {
+      "x": -6233.282826457375,
+      "y": -335.7459976804553
+    },
+    "detail-agent-graph-defines-hidden-context-portal-semantics-5::layer-overview": {
+      "x": -7307.530021971574,
+      "y": 108.50597591079219
+    },
+    "detail-agent-graph-defines-hidden-context-portal-semantics-6::layer-overview": {
+      "x": -6638.416331271367,
+      "y": -39.31620655682015
+    },
+    "detail-agent-graph-allows-edits-0::layer-overview": {
+      "x": -6837.013733437505,
+      "y": -2.3344896405566686
+    },
+    "detail-agent-graph-allows-edits-1::layer-overview": {
+      "x": -7433.443905990504,
+      "y": 177.8251525454951
+    },
+    "detail-agent-graph-allows-edits-2::layer-overview": {
+      "x": -7065.761853636901,
+      "y": -38.29211858698635
+    },
+    "detail-agent-graph-allows-edits-3::layer-overview": {
+      "x": -6019.506436511795,
+      "y": -175.68846354138728
+    },
+    "detail-agent-graph-allows-edits-4::layer-overview": {
+      "x": -7319.440795066279,
+      "y": -25.11762199860393
+    },
+    "detail-agent-graph-validates-edits-0::layer-overview": {
+      "x": -6951.484107301078,
+      "y": -133.33438457091273
+    },
+    "detail-agent-graph-validates-edits-1::layer-overview": {
+      "x": -6380.08262619316,
+      "y": -156.57724343714114
+    },
+    "detail-agent-graph-validates-edits-2::layer-overview": {
+      "x": -7485.523192665992,
+      "y": 318.25454593891396
+    },
+    "detail-agent-graph-validates-edits-3::layer-overview": {
+      "x": -6978.312948021966,
+      "y": 429.4221143069074
+    },
+    "detail-agent-graph-validates-edits-4::layer-overview": {
+      "x": -6219.456692170471,
+      "y": -208.3055211266735
+    },
+    "detail-agent-graph-blocks-edits-0::layer-overview": {
+      "x": -7242.926226838063,
+      "y": 170.02199259913965
+    },
+    "detail-agent-graph-blocks-edits-1::layer-overview": {
+      "x": -6483.866454925868,
+      "y": 250.81119925222396
+    },
+    "detail-agent-graph-blocks-edits-2::layer-overview": {
+      "x": -6502.377108931441,
+      "y": -10.151300838511077
+    },
+    "detail-agent-graph-maps-edits-to-source-0::layer-overview": {
+      "x": -7371.596917463182,
+      "y": 298.7338543710878
+    },
+    "detail-agent-graph-maps-edits-to-source-1::layer-overview": {
+      "x": -6802.339769067085,
+      "y": 224.76023957023716
+    },
+    "detail-agent-graph-maps-edits-to-source-2::layer-overview": {
+      "x": -6271.563785849427,
+      "y": -39.737659889183426
+    },
+    "detail-agent-graph-maps-edits-to-source-3::layer-overview": {
+      "x": -7231.559759252404,
+      "y": 324.76645617721306
+    },
+    "detail-agent-graph-maps-edits-to-source-4::layer-overview": {
+      "x": -7170.61684163493,
+      "y": 82.66228788483232
+    },
+    "detail-agent-graph-executes-edits-through-0::layer-overview": {
+      "x": -6917.036993809202,
+      "y": 630.4555538628605
+    },
+    "detail-agent-graph-executes-edits-through-1::layer-overview": {
+      "x": -7459.418528766838,
+      "y": 492.06549598383754
+    },
+    "detail-agent-graph-executes-edits-through-2::layer-overview": {
+      "x": -6654.30092106088,
+      "y": -81.81349200633939
+    },
+    "detail-agent-graph-defines-interaction-semantics-0::layer-overview": {
+      "x": -5938.838237921082,
+      "y": -81.90596156566733
+    },
+    "detail-agent-graph-defines-interaction-semantics-1::layer-overview": {
+      "x": -7118.035630539586,
+      "y": 191.48962928832492
+    },
+    "detail-agent-graph-defines-interaction-semantics-2::layer-overview": {
+      "x": -6981.340205089921,
+      "y": 103.70166622460187
+    },
+    "detail-agent-graph-defines-interaction-semantics-3::layer-overview": {
+      "x": -6401.268537640807,
+      "y": 122.0730980058554
+    },
+    "detail-agent-graph-defines-interaction-semantics-4::layer-overview": {
+      "x": -7309.644405875466,
+      "y": 448.1560938782485
+    },
+    "detail-agent-graph-defines-history-semantics-0::layer-overview": {
+      "x": -6339.037647063569,
+      "y": 466.734904260298
+    },
+    "detail-agent-graph-defines-history-semantics-1::layer-overview": {
+      "x": -6323.677383170995,
+      "y": 134.02616253906962
+    },
+    "detail-agent-graph-defines-history-semantics-2::layer-overview": {
+      "x": -6794.94831512552,
+      "y": -85.04418460920326
+    },
+    "detail-agent-graph-defines-history-semantics-3::layer-overview": {
+      "x": -6602.903315731797,
+      "y": 189.64373626484877
+    },
+    "detail-agent-graph-organizes-client-state-as-0::layer-overview": {
+      "x": -6141.7776842549265,
+      "y": -31.61789795118918
+    },
+    "detail-agent-graph-organizes-client-state-as-1::layer-overview": {
+      "x": -7113.332458193906,
+      "y": 469.82900007946466
+    },
+    "detail-agent-graph-organizes-client-state-as-2::layer-overview": {
+      "x": -6039.257599929206,
+      "y": 71.10650828505504
+    },
+    "detail-agent-graph-organizes-client-state-as-3::layer-overview": {
+      "x": -6661.744016316281,
+      "y": 376.21888597062355
+    },
+    "detail-agent-graph-organizes-client-state-as-4::layer-overview": {
+      "x": -7356.487261523495,
+      "y": 641.6051230553858
+    },
+    "detail-agent-graph-persists-0::layer-overview": {
+      "x": -6953.398026706353,
+      "y": 528.5029559684469
+    },
+    "detail-agent-graph-persists-1::layer-overview": {
+      "x": -6096.698071039625,
+      "y": 268.11416934192
+    },
+    "detail-agent-graph-persists-2::layer-overview": {
+      "x": -6745.441889513713,
+      "y": 129.1357393818422
+    },
+    "detail-agent-graph-persists-3::layer-overview": {
+      "x": -6508.064435207863,
+      "y": 142.88243604467652
+    },
+    "detail-agent-graph-persists-4::layer-overview": {
+      "x": -6373.917863315156,
+      "y": 56.98858741966109
+    },
+    "detail-agent-graph-persists-5::layer-overview": {
+      "x": -7085.549747226992,
+      "y": 405.59807537799793
+    },
+    "detail-agent-graph-does-not-persist-0::layer-overview": {
+      "x": -6823.340600963144,
+      "y": 190.12451775588085
+    },
+    "detail-agent-graph-does-not-persist-1::layer-overview": {
+      "x": -5885.797771515134,
+      "y": 129.1206616970669
+    },
+    "detail-agent-graph-persists-workspace-state-as-0::layer-overview": {
+      "x": -6978.325527214093,
+      "y": 293.10984629631406
+    },
+    "detail-agent-graph-persists-workspace-state-as-1::layer-overview": {
+      "x": -6200.98394656048,
+      "y": 166.66124849069803
+    },
+    "detail-agent-graph-persists-workspace-state-as-2::layer-overview": {
+      "x": -6275.030323240465,
+      "y": 304.58094534621404
+    },
+    "detail-agent-graph-defines-session-semantics-0::layer-overview": {
+      "x": -7202.93541769504,
+      "y": 577.6953430076614
+    },
+    "detail-agent-graph-defines-session-semantics-1::layer-overview": {
+      "x": -6595.203112806372,
+      "y": 111.44812976290288
+    },
+    "detail-agent-graph-defines-session-semantics-2::layer-overview": {
+      "x": -6331.564286289854,
+      "y": 561.6440656807714
+    },
+    "detail-agent-graph-defines-session-semantics-3::layer-overview": {
+      "x": -6867.585094885264,
+      "y": 320.18299251588985
+    },
+    "detail-agent-graph-defines-session-semantics-4::layer-overview": {
+      "x": -6626.124055447228,
+      "y": 287.2853513108315
+    },
+    "detail-agent-graph-defines-diff-semantics-0::layer-overview": {
+      "x": -5941.907269763562,
+      "y": 283.1051908824014
+    },
+    "detail-agent-graph-defines-diff-semantics-1::layer-overview": {
+      "x": -7219.054504785553,
+      "y": 770.1786359671515
+    },
+    "detail-agent-graph-defines-diff-semantics-2::layer-overview": {
+      "x": -6468.717498672639,
+      "y": 367.26871353805456
+    },
+    "detail-agent-graph-defines-diff-semantics-3::layer-overview": {
+      "x": -6387.069100317117,
+      "y": 295.8676583048224
+    },
+    "detail-agent-graph-defines-diff-semantics-4::layer-overview": {
+      "x": -6734.329870471909,
+      "y": 370.931428200919
+    },
+    "detail-agent-graph-defines-diff-semantics-5::layer-overview": {
+      "x": -6878.888419422799,
+      "y": 518.1987814752339
+    },
+    "detail-agent-graph-defines-conflict-semantics-0::layer-overview": {
+      "x": -6038.682300000335,
+      "y": 387.1846871148294
+    },
+    "detail-agent-graph-defines-conflict-semantics-1::layer-overview": {
+      "x": -6999.480519974633,
+      "y": 554.3030071104691
+    },
+    "detail-agent-graph-defines-conflict-semantics-2::layer-overview": {
+      "x": -6587.673501076227,
+      "y": 656.0967805841083
+    },
+    "detail-agent-graph-defines-conflict-semantics-3::layer-overview": {
+      "x": -6230.4993788131815,
+      "y": 396.70613805115875
+    },
+    "detail-agent-graph-defines-conflict-semantics-4::layer-overview": {
+      "x": -7089.797905930192,
+      "y": 711.7940710306957
+    },
+    "detail-agent-graph-requires-visual-distinctions-0::layer-overview": {
+      "x": -6645.4040218005875,
+      "y": 494.5356795888953
+    },
+    "detail-agent-graph-requires-visual-distinctions-1::layer-overview": {
+      "x": -6035.9407540334705,
+      "y": 565.809322256994
+    },
+    "detail-agent-graph-requires-visual-distinctions-2::layer-overview": {
+      "x": -6837.480753032015,
+      "y": 725.4091701204641
+    },
+    "detail-agent-graph-requires-visual-distinctions-3::layer-overview": {
+      "x": -6744.2521990450905,
+      "y": 572.7374300149787
+    },
+    "detail-agent-graph-defines-visual-semantics-0::layer-overview": {
+      "x": -6469.1982560213455,
+      "y": 455.12309610379134
+    },
+    "detail-agent-graph-defines-visual-semantics-1::layer-overview": {
+      "x": -7072.543898669797,
+      "y": 910.9205339876789
+    },
+    "detail-agent-graph-defines-visual-semantics-2::layer-overview": {
+      "x": -6469.485009709707,
+      "y": 594.3174179321634
+    },
+    "detail-agent-graph-defines-visual-semantics-3::layer-overview": {
+      "x": -6219.067218764936,
+      "y": 544.8511453414804
+    },
+    "detail-agent-graph-defines-visual-semantics-4::layer-overview": {
+      "x": -6953.160270848462,
+      "y": 735.1803242197985
+    },
+    "detail-agent-graph-optimizes-for-0::layer-overview": {
+      "x": -6378.194091057901,
+      "y": 722.6519867770808
+    },
+    "detail-agent-graph-optimizes-for-1::layer-overview": {
+      "x": -6181.441388170442,
+      "y": 742.8099123053113
+    },
+    "detail-agent-graph-optimizes-for-2::layer-overview": {
+      "x": -6899.4947411642115,
+      "y": 896.7162242022546
+    },
+    "detail-agent-graph-optimizes-for-3::layer-overview": {
+      "x": -6655.005197688429,
+      "y": 690.5916939609339
+    },
+    "detail-agent-graph-optimizes-for-4::layer-overview": {
+      "x": -6283.574901804833,
+      "y": 872.4771570420152
+    },
+    "detail-agent-graph-preserves-0::layer-overview": {
+      "x": -6736.434320895771,
+      "y": 849.7839520748739
+    },
+    "detail-agent-graph-preserves-1::layer-overview": {
+      "x": -6522.810250054767,
+      "y": 795.4600662427259
+    },
+    "detail-agent-graph-preserves-2::layer-overview": {
+      "x": -6428.2397501653095,
+      "y": 967.0176676648318
+    },
+    "detail-agent-graph-preserves-3::layer-overview": {
+      "x": -6771.723904668503,
+      "y": 1052.7309271118195
+    },
+    "detail-agent-graph-preserves-4::layer-overview": {
+      "x": -6604.857076373293,
+      "y": 978.9251534288837
+    },
+    "user::layer-1774024439785": {
+      "x": -140.41319979525568,
+      "y": 350.8427933688127
+    },
+    "source-workspace::layer-1774024439785": {
+      "x": 302.5868002063298,
+      "y": 414.7202128782325
+    },
+    "editing-validation::layer-1774024439785": {
+      "x": 650.5868002063298,
+      "y": 414.7202128782325
+    },
+    "editing-mutation::layer-1774024439785": {
+      "x": 302.5868002063298,
+      "y": 572.7202128782325
+    },
+    "source-truth::layer-1774024439785": {
+      "x": -2786.3282425803145,
+      "y": 858.1213050885578
+    },
+    "graph-completeness::layer-1774024439785": {
+      "x": -2452.3282425803145,
+      "y": 850.1213050885578
+    },
+    "editing-conflict::layer-1774024439785": {
+      "x": -2090.3282425803145,
+      "y": 858.1213050885578
+    },
+    "contract-workspace-snapshot::layer-1774024439785": {
+      "x": -1756.3282425803145,
+      "y": 850.1213050885578
+    },
+    "contract-graph-patch::layer-1774024439785": {
+      "x": -2800.3282425803145,
+      "y": 1008.1213050885578
+    },
+    "contract-external-change::layer-1774024439785": {
+      "x": -2452.3282425803145,
+      "y": 1008.1213050885578
+    },
+    "source-document::layer-1774024439785": {
+      "x": -2104.3282425803145,
+      "y": 1008.1213050885578
+    },
+    "agentish::layer-1774024439785": {
+      "x": -1726.8282425803145,
+      "y": 1016.1213050885578
+    },
+    "detail-agent-graph-enforces-0::layer-1774024439785": {
+      "x": -2800.3282425803145,
+      "y": 1176.1213050885578
+    },
+    "detail-agent-graph-enforces-2::layer-1774024439785": {
+      "x": -2452.3282425803145,
+      "y": 1176.1213050885578
+    },
+    "detail-agent-graph-enforces-1::layer-1774024439785": {
+      "x": -2104.3282425803145,
+      "y": 1166.1213050885578
+    },
+    "detail-agent-graph-enforces-3::layer-1774024439785": {
+      "x": -1756.3282425803145,
+      "y": 1176.1213050885578
+    },
+    "detail-agent-graph-defines-layer-semantics-2::layer-1774024439785": {
+      "x": -2800.3282425803145,
+      "y": 1348.1213050885578
+    },
+    "detail-agent-graph-defines-layer-semantics-3::layer-1774024439785": {
+      "x": -2452.3282425803145,
+      "y": 1348.1213050885578
+    },
+    "detail-agent-graph-defines-hidden-context-portal-semantics-1::layer-1774024439785": {
+      "x": -2104.3282425803145,
+      "y": 1350.1213050885578
+    },
+    "graph-whole::layer-1774024439785": {
+      "x": -16.680271803664226,
+      "y": 241.2793080847764
+    },
+    "graph-plane::layer-1774024439785": {
+      "x": 441.31972815795336,
+      "y": 18.35507005744239
+    },
+    "graph-layer::layer-1774024439785": {
+      "x": 191.47691104226408,
+      "y": 367.6219960197778
+    },
+    "graph-layer-group::layer-1774024439785": {
+      "x": 484.79365293010994,
+      "y": 312.5280947403945
+    },
+    "graph-node::layer-1774024439785": {
+      "x": 354.0351376565401,
+      "y": 141.34332840265893
+    },
+    "graph-hidden-context::layer-1774024439785": {
+      "x": 682.0351376565401,
+      "y": 133.34332840265893
+    },
+    "graph-diff-layer::layer-1774024439785": {
+      "x": 353.0351376565401,
+      "y": 291.3433284026589
+    },
+    "graph-edge::layer-1774024439785": {
+      "x": 497.19250549212234,
+      "y": 387.974237956427
+    },
+    "graph-derived-edge::layer-1774024439785": {
+      "x": 349.89398623521777,
+      "y": 563.7476009284978
+    },
+    "package-ui::layer-1774024439785": {
+      "x": -1723.4449693558988,
+      "y": 1981.4856482376847
+    },
+    "package-store::layer-1774024439785": {
+      "x": -1601.9154637966442,
+      "y": 1820.64358647948
+    },
+    "package-core::layer-1774024439785": {
+      "x": -1265.6208393906631,
+      "y": 1930.5503391650004
+    },
+    "package-protocol::layer-1774024439785": {
+      "x": -1329.8358939835357,
+      "y": 2025.037544387054
+    },
+    "runtime-browser::layer-1774024439785": {
+      "x": -2428.49698372809,
+      "y": 2107.29918276125
+    },
+    "runtime-react-flow::layer-1774024439785": {
+      "x": -1966.1640710517347,
+      "y": 2176.0571941821527
+    },
+    "runtime-legend-state::layer-1774024439785": {
+      "x": -1618.1640710517347,
+      "y": 2176.0571941821527
+    },
+    "runtime-bun::layer-1774024439785": {
+      "x": -2031.362697624178,
+      "y": 1977.4272031556288
+    },
+    "runtime-filesystem::layer-1774024439785": {
+      "x": -1611.4265215633393,
+      "y": 1894.4682486396828
+    },
+    "contract-graph-snapshot::layer-1774024439785": {
+      "x": 279.51965528790527,
+      "y": 1867.897737854082
+    },
+    "contract-diff-snapshot::layer-1774024439785": {
+      "x": -3199.4742853738385,
+      "y": 2724.879650306988
+    },
+    "contract-validation-result::layer-1774024439785": {
+      "x": 573.3829244088917,
+      "y": 1636.2238500760002
+    },
+    "contract-conflict-payload::layer-1774024439785": {
+      "x": -90.01152172637096,
+      "y": 2063.0566455845897
+    },
+    "package-studio::layer-1774024439785": {
+      "x": -1946.242870823286,
+      "y": 1845.692101619206
+    },
+    "detail-contract-graph-snapshot-means-0::layer-1774024439785": {
+      "x": 737.5197318919468,
+      "y": 1865.806140188176
+    },
+    "detail-contract-conflict-payload-means-0::layer-1774024439785": {
+      "x": 367.98862124702646,
+      "y": 2060.6736470164205
+    },
+    "detail-contract-validation-result-means-0::layer-1774024439785": {
+      "x": 1031.3829244087117,
+      "y": 1634.2260695800749
+    },
+    "detail-contract-diff-snapshot-means-0::layer-1774024439785": {
+      "x": -2741.474285464545,
+      "y": 2722.9417247082106
+    },
+    "detail-package-studio-rejects-0::layer-1774024439785": {
+      "x": -1292.4378014282527,
+      "y": 1791.872825134366
+    },
+    "detail-package-server-rejects-0::layer-1774024439785": {
+      "x": -1524.164576022976,
+      "y": 2292.268563027396
+    },
+    "package-server::layer-1774024439785": {
+      "x": -1851.4343467560864,
+      "y": 2084.491999644562
     }
   },
   "pinnedNodeIds": [
     "package-server::layer-overview",
     "package-core::layer-overview",
-    "agent-graph::layer-overview",
     "user::layer-overview",
     "graph-whole::layer-overview",
-    "package-protocol::layer-overview"
+    "contract-workspace-snapshot::layer-overview",
+    "detail-agent-graph-detects-0::layer-overview"
   ]
 }

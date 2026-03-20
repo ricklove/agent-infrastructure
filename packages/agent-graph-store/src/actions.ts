@@ -43,8 +43,12 @@ function applySnapshot(
   store.state$.graph.set(graph);
   store.state$.diff.set(diff);
   const activeLayerId = store.state$.activeLayerId.get();
-  if (!activeLayerId || !graph.layers.some((layer) => layer.id === activeLayerId)) {
-    store.state$.activeLayerId.set(graph.layers[0]?.id ?? null);
+  const visibleLayers = graph.layers.filter((layer) => layer.visible);
+  if (
+    !activeLayerId ||
+    !visibleLayers.some((layer) => layer.id === activeLayerId)
+  ) {
+    store.state$.activeLayerId.set(visibleLayers[0]?.id ?? null);
   }
   const nodeIds = new Set(graph.nodes.map((node) => node.id));
   store.state$.layout.pinnedNodeIds.set(
@@ -201,8 +205,32 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       sendIntent(ws, store, { kind: "move-layer", layerId, x, y });
     },
 
+    setLayerVisibility(layerId: string, visible: boolean): void {
+      sendIntent(ws, store, { kind: "set-layer-visibility", layerId, visible });
+      if (!visible && store.state$.activeLayerId.get() === layerId) {
+        const fallbackLayerId =
+          store.state$.graph
+            .get()
+            ?.layers.find((layer) => layer.id !== layerId && layer.visible)?.id ?? null;
+        store.state$.activeLayerId.set(fallbackLayerId);
+      }
+    },
+
     moveNode(nodeId: string, x: number, y: number): void {
-      sendIntent(ws, store, { kind: "move-node", nodeId, x, y });
+      sendIntent(ws, store, {
+        kind: "move-nodes",
+        positions: [{ nodeId, x, y }],
+      });
+    },
+
+    moveNodes(positions: Array<{ nodeId: string; x: number; y: number }>): void {
+      if (positions.length === 0) {
+        return;
+      }
+      sendIntent(ws, store, {
+        kind: "move-nodes",
+        positions,
+      });
     },
 
     toggleLayerNode(layerId: string, sourceNodeId: string, include: boolean): void {

@@ -120,11 +120,48 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         },
       ];
     }
+    case "set-layer-visibility": {
+      workspaceState.layers = workspaceState.layers.map((layer) =>
+        layer.id === intent.layerId ? { ...layer, visible: intent.visible } : layer,
+      );
+      workspaceState.revision += 1;
+      repository.setWorkspaceState(workspaceState);
+      await saveWorkspaceState(workspaceState);
+      return [
+        {
+          type: "server/graph",
+          graph: buildCompleteGraph({
+            sourceWorkspace: repository.getSourceWorkspace(),
+            workspaceState,
+          }),
+        },
+      ];
+    }
     case "move-node": {
       workspaceState.nodePositions[intent.nodeId] = {
         x: intent.x,
         y: intent.y,
       };
+      workspaceState.revision += 1;
+      repository.setWorkspaceState(workspaceState);
+      await saveWorkspaceState(workspaceState);
+      return [
+        {
+          type: "server/graph",
+          graph: buildCompleteGraph({
+            sourceWorkspace: repository.getSourceWorkspace(),
+            workspaceState,
+          }),
+        },
+      ];
+    }
+    case "move-nodes": {
+      for (const position of intent.positions) {
+        workspaceState.nodePositions[position.nodeId] = {
+          x: position.x,
+          y: position.y,
+        };
+      }
       workspaceState.revision += 1;
       repository.setWorkspaceState(workspaceState);
       await saveWorkspaceState(workspaceState);

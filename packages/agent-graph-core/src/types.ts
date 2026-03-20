@@ -159,11 +159,26 @@ export type MoveLayerIntent = {
   y: number;
 };
 
+export type SetLayerVisibilityIntent = {
+  kind: "set-layer-visibility";
+  layerId: string;
+  visible: boolean;
+};
+
 export type MoveNodeIntent = {
   kind: "move-node";
   nodeId: string;
   x: number;
   y: number;
+};
+
+export type MoveNodesIntent = {
+  kind: "move-nodes";
+  positions: Array<{
+    nodeId: string;
+    x: number;
+    y: number;
+  }>;
 };
 
 export type SetNodePinnedIntent = {
@@ -216,7 +231,9 @@ export type GraphIntent =
   | ConnectVisibleNodesIntent
   | CloneLayerIntent
   | MoveLayerIntent
+  | SetLayerVisibilityIntent
   | MoveNodeIntent
+  | MoveNodesIntent
   | SetNodePinnedIntent
   | ToggleLayerNodeIntent
   | ToggleLayerNodesIntent
