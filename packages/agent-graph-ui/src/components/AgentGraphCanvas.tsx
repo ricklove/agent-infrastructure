@@ -86,6 +86,12 @@ type ForceNodeDatum = SimulationNodeDatum & {
   fy?: number | null;
 };
 
+type ClusterForceDatum = ForceNodeDatum & {
+  memberNodeIds: string[];
+  internalOffsets: Map<string, { x: number; y: number }>;
+  pinned: boolean;
+};
+
 function nodeDimensions(node: Node): { width: number; height: number } {
   if (typeof node.width === "number" && typeof node.height === "number") {
     return { width: node.width, height: node.height };
@@ -567,6 +573,95 @@ function createRectRepelForce(args: {
   };
 }
 
+function createClusterAttractForce(args: {
+  links: Array<{ source: string; target: string; weight: number }>;
+  clustersById: Map<string, ClusterForceDatum>;
+  strength?: number;
+  gap?: number;
+}) {
+  const { links, clustersById, strength = 0.35, gap = 110 } = args;
+
+  return (alpha: number) => {
+    if (strength <= 0) {
+      return;
+    }
+
+    for (const link of links) {
+      const source = clustersById.get(link.source);
+      const target = clustersById.get(link.target);
+      if (!source || !target) {
+        continue;
+      }
+
+      const actualDx = (target.x ?? 0) - (source.x ?? 0);
+      const actualDy = (target.y ?? 0) - (source.y ?? 0);
+      const desiredDx = source.width / 2 + target.width / 2 + gap;
+      const desiredDy = 0;
+      const nudgeX = (actualDx - desiredDx) * strength * alpha * link.weight * 0.5;
+      const nudgeY = (actualDy - desiredDy) * strength * alpha * 0.25 * link.weight;
+
+      if (!source.pinned) {
+        source.vx = (source.vx ?? 0) + nudgeX;
+        source.vy = (source.vy ?? 0) + nudgeY;
+      }
+      if (!target.pinned) {
+        target.vx = (target.vx ?? 0) - nudgeX;
+        target.vy = (target.vy ?? 0) - nudgeY;
+      }
+    }
+  };
+}
+
+function buildClusterGrid(args: {
+  orderedNodes: Array<{ id: string; width: number; height: number }>;
+}): {
+  width: number;
+  height: number;
+  offsets: Map<string, { x: number; y: number }>;
+} {
+  const { orderedNodes } = args;
+  const count = orderedNodes.length;
+  const columnCount = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const rowCount = Math.max(1, Math.ceil(count / columnCount));
+  const rowGap = 28;
+  const columnGap = 28;
+  const rowHeights = Array.from({ length: rowCount }, () => 0);
+  const columnWidths = Array.from({ length: columnCount }, () => 0);
+
+  for (const [index, node] of orderedNodes.entries()) {
+    const row = Math.floor(index / columnCount);
+    const column = index % columnCount;
+    rowHeights[row] = Math.max(rowHeights[row], node.height);
+    columnWidths[column] = Math.max(columnWidths[column], node.width);
+  }
+
+  const totalWidth =
+    columnWidths.reduce((sum, width) => sum + width, 0) + Math.max(0, columnCount - 1) * columnGap;
+  const totalHeight =
+    rowHeights.reduce((sum, height) => sum + height, 0) + Math.max(0, rowCount - 1) * rowGap;
+
+  const offsets = new Map<string, { x: number; y: number }>();
+  for (const [index, node] of orderedNodes.entries()) {
+    const row = Math.floor(index / columnCount);
+    const column = index % columnCount;
+    const xBefore = columnWidths.slice(0, column).reduce((sum, width) => sum + width, 0);
+    const yBefore = rowHeights.slice(0, row).reduce((sum, height) => sum + height, 0);
+    const x =
+      -totalWidth / 2 +
+      xBefore +
+      column * columnGap +
+      columnWidths[column] / 2;
+    const y =
+      -totalHeight / 2 +
+      yBefore +
+      row * rowGap +
+      rowHeights[row] / 2;
+    offsets.set(node.id, { x, y });
+  }
+
+  return { width: totalWidth, height: totalHeight, offsets };
+}
+
 function SelectionSync({
   onChange,
 }: {
@@ -895,29 +990,10 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   const localNodesRef = useRef<Node[]>([]);
   const localEdgesRef = useRef<Edge[]>([]);
   const pinnedNodeIdsRef = useRef<string[]>([]);
-  const slotAssignmentCacheRef = useRef<
-    Map<
-      string,
-      {
-        signature: string;
-        orderedNeighborIds: string[];
-      }
-    >
-  >(new Map());
-  const slotRelationCacheRef = useRef<
-    Map<
-      string,
-      {
-        parentId: string | null;
-        side: "incoming" | "outgoing" | null;
-      }
-    >
-  >(new Map());
-  const dirtySlotOwnerIdsRef = useRef<Set<string>>(new Set());
   const physicsModelRef = useRef<{
-    nodes: ForceNodeDatum[];
+    nodes: ClusterForceDatum[];
     movableNodeIds: string[];
-    simulation: Simulation<ForceNodeDatum, SimulationLinkDatum<ForceNodeDatum>>;
+    simulation: Simulation<ClusterForceDatum, SimulationLinkDatum<ClusterForceDatum>>;
   } | null>(null);
   const persistenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heldNodeTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -985,21 +1061,6 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     [graph, hidePreview],
   );
 
-  function markConnectedSlotOwnersDirty(nodeId: string): void {
-    const dirtyOwnerIds = dirtySlotOwnerIdsRef.current;
-    dirtyOwnerIds.add(nodeId);
-    for (const edge of localEdgesRef.current) {
-      const sourceId = String(edge.source);
-      const targetId = String(edge.target);
-      if (sourceId === nodeId) {
-        dirtyOwnerIds.add(targetId);
-      }
-      if (targetId === nodeId) {
-        dirtyOwnerIds.add(sourceId);
-      }
-    }
-  }
-
   const mappedNodes = useMemo(
     () =>
       graph
@@ -1019,7 +1080,6 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
               if (pinned) {
                 lockNodeToCurrentPosition(nodeId, currentPosition.x, currentPosition.y);
               }
-              markConnectedSlotOwnersDirty(nodeId);
               actions.setNodePinned(nodeId, pinned, currentPosition);
             },
             (portalNodeId, hiddenNodeId) => {
@@ -1220,7 +1280,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
 
   };
 
-  function schedulePersistence(nodes: ForceNodeDatum[], movableNodeIds: string[]): void {
+  function schedulePersistence(nodes: ClusterForceDatum[], movableNodeIds: string[]): void {
     if (persistenceTimeoutRef.current) {
       return;
     }
@@ -1246,16 +1306,24 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   }
 
   function lockNodeToCurrentPosition(nodeId: string, x: number, y: number): void {
-    const forceNode = physicsModelRef.current?.nodes.find((candidate) => candidate.id === nodeId);
-    if (!forceNode) {
+    const cluster = physicsModelRef.current?.nodes.find((candidate) =>
+      candidate.memberNodeIds.includes(nodeId),
+    );
+    if (!cluster) {
       return;
     }
-    const centerX = x + forceNode.width / 2;
-    const centerY = y + forceNode.height / 2;
-    forceNode.x = centerX;
-    forceNode.y = centerY;
-    forceNode.fx = centerX;
-    forceNode.fy = centerY;
+    const offset = cluster.internalOffsets.get(nodeId);
+    const currentNode = localNodesRef.current.find((candidate) => candidate.id === nodeId);
+    if (!offset || !currentNode) {
+      return;
+    }
+    const { width, height } = nodeDimensions(currentNode);
+    const centerX = x + width / 2 - offset.x;
+    const centerY = y + height / 2 - offset.y;
+    cluster.x = centerX;
+    cluster.y = centerY;
+    cluster.fx = centerX;
+    cluster.fy = centerY;
     physicsModelRef.current?.simulation.alpha(0.18).restart();
   }
 
@@ -1264,23 +1332,25 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
       return;
     }
     clearHeldNodeTimeout(nodeId);
-    const timeout = setTimeout(() => {
-      heldNodeTimeoutsRef.current.delete(nodeId);
-      const forceNode = physicsModelRef.current?.nodes.find((candidate) => candidate.id === nodeId);
-      if (!forceNode || pinnedNodeIdsRef.current.includes(nodeId)) {
+      const timeout = setTimeout(() => {
+        heldNodeTimeoutsRef.current.delete(nodeId);
+      const cluster = physicsModelRef.current?.nodes.find((candidate) =>
+        candidate.memberNodeIds.includes(nodeId),
+      );
+      if (!cluster || pinnedNodeIdsRef.current.includes(nodeId)) {
         return;
       }
-      forceNode.fx = null;
-      forceNode.fy = null;
+      cluster.fx = null;
+      cluster.fy = null;
       physicsModelRef.current?.simulation.alpha(0.42).restart();
     }, 1200);
     heldNodeTimeoutsRef.current.set(nodeId, timeout);
   }
 
   function buildForceModel(): {
-    nodes: ForceNodeDatum[];
+    nodes: ClusterForceDatum[];
     movableNodeIds: string[];
-    simulation: Simulation<ForceNodeDatum, SimulationLinkDatum<ForceNodeDatum>>;
+    simulation: Simulation<ClusterForceDatum, SimulationLinkDatum<ClusterForceDatum>>;
   } | null {
     if (!activeLayerId) {
       return null;
@@ -1294,46 +1364,17 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
         if (data?.layerId !== activeLayerId) {
           return false;
         }
-        if (node.type === "semanticNode") {
-          return true;
-        }
-        return node.type === "hiddenContextPortal" && data?.independentlyPositioned === true;
+        return node.type === "semanticNode";
       },
     );
     const pinnedSet = new Set(pinnedNodeIds);
-    const movableNodeIds = layerNodes
-      .map((node) => node.id)
-      .filter((nodeId) => !pinnedSet.has(nodeId));
+    const movableNodeIds = layerNodes.map((node) => node.id).filter((nodeId) => !pinnedSet.has(nodeId));
 
     if (movableNodeIds.length === 0) {
       return null;
     }
 
-    const movableSet = new Set(movableNodeIds);
-    const nodes: ForceNodeDatum[] = layerNodes.map((node) => {
-      const { width, height } = nodeDimensions(node);
-      const centerX = node.position.x + width / 2;
-      const centerY = node.position.y + height / 2;
-      return {
-        id: node.id,
-        width,
-        height,
-        x: centerX,
-        y: centerY,
-        fx: movableSet.has(node.id) ? null : centerX,
-        fy: movableSet.has(node.id) ? null : centerY,
-      };
-    });
-    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-    const links: SimulationLinkDatum<ForceNodeDatum>[] = localEdgesRef.current
-      .filter((edge) => nodeMap.has(String(edge.source)) && nodeMap.has(String(edge.target)))
-      .map((edge) => ({
-        source: String(edge.source),
-        target: String(edge.target),
-      }));
-    const semanticNodeIds = new Set(
-      layerNodes.filter((node) => node.type === "semanticNode").map((node) => node.id),
-    );
+    const semanticNodeIds = new Set(layerNodes.map((node) => node.id));
     const semanticLinks = localEdgesRef.current
       .filter(
         (edge) => semanticNodeIds.has(String(edge.source)) && semanticNodeIds.has(String(edge.target)),
@@ -1342,17 +1383,92 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
         source: String(edge.source),
         target: String(edge.target),
       }));
+    const incomingByNode = new Map<string, string[]>();
+    const outgoingByNode = new Map<string, string[]>();
+    for (const link of semanticLinks) {
+      outgoingByNode.set(link.source, [...(outgoingByNode.get(link.source) ?? []), link.target]);
+      incomingByNode.set(link.target, [...(incomingByNode.get(link.target) ?? []), link.source]);
+    }
 
-    const simulation = forceSimulation(nodes)
+    const groupsBySignature = new Map<string, Node[]>();
+    for (const node of layerNodes) {
+      const incomingSignature = [...new Set(incomingByNode.get(node.id) ?? [])].sort().join("|");
+      const outgoingSignature = [...new Set(outgoingByNode.get(node.id) ?? [])].sort().join("|");
+      const signature = pinnedSet.has(node.id)
+        ? `pinned:${node.id}`
+        : `in:${incomingSignature}::out:${outgoingSignature}`;
+      groupsBySignature.set(signature, [...(groupsBySignature.get(signature) ?? []), node]);
+    }
+
+    const nodeToGroupId = new Map<string, string>();
+    const groupNodes: ClusterForceDatum[] = [];
+    for (const [signature, members] of groupsBySignature) {
+      const orderedMembers = [...members].sort((left, right) => {
+        const byY = left.position.y - right.position.y;
+        if (Math.abs(byY) > 1) {
+          return byY;
+        }
+        return left.position.x - right.position.x;
+      });
+      const memberLayouts = orderedMembers.map((member) => {
+        const { width, height } = nodeDimensions(member);
+        return { id: member.id, width, height };
+      });
+      const grid = buildClusterGrid({ orderedNodes: memberLayouts });
+      const memberCenters = orderedMembers.map((member) => {
+        const { width, height } = nodeDimensions(member);
+        return {
+          x: member.position.x + width / 2,
+          y: member.position.y + height / 2,
+        };
+      });
+      const centerX =
+        memberCenters.reduce((sum, member) => sum + member.x, 0) / Math.max(memberCenters.length, 1);
+      const centerY =
+        memberCenters.reduce((sum, member) => sum + member.y, 0) / Math.max(memberCenters.length, 1);
+      const memberNodeIds = orderedMembers.map((member) => member.id);
+      const pinned = memberNodeIds.some((nodeId) => pinnedSet.has(nodeId));
+      for (const nodeId of memberNodeIds) {
+        nodeToGroupId.set(nodeId, signature);
+      }
+      groupNodes.push({
+        id: signature,
+        memberNodeIds,
+        internalOffsets: grid.offsets,
+        width: Math.max(grid.width, SEMANTIC_NODE_WIDTH),
+        height: Math.max(grid.height, 88),
+        x: centerX,
+        y: centerY,
+        fx: pinned ? centerX : null,
+        fy: pinned ? centerY : null,
+        pinned,
+      });
+    }
+
+    const collapsedLinks = new Map<string, { source: string; target: string; weight: number }>();
+    for (const link of semanticLinks) {
+      const sourceGroupId = nodeToGroupId.get(link.source);
+      const targetGroupId = nodeToGroupId.get(link.target);
+      if (!sourceGroupId || !targetGroupId || sourceGroupId === targetGroupId) {
+        continue;
+      }
+      const collapsedKey = `${sourceGroupId}->${targetGroupId}`;
+      const current = collapsedLinks.get(collapsedKey);
+      collapsedLinks.set(
+        collapsedKey,
+        current
+          ? { ...current, weight: current.weight + 1 }
+          : { source: sourceGroupId, target: targetGroupId, weight: 1 },
+      );
+    }
+
+    const clustersById = new Map(groupNodes.map((group) => [group.id, group]));
+    const simulation = forceSimulation(groupNodes)
       .force(
-        "handleSlot",
-        createHandleSlotForce({
-          links: semanticLinks,
-          nodesById: nodeMap,
-          pinnedNodeIds: pinnedSet,
-          assignmentCache: slotAssignmentCacheRef.current,
-          relationCache: slotRelationCacheRef.current,
-          dirtyOwnerIds: dirtySlotOwnerIdsRef.current,
+        "clusterAttract",
+        createClusterAttractForce({
+          links: [...collapsedLinks.values()],
+          clustersById,
           strength: springStrength,
           gap: springLength + 28,
         }),
@@ -1360,25 +1476,33 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
       .force(
         "rectRepel",
         createRectRepelForce({
-          nodes,
-          pinnedNodeIds: pinnedSet,
+          nodes: groupNodes,
+          pinnedNodeIds: new Set(groupNodes.filter((group) => group.pinned).map((group) => group.id)),
           strength: repulsionStrength,
         }),
       );
 
-    return { nodes, movableNodeIds, simulation };
+    return { nodes: groupNodes, movableNodeIds, simulation };
   }
 
-  function applyForcePositions(nodes: ForceNodeDatum[]): void {
-    const nextPositions = new Map(
-      nodes.map((node) => [
-        node.id,
-        {
-          x: (node.x ?? 0) - node.width / 2,
-          y: (node.y ?? 0) - node.height / 2,
-        },
-      ]),
-    );
+  function applyForcePositions(nodes: ClusterForceDatum[]): void {
+    const nextPositions = new Map<string, { x: number; y: number }>();
+    for (const cluster of nodes) {
+      const clusterX = cluster.x ?? 0;
+      const clusterY = cluster.y ?? 0;
+      for (const memberNodeId of cluster.memberNodeIds) {
+        const offset = cluster.internalOffsets.get(memberNodeId);
+        const currentNode = localNodesRef.current.find((candidate) => candidate.id === memberNodeId);
+        if (!offset || !currentNode) {
+          continue;
+        }
+        const { width, height } = nodeDimensions(currentNode);
+        nextPositions.set(memberNodeId, {
+          x: clusterX + offset.x - width / 2,
+          y: clusterY + offset.y - height / 2,
+        });
+      }
+    }
 
     setLocalNodes((current) =>
       current.map((node) =>
@@ -1392,18 +1516,20 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     );
   }
 
-  function persistForcePositions(nodes: ForceNodeDatum[], movableNodeIds: string[]): void {
+  function persistForcePositions(nodes: ClusterForceDatum[], movableNodeIds: string[]): void {
     const movableSet = new Set(movableNodeIds);
     const pinnedSet = new Set(pinnedNodeIdsRef.current);
     const currentNodeById = new Map(localNodesRef.current.map((node) => [node.id, node]));
-    for (const node of nodes) {
-      if (movableSet.has(node.id) && !pinnedSet.has(node.id)) {
-        const currentNode = currentNodeById.get(node.id);
-        actions.moveNode(
-          node.id,
-          currentNode?.position.x ?? node.x ?? 0,
-          currentNode?.position.y ?? node.y ?? 0,
-        );
+    for (const cluster of nodes) {
+      for (const nodeId of cluster.memberNodeIds) {
+        if (movableSet.has(nodeId) && !pinnedSet.has(nodeId)) {
+          const currentNode = currentNodeById.get(nodeId);
+          actions.moveNode(
+            nodeId,
+            currentNode?.position.x ?? 0,
+            currentNode?.position.y ?? 0,
+          );
+        }
       }
     }
   }
@@ -1536,19 +1662,23 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
               actions.moveLayer(node.id, node.position.x, node.position.y);
             } else {
               actions.moveNode(node.id, node.position.x, node.position.y);
-              markConnectedSlotOwnersDirty(node.id);
               if (physicsEnabled) {
                 releaseNodeAfterTimeout(node.id);
               }
               if (physicsEnabled && pinnedNodeIds.includes(node.id) && physicsModelRef.current) {
                 const forceNode = physicsModelRef.current.nodes.find(
-                  (candidate) => candidate.id === node.id,
+                  (candidate) => candidate.memberNodeIds.includes(node.id),
                 );
                 if (forceNode) {
-                  forceNode.x = node.position.x;
-                  forceNode.y = node.position.y;
-                  forceNode.fx = node.position.x;
-                  forceNode.fy = node.position.y;
+                  const offset = forceNode.internalOffsets.get(node.id);
+                  if (!offset) {
+                    return;
+                  }
+                  const { width, height } = nodeDimensions(node);
+                  forceNode.x = node.position.x + width / 2 - offset.x;
+                  forceNode.y = node.position.y + height / 2 - offset.y;
+                  forceNode.fx = forceNode.x;
+                  forceNode.fy = forceNode.y;
                   physicsModelRef.current.simulation.alpha(0.45).restart();
                 }
               }
