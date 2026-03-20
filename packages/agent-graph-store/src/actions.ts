@@ -39,6 +39,13 @@ function applySnapshot(
   graph: GraphSnapshot,
   diff: GraphDiffSnapshot | null,
 ): void {
+  console.log("[agent-graph] apply-snapshot:before", {
+    currentGraphNodes: store.state$.graph.get()?.nodes.length ?? 0,
+    currentGraphEdges: store.state$.graph.get()?.edges.length ?? 0,
+    nextGraphNodes: graph.nodes.length,
+    nextGraphEdges: graph.edges.length,
+    nextRevision: graph.revision,
+  });
   store.state$.workspace.set(workspace);
   store.state$.graph.set(graph);
   store.state$.diff.set(diff);
@@ -47,15 +54,37 @@ function applySnapshot(
     store.state$.activeLayerId.set(graph.layers[0]?.id ?? null);
   }
   store.state$.connection.status.set("ready");
+  console.log("[agent-graph] apply-snapshot:after", {
+    appliedGraphNodes: store.state$.graph.get()?.nodes.length ?? 0,
+    appliedGraphEdges: store.state$.graph.get()?.edges.length ?? 0,
+    activeLayerId: store.state$.activeLayerId.get(),
+  });
 }
 
 function handleServerMessage(store: AgentGraphStore, message: ServerMessage): void {
   switch (message.type) {
     case "server/connected":
+      console.log("[agent-graph] server-connected", {
+        layers: message.graph.layers.length,
+        nodes: message.graph.nodes.length,
+        edges: message.graph.edges.length,
+        revision: message.graph.revision,
+      });
       applySnapshot(store, message.workspace, message.graph, message.diff);
       break;
     case "server/graph":
+      console.log("[agent-graph] server-graph", {
+        layers: message.graph.layers.length,
+        nodes: message.graph.nodes.length,
+        edges: message.graph.edges.length,
+        revision: message.graph.revision,
+      });
       store.state$.graph.set(message.graph);
+      console.log("[agent-graph] server-graph:applied", {
+        nodes: store.state$.graph.get()?.nodes.length ?? 0,
+        edges: store.state$.graph.get()?.edges.length ?? 0,
+        activeLayerId: store.state$.activeLayerId.get(),
+      });
       break;
     case "server/diff":
       store.state$.diff.set(message.diff);

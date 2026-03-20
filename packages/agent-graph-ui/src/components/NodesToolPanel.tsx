@@ -35,7 +35,7 @@ export const NodesToolPanel = observer(function NodesToolPanel({
   }, [query, workspace?.nodes]);
 
   return (
-    <section className="mt-3 rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
+    <section className="flex h-full min-h-0 flex-col rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="font-['Space_Grotesk'] text-base font-medium text-stone-50">

@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   Background,
   Controls,
   MarkerType,
   MiniMap,
   ReactFlow,
+  useEdgesState,
+  useNodesState,
   type Edge,
   type Node,
   type NodeMouseHandler,
+  type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { observer, useSelector } from "@legendapp/state/react";
@@ -68,9 +71,8 @@ function mapLayerNodes(graph: GraphSnapshot): Node[] {
   return [...groupNodes, ...semanticNodes];
 }
 
-function mapNodesWithOverrides(
+function mapNodes(
   graph: GraphSnapshot,
-  positionOverrides: Record<string, { x: number; y: number }>,
   activeLayerId: string | null,
   hideNodeFromLayer: (layerId: string, sourceNodeId: string) => void,
 ): Node[] {
@@ -81,8 +83,8 @@ function mapNodesWithOverrides(
       ? node.id
       : String((node.data as { layerId?: string }).layerId ?? node.parentId ?? "");
     const isActiveLayer = !activeLayerId || nodeLayerId === activeLayerId;
-    const override = positionOverrides[node.id];
-    const nextNode: Node = {
+
+    return {
       ...node,
       draggable: isGroup ? isActiveLayer : isActiveLayer && node.draggable !== false,
       selectable: isActiveLayer,
@@ -95,19 +97,14 @@ function mapNodesWithOverrides(
         isActiveLayer,
         onHide:
           !isGroup && isActiveLayer && node.type === "semanticNode"
-            ? () => hideNodeFromLayer(nodeLayerId, String((node.data as { sourceId?: string }).sourceId))
+            ? () =>
+                hideNodeFromLayer(
+                  nodeLayerId,
+                  String((node.data as { sourceId?: string }).sourceId),
+                )
             : undefined,
       },
-    };
-
-    if (!override) {
-      return nextNode;
-    }
-
-    return {
-      ...nextNode,
-      position: override,
-    };
+    } satisfies Node;
   });
 }
 
@@ -173,54 +170,43 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
 }: CanvasProps) {
   const graph = useSelector(store.state$.graph);
   const activeLayerId = useSelector(store.state$.activeLayerId);
-  const [positionOverrides, setPositionOverrides] = useState<
-    Record<string, { x: number; y: number }>
-  >({});
+  const reactFlowRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
+  const hasFittedInitialViewRef = useRef(false);
+
+  const mappedNodes = useMemo(
+    () => (graph ? mapNodes(graph, activeLayerId, actions.hideNodeFromLayer) : []),
+    [actions.hideNodeFromLayer, graph, activeLayerId],
+  );
+  const mappedEdges = useMemo(() => (graph ? mapEdges(graph.edges) : []), [graph]);
+  const [localNodes, setLocalNodes, onNodesChange] = useNodesState(mappedNodes);
+  const [localEdges, setLocalEdges, onEdgesChange] = useEdgesState(mappedEdges);
 
   useEffect(() => {
     if (!graph) {
-      setPositionOverrides({});
+      hasFittedInitialViewRef.current = false;
+    }
+  }, [graph]);
+
+  useEffect(() => {
+    setLocalNodes(mappedNodes);
+  }, [mappedNodes, setLocalNodes]);
+
+  useEffect(() => {
+    setLocalEdges(mappedEdges);
+  }, [mappedEdges, setLocalEdges]);
+
+  useEffect(() => {
+    if (!graph || hasFittedInitialViewRef.current || !reactFlowRef.current) {
       return;
     }
 
-    setPositionOverrides((current) => {
-      const next: Record<string, { x: number; y: number }> = {};
-      const basePositions = new Map<string, { x: number; y: number }>();
-
-      for (const layer of graph.layers) {
-        basePositions.set(layer.id, { x: layer.x, y: layer.y });
-      }
-      for (const node of graph.nodes) {
-        basePositions.set(node.id, node.position);
-      }
-
-      for (const [id, override] of Object.entries(current)) {
-        const base = basePositions.get(id);
-        if (!override) {
-          continue;
-        }
-
-        if (!base || override.x !== base.x || override.y !== base.y) {
-          next[id] = override;
-        }
-      }
-      return next;
+    reactFlowRef.current.fitView({
+      padding: 0.18,
+      duration: 0,
+      includeHiddenNodes: false,
     });
+    hasFittedInitialViewRef.current = true;
   }, [graph]);
-
-  const nodes = useMemo(
-    () =>
-      graph
-        ? mapNodesWithOverrides(
-            graph,
-            positionOverrides,
-            activeLayerId,
-            actions.hideNodeFromLayer,
-          )
-        : [],
-    [actions.hideNodeFromLayer, graph, positionOverrides, activeLayerId],
-  );
-  const edges = useMemo(() => (graph ? mapEdges(graph.edges) : []), [graph]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
     const nodeLayerId =
@@ -243,10 +229,17 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
       <div className="h-full w-full">
         <ReactFlow
           className="[&_.react-flow__pane]:bg-transparent [&_.react-flow__renderer]:bg-transparent [&_.react-flow__viewport]:bg-transparent"
-          fitView
-          nodes={nodes}
-          edges={edges}
+          nodes={localNodes}
+          edges={localEdges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           proOptions={{ hideAttribution: true }}
+          autoPanOnNodeDrag
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onInit={(instance) => {
+            reactFlowRef.current = instance;
+          }}
           onNodeClick={onNodeClick}
           onEdgeClick={(_, edge) => {
             actions.selectNode(null);
@@ -265,38 +258,12 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
               return;
             }
 
-            setPositionOverrides((current) => ({
-              ...current,
-              [node.id]: {
-                x: node.position.x,
-                y: node.position.y,
-              },
-            }));
             if (graph?.layers.some((layer) => layer.id === node.id)) {
               actions.moveLayer(node.id, node.position.x, node.position.y);
             } else {
               actions.moveNode(node.id, node.position.x, node.position.y);
             }
           }}
-          onNodeDrag={(_, node) => {
-            const nodeLayerId =
-              node.type === "group"
-                ? node.id
-                : String((node.data as { layerId?: string }).layerId ?? node.parentId ?? "");
-            if (activeLayerId && nodeLayerId !== activeLayerId) {
-              return;
-            }
-
-            setPositionOverrides((current) => ({
-              ...current,
-              [node.id]: {
-                x: node.position.x,
-                y: node.position.y,
-              },
-            }));
-          }}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
           minZoom={0.2}
           maxZoom={1.8}
           defaultEdgeOptions={{
@@ -304,8 +271,46 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
           }}
         >
           <Background gap={24} color="rgba(120, 113, 108, 0.16)" />
-          <MiniMap pannable zoomable />
-          <Controls />
+          <MiniMap
+            pannable
+            zoomable
+            position="bottom-right"
+            maskColor="rgba(20, 17, 15, 0.72)"
+            nodeColor={(node) =>
+              node.type === "group"
+                ? "rgba(120, 113, 108, 0.22)"
+                : node.type === "hiddenContextPortal"
+                  ? "#f59e0b"
+                  : "#e7e5e4"
+            }
+            nodeStrokeColor={(node) =>
+              node.type === "group"
+                ? "rgba(168, 162, 158, 0.36)"
+                : node.type === "hiddenContextPortal"
+                  ? "#f59e0b"
+                  : "#60a5fa"
+            }
+            nodeBorderRadius={8}
+            style={{
+              zIndex: 30,
+              right: 324,
+              bottom: 12,
+              backgroundColor: "rgba(18, 17, 15, 0.88)",
+              border: "1px solid rgba(41, 37, 36, 0.95)",
+              borderRadius: 16,
+            }}
+          />
+          <Controls
+            position="bottom-left"
+            style={{
+              zIndex: 30,
+              left: 292,
+              bottom: 12,
+              background: "rgba(18, 17, 15, 0.88)",
+              border: "1px solid rgba(41, 37, 36, 0.95)",
+              borderRadius: 16,
+            }}
+          />
         </ReactFlow>
       </div>
     </section>

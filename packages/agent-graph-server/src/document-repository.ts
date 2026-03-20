@@ -1,9 +1,11 @@
 import {
-  createInitialWorkspaceState,
-  createSampleSourceWorkspace,
   type SourceWorkspace,
   type WorkspaceState,
 } from "@agent-infrastructure/agent-graph-core";
+import {
+  createWorkspaceStateForSourceWorkspace,
+  loadAgentishSourceWorkspace,
+} from "./load-agentish-workspace.js";
 
 export type DocumentRepository = {
   getSourceWorkspace(): SourceWorkspace;
@@ -14,10 +16,10 @@ export type DocumentRepository = {
   setPreviousSourceWorkspace(nextWorkspace: SourceWorkspace): void;
 };
 
-export function createDocumentRepository(): DocumentRepository {
-  let sourceWorkspace = createSampleSourceWorkspace();
+export async function createDocumentRepository(): Promise<DocumentRepository> {
+  let sourceWorkspace = await loadAgentishSourceWorkspace();
   let previousSourceWorkspace = structuredClone(sourceWorkspace);
-  let workspaceState = createInitialWorkspaceState();
+  let workspaceState = createWorkspaceStateForSourceWorkspace(sourceWorkspace);
 
   return {
     getSourceWorkspace() {

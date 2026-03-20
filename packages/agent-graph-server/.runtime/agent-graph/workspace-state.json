@@ -1,42 +1,54 @@
 {
   "rootId": "agent-graph",
-  "revision": 257,
+  "revision": 386,
   "layers": [
     {
       "id": "layer-overview",
       "label": "Overview",
       "kind": "overview",
       "nodeIds": [
-        "family-compose",
-        "family-inspection",
-        "family-editing",
-        "family-change",
-        "component-layers",
-        "component-inspector",
-        "component-diff",
-        "contract-validation",
-        "family-comprehension"
+        "agentish",
+        "user",
+        "source-workspace",
+        "source-truth",
+        "graph-whole",
+        "graph-plane",
+        "graph-layer",
+        "graph-layer-group",
+        "graph-node",
+        "graph-edge",
+        "graph-derived-edge",
+        "graph-hidden-context",
+        "graph-diff-layer",
+        "graph-completeness",
+        "editing-validation",
+        "editing-conflict",
+        "editing-mutation",
+        "package-studio",
+        "package-ui",
+        "package-store",
+        "package-core",
+        "package-protocol",
+        "package-server",
+        "runtime-browser",
+        "runtime-react-flow",
+        "runtime-legend-state",
+        "runtime-bun",
+        "runtime-filesystem",
+        "contract-workspace-snapshot",
+        "contract-graph-snapshot",
+        "contract-graph-patch",
+        "contract-diff-snapshot",
+        "contract-validation-result",
+        "contract-conflict-payload",
+        "contract-external-change",
+        "source-document",
+        "agent-graph"
       ],
       "visible": true,
-      "x": -319.6938301461971,
-      "y": -62.67377464673709,
+      "x": -959.5024073665327,
+      "y": -523.4212265786501,
       "derivedFromLayerId": null
-    },
-    {
-      "id": "layer-1773962513293",
-      "label": "Overview Copy",
-      "kind": "overview",
-      "nodeIds": [
-        "family-comprehension",
-        "family-compose",
-        "family-inspection",
-        "family-editing",
-        "family-change"
-      ],
-      "visible": true,
-      "x": -1047.681378092295,
-      "y": 1144.825235331403,
-      "derivedFromLayerId": "layer-overview"
     }
   ],
   "nodePositions": {
@@ -45,8 +57,8 @@
       "y": -587.2493084683437
     },
     "family-comprehension::layer-overview": {
-      "x": -843.8099057691356,
-      "y": -62.61183740698557
+      "x": -901.5157744360532,
+      "y": -56.74344398323123
     },
     "family-compose::layer-overview": {
       "x": 536.3514079972182,
@@ -95,6 +107,54 @@
     "family-comprehension::layer-1773962513293": {
       "x": -228.4397711518984,
       "y": -36.60080752067506
+    },
+    "portal:outgoing:family-comprehension::layer-overview": {
+      "x": 132,
+      "y": 22
+    },
+    "agentish::layer-overview": {
+      "x": 744.213922601169,
+      "y": 217.5823166201243
+    },
+    "agent-graph::layer-overview": {
+      "x": 823.9164165037155,
+      "y": 467.67608237655725
+    },
+    "source-document::layer-overview": {
+      "x": 1036.2736887781657,
+      "y": 192.04715122558275
+    },
+    "source-truth::layer-overview": {
+      "x": 613.3121635061852,
+      "y": 435.4582945101322
+    },
+    "portal:incoming:source-document::layer-overview": {
+      "x": -54,
+      "y": 22
+    },
+    "portal:incoming:agentish::layer-overview": {
+      "x": -54,
+      "y": 22
+    },
+    "graph-layer::layer-overview": {
+      "x": 886.3857945274945,
+      "y": 680.3128237950974
+    },
+    "user::layer-overview": {
+      "x": -933.4070346882804,
+      "y": -233.01311197496958
+    },
+    "graph-whole::layer-overview": {
+      "x": 926.6418004129439,
+      "y": 158.5050528197406
+    },
+    "graph-layer-group::layer-overview": {
+      "x": -108.56572334850932,
+      "y": 302.10735792439374
+    },
+    "graph-edge::layer-overview": {
+      "x": 83.96480170601603,
+      "y": 594.3053199551978
     }
   }
 }

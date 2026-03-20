@@ -3,11 +3,14 @@ import { buildCompleteGraph, buildDiffLayers } from "@agent-infrastructure/agent
 import { createWsMessageHandler } from "./create-ws-server.js";
 import type { DocumentRepository } from "./document-repository.js";
 import type { GetWorkspaceResponse } from "@agent-infrastructure/agent-graph-protocol";
+import { normalizeWorkspaceState } from "./load-agentish-workspace.js";
 
 export async function createHttpServer(repository: DocumentRepository) {
   const persistedWorkspaceState = await loadWorkspaceState();
   if (persistedWorkspaceState) {
-    repository.setWorkspaceState(persistedWorkspaceState);
+    repository.setWorkspaceState(
+      normalizeWorkspaceState(repository.getSourceWorkspace(), persistedWorkspaceState),
+    );
   }
 
   const handleWsMessage = createWsMessageHandler(repository);

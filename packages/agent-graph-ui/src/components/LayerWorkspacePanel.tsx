@@ -18,7 +18,7 @@ export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
   const activeLayerId = useSelector(store.state$.activeLayerId);
 
   return (
-    <aside className="rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
+    <aside className="flex h-full min-h-0 flex-col rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-['Space_Grotesk'] text-base font-medium text-stone-50">
@@ -34,7 +34,7 @@ export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
         </button>
       </div>
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-auto pr-1">
         {graph?.layers.map((layer) => (
           <div
             key={layer.id}

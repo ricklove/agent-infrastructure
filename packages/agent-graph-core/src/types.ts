@@ -1,18 +1,6 @@
-export type SourceNodeKind =
-  | "document"
-  | "scenario-family"
-  | "scenario"
-  | "component"
-  | "contract"
-  | "runtime"
-  | "workspace-op";
+export type SourceNodeKind = string;
 
-export type SourceEdgeKind =
-  | "contains"
-  | "supports"
-  | "depends-on"
-  | "implements"
-  | "traces-to";
+export type SourceEdgeKind = string;
 
 export type LayerKind =
   | "overview"
