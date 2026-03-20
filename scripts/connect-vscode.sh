@@ -43,6 +43,11 @@ has_command() {
   command -v "$cmd" >/dev/null 2>&1
 }
 
+is_wsl() {
+  [[ -n "${WSL_DISTRO_NAME:-}" ]] && return 0
+  grep -qiE "(microsoft|wsl)" /proc/version 2>/dev/null
+}
+
 require_session_manager_plugin() {
   if command -v session-manager-plugin >/dev/null 2>&1; then
     return 0
@@ -98,6 +103,120 @@ launch_vscode_remote() {
   fi
 
   return 1
+}
+
+resolve_windows_home() {
+  if ! has_command powershell.exe; then
+    return 1
+  fi
+
+  powershell.exe -NoProfile -NonInteractive -Command '$env:USERPROFILE' 2>/dev/null | tr -d '\r' | tail -n 1
+}
+
+to_windows_path() {
+  local linux_path="$1"
+
+  if has_command wslpath; then
+    wslpath -w "$linux_path"
+    return 0
+  fi
+
+  return 1
+}
+
+sync_windows_ssh_config() {
+  local host_alias="$1"
+  local instance_id="$2"
+  local remote_user="$3"
+  local key_path="$4"
+  local profile="$5"
+  local region="$6"
+
+  is_wsl || return 0
+
+  local windows_home
+  windows_home="$(resolve_windows_home || true)"
+  if [[ -z "$windows_home" ]]; then
+    log "WSL detected, but Windows home could not be resolved; skipping Windows SSH sync"
+    return 0
+  fi
+
+  local windows_home_wsl
+  if has_command wslpath; then
+    windows_home_wsl="$(wslpath "$windows_home")"
+  else
+    log "WSL detected, but wslpath is unavailable; skipping Windows SSH sync"
+    return 0
+  fi
+
+  local windows_ssh_dir="${windows_home_wsl}/.ssh"
+  mkdir -p "$windows_ssh_dir"
+
+  local windows_key_path="${windows_ssh_dir}/${host_alias}"
+  cp "$key_path" "$windows_key_path"
+  cp "${key_path}.pub" "${windows_key_path}.pub"
+
+  local windows_config_file="${windows_ssh_dir}/config"
+  touch "$windows_config_file"
+
+  local profile_arg=""
+  if [[ -n "$profile" ]]; then
+    profile_arg=" --profile ${profile}"
+  fi
+
+  local windows_key_path_native
+  windows_key_path_native="$(to_windows_path "$windows_key_path" || true)"
+  if [[ -z "$windows_key_path_native" ]]; then
+    log "failed to convert ${windows_key_path} to a Windows path; skipping Windows SSH sync"
+    return 0
+  fi
+
+  windows_key_path_native="${windows_key_path_native//\\/\\\\}"
+
+  local config_block
+  config_block="$(cat <<EOF
+# agent-infrastructure connect-vscode begin ${host_alias}
+Host ${host_alias}
+    HostName ${instance_id}
+    User ${remote_user}
+    IdentityFile ${windows_key_path_native}
+    IdentitiesOnly yes
+    StrictHostKeyChecking accept-new
+    ServerAliveInterval 30
+    ServerAliveCountMax 6
+    ProxyCommand aws${profile_arg} ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p --region ${region}
+# agent-infrastructure connect-vscode end ${host_alias}
+EOF
+)"
+
+  local tmp_config
+  tmp_config="$(mktemp)"
+  if grep -qF "# agent-infrastructure connect-vscode begin ${host_alias}" "$windows_config_file"; then
+    awk -v begin="# agent-infrastructure connect-vscode begin ${host_alias}" \
+        -v end="# agent-infrastructure connect-vscode end ${host_alias}" \
+        -v replacement="$config_block" '
+      $0 == begin {
+        print replacement
+        in_block = 1
+        next
+      }
+      $0 == end {
+        in_block = 0
+        next
+      }
+      !in_block { print }
+    ' "$windows_config_file" >"$tmp_config"
+  else
+    cat "$windows_config_file" >"$tmp_config"
+    if [[ -s "$tmp_config" ]]; then
+      printf '\n' >>"$tmp_config"
+    fi
+    printf '%s\n' "$config_block" >>"$tmp_config"
+  fi
+  mv "$tmp_config" "$windows_config_file"
+
+  log "synced Windows SSH config at ${windows_config_file}"
+  log "copied SSH key to ${windows_key_path}"
 }
 
 aws_cmd=(
@@ -401,6 +520,14 @@ else
   printf '%s\n' "$config_block" >>"$tmp_config"
 fi
 mv "$tmp_config" "$config_file"
+
+sync_windows_ssh_config \
+  "$host_alias" \
+  "$instance_id" \
+  "$remote_user" \
+  "$key_path" \
+  "$profile" \
+  "$region"
 
 log "validating SSH connectivity to ${host_alias}"
 ssh_output="$(ssh -o ConnectTimeout=20 "$host_alias" 'printf "%s\n" "$HOSTNAME"' 2>&1)" || fail "SSH validation failed: ${ssh_output}"
