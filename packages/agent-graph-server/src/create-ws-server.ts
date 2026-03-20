@@ -22,6 +22,7 @@ function snapshotMessage(repository: DocumentRepository): ServerMessage {
       },
       documents: sourceWorkspace.documents,
       nodes: sourceWorkspace.nodes,
+      pinnedNodeIds: workspaceState.pinnedNodeIds,
       workspaceStateRevision: workspaceState.revision,
     },
     graph: buildCompleteGraph({
@@ -88,6 +89,23 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         x: intent.x,
         y: intent.y,
       };
+      workspaceState.revision += 1;
+      repository.setWorkspaceState(workspaceState);
+      await saveWorkspaceState(workspaceState);
+      return [
+        {
+          type: "server/graph",
+          graph: buildCompleteGraph({
+            sourceWorkspace: repository.getSourceWorkspace(),
+            workspaceState,
+          }),
+        },
+      ];
+    }
+    case "set-node-pinned": {
+      workspaceState.pinnedNodeIds = intent.pinned
+        ? [...new Set([...workspaceState.pinnedNodeIds, intent.nodeId])]
+        : workspaceState.pinnedNodeIds.filter((nodeId) => nodeId !== intent.nodeId);
       workspaceState.revision += 1;
       repository.setWorkspaceState(workspaceState);
       await saveWorkspaceState(workspaceState);

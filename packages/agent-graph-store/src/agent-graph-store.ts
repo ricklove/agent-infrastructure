@@ -22,7 +22,16 @@ export type AgentGraphStoreState = {
   activeLayerId: string | null;
   selection: {
     nodeId: string | null;
+    nodeIds: string[];
     edgeId: string | null;
+  };
+  layout: {
+    physicsEnabled: boolean;
+    pinnedNodeIds: string[];
+    springStrength: number;
+    springLength: number;
+    straightenStrength: number;
+    repulsionStrength: number;
   };
   inspection: {
     derivedEdgePathIds: string[];
@@ -48,7 +57,16 @@ export function createAgentGraphStore(serverOrigin: string) {
     activeLayerId: null,
     selection: {
       nodeId: null,
+      nodeIds: [],
       edgeId: null,
+    },
+    layout: {
+      physicsEnabled: false,
+      pinnedNodeIds: [],
+      springStrength: 0.35,
+      springLength: 110,
+      straightenStrength: 0.16,
+      repulsionStrength: 420,
     },
     inspection: {
       derivedEdgePathIds: [],

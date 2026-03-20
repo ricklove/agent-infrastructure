@@ -7,13 +7,16 @@ import { DiffPanel } from "./DiffPanel";
 import { DocumentsToolPanel } from "./DocumentsToolPanel";
 import { InspectorPanel } from "./InspectorPanel";
 import { LayerWorkspacePanel } from "./LayerWorkspacePanel";
+import { LayoutPhysicsPanel } from "./LayoutPhysicsPanel";
 import { NodesToolPanel } from "./NodesToolPanel";
 
 export type AgentGraphScreenProps = {
+  appVersion?: string;
   serverOrigin?: string;
 };
 
 export const AgentGraphScreen = observer(function AgentGraphScreen({
+  appVersion = "dev",
   serverOrigin = "http://localhost:8788",
 }: AgentGraphScreenProps) {
   const [store] = useState(() => createAgentGraphStore(serverOrigin));
@@ -30,8 +33,24 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
   const graph = useValue(store.state$.graph);
   const validation = useValue(store.state$.validation);
   const conflict = useValue(store.state$.conflict);
+  const activeLayerId = useValue(store.state$.activeLayerId);
+  const pinnedNodeIds = useValue(store.state$.layout.pinnedNodeIds);
+  const physicsEnabled = useValue(store.state$.layout.physicsEnabled);
+  const springStrength = useValue(store.state$.layout.springStrength);
+  const springLength = useValue(store.state$.layout.springLength);
+  const straightenStrength = useValue(store.state$.layout.straightenStrength);
+  const repulsionStrength = useValue(store.state$.layout.repulsionStrength);
   const selectedNode = useValue(() => findSelectedNode(store.state$.get()));
   const selectedEdge = useValue(() => findSelectedEdge(store.state$.get()));
+  const activeLayerVisibleSemanticNodes = graph
+    ? graph.nodes.filter(
+        (node) => node.kind === "semantic-node" && (!activeLayerId || node.parentLayerId === activeLayerId),
+      )
+    : [];
+  const pinnedVisibleNodeCount = activeLayerVisibleSemanticNodes.filter((node) =>
+    pinnedNodeIds.includes(node.id),
+  ).length;
+  const movableNodeCount = activeLayerVisibleSemanticNodes.length - pinnedVisibleNodeCount;
   const revisionLabel = graph ? String(graph.revision) : "--";
   const connectionTone =
     connection.status === "ready"
@@ -151,10 +170,23 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
           <div className="pointer-events-auto flex h-full min-h-0 w-[300px] max-w-[30vw] flex-col gap-3">
             <div className="self-end rounded-2xl border border-stone-800/90 bg-stone-950/88 px-3 py-2 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
               <div className="flex items-center justify-end gap-3 whitespace-nowrap">
+                <span>Version: {appVersion}</span>
                 <span className={connectionTone}>Connection: {connection.status}</span>
                 <span>Workspace: {workspaceLabel}</span>
                 <span>Revision: {revisionLabel}</span>
               </div>
+            </div>
+            <div className="shrink-0">
+              <LayoutPhysicsPanel
+                pinnedNodeCount={pinnedVisibleNodeCount}
+                movableNodeCount={movableNodeCount}
+                physicsEnabled={physicsEnabled}
+                springStrength={springStrength}
+                springLength={springLength}
+                straightenStrength={straightenStrength}
+                repulsionStrength={repulsionStrength}
+                actions={actions}
+              />
             </div>
             <div className="min-h-0 flex-1">
               <InspectorPanel

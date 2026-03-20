@@ -171,6 +171,7 @@ export function createWorkspaceStateForSourceWorkspace(
       },
     ],
     nodePositions: {},
+    pinnedNodeIds: [],
   };
 }
 
@@ -190,11 +191,17 @@ export function normalizeWorkspaceState(
     layers.length > 0
       ? layers
       : createWorkspaceStateForSourceWorkspace(sourceWorkspace).layers;
+  const validPinnedNodeIds = new Set(
+    nextLayers.flatMap((layer) => layer.nodeIds.map((nodeId) => `${nodeId}::${layer.id}`)),
+  );
 
   return {
     rootId: sourceWorkspace.id,
     revision: workspaceState.revision,
     layers: nextLayers,
     nodePositions: workspaceState.nodePositions ?? {},
+    pinnedNodeIds: (workspaceState.pinnedNodeIds ?? []).filter((nodeId) =>
+      validPinnedNodeIds.has(nodeId),
+    ),
   };
 }

@@ -96,6 +96,7 @@ export function buildHiddenContextPortals(args: {
           .join(", "),
         hiddenCount: portalGroup.neighbors.length,
         hiddenKinds: [...new Set(portalGroup.neighbors.map((entry) => entry.edge.kind))],
+        independentlyPositioned: Boolean(nodePositions?.[portalId]),
       });
 
       portalEdges.push({

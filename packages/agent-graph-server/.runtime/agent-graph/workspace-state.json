@@ -1,13 +1,12 @@
 {
   "rootId": "agent-graph",
-  "revision": 386,
+  "revision": 29011,
   "layers": [
     {
       "id": "layer-overview",
       "label": "Overview",
       "kind": "overview",
       "nodeIds": [
-        "agentish",
         "user",
         "source-workspace",
         "source-truth",
@@ -43,11 +42,12 @@
         "contract-conflict-payload",
         "contract-external-change",
         "source-document",
+        "agentish",
         "agent-graph"
       ],
       "visible": true,
-      "x": -959.5024073665327,
-      "y": -523.4212265786501,
+      "x": 978.0012015290101,
+      "y": -415.58195628046735,
       "derivedFromLayerId": null
     }
   ],
@@ -113,20 +113,20 @@
       "y": 22
     },
     "agentish::layer-overview": {
-      "x": 744.213922601169,
-      "y": 217.5823166201243
+      "x": -3920.840661810686,
+      "y": -915.6127806692339
     },
     "agent-graph::layer-overview": {
-      "x": 823.9164165037155,
-      "y": 467.67608237655725
+      "x": -4326.108755345669,
+      "y": -881.0019142361888
     },
     "source-document::layer-overview": {
-      "x": 1036.2736887781657,
-      "y": 192.04715122558275
+      "x": -4437.858059781065,
+      "y": -1077.1024654573823
     },
     "source-truth::layer-overview": {
-      "x": 613.3121635061852,
-      "y": 435.4582945101322
+      "x": 12017.170330908437,
+      "y": -1796.9826819324599
     },
     "portal:incoming:source-document::layer-overview": {
       "x": -54,
@@ -137,24 +137,153 @@
       "y": 22
     },
     "graph-layer::layer-overview": {
-      "x": 886.3857945274945,
-      "y": 680.3128237950974
+      "x": -3695.9203838528438,
+      "y": -499.73193723394695
     },
     "user::layer-overview": {
-      "x": -933.4070346882804,
-      "y": -233.01311197496958
+      "x": -3865.591861149268,
+      "y": -397.07318253046265
     },
     "graph-whole::layer-overview": {
-      "x": 926.6418004129439,
-      "y": 158.5050528197406
+      "x": -3281.0203101362567,
+      "y": -493.8838178902944
     },
     "graph-layer-group::layer-overview": {
-      "x": -108.56572334850932,
-      "y": 302.10735792439374
+      "x": -3842.9343385903567,
+      "y": -304.33210878835456
     },
     "graph-edge::layer-overview": {
-      "x": 83.96480170601603,
-      "y": 594.3053199551978
+      "x": -3520.9073007197053,
+      "y": -216.86890498450973
+    },
+    "source-workspace::layer-overview": {
+      "x": -3860.886191333422,
+      "y": -123.60653094495008
+    },
+    "graph-derived-edge::layer-overview": {
+      "x": -3368.4566467032514,
+      "y": -336.00465215138496
+    },
+    "graph-diff-layer::layer-overview": {
+      "x": -3562.9836276425517,
+      "y": -622.808462779011
+    },
+    "graph-completeness::layer-overview": {
+      "x": -848.5495650375764,
+      "y": 14377.7886718422
+    },
+    "package-studio::layer-overview": {
+      "x": -1190.7215261770739,
+      "y": 183.49483332909747
+    },
+    "package-server::layer-overview": {
+      "x": -1205.6065104805098,
+      "y": 549.6664840903679
+    },
+    "runtime-legend-state::layer-overview": {
+      "x": -17689.531571946114,
+      "y": -4443.068964066899
+    },
+    "editing-conflict::layer-overview": {
+      "x": -4071.2712343011035,
+      "y": -800.0486092856291
+    },
+    "editing-mutation::layer-overview": {
+      "x": -3899.1537266451255,
+      "y": -737.2021662109555
+    },
+    "graph-node::layer-overview": {
+      "x": -3694.2308237121715,
+      "y": -303.6046853636952
+    },
+    "graph-hidden-context::layer-overview": {
+      "x": -3535.455057620066,
+      "y": -413.20909470080966
+    },
+    "graph-plane::layer-overview": {
+      "x": -2978.4746824257445,
+      "y": -491.1055833242164
+    },
+    "editing-validation::layer-overview": {
+      "x": -4048.3294700590277,
+      "y": -623.3241766035896
+    },
+    "package-ui::layer-overview": {
+      "x": -801.1497423745251,
+      "y": 342.2614426234977
+    },
+    "package-store::layer-overview": {
+      "x": -651.3775035340299,
+      "y": 235.3770355636775
+    },
+    "package-core::layer-overview": {
+      "x": -301.93257571369827,
+      "y": 258.71735028386644
+    },
+    "package-protocol::layer-overview": {
+      "x": -448.71507078063814,
+      "y": 471.3612883383201
+    },
+    "runtime-browser::layer-overview": {
+      "x": -17917.451303906328,
+      "y": -4291.450033238523
+    },
+    "runtime-react-flow::layer-overview": {
+      "x": -17688.461240410965,
+      "y": -4140.433311626173
+    },
+    "runtime-bun::layer-overview": {
+      "x": -17584.857690984907,
+      "y": -4291.743558048558
+    },
+    "runtime-filesystem::layer-overview": {
+      "x": -17291.481396563668,
+      "y": -4292.819062463708
+    },
+    "contract-workspace-snapshot::layer-overview": {
+      "x": -4494.537760856345,
+      "y": -903.7687935284788
+    },
+    "contract-graph-snapshot::layer-overview": {
+      "x": -4305.265853235451,
+      "y": -1207.1681059613172
+    },
+    "contract-graph-patch::layer-overview": {
+      "x": -4266.900256353358,
+      "y": -1025.1800306094888
+    },
+    "contract-diff-snapshot::layer-overview": {
+      "x": -3951.5083655611684,
+      "y": -1100.291259044701
+    },
+    "contract-validation-result::layer-overview": {
+      "x": -4228.003009945143,
+      "y": -619.863211251538
+    },
+    "contract-conflict-payload::layer-overview": {
+      "x": -4131.951209446903,
+      "y": -1153.8333930807864
+    },
+    "contract-external-change::layer-overview": {
+      "x": -4095.0092157370354,
+      "y": -974.9530608417454
+    },
+    "portal:outgoing:agent-graph::layer-overview": {
+      "x": 335.7117140909879,
+      "y": 10.389487797923039
+    },
+    "portal:incoming:contract-graph-snapshot::layer-overview": {
+      "x": -54,
+      "y": 22
     }
-  }
+  },
+  "pinnedNodeIds": [
+    "package-studio::layer-overview",
+    "package-server::layer-overview",
+    "package-core::layer-overview",
+    "agent-graph::layer-overview",
+    "user::layer-overview",
+    "graph-whole::layer-overview",
+    "package-protocol::layer-overview"
+  ]
 }

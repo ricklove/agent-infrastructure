@@ -20,6 +20,7 @@ export async function loadWorkspaceState(): Promise<WorkspaceState | null> {
       revision: parsed.revision,
       layers: parsed.layers,
       nodePositions: parsed.nodePositions ?? {},
+      pinnedNodeIds: parsed.pinnedNodeIds ?? [],
     };
   } catch {
     return null;

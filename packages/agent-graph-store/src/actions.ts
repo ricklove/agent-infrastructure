@@ -39,13 +39,6 @@ function applySnapshot(
   graph: GraphSnapshot,
   diff: GraphDiffSnapshot | null,
 ): void {
-  console.log("[agent-graph] apply-snapshot:before", {
-    currentGraphNodes: store.state$.graph.get()?.nodes.length ?? 0,
-    currentGraphEdges: store.state$.graph.get()?.edges.length ?? 0,
-    nextGraphNodes: graph.nodes.length,
-    nextGraphEdges: graph.edges.length,
-    nextRevision: graph.revision,
-  });
   store.state$.workspace.set(workspace);
   store.state$.graph.set(graph);
   store.state$.diff.set(diff);
@@ -53,38 +46,22 @@ function applySnapshot(
   if (!activeLayerId || !graph.layers.some((layer) => layer.id === activeLayerId)) {
     store.state$.activeLayerId.set(graph.layers[0]?.id ?? null);
   }
+  const nodeIds = new Set(graph.nodes.map((node) => node.id));
+  store.state$.layout.pinnedNodeIds.set(
+    workspace.pinnedNodeIds.filter((nodeId) => nodeIds.has(nodeId)),
+  );
   store.state$.connection.status.set("ready");
-  console.log("[agent-graph] apply-snapshot:after", {
-    appliedGraphNodes: store.state$.graph.get()?.nodes.length ?? 0,
-    appliedGraphEdges: store.state$.graph.get()?.edges.length ?? 0,
-    activeLayerId: store.state$.activeLayerId.get(),
-  });
 }
 
 function handleServerMessage(store: AgentGraphStore, message: ServerMessage): void {
   switch (message.type) {
     case "server/connected":
-      console.log("[agent-graph] server-connected", {
-        layers: message.graph.layers.length,
-        nodes: message.graph.nodes.length,
-        edges: message.graph.edges.length,
-        revision: message.graph.revision,
-      });
       applySnapshot(store, message.workspace, message.graph, message.diff);
       break;
     case "server/graph":
-      console.log("[agent-graph] server-graph", {
-        layers: message.graph.layers.length,
-        nodes: message.graph.nodes.length,
-        edges: message.graph.edges.length,
-        revision: message.graph.revision,
-      });
-      store.state$.graph.set(message.graph);
-      console.log("[agent-graph] server-graph:applied", {
-        nodes: store.state$.graph.get()?.nodes.length ?? 0,
-        edges: store.state$.graph.get()?.edges.length ?? 0,
-        activeLayerId: store.state$.activeLayerId.get(),
-      });
+      if (!store.state$.layout.physicsEnabled.get()) {
+        store.state$.graph.set(message.graph);
+      }
       break;
     case "server/diff":
       store.state$.diff.set(message.diff);
@@ -139,16 +116,85 @@ export function createAgentGraphActions(store: AgentGraphStore) {
     },
 
     selectNode(nodeId: string | null): void {
-      store.state$.selection.assign({ nodeId, edgeId: null });
+      store.state$.selection.assign({
+        nodeId,
+        nodeIds: nodeId ? [nodeId] : [],
+        edgeId: null,
+      });
     },
 
     selectEdge(edgeId: string | null): void {
-      store.state$.selection.assign({ nodeId: null, edgeId });
+      store.state$.selection.assign({ nodeId: null, nodeIds: [], edgeId });
+    },
+
+    setCanvasSelection(nodeIds: string[], edgeIds: string[]): void {
+      const currentNodeIds = store.state$.selection.nodeIds.get();
+      const currentEdgeId = store.state$.selection.edgeId.get();
+      const nextEdgeId = edgeIds[0] ?? null;
+      const sameNodeIds =
+        currentNodeIds.length === nodeIds.length &&
+        currentNodeIds.every((nodeId, index) => nodeId === nodeIds[index]);
+
+      if (sameNodeIds && currentEdgeId === nextEdgeId) {
+        return;
+      }
+
+      store.state$.selection.assign({
+        nodeId: nodeIds[0] ?? null,
+        nodeIds,
+        edgeId: nextEdgeId,
+      });
     },
 
     setActiveLayer(layerId: string): void {
       store.state$.activeLayerId.set(layerId);
-      store.state$.selection.assign({ nodeId: null, edgeId: null });
+      store.state$.selection.assign({ nodeId: null, nodeIds: [], edgeId: null });
+      store.state$.layout.physicsEnabled.set(false);
+    },
+
+    setPhysicsEnabled(enabled: boolean): void {
+      store.state$.layout.physicsEnabled.set(enabled);
+    },
+
+    setSpringStrength(value: number): void {
+      store.state$.layout.springStrength.set(value);
+    },
+
+    setSpringLength(value: number): void {
+      store.state$.layout.springLength.set(value);
+    },
+
+    setStraightenStrength(value: number): void {
+      store.state$.layout.straightenStrength.set(value);
+    },
+
+    setRepulsionStrength(value: number): void {
+      store.state$.layout.repulsionStrength.set(value);
+    },
+
+    setNodePinned(nodeId: string, pinned: boolean, position?: { x: number; y: number }): void {
+      const current = store.state$.layout.pinnedNodeIds.get();
+      const alreadyPinned = current.includes(nodeId);
+      if (alreadyPinned === pinned) {
+        return;
+      }
+      if (pinned && position) {
+        sendIntent(ws, store, {
+          kind: "move-node",
+          nodeId,
+          x: position.x,
+          y: position.y,
+        });
+      }
+      const next = pinned
+        ? [...current, nodeId]
+        : current.filter((id) => id !== nodeId);
+      store.state$.layout.pinnedNodeIds.set(next);
+      sendIntent(ws, store, {
+        kind: "set-node-pinned",
+        nodeId,
+        pinned,
+      });
     },
 
     cloneLayer(layerId: string): void {
@@ -180,7 +226,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
         include: false,
       });
       if (store.state$.selection.nodeId.get()?.startsWith(`${sourceNodeId}::`)) {
-        store.state$.selection.assign({ nodeId: null, edgeId: null });
+        store.state$.selection.assign({ nodeId: null, nodeIds: [], edgeId: null });
       }
     },
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { GraphEdge, GraphNode } from "@agent-infrastructure/agent-graph-core";
+import { NodeAvatar } from "./NodeAvatar";
 
 type InspectorPanelProps = {
   selectedNode: GraphNode | null;
@@ -36,7 +37,10 @@ export function InspectorPanel({
             <div className="text-xs uppercase tracking-[0.2em] text-stone-500">
               Node
             </div>
-            <h3 className="mt-1 text-sm font-medium text-stone-100">{selectedNode.label}</h3>
+            <div className="mt-2 flex items-center gap-3">
+              <NodeAvatar nodeKey={selectedNode.sourceId} label={selectedNode.label} />
+              <h3 className="text-sm font-medium text-stone-100">{selectedNode.label}</h3>
+            </div>
             <p className="mt-1 text-xs leading-5 text-stone-300">{selectedNode.summary}</p>
           </div>
 

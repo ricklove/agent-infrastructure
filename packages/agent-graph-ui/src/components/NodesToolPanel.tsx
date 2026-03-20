@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { observer, useSelector } from "@legendapp/state/react";
 import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
+import { NodeAvatar } from "./NodeAvatar";
 
 type NodesToolPanelProps = {
   store: AgentGraphStore;
@@ -64,12 +65,15 @@ export const NodesToolPanel = observer(function NodesToolPanel({
               className="rounded-2xl border border-stone-800 bg-stone-950/70 p-2.5"
             >
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-stone-100">
-                    {node.label}
-                  </div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-stone-500">
-                    {node.kind}
+                <div className="flex min-w-0 items-start gap-3">
+                  <NodeAvatar nodeKey={node.id} label={node.label} size="sm" />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-stone-100">
+                      {node.label}
+                    </div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-stone-500">
+                      {node.kind}
+                    </div>
                   </div>
                 </div>
                 <button

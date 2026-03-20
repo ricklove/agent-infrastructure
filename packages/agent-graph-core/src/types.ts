@@ -59,6 +59,7 @@ export type WorkspaceState = {
   revision: number;
   layers: LayerDefinition[];
   nodePositions: Record<string, { x: number; y: number }>;
+  pinnedNodeIds: string[];
 };
 
 export type GraphNode = {
@@ -75,6 +76,7 @@ export type GraphNode = {
   summary: string;
   hiddenCount?: number;
   hiddenKinds?: string[];
+  independentlyPositioned?: boolean;
 };
 
 export type GraphEdge = {
@@ -116,6 +118,7 @@ export type WorkspaceSnapshot = {
   };
   documents: SourceDocument[];
   nodes: SourceNode[];
+  pinnedNodeIds: string[];
   workspaceStateRevision: number;
 };
 
@@ -154,6 +157,12 @@ export type MoveNodeIntent = {
   y: number;
 };
 
+export type SetNodePinnedIntent = {
+  kind: "set-node-pinned";
+  nodeId: string;
+  pinned: boolean;
+};
+
 export type ToggleLayerNodeIntent = {
   kind: "toggle-layer-node";
   layerId: string;
@@ -176,6 +185,7 @@ export type GraphIntent =
   | CloneLayerIntent
   | MoveLayerIntent
   | MoveNodeIntent
+  | SetNodePinnedIntent
   | ToggleLayerNodeIntent
   | RevealHiddenContextIntent
   | RequestDiffIntent;

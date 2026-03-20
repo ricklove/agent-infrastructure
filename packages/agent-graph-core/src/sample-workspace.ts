@@ -289,5 +289,6 @@ export function createInitialWorkspaceState(): WorkspaceState {
     revision: 1,
     layers,
     nodePositions: {},
+    pinnedNodeIds: [],
   };
 }
