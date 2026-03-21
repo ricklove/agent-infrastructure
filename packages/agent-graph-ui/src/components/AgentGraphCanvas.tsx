@@ -76,9 +76,10 @@ const SEMANTIC_NODE_WIDTH = 168;
 const MAX_CLUSTER_VELOCITY = 42;
 const MAX_CLUSTER_POSITION = 20_000;
 const PHYSICS_FRAME_MS = 1000 / 60;
-const PHYSICS_DAMPING_PER_FRAME = 0.88;
+const PHYSICS_DAMPING_PER_FRAME = 0.76;
 const PHYSICS_PERSIST_INTERVAL_MS = 500;
-const PHYSICS_SETTLE_SPEED = 0.35;
+const PHYSICS_SETTLE_SPEED = 0.12;
+const PHYSICS_VELOCITY_SNAP = 0.08;
 
 type ForceNodeDatum = {
   id: string;
@@ -1788,6 +1789,13 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
         node.vx = (node.vx ?? 0) * damping;
         node.vy = (node.vy ?? 0) * damping;
         clampVelocity(node, MAX_CLUSTER_VELOCITY);
+
+        if (Math.abs(node.vx ?? 0) < PHYSICS_VELOCITY_SNAP) {
+          node.vx = 0;
+        }
+        if (Math.abs(node.vy ?? 0) < PHYSICS_VELOCITY_SNAP) {
+          node.vy = 0;
+        }
 
         node.x = clampPosition((node.x ?? 0) + (node.vx ?? 0) * alpha);
         node.y = clampPosition((node.y ?? 0) + (node.vy ?? 0) * alpha);
