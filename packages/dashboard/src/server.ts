@@ -649,7 +649,10 @@ const server = Bun.serve<ProxyWsData>({
   async fetch(request) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/ws/agent-graph") {
+    if (
+      url.pathname === "/ws/agent-graph" ||
+      url.pathname === "/ws/agent-graph/"
+    ) {
       const unauthorized = requireDashboardSession(request);
       if (unauthorized) {
         return unauthorized;
