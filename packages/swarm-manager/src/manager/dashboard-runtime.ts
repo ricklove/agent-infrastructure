@@ -139,6 +139,95 @@ function clearRuntimeState(): void {
   } catch {}
 }
 
+function extractLatestQuickTunnelUrl(): string {
+  if (!existsSync(cloudflaredLogPath)) {
+    return "";
+  }
+
+  try {
+    const log = readFileSync(cloudflaredLogPath, "utf8");
+    const matches = log.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/g);
+    return matches?.at(-1)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function discoverPidByPattern(pattern: RegExp): number | null {
+  const shellPattern = shellQuote(pattern.source);
+  const result = Bun.spawnSync(
+    ["bash", "-lc", `ps -eo pid=,args= | rg --color never ${shellPattern}`],
+    {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+
+  if (result.exitCode !== 0) {
+    return null;
+  }
+
+  const output = result.stdout.toString().trim();
+  if (!output) {
+    return null;
+  }
+
+  for (const line of output.split("\n")) {
+    const [pidToken] = line.trim().split(/\s+/, 1);
+    const pid = Number.parseInt(pidToken ?? "", 10);
+    if (Number.isInteger(pid) && pid > 0 && isPidRunning(pid)) {
+      return pid;
+    }
+  }
+
+  return null;
+}
+
+async function recoverDashboardRuntimeState(
+  config: DashboardRuntimeConfig,
+): Promise<DashboardRuntimeState | null> {
+  const localUrl = `http://127.0.0.1:${config.port}`;
+  const dashboardHealthy = await isDashboardHealthy(config.port);
+  if (!dashboardHealthy) {
+    return null;
+  }
+
+  const dashboardPid =
+    discoverPidByPattern(/packages\/dashboard\/src\/server\.ts/) ?? 0;
+
+  if (!config.useCloudflared) {
+    return {
+      dashboardPid,
+      dashboardLogPath,
+      localUrl,
+    };
+  }
+
+  const publicUrl = extractLatestQuickTunnelUrl();
+  if (!publicUrl) {
+    return null;
+  }
+
+  const publicDashboardReady = await isPublicDashboardReady(publicUrl);
+  if (!publicDashboardReady) {
+    return null;
+  }
+
+  const cloudflaredPid =
+    discoverPidByPattern(/cloudflared\s+tunnel\s+--url\s+http:\/\/127\.0\.0\.1:\d+/) ??
+    0;
+
+  return {
+    dashboardPid,
+    dashboardLogPath,
+    localUrl,
+    cloudflaredPid,
+    cloudflaredLogPath,
+    publicUrl,
+  };
+}
+
 function readBootstrapContextValue(key: string): string {
   if (!existsSync(bootstrapContextPath)) {
     return "";
@@ -312,7 +401,8 @@ export async function ensureDashboardRuntime(
 ): Promise<DashboardRuntimeState> {
   mkdirSync(runtimeDir, { recursive: true });
 
-  const currentState = readRuntimeState();
+  const currentState =
+    readRuntimeState() ?? (await recoverDashboardRuntimeState(config));
   const dashboardRunning = await isExpectedProcess(
     currentState?.dashboardPid,
     /packages\/dashboard\/src\/server\.ts/,
@@ -325,20 +415,31 @@ export async function ensureDashboardRuntime(
     ? await isDashboardHealthy(config.port)
     : false;
   const publicDashboardReady =
-    config.useCloudflared && cloudflaredRunning
-      ? await isPublicDashboardReady(currentState?.publicUrl)
+    config.useCloudflared && typeof currentState?.publicUrl === "string"
+      ? await isPublicDashboardReady(currentState.publicUrl)
       : false;
 
-  if (
+  const canReuseDashboard =
     currentState &&
-    dashboardRunning &&
-    dashboardHealthy &&
+    (dashboardRunning || dashboardHealthy) &&
     (!config.useCloudflared ||
-      (cloudflaredRunning &&
+      ((cloudflaredRunning ||
+        Boolean(currentState.cloudflaredPid) ||
+        publicDashboardReady) &&
         typeof currentState.publicUrl === "string" &&
-        publicDashboardReady))
-  ) {
+        publicDashboardReady));
+
+  if (canReuseDashboard) {
+    writeRuntimeState(currentState);
     return currentState;
+  }
+
+  if (!currentState) {
+    const recoveredState = await recoverDashboardRuntimeState(config);
+    if (recoveredState) {
+      writeRuntimeState(recoveredState);
+      return recoveredState;
+    }
   }
 
   clearRuntimeState();
