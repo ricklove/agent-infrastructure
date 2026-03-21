@@ -563,12 +563,16 @@ function createRectRepelForce(args: {
   pinnedNodeIds: Set<string>;
   strength?: number;
   padding?: number;
+  overlapTolerance?: number;
+  velocityDamping?: number;
 }) {
   const {
     nodes,
     pinnedNodeIds,
     strength = 420,
     padding = 24,
+    overlapTolerance = 6,
+    velocityDamping = 0.6,
   } = args;
 
   return (alpha: number) => {
@@ -587,7 +591,7 @@ function createRectRepelForce(args: {
         const overlapX = left.width / 2 + right.width / 2 + padding - Math.abs(dx);
         const overlapY = left.height / 2 + right.height / 2 + padding - Math.abs(dy);
 
-        if (overlapX <= 0 || overlapY <= 0) {
+        if (overlapX <= overlapTolerance || overlapY <= overlapTolerance) {
           continue;
         }
 
@@ -600,17 +604,23 @@ function createRectRepelForce(args: {
         const pushX = overlapX <= overlapY;
         const directionX = dx === 0 ? (index % 2 === 0 ? -1 : 1) : Math.sign(dx);
         const directionY = dy === 0 ? (otherIndex % 2 === 0 ? -1 : 1) : Math.sign(dy);
-        const magnitude = (pushX ? overlapX : overlapY) * normalizedStrength * alpha * 0.5;
-        const impulseX = pushX ? directionX * magnitude : 0;
-        const impulseY = pushX ? 0 : directionY * magnitude;
+        const correction = (pushX ? overlapX : overlapY) * normalizedStrength * alpha * 0.35;
+        const correctionX = pushX ? directionX * correction : 0;
+        const correctionY = pushX ? 0 : directionY * correction;
+        const leftShare = leftPinned ? 0 : rightPinned ? 1 : 0.5;
+        const rightShare = rightPinned ? 0 : leftPinned ? 1 : 0.5;
 
         if (!leftPinned) {
-          left.vx = (left.vx ?? 0) - impulseX;
-          left.vy = (left.vy ?? 0) - impulseY;
+          left.x = (left.x ?? 0) - correctionX * leftShare;
+          left.y = (left.y ?? 0) - correctionY * leftShare;
+          left.vx = (left.vx ?? 0) * velocityDamping;
+          left.vy = (left.vy ?? 0) * velocityDamping;
         }
         if (!rightPinned) {
-          right.vx = (right.vx ?? 0) + impulseX;
-          right.vy = (right.vy ?? 0) + impulseY;
+          right.x = (right.x ?? 0) + correctionX * rightShare;
+          right.y = (right.y ?? 0) + correctionY * rightShare;
+          right.vx = (right.vx ?? 0) * velocityDamping;
+          right.vy = (right.vy ?? 0) * velocityDamping;
         }
       }
     }
