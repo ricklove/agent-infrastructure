@@ -39,6 +39,7 @@ export AGENT_STATE_DIR="${STATE_ROOT}"
 export AGENT_WORKSPACE_DIR="${WORKSPACE_ROOT}"
 export NVM_DIR="${AGENT_HOME}/.nvm"
 export NODE_VERSION="24"
+export HOME="${AGENT_HOME}"
 
 agent_user="$(stat -c '%U' "${AGENT_HOME}")"
 agent_group="$(stat -c '%G' "${AGENT_HOME}")"
@@ -74,7 +75,6 @@ EOF
 fi
 chown -R "${agent_user}:${agent_group}" "${NVM_DIR}" "${agent_shell_profile}"
 
-export HOME=/root
 export BUN_INSTALL=/opt/bun
 if [[ ! -x "$BUN_INSTALL/bin/bun" ]]; then
   curl -fsSL https://bun.sh/install | bash
