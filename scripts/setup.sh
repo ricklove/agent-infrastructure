@@ -37,6 +37,11 @@ export AGENT_HOME
 export AGENT_RUNTIME_DIR="${RUNTIME_ROOT}"
 export AGENT_STATE_DIR="${STATE_ROOT}"
 export AGENT_WORKSPACE_DIR="${WORKSPACE_ROOT}"
+export NVM_DIR="${AGENT_HOME}/.nvm"
+export NODE_VERSION="24"
+
+agent_user="$(stat -c '%U' "${AGENT_HOME}")"
+agent_group="$(stat -c '%G' "${AGENT_HOME}")"
 
 mkdir -p "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
 
@@ -46,6 +51,28 @@ if [[ ! -f /etc/yum.repos.d/cloudflared.repo ]]; then
   curl -fsSL https://pkg.cloudflare.com/cloudflared.repo -o /etc/yum.repos.d/cloudflared.repo
 fi
 dnf install -y cloudflared
+
+mkdir -p "${NVM_DIR}"
+if [[ ! -s "${NVM_DIR}/nvm.sh" ]]; then
+  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE=/dev/null NVM_DIR="${NVM_DIR}" bash
+fi
+
+# shellcheck source=/dev/null
+source "${NVM_DIR}/nvm.sh"
+nvm install "${NODE_VERSION}"
+nvm alias default "${NODE_VERSION}"
+nvm use default
+
+agent_shell_profile="${AGENT_HOME}/.bashrc"
+touch "${agent_shell_profile}"
+if ! grep -q 'export NVM_DIR="' "${agent_shell_profile}"; then
+  cat >>"${agent_shell_profile}" <<EOF
+export NVM_DIR="${NVM_DIR}"
+[ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"
+[ -s "\$NVM_DIR/bash_completion" ] && \. "\$NVM_DIR/bash_completion"
+EOF
+fi
+chown -R "${agent_user}:${agent_group}" "${NVM_DIR}" "${agent_shell_profile}"
 
 export HOME=/root
 export BUN_INSTALL=/opt/bun
