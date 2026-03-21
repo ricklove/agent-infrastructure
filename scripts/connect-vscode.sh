@@ -572,6 +572,20 @@ log "validating SSH connectivity to ${host_alias}"
 ssh_output="$(ssh -o ConnectTimeout=20 "$host_alias" 'printf "%s\n" "$HOSTNAME"' 2>&1)" || fail "SSH validation failed: ${ssh_output}"
 log "SSH connected to ${ssh_output}"
 
+remote_home="$(ssh -o ConnectTimeout=20 "$host_alias" 'printf "%s\n" "$HOME"' 2>/dev/null | tail -n 1)" || fail "failed to resolve remote home for ${host_alias}"
+[[ -n "$remote_home" ]] || fail "resolved empty remote home for ${host_alias}"
+
+case "$remote_path" in
+  "~")
+    remote_path="${remote_home}"
+    ;;
+  "~/"*)
+    remote_path="${remote_home}/${remote_path#\~/}"
+    ;;
+esac
+
+[[ "$remote_path" == /* ]] || fail "remote path must resolve to an absolute path, got: ${remote_path}"
+
 log "SSH host alias: ${host_alias}"
 log "remote path: ${remote_path}"
 
