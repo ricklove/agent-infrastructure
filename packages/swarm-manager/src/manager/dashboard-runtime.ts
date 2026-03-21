@@ -434,12 +434,10 @@ export async function ensureDashboardRuntime(
     return currentState;
   }
 
-  if (!currentState) {
-    const recoveredState = await recoverDashboardRuntimeState(config);
-    if (recoveredState) {
-      writeRuntimeState(recoveredState);
-      return recoveredState;
-    }
+  const recoveredState = await recoverDashboardRuntimeState(config);
+  if (recoveredState) {
+    writeRuntimeState(recoveredState);
+    return recoveredState;
   }
 
   clearRuntimeState();
