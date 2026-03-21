@@ -37,7 +37,7 @@ bunx cdk synth \
 
 Defaults:
 
-- `managerInstanceType=t3.small`
+- `managerInstanceType=t3.medium`
 - `workerInstanceType=t3.small`
 - `swarmMaxSize=12`
 

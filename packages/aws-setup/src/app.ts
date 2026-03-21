@@ -6,7 +6,7 @@ const app = new App();
 const managerInstanceType =
   app.node.tryGetContext("managerInstanceType") ??
   process.env.MANAGER_INSTANCE_TYPE ??
-  "t3.small";
+  "t3.medium";
 
 const workerInstanceType =
   app.node.tryGetContext("workerInstanceType") ??
