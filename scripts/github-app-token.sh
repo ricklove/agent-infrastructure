@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
+SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 CONFIG_ROOT="${AGENT_GITHUB_CONFIG_ROOT:-${HOME}/.config/agent-github}"
 DEFAULT_ENV_FILE="${CONFIG_ROOT}/env"
 DEFAULT_ASKPASS_FILE="${CONFIG_ROOT}/git-askpass.sh"
@@ -142,7 +143,9 @@ generate_token() {
 }
 
 install_askpass() {
-  local askpass_dir
+  local askpass_dir resolved_env_file
+  resolve_env_file
+  resolved_env_file="$env_file"
   askpass_dir="$(dirname "$askpass_file")"
   mkdir -p "$askpass_dir"
 
@@ -151,13 +154,12 @@ install_askpass() {
 
 set -euo pipefail
 
-SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="\$(cd "\${SCRIPT_DIR}/../.." && pwd)"
-TOKEN="\$(bash "\${ROOT_DIR}/scripts/github-app-token.sh" --env-file "${env_file}" token)"
+TOKEN_SCRIPT="${SCRIPT_PATH}"
+DEFAULT_ENV_FILE="${resolved_env_file}"
 if [[ -d "\${PWD}/.git" || -f "\${PWD}/.git" ]]; then
-  TOKEN="\$(bash "\${ROOT_DIR}/scripts/github-app-token.sh" --repo-path "\${PWD}" token)"
+  TOKEN="\$(bash "\${TOKEN_SCRIPT}" --repo-path "\${PWD}" token)"
 else
-  TOKEN="\$(bash "\${ROOT_DIR}/scripts/github-app-token.sh" --env-file "${env_file}" token)"
+  TOKEN="\$(bash "\${TOKEN_SCRIPT}" --env-file "\${DEFAULT_ENV_FILE}" token)"
 fi
 
 case "\${1:-}" in
