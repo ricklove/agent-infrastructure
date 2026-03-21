@@ -169,11 +169,6 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
           <div className="text-base font-medium leading-5 tracking-tight text-stone-50">
             {data.label}
           </div>
-          {data.sourcePath ? (
-            <div className="mt-1 truncate text-[10px] leading-4 text-stone-500">
-              {data.sourcePath}
-            </div>
-          ) : null}
           {data.kind ? (
             <div className="mt-1 text-[10px] uppercase tracking-[0.16em] text-stone-500">
               {data.kind}
