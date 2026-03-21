@@ -16,9 +16,10 @@ Options:
   --profile PROFILE        AWS CLI profile to use.
   --swarm-tag-value VALUE  Narrow manager discovery to a specific AgentSwarm tag value.
   --remote-user USER       Remote SSH user. Default: ec2-user
-  --remote-path PATH       Remote folder to open in VS Code. Default: /opt/agent-swarm/runtime
+  --remote-path PATH       Remote folder to open in VS Code. Default: ~
   --host-alias NAME        SSH host alias to create. Default: agent-swarm-manager-<instance-id>
   --key-path PATH          SSH private key path. Default: ~/.ssh/agent-swarm-manager-<instance-id>
+  --print-host-alias       Print the resolved SSH host alias to stdout before exiting.
   --no-launch              Configure and validate SSH, but do not launch VS Code.
   -h, --help               Show this help.
 EOF
@@ -212,6 +213,7 @@ Host ${host_alias}
     User ${remote_user}
     IdentityFile ${windows_key_path_native}
     IdentitiesOnly yes
+    ForwardAgent yes
     StrictHostKeyChecking accept-new
     ServerAliveInterval 30
     ServerAliveCountMax 6
@@ -258,10 +260,11 @@ region="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 instance_id=""
 swarm_tag_value=""
 remote_user="ec2-user"
-remote_path="/opt/agent-swarm/runtime"
+remote_path="~"
 host_alias=""
 key_path=""
 launch_vscode="true"
+print_host_alias="false"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -304,6 +307,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || fail "--key-path requires a value"
       key_path="$2"
       shift 2
+      ;;
+    --print-host-alias)
+      print_host_alias="true"
+      shift
       ;;
     --no-launch)
       launch_vscode="false"
@@ -519,6 +526,7 @@ Host ${host_alias}
     User ${remote_user}
     IdentityFile ${key_path}
     IdentitiesOnly yes
+    ForwardAgent yes
     StrictHostKeyChecking accept-new
     ServerAliveInterval 30
     ServerAliveCountMax 6
@@ -577,4 +585,8 @@ if [[ "$launch_vscode" == "true" ]]; then
   fi
 else
   log "skipped VS Code launch because --no-launch was set"
+fi
+
+if [[ "$print_host_alias" == "true" ]]; then
+  printf '%s\n' "$host_alias"
 fi
