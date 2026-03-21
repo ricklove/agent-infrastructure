@@ -1,4 +1,5 @@
 import {
+  rmSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -132,6 +133,12 @@ function writeRuntimeState(state: DashboardRuntimeState): void {
   writeFileSync(runtimeStatePath, JSON.stringify(state, null, 2));
 }
 
+function clearRuntimeState(): void {
+  try {
+    rmSync(runtimeStatePath, { force: true });
+  } catch {}
+}
+
 function readBootstrapContextValue(key: string): string {
   if (!existsSync(bootstrapContextPath)) {
     return "";
@@ -162,6 +169,46 @@ async function waitForHealth(port: number, maxAttempts = 40): Promise<void> {
   }
 
   throw new Error("dashboard did not become healthy in time");
+}
+
+async function isDashboardHealthy(port: number): Promise<boolean> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/health`);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function isPublicDashboardReady(publicUrl?: string): Promise<boolean> {
+  if (!publicUrl) {
+    return false;
+  }
+
+  try {
+    const response = await fetch(`${publicUrl}/api/config`);
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function isExpectedProcess(pid: number | undefined, pattern: RegExp): Promise<boolean> {
+  if (!pid || !Number.isInteger(pid) || pid <= 0 || !isPidRunning(pid)) {
+    return false;
+  }
+
+  const procPath = `/proc/${pid}/cmdline`;
+  if (!existsSync(procPath)) {
+    return false;
+  }
+
+  try {
+    const cmdline = readFileSync(procPath, "utf8").replaceAll("\u0000", " ").trim();
+    return pattern.test(cmdline);
+  } catch {
+    return false;
+  }
 }
 
 async function spawnDetached(
@@ -266,21 +313,39 @@ export async function ensureDashboardRuntime(
   mkdirSync(runtimeDir, { recursive: true });
 
   const currentState = readRuntimeState();
-  const dashboardRunning = isPidRunning(currentState?.dashboardPid);
-  const cloudflaredRunning = isPidRunning(currentState?.cloudflaredPid);
+  const dashboardRunning = await isExpectedProcess(
+    currentState?.dashboardPid,
+    /packages\/dashboard\/src\/server\.ts/,
+  );
+  const cloudflaredRunning = await isExpectedProcess(
+    currentState?.cloudflaredPid,
+    /cloudflared\s+tunnel/,
+  );
+  const dashboardHealthy = dashboardRunning
+    ? await isDashboardHealthy(config.port)
+    : false;
+  const publicDashboardReady =
+    config.useCloudflared && cloudflaredRunning
+      ? await isPublicDashboardReady(currentState?.publicUrl)
+      : false;
 
   if (
     currentState &&
     dashboardRunning &&
+    dashboardHealthy &&
     (!config.useCloudflared ||
-      (cloudflaredRunning && typeof currentState.publicUrl === "string"))
+      (cloudflaredRunning &&
+        typeof currentState.publicUrl === "string" &&
+        publicDashboardReady))
   ) {
     return currentState;
   }
 
+  clearRuntimeState();
+
   await ensureDashboardBuilt(config.forceRebuild === true);
 
-  const dashboardPid = dashboardRunning
+  const dashboardPid = dashboardRunning && dashboardHealthy
     ? (currentState?.dashboardPid as number)
     : await startDashboardServer(config);
 
@@ -297,7 +362,7 @@ export async function ensureDashboardRuntime(
     return nextState;
   }
 
-  if (cloudflaredRunning && currentState?.publicUrl) {
+  if (cloudflaredRunning && currentState?.publicUrl && publicDashboardReady) {
     nextState = {
       ...nextState,
       cloudflaredPid: currentState.cloudflaredPid,
