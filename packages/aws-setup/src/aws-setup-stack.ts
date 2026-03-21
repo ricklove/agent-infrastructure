@@ -277,7 +277,7 @@ export class AwsSetupStack extends Stack {
       role: managerRole,
       instanceType: new ec2.InstanceType(props.managerInstanceType),
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-      requireImdsv2: true,
+      httpTokens: ec2.HttpTokens.REQUIRED,
       ssmSessionPermissions: false,
     });
 
