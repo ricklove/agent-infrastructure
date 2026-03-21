@@ -12,9 +12,16 @@ const AgentChatScreen = lazy(() =>
   })),
 )
 
-const AgentGraphScreen = lazy(() =>
-  import("./AgentGraphPlaceholder").then((module) => ({
-    default: module.AgentGraphPlaceholder,
+const AgentGraphFeatureScreen = lazy(() =>
+  import("@agent-infrastructure/agent-graph-ui").then((module) => ({
+    default: function DashboardAgentGraphScreen() {
+      return (
+        <module.AgentGraphScreen
+          appVersion="dashboard-shell"
+          serverOrigin={window.location.origin}
+        />
+      )
+    },
   })),
 )
 
@@ -123,7 +130,7 @@ const featureDefinitions: FeatureDefinition[] = [
     label: "Agent Graph",
     href: "/graph",
     description: "Graph exploration and editing.",
-    component: AgentGraphScreen,
+    component: AgentGraphFeatureScreen,
     icon: GraphIcon,
   },
 ]

@@ -8,12 +8,36 @@ import type { GetWorkspaceResponse } from "@agent-infrastructure/agent-graph-pro
 import type { ClientMessage, ServerMessage } from "@agent-infrastructure/agent-graph-protocol";
 import { nextIntentId, queueIntent, type AgentGraphStore } from "./agent-graph-store.js";
 
+const dashboardSessionStorageKey = "agent-infrastructure.dashboard.session";
+
 function wsOriginFromHttpOrigin(serverOrigin: string): string {
   return serverOrigin.replace(/^http/, "ws");
 }
 
+function readStoredSessionToken(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.sessionStorage.getItem(dashboardSessionStorageKey) ?? "";
+}
+
+function buildFeatureUrl(serverOrigin: string, pathname: string): string {
+  const url = new URL(pathname, `${serverOrigin}/`);
+  const sessionToken = readStoredSessionToken().trim();
+  if (sessionToken) {
+    url.searchParams.set("sessionToken", sessionToken);
+  }
+  return url.toString();
+}
+
 function connect(store: AgentGraphStore): WebSocket {
-  const ws = new WebSocket(`${wsOriginFromHttpOrigin(store.state$.connection.serverOrigin.get())}/api/agent-graph/ws`);
+  const ws = new WebSocket(
+    buildFeatureUrl(
+      wsOriginFromHttpOrigin(store.state$.connection.serverOrigin.get()),
+      "/api/agent-graph/ws",
+    ),
+  );
   ws.addEventListener("open", () => {
     ws.send(JSON.stringify({ type: "client/hello" satisfies ClientMessage["type"] }));
   });
@@ -100,7 +124,10 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       store.state$.connection.error.set(null);
       try {
         const response = await fetch(
-          `${store.state$.connection.serverOrigin.get()}/api/agent-graph/workspace`,
+          buildFeatureUrl(
+            store.state$.connection.serverOrigin.get(),
+            "/api/agent-graph/workspace",
+          ),
         );
         if (!response.ok) {
           throw new Error(`Workspace request failed with status ${response.status}.`);
@@ -116,6 +143,13 @@ export function createAgentGraphActions(store: AgentGraphStore) {
             ? error.message
             : "Workspace request failed before the graph could load.",
         );
+        if (
+          typeof window !== "undefined" &&
+          error instanceof Error &&
+          /status 401/.test(error.message)
+        ) {
+          window.sessionStorage.removeItem(dashboardSessionStorageKey);
+        }
       }
     },
 

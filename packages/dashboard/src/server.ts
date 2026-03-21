@@ -113,11 +113,18 @@ type DashboardSessionStore = {
   sessions: DashboardSessionRecord[];
 };
 
+type ProxyWsData = {
+  upstream: WebSocket | null;
+  queue: string[];
+};
+
 const sourceDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(sourceDir, "../../..");
 const dashboardDistDir = resolve(repoRoot, "apps/dashboard-app/dist");
 const managerBaseUrl =
   process.env.MANAGER_INTERNAL_URL?.trim() || "http://127.0.0.1:8787";
+const agentGraphBaseUrl =
+  process.env.AGENT_GRAPH_SERVER_URL?.trim() || "http://127.0.0.1:8788";
 const accessApiBaseUrl = process.env.DASHBOARD_ACCESS_API_BASE_URL?.trim() || "";
 const enrollmentSecret = process.env.DASHBOARD_ENROLLMENT_SECRET?.trim() || "";
 const sessionStorePath =
@@ -153,6 +160,10 @@ function jsonResponse(payload: unknown, status = 200): Response {
       "cache-control": "no-store",
     },
   });
+}
+
+function wsBaseUrlFromHttpOrigin(origin: string): string {
+  return origin.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
 }
 
 function hashSessionToken(token: string): string {
@@ -535,6 +546,38 @@ async function handleApi(request: Request): Promise<Response> {
     }
   }
 
+  if (url.pathname === "/api/agent-graph/workspace") {
+    try {
+      const response = await fetch(`${agentGraphBaseUrl}${url.pathname}${url.search}`, {
+        headers: {
+          accept: "application/json",
+        },
+      });
+
+      const body = await response.text();
+      return new Response(body, {
+        status: response.status,
+        headers: {
+          "content-type":
+            response.headers.get("content-type") ??
+            "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      });
+    } catch (error) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "failed to fetch agent graph workspace",
+        },
+        502,
+      );
+    }
+  }
+
   return jsonResponse({ ok: false, error: "not found" }, 404);
 }
 
@@ -590,17 +633,83 @@ async function serveStatic(url: URL): Promise<Response> {
   });
 }
 
-const server = Bun.serve({
+const server = Bun.serve<ProxyWsData>({
   port,
   idleTimeout: 30,
   async fetch(request) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/api/agent-graph/ws") {
+      const unauthorized = requireDashboardSession(request);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      if (
+        server.upgrade(request, {
+          data: {
+            upstream: null,
+            queue: [],
+          },
+        })
+      ) {
+        return undefined;
+      }
+
+      return new Response("upgrade failed", { status: 500 });
+    }
 
     if (url.pathname.startsWith("/api/")) {
       return handleApi(request);
     }
 
     return serveStatic(url);
+  },
+  websocket: {
+    open(ws) {
+      const upstream = new WebSocket(
+        `${wsBaseUrlFromHttpOrigin(agentGraphBaseUrl)}/api/agent-graph/ws`,
+      );
+      ws.data.upstream = upstream;
+
+      upstream.addEventListener("open", () => {
+        for (const message of ws.data.queue) {
+          upstream.send(message);
+        }
+        ws.data.queue = [];
+      });
+
+      upstream.addEventListener("message", (event) => {
+        ws.send(String(event.data));
+      });
+
+      upstream.addEventListener("close", () => {
+        try {
+          ws.close();
+        } catch {}
+      });
+
+      upstream.addEventListener("error", () => {
+        try {
+          ws.close();
+        } catch {}
+      });
+    },
+    message(ws, message) {
+      const payload = String(message);
+      const upstream = ws.data.upstream;
+      if (upstream && upstream.readyState === WebSocket.OPEN) {
+        upstream.send(payload);
+        return;
+      }
+
+      ws.data.queue.push(payload);
+    },
+    close(ws) {
+      try {
+        ws.data.upstream?.close();
+      } catch {}
+    },
   },
 });
 
