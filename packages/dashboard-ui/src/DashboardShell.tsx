@@ -271,11 +271,11 @@ export function DashboardShell() {
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
-      <aside className="flex w-16 shrink-0 flex-col items-center gap-4 border-r border-white/10 bg-slate-950/95 px-2 py-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 text-[11px] font-semibold tracking-[0.24em] text-emerald-200">
+      <aside className="flex w-14 shrink-0 flex-col items-center gap-3 border-r border-white/10 bg-[#0a0f17] px-1.5 py-2">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-400/10 text-[11px] font-semibold tracking-[0.24em] text-emerald-200">
           AI
         </div>
-        <nav className="mt-2 flex w-full flex-1 flex-col items-center gap-2">
+        <nav className="mt-1 flex w-full flex-1 flex-col items-center gap-1.5">
           {featureDefinitions.map((feature) => {
             const isActive = feature.id === activeFeatureId
             const Icon = feature.icon
@@ -289,10 +289,10 @@ export function DashboardShell() {
                   navigateToFeature(feature.id)
                 }}
                 className={[
-                  "group flex h-12 w-12 items-center justify-center rounded-2xl transition",
+                  "group flex h-10 w-10 items-center justify-center rounded-xl transition",
                   isActive
-                    ? "bg-white text-slate-950 shadow-lg shadow-cyan-950/40"
-                    : "text-slate-400 hover:bg-white/5 hover:text-white",
+                    ? "bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/40"
+                    : "text-slate-500 hover:bg-white/5 hover:text-white",
                 ].join(" ")}
               >
                 <Icon className="h-5 w-5" />
@@ -303,16 +303,18 @@ export function DashboardShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="border-b border-white/10 bg-slate-950/80 px-6 py-4 backdrop-blur">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <header className="border-b border-white/10 bg-[#0d131c] px-5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300">
-                Agent Infrastructure
-              </p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">
-                {activeFeature.label}
-              </h1>
-              <p className="mt-1 text-sm text-slate-400">
+              <div className="flex items-center gap-3">
+                <h1 className="text-lg font-semibold tracking-tight text-white">
+                  {activeFeature.label}
+                </h1>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">
+                  Agent Infrastructure
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
                 {activeFeature.description}
               </p>
             </div>
@@ -322,37 +324,37 @@ export function DashboardShell() {
                 onClick={() => {
                   window.location.href = config.accessAppUrl
                 }}
-                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/10"
+                className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.2em] text-slate-100 transition hover:bg-white/10"
               >
                 Auth Portal
               </button>
             ) : null}
           </div>
-          <div className="mt-4 space-y-3">
+          <div className="mt-3 space-y-2">
             {initializing ? (
-              <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
                 Initializing dashboard shell...
               </div>
             ) : null}
             {error ? (
-              <div className="rounded-2xl border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+              <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
                 {error}
               </div>
             ) : null}
             {accessMessage ? (
-              <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm text-amber-50">
+              <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-50">
                 {accessMessage}
               </div>
             ) : null}
             {authRequired && config?.accessAppUrl ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50">
                 <span>Session access is required to use this dashboard.</span>
                 <button
                   type="button"
                   onClick={() => {
                     window.location.href = config.accessAppUrl
                   }}
-                  className="rounded-full border border-cyan-100/30 bg-cyan-50/10 px-4 py-2 font-medium text-cyan-50 transition hover:bg-cyan-50/20"
+                  className="rounded-full border border-cyan-100/30 bg-cyan-50/10 px-3 py-1.5 font-medium uppercase tracking-[0.18em] text-cyan-50 transition hover:bg-cyan-50/20"
                 >
                   Open Auth Page
                 </button>
@@ -380,7 +382,9 @@ export function DashboardShell() {
                 <section
                   key={feature.id}
                   className={
-                    feature.id === activeFeatureId ? "h-full" : "hidden h-full"
+                    feature.id === activeFeatureId
+                      ? "h-full min-h-0"
+                      : "hidden h-full"
                   }
                 >
                   <FeatureComponent />

@@ -179,40 +179,67 @@ export function AgentSwarmScreen() {
     }
   }, [services, workers])
 
+  const dashboardPortLabel = health?.dashboard?.port
+    ? String(health.dashboard.port)
+    : "--"
+
   return (
     <div className="flex h-full flex-col bg-slate-950 text-slate-100">
-      <div className="border-b border-white/10 px-8 py-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300">
-          Agent Swarm
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-          Manager dashboard
-        </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-          This is the first real feature mounted inside the new shell. It still
-          talks to the current dashboard backend while the shared gateway and
-          namespaced routes are introduced in later increments.
-        </p>
+      <div className="grid gap-3 border-b border-white/10 bg-[#0b1118] px-5 py-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-300">
+            Swarm Console
+          </p>
+          <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-2">
+            <h2 className="text-2xl font-semibold tracking-tight text-white">
+              Manager control surface
+            </h2>
+            <span className="text-sm text-slate-500">polling every 5s</span>
+          </div>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+            Live fleet state, service registry, and dashboard health backed by
+            the current manager runtime.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: "port", value: dashboardPortLabel },
+            { label: "connected", value: String(summary.connectedCount) },
+            { label: "services", value: String(services.length) },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3"
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                {item.label}
+              </p>
+              <p className="mt-2 text-xl font-semibold text-white">
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="space-y-6 p-8">
+      <div className="space-y-4 p-5">
         {health?.error ? (
-          <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+          <div className="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
             {health.error}
           </div>
         ) : null}
         {error ? (
-          <div className="rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+          <div className="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
             {error}
           </div>
         ) : null}
         {authMessage ? (
-          <div className="rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm text-amber-50">
+          <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-50">
             {authMessage}
           </div>
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           {[
             {
               label: "Manager",
@@ -241,77 +268,86 @@ export function AgentSwarmScreen() {
           ].map((item) => (
             <article
               key={item.label}
-              className="rounded-3xl border border-white/10 bg-white/5 p-5"
+              className="rounded-2xl border border-white/10 bg-[#111826] px-4 py-3"
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                 {item.label}
               </p>
-              <p className="mt-4 text-3xl font-semibold tracking-tight text-white">
+              <p className="mt-2 text-2xl font-semibold tracking-tight text-white">
                 {item.value}
               </p>
             </article>
           ))}
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <section className="rounded-3xl border border-white/10 bg-white/5">
-            <div className="border-b border-white/10 px-6 py-5">
-              <h2 className="text-lg font-medium text-white">Fleet</h2>
-              <p className="mt-2 text-sm text-slate-400">
-                Live worker state from the current manager dashboard API.
-              </p>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_380px]">
+          <section className="rounded-2xl border border-white/10 bg-[#0f1724]">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-300">
+                  Fleet
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  live worker inventory
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                <span>{summary.managerCount} manager</span>
+                <span className="text-slate-700">/</span>
+                <span>{summary.workerCount} worker</span>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+                <thead className="text-left text-[10px] uppercase tracking-[0.2em] text-slate-500">
                   <tr>
-                    <th className="px-6 py-4">Node</th>
-                    <th className="px-6 py-4">Role</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">CPU</th>
-                    <th className="px-6 py-4">Memory</th>
-                    <th className="px-6 py-4">Heartbeat</th>
+                    <th className="px-4 py-3">Node</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">CPU</th>
+                    <th className="px-4 py-3">Memory</th>
+                    <th className="px-4 py-3">Heartbeat</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {workers.length === 0 ? (
                     <tr>
-                      <td className="px-6 py-8 text-slate-400" colSpan={6}>
+                      <td className="px-4 py-8 text-slate-400" colSpan={6}>
                         No workers are currently connected.
                       </td>
                     </tr>
                   ) : (
                     workers.map((worker) => (
                       <tr key={worker.workerId} className="align-top">
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-3">
                           <div>
-                            <p className="font-medium text-white">
+                            <p className="text-sm font-medium text-white">
                               {worker.workerId}
                             </p>
-                            <p className="mt-1 text-xs text-slate-500">
+                            <p className="mt-1 text-[11px] text-slate-500">
                               {worker.instanceId}
                             </p>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-slate-300">
+                        <td className="px-4 py-3 text-slate-300">
                           {worker.nodeRole}
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-slate-200">
+                        <td className="px-4 py-3">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200">
                             {worker.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-slate-300">
+                        <td className="px-4 py-3 text-slate-300">
                           {worker.lastMetrics
                             ? `${worker.lastMetrics.cpuPercent.toFixed(1)}%`
                             : "--"}
                         </td>
-                        <td className="px-6 py-4 text-slate-300">
+                        <td className="px-4 py-3 text-slate-300">
                           {worker.lastMetrics
                             ? `${formatBytes(worker.lastMetrics.memoryUsedBytes)} / ${formatBytes(worker.lastMetrics.memoryTotalBytes)}`
                             : "--"}
                         </td>
-                        <td className="px-6 py-4 text-slate-400">
+                        <td className="px-4 py-3 text-slate-400">
                           {formatTimestamp(worker.lastHeartbeatAt)}
                         </td>
                       </tr>
@@ -322,38 +358,45 @@ export function AgentSwarmScreen() {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-white/10 bg-white/5">
-            <div className="border-b border-white/10 px-6 py-5">
-              <h2 className="text-lg font-medium text-white">Registry</h2>
-              <p className="mt-2 text-sm text-slate-400">
-                Registered services currently exposed by the manager.
-              </p>
+          <section className="rounded-2xl border border-white/10 bg-[#0f1724]">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-300">
+                  Registry
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  active service endpoints
+                </p>
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                {summary.healthyServiceCount}/{services.length} healthy
+              </span>
             </div>
-            <div className="space-y-3 p-6">
+            <div className="space-y-2 p-4">
               {services.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/50 px-4 py-5 text-sm text-slate-400">
+                <div className="rounded-xl border border-dashed border-white/10 bg-slate-950/50 px-4 py-5 text-sm text-slate-400">
                   No services are currently registered.
                 </div>
               ) : (
                 services.map((service) => (
                   <article
                     key={`${service.namespace}/${service.serviceName}/${service.instanceId}`}
-                    className="rounded-2xl border border-white/10 bg-slate-950/50 p-4"
+                    className="rounded-xl border border-white/10 bg-slate-950/50 p-3"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="font-medium text-white">
+                        <p className="text-sm font-medium text-white">
                           {service.namespace}/{service.serviceName}
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-[11px] text-slate-500">
                           {service.instanceId}
                         </p>
                       </div>
-                      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-200">
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.18em] text-slate-200">
                         {service.healthy ? "healthy" : "unhealthy"}
                       </span>
                     </div>
-                    <dl className="mt-4 grid gap-2 text-sm text-slate-300">
+                    <dl className="mt-3 grid gap-1.5 text-sm text-slate-300">
                       <div className="flex justify-between gap-4">
                         <dt className="text-slate-500">Worker</dt>
                         <dd>{service.workerId}</dd>
@@ -380,36 +423,24 @@ export function AgentSwarmScreen() {
           </section>
         </div>
 
-        <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-          <article className="rounded-3xl border border-white/10 bg-white/5 p-6">
-            <h2 className="text-lg font-medium text-white">
-              Current Backend Shape
+        <section className="grid gap-3 xl:grid-cols-[0.95fr_1.05fr]">
+          <article className="rounded-2xl border border-white/10 bg-[#111826] px-4 py-3">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-300">
+              Current Contract
             </h2>
-            <p className="mt-3 text-sm leading-6 text-slate-400">
-              This feature still uses the existing dashboard routes:
-              <code className="ml-2 rounded bg-white/5 px-2 py-1 text-slate-200">
-                /api/health
-              </code>
-              ,
-              <code className="ml-2 rounded bg-white/5 px-2 py-1 text-slate-200">
-                /api/workers
-              </code>
-              , and
-              <code className="ml-2 rounded bg-white/5 px-2 py-1 text-slate-200">
-                /api/services
-              </code>
-              .
+            <p className="mt-2 text-sm leading-6 text-slate-400">
+              The swarm view is still reading the legacy dashboard endpoints for
+              health, worker inventory, and service registry.
             </p>
           </article>
-          <article className="rounded-3xl border border-dashed border-emerald-400/35 bg-emerald-400/5 p-6">
-            <h2 className="text-lg font-medium text-emerald-50">
-              Next Increment
+          <article className="rounded-2xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-100">
+              Next Move
             </h2>
-            <p className="mt-3 text-sm leading-6 text-emerald-50/80">
-              Move this feature behind namespaced shell routes and a shared Bun
-              gateway so the frontend can target `/api/agent-swarm/*` and
-              `/ws/agent-swarm/*` without knowing where the actual manager
-              service is running.
+            <p className="mt-2 text-sm leading-6 text-emerald-50/80">
+              Move the swarm feature to `/api/agent-swarm/*` behind the shared
+              Bun gateway so frontend routing stays stable even when the backend
+              placement changes.
             </p>
           </article>
         </section>
