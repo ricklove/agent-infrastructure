@@ -318,67 +318,7 @@ export function DashboardShell() {
         </nav>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="border-b border-white/10 bg-[#0d131c] px-5 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-lg font-semibold tracking-tight text-white">
-                  {activeFeature.label}
-                </h1>
-                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">
-                  Agent Infrastructure
-                </span>
-              </div>
-              <p className="mt-1 text-xs leading-5 text-slate-500">
-                {activeFeature.description}
-              </p>
-            </div>
-            {config?.accessAppUrl ? (
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = config.accessAppUrl
-                }}
-                className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.2em] text-slate-100 transition hover:bg-white/10"
-              >
-                Auth Portal
-              </button>
-            ) : null}
-          </div>
-          <div className="mt-3 space-y-2">
-            {initializing ? (
-              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
-                Initializing dashboard shell...
-              </div>
-            ) : null}
-            {error ? (
-              <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
-                {error}
-              </div>
-            ) : null}
-            {accessMessage ? (
-              <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-50">
-                {accessMessage}
-              </div>
-            ) : null}
-            {authRequired && config?.accessAppUrl ? (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50">
-                <span>Session access is required to use this dashboard.</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.location.href = config.accessAppUrl
-                  }}
-                  className="rounded-full border border-cyan-100/30 bg-cyan-50/10 px-3 py-1.5 font-medium uppercase tracking-[0.18em] text-cyan-50 transition hover:bg-cyan-50/20"
-                >
-                  Open Auth Page
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </header>
-
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <main className="min-h-0 flex-1">
           <Suspense
             fallback={
@@ -411,6 +351,37 @@ export function DashboardShell() {
               : null}
           </Suspense>
         </main>
+        <div className="pointer-events-none absolute right-4 top-4 z-50 flex max-w-[32rem] flex-col items-end gap-2">
+          {initializing ? (
+            <div className="rounded-xl border border-white/10 bg-[#0d131c]/90 px-3 py-2 text-xs text-slate-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+              Initializing dashboard shell...
+            </div>
+          ) : null}
+          {error ? (
+            <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+              {error}
+            </div>
+          ) : null}
+          {accessMessage ? (
+            <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+              {accessMessage}
+            </div>
+          ) : null}
+          {authRequired && config?.accessAppUrl ? (
+            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+              <span>Session access is required to use this dashboard.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = config.accessAppUrl
+                }}
+                className="rounded-full border border-cyan-100/30 bg-cyan-50/10 px-3 py-1.5 font-medium uppercase tracking-[0.18em] text-cyan-50 transition hover:bg-cyan-50/20"
+              >
+                Open Auth Page
+              </button>
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   )
