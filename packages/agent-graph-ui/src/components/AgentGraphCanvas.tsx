@@ -1874,6 +1874,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           proOptions={{ hideAttribution: true }}
+          onlyRenderVisibleElements
           autoPanOnNodeDrag
           selectionOnDrag
           selectionMode={SelectionMode.Partial}
