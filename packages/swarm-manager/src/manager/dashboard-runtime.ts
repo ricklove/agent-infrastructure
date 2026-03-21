@@ -407,13 +407,15 @@ export async function ensureDashboardRuntime(
     currentState?.dashboardPid,
     /packages\/dashboard\/src\/server\.ts/,
   );
+  const discoveredDashboardPid =
+    dashboardRunning
+      ? (currentState?.dashboardPid ?? 0)
+      : discoverPidByPattern(/packages\/dashboard\/src\/server\.ts/) ?? 0;
   const cloudflaredRunning = await isExpectedProcess(
     currentState?.cloudflaredPid,
     /cloudflared\s+tunnel/,
   );
-  const dashboardHealthy = dashboardRunning
-    ? await isDashboardHealthy(config.port)
-    : false;
+  const dashboardHealthy = await isDashboardHealthy(config.port);
   const publicDashboardReady =
     config.useCloudflared && typeof currentState?.publicUrl === "string"
       ? await isPublicDashboardReady(currentState.publicUrl)
@@ -446,7 +448,9 @@ export async function ensureDashboardRuntime(
 
   const dashboardPid = dashboardRunning && dashboardHealthy
     ? (currentState?.dashboardPid as number)
-    : await startDashboardServer(config);
+    : dashboardHealthy && discoveredDashboardPid > 0
+      ? discoveredDashboardPid
+      : await startDashboardServer(config);
 
   await waitForHealth(config.port);
 
