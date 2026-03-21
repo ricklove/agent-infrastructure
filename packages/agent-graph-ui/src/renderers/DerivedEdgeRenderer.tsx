@@ -1,7 +1,8 @@
+import { memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "reactflow";
 import { edgeColors } from "../components/graphColors";
 
-export function DerivedEdgeRenderer(props: EdgeProps) {
+export const DerivedEdgeRenderer = memo(function DerivedEdgeRenderer(props: EdgeProps) {
   const [path, labelX, labelY] = getBezierPath(props);
   const colors = edgeColors(`derived:${props.label ?? props.id}`);
   const isSelected = props.selected === true;
@@ -41,4 +42,4 @@ export function DerivedEdgeRenderer(props: EdgeProps) {
       ) : null}
     </>
   );
-}
+});

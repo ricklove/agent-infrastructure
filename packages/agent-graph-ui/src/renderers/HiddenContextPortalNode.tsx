@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { NodeAvatar } from "../components/NodeAvatar";
 import { Handle, Position, type NodeProps } from "reactflow";
 
-export function HiddenContextPortalNode({ data }: NodeProps<{
+export const HiddenContextPortalNode = memo(function HiddenContextPortalNode({ data }: NodeProps<{
   label: string;
   summary: string;
   sourceId: string;
@@ -73,4 +73,4 @@ export function HiddenContextPortalNode({ data }: NodeProps<{
       />
     </div>
   );
-}
+});

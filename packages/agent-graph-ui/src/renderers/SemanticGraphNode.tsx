@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Handle, NodeToolbar, Position, type NodeProps } from "reactflow";
 import { NodeAvatar } from "../components/NodeAvatar";
 import { VisibilityIcon } from "../components/VisibilityIcon";
@@ -20,7 +21,7 @@ function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   );
 }
 
-export function SemanticGraphNode({
+export const SemanticGraphNode = memo(function SemanticGraphNode({
   data,
   selected,
 }: NodeProps<{
@@ -192,4 +193,4 @@ export function SemanticGraphNode({
       />
     </div>
   );
-}
+});

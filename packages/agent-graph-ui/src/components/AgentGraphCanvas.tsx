@@ -992,45 +992,6 @@ function mergeMappedNodesWithLocalPositions(mappedNodes: Node[], currentNodes: N
   });
 }
 
-function anchorHiddenPortalNodes(nodes: Node[]): Node[] {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  let changed = false;
-
-  const nextNodes = nodes.map((node) => {
-    if (node.type !== "hiddenContextPortal") {
-      return node;
-    }
-
-    const ownerNodeId = String(node.parentId ?? "");
-    const ownerNode = nodeById.get(ownerNodeId);
-    const ownerWidth = ownerNode ? nodeDimensions(ownerNode).width : SEMANTIC_NODE_WIDTH;
-    const portalWidth = node.width ?? nodeDimensions(node).width;
-    const anchoredPosition = sanitizePoint({
-      x:
-        node.id.startsWith("portal:incoming:")
-          ? -portalWidth - REVEALED_HIDDEN_NODE_GAP
-          : ownerWidth + REVEALED_HIDDEN_NODE_GAP,
-      y: 0,
-    });
-
-    if (
-      node.position.x === anchoredPosition.x &&
-      node.position.y === anchoredPosition.y
-    ) {
-      return node;
-    }
-
-    changed = true;
-    return {
-      ...node,
-      position: anchoredPosition,
-      dragging: false,
-    };
-  });
-
-  return changed ? nextNodes : nodes;
-}
-
 export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   store,
   leftSidebarWidth = 280,
@@ -1313,52 +1274,6 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
 
   function handleNodesChange(changes: NodeChange[]): void {
     setLocalNodes((current) => applyNodeChanges(changes, current));
-
-    if (physicsEnabled) {
-      return;
-    }
-
-    const completedDragNodeIds = changes
-      .filter(
-        (change): change is Extract<NodeChange, { type: "position" }> =>
-          change.type === "position" && change.dragging === false,
-      )
-      .map((change) => change.id);
-
-    if (completedDragNodeIds.length === 0) {
-      return;
-    }
-
-    const currentNodes = reactFlowRef.current?.getNodes() ?? localNodesRef.current;
-    const selectedNodeIdSet = new Set(selectedNodeIds);
-    const persistedTargets = new Map<string, { nodeId: string; x: number; y: number }>();
-
-    for (const completedNodeId of completedDragNodeIds) {
-      const draggedNode = currentNodes.find((node) => node.id === completedNodeId);
-      if (!draggedNode || draggedNode.type !== "semanticNode") {
-        continue;
-      }
-
-      const selectedSemanticNodes = currentNodes.filter(
-        (node) => selectedNodeIdSet.has(node.id) && node.type === "semanticNode",
-      );
-      const nodesToPersist =
-        selectedNodeIdSet.has(completedNodeId) && selectedSemanticNodes.length > 1
-          ? selectedSemanticNodes
-          : [draggedNode];
-
-      for (const node of nodesToPersist) {
-        persistedTargets.set(node.id, {
-          nodeId: node.id,
-          x: node.position.x,
-          y: node.position.y,
-        });
-      }
-    }
-
-    if (persistedTargets.size > 0) {
-      actions.moveNodes([...persistedTargets.values()]);
-    }
   }
 
   useEffect(() => {
@@ -1370,10 +1285,6 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   useEffect(() => {
     setLocalNodes((current) => mergeMappedNodesWithLocalPositions(mappedNodes, current));
   }, [mappedNodes, physicsEnabled, setLocalNodes]);
-
-  useEffect(() => {
-    setLocalNodes((current) => anchorHiddenPortalNodes(current));
-  }, [localNodes, setLocalNodes]);
 
   useEffect(() => {
     setLocalEdges(mappedEdges);
@@ -1892,7 +1803,6 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           proOptions={{ hideAttribution: true }}
-          onlyRenderVisibleElements
           autoPanOnNodeDrag
           selectionOnDrag
           selectionMode={SelectionMode.Partial}

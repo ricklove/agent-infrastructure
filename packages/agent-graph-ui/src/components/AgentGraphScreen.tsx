@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 import { observer, useMount, useValue } from "@legendapp/state/react";
 import { createAgentGraphStore, findSelectedEdge, findSelectedNode } from "@agent-infrastructure/agent-graph-store";
 import { createAgentGraphActions } from "@agent-infrastructure/agent-graph-store";
@@ -106,14 +115,22 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
         ? "text-rose-300"
         : "text-amber-200";
   const workspaceLabel = workspace ? "Loaded" : "Loading...";
-  const beginHidePreview = (layerId: string | null, sourceNodeIds: string[]) => {
+  const beginHidePreview = useCallback((layerId: string | null, sourceNodeIds: string[]) => {
     setHidePreview({ layerId, sourceNodeIds });
-  };
-  const endHidePreview = () => {
+  }, []);
+  const endHidePreview = useCallback(() => {
     setHidePreview((current) =>
       current.sourceNodeIds.length === 0 ? current : { layerId: null, sourceNodeIds: [] },
     );
-  };
+  }, []);
+  const previewActions = useMemo(
+    () => ({
+      ...actions,
+      beginHidePreview,
+      endHidePreview,
+    }),
+    [actions, beginHidePreview, endHidePreview],
+  );
 
   useEffect(() => {
     if (!workspaceId || typeof window === "undefined") {
@@ -301,12 +318,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
             <div className="min-h-0" style={{ height: `${leftPanelHeights[2] * 100}%` }}>
               <NodesToolPanel
                 store={store}
-                actions={{
-                  ...actions,
-                  beginHidePreview: (layerId, sourceNodeIds) =>
-                    beginHidePreview(layerId, sourceNodeIds),
-                  endHidePreview,
-                }}
+                actions={previewActions}
               />
             </div>
             {(connection.error || (validation && !validation.accepted) || conflict) ? (
@@ -395,12 +407,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
                 style={{ height: `${rightPanelHeights[1] * 100}%` }}
               >
                 <InspectorPanel
-                  actions={{
-                    ...actions,
-                    beginHidePreview: (layerId, sourceNodeIds) =>
-                      beginHidePreview(layerId, sourceNodeIds),
-                    endHidePreview,
-                  }}
+                  actions={previewActions}
                   selectedNode={selectedNode}
                   selectedNodes={selectedNodes}
                   selectedEdge={selectedEdge}
