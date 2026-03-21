@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
 import {
-  forceSimulation,
-  type Simulation,
-  type SimulationLinkDatum,
-  type SimulationNodeDatum,
-} from "d3-force";
-import {
   applyNodeChanges,
   Background,
   Controls,
@@ -80,12 +74,20 @@ type CanvasProps = {
 const REVEALED_HIDDEN_NODE_GAP = 28;
 const SEMANTIC_NODE_WIDTH = 168;
 const MAX_CLUSTER_VELOCITY = 42;
-type ForceNodeDatum = SimulationNodeDatum & {
+const MAX_CLUSTER_POSITION = 20_000;
+const PHYSICS_FRAME_MS = 1000 / 60;
+const PHYSICS_DAMPING_PER_FRAME = 0.88;
+const PHYSICS_PERSIST_INTERVAL_MS = 500;
+const PHYSICS_SETTLE_SPEED = 0.35;
+
+type ForceNodeDatum = {
   id: string;
   x: number;
   y: number;
   width: number;
   height: number;
+  vx?: number;
+  vy?: number;
   fx?: number | null;
   fy?: number | null;
 };
@@ -96,7 +98,7 @@ type ClusterForceDatum = ForceNodeDatum & {
   pinned: boolean;
 };
 
-function clampVelocity(node: SimulationNodeDatum, maxVelocity: number): void {
+function clampVelocity(node: Pick<ForceNodeDatum, "vx" | "vy">, maxVelocity: number): void {
   const vx = node.vx ?? 0;
   const vy = node.vy ?? 0;
   const speed = Math.hypot(vx, vy);
@@ -107,6 +109,30 @@ function clampVelocity(node: SimulationNodeDatum, maxVelocity: number): void {
   const scale = maxVelocity / speed;
   node.vx = vx * scale;
   node.vy = vy * scale;
+}
+
+function clampPosition(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(-MAX_CLUSTER_POSITION, Math.min(MAX_CLUSTER_POSITION, value));
+}
+
+function sanitizePoint(position: { x: number; y: number }): { x: number; y: number } {
+  return {
+    x: clampPosition(position.x),
+    y: clampPosition(position.y),
+  };
+}
+
+function isValidPosition(position: { x: number; y: number }): boolean {
+  return (
+    Number.isFinite(position.x) &&
+    Number.isFinite(position.y) &&
+    Math.abs(position.x) <= MAX_CLUSTER_POSITION &&
+    Math.abs(position.y) <= MAX_CLUSTER_POSITION
+  );
 }
 
 function nodeDimensions(node: Node): { width: number; height: number } {
@@ -856,7 +882,7 @@ function mapSemanticNode(node: AgentGraphNode): Node {
         sourcePath: node.sourcePath,
         independentlyPositioned: node.independentlyPositioned ?? false,
       },
-      position: node.position,
+      position: sanitizePoint(node.position),
       draggable: false,
     };
   }
@@ -873,7 +899,7 @@ function mapSemanticNode(node: AgentGraphNode): Node {
       kind: node.kind,
       layerId: node.parentLayerId,
     },
-    position: node.position,
+    position: sanitizePoint(node.position),
     draggable: true,
   };
 }
@@ -926,13 +952,13 @@ function mergeMappedNodesWithLocalPositions(mappedNodes: Node[], currentNodes: N
       const ownerNode = currentNodeById.get(ownerNodeId) ?? mappedNodeById.get(ownerNodeId);
       const ownerWidth = ownerNode ? nodeDimensions(ownerNode).width : SEMANTIC_NODE_WIDTH;
       const portalWidth = currentNode.width ?? nodeDimensions(mappedNode).width;
-      const anchoredPosition = {
+      const anchoredPosition = sanitizePoint({
         x:
           mappedNode.id.startsWith("portal:incoming:")
             ? -portalWidth - REVEALED_HIDDEN_NODE_GAP
             : ownerWidth + REVEALED_HIDDEN_NODE_GAP,
         y: 0,
-      };
+      });
 
       return {
         ...mappedNode,
@@ -946,7 +972,7 @@ function mergeMappedNodesWithLocalPositions(mappedNodes: Node[], currentNodes: N
 
     return {
       ...mappedNode,
-      position: currentNode.position,
+      position: sanitizePoint(currentNode.position),
       selected: currentNode.selected,
       dragging: currentNode.dragging,
       width: currentNode.width,
@@ -968,13 +994,13 @@ function anchorHiddenPortalNodes(nodes: Node[]): Node[] {
     const ownerNode = nodeById.get(ownerNodeId);
     const ownerWidth = ownerNode ? nodeDimensions(ownerNode).width : SEMANTIC_NODE_WIDTH;
     const portalWidth = node.width ?? nodeDimensions(node).width;
-    const anchoredPosition = {
+    const anchoredPosition = sanitizePoint({
       x:
         node.id.startsWith("portal:incoming:")
           ? -portalWidth - REVEALED_HIDDEN_NODE_GAP
           : ownerWidth + REVEALED_HIDDEN_NODE_GAP,
       y: 0,
-    };
+    });
 
     if (
       node.position.x === anchoredPosition.x &&
@@ -1017,12 +1043,14 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   const localNodesRef = useRef<Node[]>([]);
   const localEdgesRef = useRef<Edge[]>([]);
   const pinnedNodeIdsRef = useRef<string[]>([]);
-  const dirtyPersistNodeIdsRef = useRef<Set<string>>(new Set());
   const physicsModelRef = useRef<{
     nodes: ClusterForceDatum[];
     movableNodeIds: string[];
-    simulation: Simulation<ClusterForceDatum, SimulationLinkDatum<ClusterForceDatum>>;
+    applyForces(alpha: number): void;
   } | null>(null);
+  const physicsFrameRef = useRef<number | null>(null);
+  const physicsLastTickRef = useRef<number | null>(null);
+  const physicsTickRef = useRef<((timestamp: number) => void) | null>(null);
   const persistenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heldNodeTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -1444,29 +1472,57 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
 
   };
 
-  function schedulePersistence(nodes: ClusterForceDatum[], movableNodeIds: string[]): void {
-    if (persistenceTimeoutRef.current) {
-      return;
-    }
-    persistenceTimeoutRef.current = setTimeout(() => {
-      persistenceTimeoutRef.current = null;
-      persistForcePositions(nodes, movableNodeIds);
-    }, 300);
-  }
-
-  function flushPendingPersistence(): void {
-    if (persistenceTimeoutRef.current) {
-      clearTimeout(persistenceTimeoutRef.current);
-      persistenceTimeoutRef.current = null;
-    }
-  }
-
   function clearHeldNodeTimeout(nodeId: string): void {
     const timeout = heldNodeTimeoutsRef.current.get(nodeId);
     if (timeout) {
       clearTimeout(timeout);
       heldNodeTimeoutsRef.current.delete(nodeId);
     }
+  }
+
+  function schedulePhysicsPersistence(): void {
+    if (persistenceTimeoutRef.current) {
+      return;
+    }
+
+    persistenceTimeoutRef.current = setTimeout(() => {
+      persistenceTimeoutRef.current = null;
+      const movableNodeIds = physicsModelRef.current?.movableNodeIds ?? [];
+      if (movableNodeIds.length === 0) {
+        return;
+      }
+
+      const movableSet = new Set(movableNodeIds);
+      const positions = localNodesRef.current
+        .filter((node) => movableSet.has(node.id))
+        .map((node) => ({
+          nodeId: node.id,
+          x: clampPosition(node.position.x),
+          y: clampPosition(node.position.y),
+        }))
+        .filter(isValidPosition);
+
+      if (positions.length > 0) {
+        actions.moveNodes(positions);
+      }
+    }, PHYSICS_PERSIST_INTERVAL_MS);
+  }
+
+  function flushPhysicsPersistence(): void {
+    if (!persistenceTimeoutRef.current) {
+      return;
+    }
+
+    clearTimeout(persistenceTimeoutRef.current);
+    persistenceTimeoutRef.current = null;
+  }
+
+  function wakePhysicsLoop(): void {
+    if (physicsFrameRef.current !== null || !physicsTickRef.current) {
+      return;
+    }
+
+    physicsFrameRef.current = window.requestAnimationFrame(physicsTickRef.current);
   }
 
   function lockNodeToCurrentPosition(nodeId: string, x: number, y: number): void {
@@ -1488,7 +1544,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     cluster.y = centerY;
     cluster.fx = centerX;
     cluster.fy = centerY;
-    physicsModelRef.current?.simulation.alpha(0.18).restart();
+    wakePhysicsLoop();
   }
 
   function releaseNodeAfterTimeout(nodeId: string): void {
@@ -1496,8 +1552,8 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
       return;
     }
     clearHeldNodeTimeout(nodeId);
-      const timeout = setTimeout(() => {
-        heldNodeTimeoutsRef.current.delete(nodeId);
+    const timeout = setTimeout(() => {
+      heldNodeTimeoutsRef.current.delete(nodeId);
       const cluster = physicsModelRef.current?.nodes.find((candidate) =>
         candidate.memberNodeIds.includes(nodeId),
       );
@@ -1506,7 +1562,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
       }
       cluster.fx = null;
       cluster.fy = null;
-      physicsModelRef.current?.simulation.alpha(0.42).restart();
+      wakePhysicsLoop();
     }, 1200);
     heldNodeTimeoutsRef.current.set(nodeId, timeout);
   }
@@ -1514,7 +1570,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
   function buildForceModel(): {
     nodes: ClusterForceDatum[];
     movableNodeIds: string[];
-    simulation: Simulation<ClusterForceDatum, SimulationLinkDatum<ClusterForceDatum>>;
+    applyForces(alpha: number): void;
   } | null {
     if (!activeLayerId) {
       return null;
@@ -1635,33 +1691,33 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     }
 
     const clustersById = new Map(groupNodes.map((group) => [group.id, group]));
-    const simulation = forceSimulation(groupNodes)
-      .force(
-        "clusterAttract",
-        createClusterAttractForce({
-          links: [...collapsedLinks.values()],
-          clustersById,
-          strength: springStrength,
-          gap: springLength + 28,
-        }),
-      )
-      .force(
-        "rectRepel",
-        createRectRepelForce({
-          nodes: groupNodes,
-          pinnedNodeIds: new Set(groupNodes.filter((group) => group.pinned).map((group) => group.id)),
-          strength: repulsionStrength,
-        }),
-      );
+    const applyClusterAttract = createClusterAttractForce({
+      links: [...collapsedLinks.values()],
+      clustersById,
+      strength: springStrength,
+      gap: springLength + 28,
+    });
+    const applyRectRepel = createRectRepelForce({
+      nodes: groupNodes,
+      pinnedNodeIds: new Set(groupNodes.filter((group) => group.pinned).map((group) => group.id)),
+      strength: repulsionStrength,
+    });
 
-    return { nodes: groupNodes, movableNodeIds, simulation };
+    return {
+      nodes: groupNodes,
+      movableNodeIds,
+      applyForces(alpha: number) {
+        applyClusterAttract(alpha);
+        applyRectRepel(alpha);
+      },
+    };
   }
 
   function applyForcePositions(nodes: ClusterForceDatum[]): void {
     const nextPositions = new Map<string, { x: number; y: number }>();
     for (const cluster of nodes) {
-      const clusterX = cluster.x ?? 0;
-      const clusterY = cluster.y ?? 0;
+      const clusterX = clampPosition(cluster.x ?? 0);
+      const clusterY = clampPosition(cluster.y ?? 0);
       for (const memberNodeId of cluster.memberNodeIds) {
         const offset = cluster.internalOffsets.get(memberNodeId);
         const currentNode = localNodesRef.current.find((candidate) => candidate.id === memberNodeId);
@@ -1670,14 +1726,10 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
         }
         const { width, height } = nodeDimensions(currentNode);
         nextPositions.set(memberNodeId, {
-          x: clusterX + offset.x - width / 2,
-          y: clusterY + offset.y - height / 2,
+          x: clampPosition(clusterX + offset.x - width / 2),
+          y: clampPosition(clusterY + offset.y - height / 2),
         });
       }
-    }
-    const dirtyNodeIds = dirtyPersistNodeIdsRef.current;
-    for (const nodeId of nextPositions.keys()) {
-      dirtyNodeIds.add(nodeId);
     }
 
     setLocalNodes((current) =>
@@ -1692,35 +1744,14 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     );
   }
 
-  function persistForcePositions(nodes: ClusterForceDatum[], movableNodeIds: string[]): void {
-    const movableSet = new Set(movableNodeIds);
-    const pinnedSet = new Set(pinnedNodeIdsRef.current);
-    const currentNodeById = new Map(localNodesRef.current.map((node) => [node.id, node]));
-    const dirtyNodeIds = dirtyPersistNodeIdsRef.current;
-    const positions: Array<{ nodeId: string; x: number; y: number }> = [];
-    for (const nodeId of dirtyNodeIds) {
-      if (!movableSet.has(nodeId) || pinnedSet.has(nodeId)) {
-        continue;
-      }
-      const currentNode = currentNodeById.get(nodeId);
-      if (!currentNode) {
-        continue;
-      }
-      positions.push({
-        nodeId,
-        x: currentNode.position.x,
-        y: currentNode.position.y,
-      });
-    }
-    dirtyNodeIds.clear();
-    if (positions.length > 0) {
-      actions.moveNodes(positions);
-    }
-  }
-
   useEffect(() => {
     if (!physicsEnabled) {
-      flushPendingPersistence();
+      if (physicsFrameRef.current !== null) {
+        window.cancelAnimationFrame(physicsFrameRef.current);
+        physicsFrameRef.current = null;
+      }
+      physicsLastTickRef.current = null;
+      flushPhysicsPersistence();
       physicsModelRef.current = null;
       return;
     }
@@ -1732,20 +1763,60 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
     }
 
     physicsModelRef.current = model;
-    const simulation = model.simulation;
-    simulation.alpha(0.9);
-    simulation.on("tick", () => {
+    physicsLastTickRef.current = null;
+
+    const tick = (timestamp: number) => {
+      physicsFrameRef.current = null;
+      const lastTick = physicsLastTickRef.current ?? timestamp;
+      physicsLastTickRef.current = timestamp;
+      const dtMs = Math.min(PHYSICS_FRAME_MS * 2, Math.max(8, timestamp - lastTick));
+      const alpha = dtMs / PHYSICS_FRAME_MS;
+      const damping = PHYSICS_DAMPING_PER_FRAME ** alpha;
+
+      model.applyForces(alpha);
+
+      let maxSpeed = 0;
       for (const node of model.nodes) {
+        if (node.fx != null && node.fy != null) {
+          node.x = clampPosition(node.fx);
+          node.y = clampPosition(node.fy);
+          node.vx = 0;
+          node.vy = 0;
+          continue;
+        }
+
+        node.vx = (node.vx ?? 0) * damping;
+        node.vy = (node.vy ?? 0) * damping;
         clampVelocity(node, MAX_CLUSTER_VELOCITY);
+
+        node.x = clampPosition((node.x ?? 0) + (node.vx ?? 0) * alpha);
+        node.y = clampPosition((node.y ?? 0) + (node.vy ?? 0) * alpha);
+        maxSpeed = Math.max(maxSpeed, Math.hypot(node.vx ?? 0, node.vy ?? 0));
       }
+
       applyForcePositions(model.nodes);
-      schedulePersistence(model.nodes, model.movableNodeIds);
-    });
+
+      if (maxSpeed >= PHYSICS_SETTLE_SPEED) {
+        schedulePhysicsPersistence();
+        wakePhysicsLoop();
+        return;
+      }
+
+      physicsLastTickRef.current = null;
+      schedulePhysicsPersistence();
+    };
+
+    physicsTickRef.current = tick;
+    wakePhysicsLoop();
 
     return () => {
-      simulation.stop();
-      flushPendingPersistence();
-      persistForcePositions(model.nodes, model.movableNodeIds);
+      if (physicsFrameRef.current !== null) {
+        window.cancelAnimationFrame(physicsFrameRef.current);
+        physicsFrameRef.current = null;
+      }
+      physicsLastTickRef.current = null;
+      physicsTickRef.current = null;
+      schedulePhysicsPersistence();
       physicsModelRef.current = null;
     };
   }, [
@@ -1850,16 +1921,21 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
               actions.moveLayer(node.id, node.position.x, node.position.y);
             } else {
               const persistedTargets = selectedSemanticDragTargets(node);
+              const validTargets = persistedTargets
+                .map((target) => ({
+                  nodeId: target.nodeId,
+                  x: clampPosition(target.x),
+                  y: clampPosition(target.y),
+                }))
+                .filter(isValidPosition);
               if (physicsEnabled) {
-                for (const target of persistedTargets) {
-                  dirtyPersistNodeIdsRef.current.add(target.nodeId);
+                if (validTargets.length > 0) {
+                  actions.moveNodes(validTargets);
                 }
-                schedulePersistence(
-                  physicsModelRef.current?.nodes ?? [],
-                  physicsModelRef.current?.movableNodeIds ?? [],
-                );
               } else {
-                actions.moveNodes(persistedTargets);
+                if (validTargets.length > 0) {
+                  actions.moveNodes(validTargets);
+                }
               }
               if (physicsEnabled) {
                 releaseNodeAfterTimeout(node.id);
@@ -1878,7 +1954,7 @@ export const AgentGraphCanvas = observer(function AgentGraphCanvas({
                   forceNode.y = node.position.y + height / 2 - offset.y;
                   forceNode.fx = forceNode.x;
                   forceNode.fy = forceNode.y;
-                  physicsModelRef.current.simulation.alpha(0.45).restart();
+                  wakePhysicsLoop();
                 }
               }
             }
