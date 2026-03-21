@@ -539,7 +539,7 @@ async function main(): Promise<void> {
 
     const benchmarkInvocation = runSsmShell(config.region, worker.instanceId, [
       "set -euo pipefail",
-      "source /etc/agent-swarm-worker-monitor.env",
+      "source /home/ec2-user/state/agent-swarm-worker-monitor.env",
       "export PATH=/opt/bun/bin:/usr/local/bin:/usr/bin:/bin",
       `docker image inspect ${config.benchmarkImage} >/dev/null`,
       `cd ${config.runtimeDir}/packages/swarm-manager`,

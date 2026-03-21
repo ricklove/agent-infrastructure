@@ -1,7 +1,12 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_RUNTIME_DIR } from "../paths.js";
+import {
+  DEFAULT_MANAGER_ENV_PATH,
+  DEFAULT_MANAGER_NODE_ENV_PATH,
+  DEFAULT_RUNTIME_DIR,
+  DEFAULT_WORKER_MONITOR_ENV_PATH,
+} from "../paths.js";
 
 function optionalOne(args: string[], flag: string): string | undefined {
   const index = args.findIndex((value) => value === `--${flag}`);
@@ -116,6 +121,33 @@ case "${"$"}{1:-}" in
 esac
 `;
 
+  const runManagerWrapper = `#!/usr/bin/env bash
+set -euo pipefail
+set -a
+source ${DEFAULT_MANAGER_ENV_PATH}
+set +a
+cd ${runtimeDir}
+exec bun ${runtimeDir}/packages/swarm-manager/src/manager/server.ts "$@"
+`;
+
+  const runManagerNodeWrapper = `#!/usr/bin/env bash
+set -euo pipefail
+set -a
+source ${DEFAULT_MANAGER_NODE_ENV_PATH}
+set +a
+cd ${runtimeDir}
+exec bun ${runtimeDir}/packages/swarm-manager/src/worker/agent.ts "$@"
+`;
+
+  const runWorkerMonitorWrapper = `#!/usr/bin/env bash
+set -euo pipefail
+set -a
+source ${DEFAULT_WORKER_MONITOR_ENV_PATH}
+set +a
+cd ${runtimeDir}
+exec bun ${runtimeDir}/packages/swarm-manager/src/worker/agent.ts "$@"
+`;
+
   writeExecutable(resolve(hostRoot, "launch-worker.sh"), launchWorkerWrapper);
   writeExecutable(resolve(hostRoot, "update-runtime.sh"), updateRuntimeWrapper);
   writeExecutable(
@@ -137,6 +169,9 @@ esac
   );
   writeExecutable(resolve(hostRoot, "github-app-token.sh"), githubAppTokenWrapper);
   writeExecutable(resolve(hostRoot, "git-askpass.sh"), gitAskpassWrapper);
+  writeExecutable(resolve(hostRoot, "run-manager.sh"), runManagerWrapper);
+  writeExecutable(resolve(hostRoot, "run-manager-node.sh"), runManagerNodeWrapper);
+  writeExecutable(resolve(hostRoot, "run-worker-monitor.sh"), runWorkerMonitorWrapper);
   writeExecutable(
     resolve(hostRoot, "worker-user-data.sh"),
     readFileSync(resolve(scriptsDir, "worker-user-data.sh"), "utf8"),

@@ -35,8 +35,8 @@ bun --version
 docker image inspect agent-swarm/bun-worker-base:latest >/dev/null
 docker image inspect agent-swarm/bun-repo-runner:latest >/dev/null
 
-mkdir -p /etc/agent-swarm
-cat > /etc/agent-swarm/worker-image-profile.json <<'PROFILE'
+mkdir -p /home/ec2-user/state
+cat > /home/ec2-user/state/worker-image-profile.json <<'PROFILE'
 {
   "profile": "bun-worker",
   "preinstalledPackages": ["aws", "docker", "jq", "unzip", "git"],
@@ -47,3 +47,4 @@ cat > /etc/agent-swarm/worker-image-profile.json <<'PROFILE'
   ]
 }
 PROFILE
+chown -R ec2-user:ec2-user /home/ec2-user/state

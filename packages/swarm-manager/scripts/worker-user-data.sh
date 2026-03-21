@@ -9,7 +9,8 @@ RUNTIME_ROOT="/home/ec2-user/runtime"
 STATE_ROOT="/home/ec2-user/state"
 WORKSPACE_ROOT="/home/ec2-user/workspace"
 PENDING_EVENT_FILE="${STATE_ROOT}/pending-worker-events.jsonl"
-WORKER_IMAGE_PROFILE_PATH="/etc/agent-swarm/worker-image-profile.json"
+WORKER_IMAGE_PROFILE_PATH="${STATE_ROOT}/worker-image-profile.json"
+WORKER_MONITOR_ENV_PATH="${STATE_ROOT}/agent-swarm-worker-monitor.env"
 
 json_escape() {
   local value="$1"
@@ -144,7 +145,7 @@ unzip -q "${STATE_ROOT}/runtime.zip" -d "$RUNTIME_ROOT"
 chown -R ec2-user:ec2-user "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
 emit_event runtime_download_completed "{}"
 
-cat > /etc/agent-swarm-worker-monitor.env <<'ENVFILE'
+cat > "${WORKER_MONITOR_ENV_PATH}" <<'ENVFILE'
 MONITOR_MANAGER_URL=ws://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/workers/stream
 MONITOR_SHARED_TOKEN=__SWARM_SHARED_TOKEN__
 MONITOR_RECONNECT_DELAY_MS=1000
@@ -158,8 +159,8 @@ Wants=network-online.target docker.service
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/agent-swarm-worker-monitor.env
-ExecStart=/usr/local/bin/bun /home/ec2-user/runtime/packages/swarm-manager/src/worker/agent.ts
+User=ec2-user
+ExecStart=/home/ec2-user/runtime/run-worker-monitor.sh
 Restart=always
 RestartSec=2
 

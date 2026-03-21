@@ -71,8 +71,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/agent-swarm-monitor.env
-ExecStart=/usr/local/bin/bun /opt/agent-swarm/swarm-manager/manager/server.ts
+User=ec2-user
+ExecStart=/home/ec2-user/runtime/run-manager.sh
 Restart=always
 RestartSec=2
 
@@ -86,8 +86,8 @@ Wants=network-online.target agent-swarm-monitor.service
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/agent-swarm-manager-node.env
-ExecStart=/usr/local/bin/bun /opt/agent-swarm/swarm-manager/worker/agent.ts
+User=ec2-user
+ExecStart=/home/ec2-user/runtime/run-manager-node.sh
 Restart=always
 RestartSec=2
 
@@ -422,11 +422,7 @@ WantedBy=multi-user.target
       `cd ${runtimeRoot} && bun run --filter @agent-infrastructure/swarm-manager run:install-host-scripts -- --runtime-dir ${runtimeRoot} --host-root ${runtimeRoot}`,
       writeFileCommand(
         "/etc/systemd/system/agent-swarm-monitor.service",
-        managerServiceUnit
-          .replace(
-            "/opt/agent-swarm/swarm-manager/manager/server.ts",
-            `${runtimeRoot}/packages/swarm-manager/src/manager/server.ts`,
-          ),
+        managerServiceUnit,
       ),
       writeFileCommand(`${runtimeRoot}/worker-user-data.sh`, workerUserDataTemplate),
       `if [[ ! -s ${stateRoot}/swarm-shared-token ]]; then openssl rand -hex 32 > ${stateRoot}/swarm-shared-token; fi`,
@@ -438,7 +434,7 @@ WantedBy=multi-user.target
       `mv ${stateRoot}/bootstrap-context.tmp ${stateRoot}/bootstrap-context.json`,
       `if [[ ! -s ${stateRoot}/worker-runtime-release.json ]]; then ${runtimeRoot}/publish-worker-runtime-release.sh --release-id manager-bootstrap; fi`,
       `chown -R ec2-user:ec2-user ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
-      "cat > /etc/agent-swarm-monitor.env <<ENVFILE",
+      `cat > ${stateRoot}/agent-swarm-monitor.env <<ENVFILE`,
       "MANAGER_WS_HOST=0.0.0.0",
       "MANAGER_WS_PORT=8787",
       "SWARM_SHARED_TOKEN=$SWARM_SHARED_TOKEN",
@@ -452,7 +448,7 @@ WantedBy=multi-user.target
       `SWARM_BOOTSTRAP_CONTEXT_PATH=${stateRoot}/bootstrap-context.json`,
       "GIT_TERMINAL_PROMPT=0",
       "ENVFILE",
-      "cat > /etc/agent-swarm-manager-node.env <<ENVFILE",
+      `cat > ${stateRoot}/agent-swarm-manager-node.env <<ENVFILE`,
       "MONITOR_MANAGER_URL=ws://127.0.0.1:8787/workers/stream",
       "MONITOR_SHARED_TOKEN=$SWARM_SHARED_TOKEN",
       "MONITOR_RECONNECT_DELAY_MS=1000",
@@ -464,12 +460,10 @@ WantedBy=multi-user.target
       `GIT_ASKPASS=${runtimeRoot}/git-askpass.sh`,
       "GIT_TERMINAL_PROMPT=0",
       "ENVFILE",
+      `chown -R ec2-user:ec2-user ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
       writeFileCommand(
         "/etc/systemd/system/agent-swarm-manager-node.service",
-        managerNodeServiceUnit.replace(
-          "/opt/agent-swarm/swarm-manager/worker/agent.ts",
-          `${runtimeRoot}/packages/swarm-manager/src/worker/agent.ts`,
-        ),
+        managerNodeServiceUnit,
       ),
       "systemctl daemon-reload",
       "systemctl enable --now agent-swarm-monitor.service",
