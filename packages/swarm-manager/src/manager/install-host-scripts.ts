@@ -98,6 +98,14 @@ exec bun ${runtimeDir}/packages/swarm-manager/src/manager/test-worker-image-life
 
   const issueDashboardSessionWrapper = `#!/usr/bin/env bash
 set -euo pipefail
+if [ "\${AGENT_RUN_AS_USER_DONE:-0}" != "1" ] && [ "\$(id -u)" = "0" ]; then
+  exec sudo -H -u ec2-user env \\
+    AGENT_RUN_AS_USER_DONE=1 \\
+    AGENT_GITHUB_CONFIG_ROOT="${agentGithubConfigRoot}" \\
+    GIT_ASKPASS="${runtimeDir}/git-askpass.sh" \\
+    GIT_TERMINAL_PROMPT=0 \\
+    bash "$0" "$@"
+fi
 ${authEnvPrelude}
 cd ${runtimeDir}
 exec bun ${runtimeDir}/packages/swarm-manager/src/manager/issue-dashboard-session.ts "$@"
