@@ -1,0 +1,28 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "files": {
+    "include": [
+      "apps/dashboard-app/**",
+      "packages/dashboard-ui/**",
+      "packages/agent-swarm-ui/**",
+      "packages/agent-chat-ui/**"
+    ],
+    "ignore": [
+      "**/dist/**",
+      "**/node_modules/**"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space"
+  },
+  "linter": {
+    "enabled": true
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "asNeeded"
+    }
+  }
+}
