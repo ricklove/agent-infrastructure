@@ -278,6 +278,10 @@ export function DashboardShell() {
     setActiveFeatureId(nextFeature.id)
   }
 
+  const canRenderFeatures =
+    !initializing &&
+    (!config?.requiresSession || Boolean(readStoredSessionToken()))
+
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
       <aside className="flex w-14 shrink-0 flex-col items-center gap-3 border-r border-white/10 bg-[#0a0f17] px-1.5 py-2">
@@ -380,26 +384,28 @@ export function DashboardShell() {
               </div>
             }
           >
-            {loadedFeatureIds.map((featureId) => {
-              const feature =
-                featureDefinitions.find(
-                  (candidate) => candidate.id === featureId,
-                ) ?? featureDefinitions[0]
-              const FeatureComponent = feature.component
+            {canRenderFeatures
+              ? loadedFeatureIds.map((featureId) => {
+                  const feature =
+                    featureDefinitions.find(
+                      (candidate) => candidate.id === featureId,
+                    ) ?? featureDefinitions[0]
+                  const FeatureComponent = feature.component
 
-              return (
-                <section
-                  key={feature.id}
-                  className={
-                    feature.id === activeFeatureId
-                      ? "h-full min-h-0"
-                      : "hidden h-full"
-                  }
-                >
-                  <FeatureComponent />
-                </section>
-              )
-            })}
+                  return (
+                    <section
+                      key={feature.id}
+                      className={
+                        feature.id === activeFeatureId
+                          ? "h-full min-h-0"
+                          : "hidden h-full"
+                      }
+                    >
+                      <FeatureComponent />
+                    </section>
+                  )
+                })
+              : null}
           </Suspense>
         </main>
       </div>
