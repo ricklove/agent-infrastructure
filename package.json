@@ -9,7 +9,7 @@
     "build": "bun run --filter '*' build",
     "check": "bun run --filter '*' check",
     "connect-vscode": "bash ./scripts/connect-vscode.sh --profile agent-team-admin",
-    "connext-ssh": "bash ./scripts/connect-ssh.sh --profile agent-team-admin",
+    "connect-ssh": "bash ./scripts/connect-ssh.sh --profile agent-team-admin",
     "codex": "codex --dangerously-bypass-approvals-and-sandbox -C ~ resume --last --all",
     "dev:agent-graph": "cd apps/agentish-studio && bun run dev --host 0.0.0.0",
     "build:agent-graph": "cd apps/agentish-studio && bun run build",
