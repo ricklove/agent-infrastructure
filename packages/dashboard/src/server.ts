@@ -122,7 +122,7 @@ const accessApiBaseUrl = process.env.DASHBOARD_ACCESS_API_BASE_URL?.trim() || ""
 const enrollmentSecret = process.env.DASHBOARD_ENROLLMENT_SECRET?.trim() || "";
 const sessionStorePath =
   process.env.DASHBOARD_SESSION_STORE_PATH?.trim() ||
-  "/var/lib/agent-swarm-monitor/dashboard-sessions.json";
+  "/home/ec2-user/state/dashboard-sessions.json";
 const port = Number.parseInt(process.env.DASHBOARD_PORT ?? "3000", 10);
 const browserSessionIdleTimeoutMs =
   Math.max(

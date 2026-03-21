@@ -1,5 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  DEFAULT_BOOTSTRAP_CONTEXT_PATH,
+  DEFAULT_RUNTIME_DIR,
+} from "../paths.js";
 import { getWorkerImageProfile } from "./worker-image-profiles.js";
 
 type BootstrapContext = {
@@ -175,10 +179,9 @@ function runCheckedJson<T>(
 
 function parseArgs(argv: string[]): BenchmarkConfig {
   const bootstrapContextPath =
-    optionalOne(argv, "bootstrap-context") ??
-    "/opt/agent-swarm/bootstrap-context.json";
+    optionalOne(argv, "bootstrap-context") ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH;
   const bootstrapContext = readBootstrapContext(bootstrapContextPath);
-  const runtimeDir = optionalOne(argv, "runtime-dir") ?? "/opt/agent-swarm/runtime";
+  const runtimeDir = optionalOne(argv, "runtime-dir") ?? DEFAULT_RUNTIME_DIR;
   const region = optionalOne(argv, "region") ?? bootstrapContext.region?.trim() ?? "";
   const managerPrivateIp =
     optionalOne(argv, "manager-private-ip") ??
@@ -378,7 +381,7 @@ function launchWorker(config: BenchmarkConfig, imageId: string): {
   const launchResult = runCheckedJson<LaunchWorkerResult>(
     [
       "bash",
-      "/opt/agent-swarm/launch-worker.sh",
+      join(config.runtimeDir, "launch-worker.sh"),
       "--instance-type",
       config.instanceType,
       "--image-id",
@@ -539,7 +542,7 @@ async function main(): Promise<void> {
       "source /etc/agent-swarm-worker-monitor.env",
       "export PATH=/opt/bun/bin:/usr/local/bin:/usr/bin:/bin",
       `docker image inspect ${config.benchmarkImage} >/dev/null`,
-      "cd /opt/agent-swarm/runtime/packages/swarm-manager",
+      `cd ${config.runtimeDir}/packages/swarm-manager`,
       [
         "bun run run:launch-service --",
         `--manager-url ${managerUrl}`,
@@ -588,7 +591,7 @@ async function main(): Promise<void> {
       completedAtMs: number;
       elapsedSeconds: number;
     }>(
-      ["bash", "/opt/agent-swarm/hibernate-workers.sh", worker.instanceId],
+      ["bash", join(config.runtimeDir, "hibernate-workers.sh"), worker.instanceId],
       config.runtimeDir,
     );
 
@@ -605,7 +608,7 @@ async function main(): Promise<void> {
       completedAtMs: number;
       elapsedSeconds: number;
     }>(
-      ["bash", "/opt/agent-swarm/wake-workers.sh", worker.instanceId],
+      ["bash", join(config.runtimeDir, "wake-workers.sh"), worker.instanceId],
       config.runtimeDir,
     );
 

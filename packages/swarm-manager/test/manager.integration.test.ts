@@ -17,6 +17,9 @@ const fakeZombieInventory = JSON.stringify([
     launchTimeMs: Date.now() - 10 * 60 * 1000,
   },
 ]);
+const swarmManagerCwd =
+  process.env.SWARM_MANAGER_TEST_CWD ??
+  "/home/ec2-user/workspace/projects/agent-infrastructure/packages/swarm-manager";
 
 let managerProcess: Bun.Subprocess<"ignore", "pipe", "pipe"> | null = null;
 const workerProcesses: Bun.Subprocess<"ignore", "pipe", "pipe">[] = [];
@@ -58,7 +61,7 @@ function spawnWorkerAgent(
   const workerProcess = Bun.spawn(
     ["bun", "run", "src/worker/agent.ts"],
     {
-      cwd: "/workspaces/projects/agent-infrastructure/packages/swarm-manager",
+      cwd: swarmManagerCwd,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",
@@ -81,7 +84,7 @@ beforeAll(async () => {
   managerProcess = Bun.spawn(
     ["bun", "run", "src/manager/server.ts"],
     {
-      cwd: "/workspaces/projects/agent-infrastructure/packages/swarm-manager",
+      cwd: swarmManagerCwd,
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",

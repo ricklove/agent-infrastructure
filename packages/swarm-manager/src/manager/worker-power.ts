@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { DEFAULT_BOOTSTRAP_CONTEXT_PATH } from "../paths.js";
 
 type Action = "hibernate" | "wake";
 
@@ -154,8 +155,7 @@ async function main(): Promise<void> {
   }
 
   const bootstrapContextPath =
-    optionalOne(argv, "bootstrap-context") ??
-    "/opt/agent-swarm/bootstrap-context.json";
+    optionalOne(argv, "bootstrap-context") ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH;
   const bootstrapContext = loadBootstrapContext(bootstrapContextPath);
   const region = optionalOne(argv, "region") ?? bootstrapContext.region?.trim() ?? "";
   const sharedToken =

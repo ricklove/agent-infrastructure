@@ -2,6 +2,12 @@
 
 This repository is a Bun monorepo for infrastructure used to run agent systems.
 
+The current filesystem layout for deployed and local manager-host usage is:
+
+- `~/runtime`: checked-out runtime code plus generated helper scripts
+- `~/state`: bootstrap metadata, tokens, manifests, SQLite, and dashboard/session state
+- `~/workspace`: checked-out repos and other working directories used by the system
+
 ## Packages
 
 - `packages/aws-setup`: AWS CDK app that creates a manager EC2 instance plus the IAM and network primitives needed to launch and control a dedicated swarm of worker EC2 instances, using only EC2-backed runtime infrastructure.

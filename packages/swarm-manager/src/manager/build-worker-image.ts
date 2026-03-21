@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  DEFAULT_BOOTSTRAP_CONTEXT_PATH,
+  DEFAULT_RUNTIME_DIR,
+} from "../paths.js";
+import {
   defaultWorkerImageProfileStorePath,
   getWorkerImageProfile,
   promoteWorkerImageProfile,
@@ -118,10 +122,9 @@ function resolveBaseAmiId(
 
 function parseArgs(argv: string[]): BuildWorkerImageConfig {
   const bootstrapContextPath =
-    optionalOne(argv, "bootstrap-context") ??
-    "/opt/agent-swarm/bootstrap-context.json";
+    optionalOne(argv, "bootstrap-context") ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH;
   const bootstrapContext = readBootstrapContext(bootstrapContextPath);
-  const runtimeDir = optionalOne(argv, "runtime-dir") ?? "/opt/agent-swarm/runtime";
+  const runtimeDir = optionalOne(argv, "runtime-dir") ?? DEFAULT_RUNTIME_DIR;
   const workflow = optionalOne(argv, "workflow") ?? "bun-worker";
   const profile = optionalOne(argv, "profile") ?? workflow;
   const region = optionalOne(argv, "region") ?? bootstrapContext.region?.trim() ?? "";

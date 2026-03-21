@@ -418,8 +418,8 @@ async function issueDashboardAccess(): Promise<string> {
       Parameters: {
         commands: [
           "set -euo pipefail",
-          "cd /opt/agent-swarm/runtime",
-          `bun /opt/agent-swarm/runtime/packages/swarm-manager/src/manager/issue-dashboard-session.ts --ttl-seconds ${config.dashboardSessionTtlSeconds}`,
+          "cd /home/ec2-user/runtime",
+          `bun /home/ec2-user/runtime/packages/swarm-manager/src/manager/issue-dashboard-session.ts --ttl-seconds ${config.dashboardSessionTtlSeconds}`,
         ],
       },
     }),

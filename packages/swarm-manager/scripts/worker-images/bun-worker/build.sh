@@ -232,7 +232,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-RUN_OUTPUT="$(bash /opt/agent-swarm/launch-worker.sh \
+RUN_OUTPUT="$(bash /home/ec2-user/runtime/launch-worker.sh \
   --instance-type "$BUILDER_INSTANCE_TYPE" \
   --image-id "$BASE_AMI_ID" \
   --name "${WORKFLOW_NAME}-builder" \

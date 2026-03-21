@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_RUNTIME_DIR } from "../paths.js";
 
 function optionalOne(args: string[], flag: string): string | undefined {
   const index = args.findIndex((value) => value === `--${flag}`);
@@ -26,9 +27,8 @@ function writeExecutable(path: string, content: string): void {
 
 async function main(): Promise<void> {
   const runtimeDir =
-    optionalOne(process.argv.slice(2), "runtime-dir") ?? "/opt/agent-swarm/runtime";
-  const hostRoot =
-    optionalOne(process.argv.slice(2), "host-root") ?? "/opt/agent-swarm";
+    optionalOne(process.argv.slice(2), "runtime-dir") ?? DEFAULT_RUNTIME_DIR;
+  const hostRoot = optionalOne(process.argv.slice(2), "host-root") ?? runtimeDir;
   const agentGithubConfigRoot =
     optionalOne(process.argv.slice(2), "agent-github-config-root") ??
     "/home/ec2-user/.config/agent-github";

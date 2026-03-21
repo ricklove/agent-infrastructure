@@ -1,5 +1,9 @@
 import { Database } from "bun:sqlite";
 import { existsSync, readFileSync } from "node:fs";
+import {
+  DEFAULT_BOOTSTRAP_CONTEXT_PATH,
+  DEFAULT_METRICS_DB_PATH,
+} from "../paths.js";
 
 type WorkerAuthMessage = {
   type: "auth";
@@ -217,7 +221,7 @@ const config = {
   hostname: process.env.MANAGER_WS_HOST ?? "0.0.0.0",
   port: Number(process.env.MANAGER_WS_PORT ?? "8787"),
   sharedToken: process.env.SWARM_SHARED_TOKEN ?? "",
-  dbPath: process.env.METRICS_DB_PATH ?? "/var/lib/agent-swarm-monitor/metrics.sqlite",
+  dbPath: process.env.METRICS_DB_PATH ?? DEFAULT_METRICS_DB_PATH,
   heartbeatTimeoutMs:
     Number(process.env.HEARTBEAT_TIMEOUT_SECONDS ?? "5") * 1000,
   rawRetentionMs:
@@ -242,8 +246,7 @@ const config = {
   ec2InventoryRefreshMs:
     Number(process.env.SWARM_EC2_INVENTORY_REFRESH_SECONDS ?? "15") * 1000,
   bootstrapContextPath:
-    process.env.SWARM_BOOTSTRAP_CONTEXT_PATH ??
-    "/opt/agent-swarm/bootstrap-context.json",
+    process.env.SWARM_BOOTSTRAP_CONTEXT_PATH ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH,
   ec2InventoryJson: process.env.SWARM_EC2_INVENTORY_JSON ?? "",
 };
 

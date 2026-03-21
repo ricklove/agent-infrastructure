@@ -1,6 +1,11 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import {
+  DEFAULT_BOOTSTRAP_CONTEXT_PATH,
+  DEFAULT_RUNTIME_DIR,
+  DEFAULT_WORKER_RUNTIME_RELEASE_MANIFEST_PATH,
+} from "../paths.js";
 
 type BootstrapContext = {
   region: string;
@@ -54,10 +59,10 @@ async function readJsonFile<T>(path: string): Promise<T> {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const bootstrapContextPath =
-    optionalOne(args, "bootstrap-context") ?? "/opt/agent-swarm/bootstrap-context.json";
-  const runtimeDir = optionalOne(args, "runtime-dir") ?? "/opt/agent-swarm/runtime";
+    optionalOne(args, "bootstrap-context") ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH;
+  const runtimeDir = optionalOne(args, "runtime-dir") ?? DEFAULT_RUNTIME_DIR;
   const manifestPath =
-    optionalOne(args, "manifest-path") ?? "/opt/agent-swarm/worker-runtime-release.json";
+    optionalOne(args, "manifest-path") ?? DEFAULT_WORKER_RUNTIME_RELEASE_MANIFEST_PATH;
   const keyPrefix = optionalOne(args, "key-prefix") ?? "releases";
   const releaseId = optionalOne(args, "release-id") ?? utcTimestampReleaseId();
   const excludePatterns = [
