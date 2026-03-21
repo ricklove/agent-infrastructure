@@ -173,7 +173,9 @@ export function DashboardShell() {
 
   useEffect(() => {
     if (window.location.pathname === "/") {
-      window.history.replaceState({}, "", "/swarm")
+      const nextUrl = new URL(window.location.href)
+      nextUrl.pathname = "/swarm"
+      window.history.replaceState({}, "", nextUrl.toString())
       setActiveFeatureId("swarm")
     }
 
