@@ -35,38 +35,96 @@ type FeatureId = "swarm" | "chat" | "graph"
 type FeatureDefinition = {
   id: FeatureId
   label: string
-  shortLabel: string
   href: string
   description: string
   component: React.LazyExoticComponent<() => JSX.Element>
+  icon: (props: { className?: string }) => JSX.Element
 }
 
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
+
+function SwarmIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <rect x="4.5" y="4.5" width="6" height="6" rx="1.5" />
+      <rect x="13.5" y="4.5" width="6" height="6" rx="1.5" />
+      <rect x="9" y="13.5" width="6" height="6" rx="1.5" />
+      <path d="M10.5 7.5h3M12 10.5v3" />
+    </svg>
+  )
+}
+
+function ChatIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6A2.5 2.5 0 0 1 16.5 15h-5l-3.5 3V15h-.5A2.5 2.5 0 0 1 5 12.5z" />
+      <path d="M9 8.75h6M9 11.75h4" />
+    </svg>
+  )
+}
+
+function GraphIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <circle cx="6.5" cy="6.5" r="2.5" />
+      <circle cx="17.5" cy="7.5" r="2.5" />
+      <circle cx="12" cy="17" r="2.5" />
+      <path d="m8.7 7.7 6 1.1M8 8.7l2.7 5.7M16.3 9.7l-2.6 4.8" />
+    </svg>
+  )
+}
 
 const featureDefinitions: FeatureDefinition[] = [
   {
     id: "swarm",
     label: "Agent Swarm",
-    shortLabel: "SW",
     href: "/swarm",
     description: "Manager, fleet, registry, and access operations.",
     component: AgentSwarmScreen,
+    icon: SwarmIcon,
   },
   {
     id: "chat",
     label: "Agent Chat",
-    shortLabel: "CH",
     href: "/chat",
     description: "Multi-session chat will live here.",
     component: AgentChatScreen,
+    icon: ChatIcon,
   },
   {
     id: "graph",
     label: "Agent Graph",
-    shortLabel: "GR",
     href: "/graph",
     description: "Graph exploration and editing.",
     component: AgentGraphScreen,
+    icon: GraphIcon,
   },
 ]
 
@@ -213,13 +271,14 @@ export function DashboardShell() {
 
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
-      <aside className="flex w-20 shrink-0 flex-col items-center gap-4 border-r border-white/10 bg-slate-950/95 px-3 py-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 text-xs font-semibold tracking-[0.24em] text-emerald-200">
+      <aside className="flex w-16 shrink-0 flex-col items-center gap-4 border-r border-white/10 bg-slate-950/95 px-2 py-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 text-[11px] font-semibold tracking-[0.24em] text-emerald-200">
           AI
         </div>
-        <nav className="mt-4 flex w-full flex-1 flex-col items-center gap-3">
+        <nav className="mt-2 flex w-full flex-1 flex-col items-center gap-2">
           {featureDefinitions.map((feature) => {
             const isActive = feature.id === activeFeatureId
+            const Icon = feature.icon
 
             return (
               <button
@@ -230,18 +289,13 @@ export function DashboardShell() {
                   navigateToFeature(feature.id)
                 }}
                 className={[
-                  "group flex w-full flex-col items-center gap-2 rounded-2xl px-2 py-3 text-center transition",
+                  "group flex h-12 w-12 items-center justify-center rounded-2xl transition",
                   isActive
                     ? "bg-white text-slate-950 shadow-lg shadow-cyan-950/40"
                     : "text-slate-400 hover:bg-white/5 hover:text-white",
                 ].join(" ")}
               >
-                <span className="text-xs font-semibold tracking-[0.22em]">
-                  {feature.shortLabel}
-                </span>
-                <span className="text-[10px] uppercase tracking-[0.18em]">
-                  {feature.id}
-                </span>
+                <Icon className="h-5 w-5" />
               </button>
             )
           })}
