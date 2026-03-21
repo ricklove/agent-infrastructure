@@ -556,12 +556,20 @@ async function handleApi(request: Request): Promise<Response> {
     }
   }
 
-  if (url.pathname === "/api/agent-graph/workspace") {
+  if (url.pathname.startsWith("/api/agent-graph/")) {
     try {
       const response = await fetch(`${agentGraphBaseUrl}${url.pathname}${url.search}`, {
+        method: request.method,
         headers: {
           accept: "application/json",
+          ...(request.headers.get("content-type")
+            ? { "content-type": request.headers.get("content-type")! }
+            : {}),
         },
+        body:
+          request.method === "GET" || request.method === "HEAD"
+            ? undefined
+            : await request.text(),
       });
 
       const body = await response.text();
@@ -581,7 +589,7 @@ async function handleApi(request: Request): Promise<Response> {
           error:
             error instanceof Error
               ? error.message
-              : "failed to fetch agent graph workspace",
+              : "failed to proxy agent graph request",
         },
         502,
       );
