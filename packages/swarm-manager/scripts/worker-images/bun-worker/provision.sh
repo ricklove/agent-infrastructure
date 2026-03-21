@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+WORKSPACE_ROOT="/home/ec2-user/workspace"
+
 dnf install -y awscli docker git jq unzip
 
 export HOME=/root
@@ -12,29 +14,29 @@ install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
 
 systemctl enable docker
 
-mkdir -p /opt/agent-swarm/images
-cp Dockerfile /opt/agent-swarm/images/bun-worker.Dockerfile
-mkdir -p /opt/agent-swarm/images/bun-repo-runner
-cp repo-runner/Dockerfile /opt/agent-swarm/images/bun-repo-runner/Dockerfile
-cp repo-runner/start.sh /opt/agent-swarm/images/bun-repo-runner/start.sh
-chmod +x /opt/agent-swarm/images/bun-repo-runner/start.sh
+mkdir -p "${WORKSPACE_ROOT}/images"
+cp Dockerfile "${WORKSPACE_ROOT}/images/bun-worker.Dockerfile"
+mkdir -p "${WORKSPACE_ROOT}/images/bun-repo-runner"
+cp repo-runner/Dockerfile "${WORKSPACE_ROOT}/images/bun-repo-runner/Dockerfile"
+cp repo-runner/start.sh "${WORKSPACE_ROOT}/images/bun-repo-runner/start.sh"
+chmod +x "${WORKSPACE_ROOT}/images/bun-repo-runner/start.sh"
 
 systemctl start docker
 docker build \
   -t agent-swarm/bun-worker-base:latest \
-  -f /opt/agent-swarm/images/bun-worker.Dockerfile \
-  /opt/agent-swarm/images
+  -f "${WORKSPACE_ROOT}/images/bun-worker.Dockerfile" \
+  "${WORKSPACE_ROOT}/images"
 docker build \
   -t agent-swarm/bun-repo-runner:latest \
-  -f /opt/agent-swarm/images/bun-repo-runner/Dockerfile \
-  /opt/agent-swarm/images/bun-repo-runner
+  -f "${WORKSPACE_ROOT}/images/bun-repo-runner/Dockerfile" \
+  "${WORKSPACE_ROOT}/images/bun-repo-runner"
 
 bun --version
 docker image inspect agent-swarm/bun-worker-base:latest >/dev/null
 docker image inspect agent-swarm/bun-repo-runner:latest >/dev/null
 
-mkdir -p /etc/agent-swarm
-cat > /etc/agent-swarm/worker-image-profile.json <<'PROFILE'
+mkdir -p /home/ec2-user/state
+cat > /home/ec2-user/state/worker-image-profile.json <<'PROFILE'
 {
   "profile": "bun-worker",
   "preinstalledPackages": ["aws", "docker", "jq", "unzip", "git"],
@@ -45,3 +47,4 @@ cat > /etc/agent-swarm/worker-image-profile.json <<'PROFILE'
   ]
 }
 PROFILE
+chown -R ec2-user:ec2-user /home/ec2-user/state

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="/workspaces/projects/agent-infrastructure"
+ROOT_DIR="${ROOT_DIR:-/home/ec2-user/workspace/projects/agent-infrastructure}"
 MANAGER_PORT="${MANAGER_PORT:-8787}"
 SHARED_TOKEN="${SHARED_TOKEN:-test-token}"
 DB_PATH="${DB_PATH:-/tmp/swarm-manager-local-smoke.sqlite}"

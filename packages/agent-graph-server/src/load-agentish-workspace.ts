@@ -3,7 +3,8 @@ import { basename } from "node:path";
 import type { SourceDocument, SourceEdge, SourceNode, SourceWorkspace, WorkspaceState } from "@agent-infrastructure/agent-graph-core";
 
 const AGENT_GRAPH_BLUEPRINT_PATH =
-  "/workspaces/projects/agent-infrastructure/blueprints/agent-graph/agent-graph.agentish.ts";
+  process.env.AGENT_GRAPH_BLUEPRINT_PATH ??
+  "/home/ec2-user/workspace/projects/agent-infrastructure/blueprints/agent-graph/agent-graph.agentish.ts";
 
 function toId(value: string): string {
   return value

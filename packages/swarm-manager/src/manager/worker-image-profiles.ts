@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { DEFAULT_STATE_DIR } from "../paths.js";
 
 export type WorkerImageProfileRecord = {
   profile: string;
@@ -15,7 +16,7 @@ type WorkerImageProfileStore = {
 
 export const defaultWorkerImageProfileStorePath =
   process.env.SWARM_WORKER_IMAGE_PROFILE_STORE_PATH?.trim() ||
-  "/var/lib/agent-swarm-monitor/worker-image-profiles.json";
+  `${DEFAULT_STATE_DIR}/worker-image-profiles.json`;
 
 export function readWorkerImageProfileStore(
   path = defaultWorkerImageProfileStorePath,

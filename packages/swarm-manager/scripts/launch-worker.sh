@@ -2,14 +2,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG=/opt/agent-swarm/bootstrap-context.json
+STATE_ROOT="${AGENT_STATE_ROOT:-/home/ec2-user/state}"
+CONFIG="${STATE_ROOT}/bootstrap-context.json"
 REGION=$(jq -r '.region' "$CONFIG")
 TAG_KEY=$(jq -r '.swarmTagKey' "$CONFIG")
 TAG_VALUE=$(jq -r '.swarmTagValue' "$CONFIG")
 MANAGER_PRIVATE_IP=$(jq -r '.managerPrivateIp' "$CONFIG")
 MANAGER_MONITOR_PORT=$(jq -r '.managerMonitorPort' "$CONFIG")
 SWARM_SHARED_TOKEN=$(jq -r '.swarmSharedToken' "$CONFIG")
-RELEASE_CONFIG=/opt/agent-swarm/worker-runtime-release.json
+RELEASE_CONFIG="${STATE_ROOT}/worker-runtime-release.json"
 
 if [[ ! -s "$RELEASE_CONFIG" ]]; then
   echo 'worker runtime release metadata is missing' >&2

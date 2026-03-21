@@ -1,4 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
+import {
+  DEFAULT_BOOTSTRAP_CONTEXT_PATH,
+  DEFAULT_RUNTIME_DIR,
+} from "../paths.js";
 
 type BootstrapContext = {
   runtimeRepoUrl?: string;
@@ -48,10 +52,9 @@ function readBootstrapContext(path: string): BootstrapContext {
 
 function parseArgs(argv: string[]): UpdateRuntimeConfig {
   const bootstrapContextPath =
-    optionalOne(argv, "bootstrap-context") ??
-    "/opt/agent-swarm/bootstrap-context.json";
+    optionalOne(argv, "bootstrap-context") ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH;
   const bootstrapContext = readBootstrapContext(bootstrapContextPath);
-  const runtimeDir = optionalOne(argv, "runtime-dir") ?? "/opt/agent-swarm/runtime";
+  const runtimeDir = optionalOne(argv, "runtime-dir") ?? DEFAULT_RUNTIME_DIR;
   const repoUrl =
     optionalOne(argv, "repo-url") ??
     bootstrapContext.runtimeRepoUrl?.trim() ??

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RUNNER_REPO_DIR="${RUNNER_REPO_DIR:-/opt/agent-swarm/agent-infrastructure}"
+RUNNER_REPO_DIR="${RUNNER_REPO_DIR:-/home/ec2-user/workspace/agent-infrastructure}"
 RUNNER_REPO_URL="${RUNNER_REPO_URL:-https://github.com/ricklove/agent-infrastructure.git}"
 RUNNER_REPO_REF="${RUNNER_REPO_REF:-development}"
 RUNNER_APP_DIR="${RUNNER_APP_DIR:-examples/benchmarks/bun-repo-runner}"

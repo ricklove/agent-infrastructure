@@ -16,7 +16,7 @@ Options:
   --profile PROFILE        AWS CLI profile to use.
   --swarm-tag-value VALUE  Narrow manager discovery to a specific AgentSwarm tag value.
   --remote-user USER       Remote SSH user. Default: ec2-user
-  --remote-path PATH       Remote folder to open in VS Code. Default: /opt/agent-swarm/runtime
+  --remote-path PATH       Remote folder to open in VS Code. Default: ~
   --host-alias NAME        SSH host alias to create. Default: agent-swarm-manager-<instance-id>
   --key-path PATH          SSH private key path. Default: ~/.ssh/agent-swarm-manager-<instance-id>
   --print-host-alias       Print the resolved SSH host alias to stdout before exiting.
@@ -260,7 +260,7 @@ region="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
 instance_id=""
 swarm_tag_value=""
 remote_user="ec2-user"
-remote_path="/opt/agent-swarm/runtime"
+remote_path="~"
 host_alias=""
 key_path=""
 launch_vscode="true"

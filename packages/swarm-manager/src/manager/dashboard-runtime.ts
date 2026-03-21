@@ -7,6 +7,11 @@ import {
 import { createHash, randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  DEFAULT_BOOTSTRAP_CONTEXT_PATH,
+  DEFAULT_DASHBOARD_RUNTIME_DIR,
+  DEFAULT_DASHBOARD_SESSION_STORE_PATH,
+} from "../paths.js";
 
 export type DashboardRuntimeConfig = {
   port: number;
@@ -44,14 +49,14 @@ const sourceDir = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(sourceDir, "../../../..");
 const dashboardDistDir = resolve(repoRoot, "apps/dashboard-app/dist");
 const dashboardServerEntry = resolve(repoRoot, "packages/dashboard/src/server.ts");
-const runtimeDir = resolve(repoRoot, ".runtime/dashboard");
+const runtimeDir = process.env.DASHBOARD_RUNTIME_DIR?.trim() || DEFAULT_DASHBOARD_RUNTIME_DIR;
 const runtimeStatePath = resolve(runtimeDir, "runtime-state.json");
 const dashboardLogPath = resolve(runtimeDir, "dashboard.log");
 const cloudflaredLogPath = resolve(runtimeDir, "cloudflared.log");
-const bootstrapContextPath = "/opt/agent-swarm/bootstrap-context.json";
+const bootstrapContextPath =
+  process.env.SWARM_BOOTSTRAP_CONTEXT_PATH?.trim() || DEFAULT_BOOTSTRAP_CONTEXT_PATH;
 const sessionStorePath =
-  process.env.DASHBOARD_SESSION_STORE_PATH?.trim() ||
-  "/var/lib/agent-swarm-monitor/dashboard-sessions.json";
+  process.env.DASHBOARD_SESSION_STORE_PATH?.trim() || DEFAULT_DASHBOARD_SESSION_STORE_PATH;
 const browserSessionIdleTimeoutMs =
   Math.max(
     60,

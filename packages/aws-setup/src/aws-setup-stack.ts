@@ -19,6 +19,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sourceDir = dirname(fileURLToPath(import.meta.url));
+const agentHome = "/home/ec2-user";
+const runtimeRoot = `${agentHome}/runtime`;
+const stateRoot = `${agentHome}/state`;
+const workspaceRoot = `${agentHome}/workspace`;
 
 function writeFileCommand(targetPath: string, content: string): string {
   return `cat > ${targetPath} <<'EOF'\n${content}\nEOF`;
@@ -67,8 +71,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/agent-swarm-monitor.env
-ExecStart=/usr/local/bin/bun /opt/agent-swarm/swarm-manager/manager/server.ts
+User=ec2-user
+ExecStart=/home/ec2-user/runtime/run-manager.sh
 Restart=always
 RestartSec=2
 
@@ -82,8 +86,8 @@ Wants=network-online.target agent-swarm-monitor.service
 
 [Service]
 Type=simple
-EnvironmentFile=/etc/agent-swarm-manager-node.env
-ExecStart=/usr/local/bin/bun /opt/agent-swarm/swarm-manager/worker/agent.ts
+User=ec2-user
+ExecStart=/home/ec2-user/runtime/run-manager-node.sh
 Restart=always
 RestartSec=2
 
@@ -404,45 +408,47 @@ WantedBy=multi-user.target
       "export BUN_INSTALL=/opt/bun",
       "curl -fsSL https://bun.sh/install | bash",
       "install -m 0755 \"$BUN_INSTALL/bin/bun\" /usr/local/bin/bun",
-      "mkdir -p /opt/agent-swarm /var/lib/agent-swarm-monitor",
-      `cat > /opt/agent-swarm/bootstrap-context.json <<'EOF'\n${JSON.stringify(
+      `mkdir -p ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
+      `chown -R ec2-user:ec2-user ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
+      `cat > ${stateRoot}/bootstrap-context.json <<'EOF'\n${JSON.stringify(
         bootstrapPayload,
         null,
         2,
       )}\nEOF`,
-      "RUNTIME_REPO_URL=$(jq -r '.runtimeRepoUrl' /opt/agent-swarm/bootstrap-context.json)",
-      "RUNTIME_REPO_REF=$(jq -r '.runtimeRepoRef' /opt/agent-swarm/bootstrap-context.json)",
-      "if [[ -d /opt/agent-swarm/runtime/.git ]]; then cd /opt/agent-swarm/runtime && git fetch --tags origin && git checkout \"$RUNTIME_REPO_REF\" && git pull --ff-only origin \"$RUNTIME_REPO_REF\"; else rm -rf /opt/agent-swarm/runtime && git clone --branch \"$RUNTIME_REPO_REF\" --single-branch \"$RUNTIME_REPO_URL\" /opt/agent-swarm/runtime; fi",
-      "cd /opt/agent-swarm/runtime && bun install --frozen-lockfile",
-      "cd /opt/agent-swarm/runtime && bun run --filter @agent-infrastructure/swarm-manager run:install-host-scripts -- --runtime-dir /opt/agent-swarm/runtime",
+      `RUNTIME_REPO_URL=$(jq -r '.runtimeRepoUrl' ${stateRoot}/bootstrap-context.json)`,
+      `RUNTIME_REPO_REF=$(jq -r '.runtimeRepoRef' ${stateRoot}/bootstrap-context.json)`,
+      `if [[ -d ${runtimeRoot}/.git ]]; then cd ${runtimeRoot} && git fetch --tags origin && git checkout "$RUNTIME_REPO_REF" && git pull --ff-only origin "$RUNTIME_REPO_REF"; else rm -rf ${runtimeRoot} && git clone --branch "$RUNTIME_REPO_REF" --single-branch "$RUNTIME_REPO_URL" ${runtimeRoot}; fi`,
+      `cd ${runtimeRoot} && bun install --frozen-lockfile`,
+      `cd ${runtimeRoot} && bun run --filter @agent-infrastructure/swarm-manager run:install-host-scripts -- --runtime-dir ${runtimeRoot} --host-root ${runtimeRoot}`,
       writeFileCommand(
         "/etc/systemd/system/agent-swarm-monitor.service",
-        managerServiceUnit
-          .replace(
-            "/opt/agent-swarm/swarm-manager/manager/server.ts",
-            "/opt/agent-swarm/runtime/packages/swarm-manager/src/manager/server.ts",
-          ),
+        managerServiceUnit,
       ),
-      writeFileCommand("/opt/agent-swarm/worker-user-data.sh", workerUserDataTemplate),
-      "if [[ ! -s /opt/agent-swarm/swarm-shared-token ]]; then openssl rand -hex 32 > /opt/agent-swarm/swarm-shared-token; fi",
+      writeFileCommand(`${runtimeRoot}/worker-user-data.sh`, workerUserDataTemplate),
+      `if [[ ! -s ${stateRoot}/swarm-shared-token ]]; then openssl rand -hex 32 > ${stateRoot}/swarm-shared-token; fi`,
       "METADATA_TOKEN=$(curl -X PUT -s http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')",
       "INSTANCE_ID=$(curl -s -H \"X-aws-ec2-metadata-token: $METADATA_TOKEN\" http://169.254.169.254/latest/meta-data/instance-id)",
       "MANAGER_PRIVATE_IP=$(curl -s -H \"X-aws-ec2-metadata-token: $METADATA_TOKEN\" http://169.254.169.254/latest/meta-data/local-ipv4)",
-      "SWARM_SHARED_TOKEN=$(cat /opt/agent-swarm/swarm-shared-token)",
-      "jq --arg managerPrivateIp \"$MANAGER_PRIVATE_IP\" --arg swarmSharedToken \"$SWARM_SHARED_TOKEN\" --argjson managerMonitorPort 8787 '. + {managerPrivateIp:$managerPrivateIp, swarmSharedToken:$swarmSharedToken, managerMonitorPort:$managerMonitorPort}' /opt/agent-swarm/bootstrap-context.json > /opt/agent-swarm/bootstrap-context.tmp",
-      "mv /opt/agent-swarm/bootstrap-context.tmp /opt/agent-swarm/bootstrap-context.json",
-      "if [[ ! -s /opt/agent-swarm/worker-runtime-release.json ]]; then /opt/agent-swarm/publish-worker-runtime-release.sh --release-id manager-bootstrap; fi",
-      "cat > /etc/agent-swarm-monitor.env <<ENVFILE",
+      `SWARM_SHARED_TOKEN=$(cat ${stateRoot}/swarm-shared-token)`,
+      `jq --arg managerPrivateIp "$MANAGER_PRIVATE_IP" --arg swarmSharedToken "$SWARM_SHARED_TOKEN" --argjson managerMonitorPort 8787 '. + {managerPrivateIp:$managerPrivateIp, swarmSharedToken:$swarmSharedToken, managerMonitorPort:$managerMonitorPort}' ${stateRoot}/bootstrap-context.json > ${stateRoot}/bootstrap-context.tmp`,
+      `mv ${stateRoot}/bootstrap-context.tmp ${stateRoot}/bootstrap-context.json`,
+      `if [[ ! -s ${stateRoot}/worker-runtime-release.json ]]; then ${runtimeRoot}/publish-worker-runtime-release.sh --release-id manager-bootstrap; fi`,
+      `chown -R ec2-user:ec2-user ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
+      `cat > ${stateRoot}/agent-swarm-monitor.env <<ENVFILE`,
       "MANAGER_WS_HOST=0.0.0.0",
       "MANAGER_WS_PORT=8787",
       "SWARM_SHARED_TOKEN=$SWARM_SHARED_TOKEN",
-      "METRICS_DB_PATH=/var/lib/agent-swarm-monitor/metrics.sqlite",
+      `METRICS_DB_PATH=${stateRoot}/metrics.sqlite`,
       "HEARTBEAT_TIMEOUT_SECONDS=5",
       "RAW_RETENTION_DAYS=7",
       "ROLLUP_1M_RETENTION_DAYS=30",
       "ROLLUP_1H_RETENTION_DAYS=365",
+      "AGENT_GITHUB_CONFIG_ROOT=/home/ec2-user/.config/agent-github",
+      `GIT_ASKPASS=${runtimeRoot}/git-askpass.sh`,
+      `SWARM_BOOTSTRAP_CONTEXT_PATH=${stateRoot}/bootstrap-context.json`,
+      "GIT_TERMINAL_PROMPT=0",
       "ENVFILE",
-      "cat > /etc/agent-swarm-manager-node.env <<ENVFILE",
+      `cat > ${stateRoot}/agent-swarm-manager-node.env <<ENVFILE`,
       "MONITOR_MANAGER_URL=ws://127.0.0.1:8787/workers/stream",
       "MONITOR_SHARED_TOKEN=$SWARM_SHARED_TOKEN",
       "MONITOR_RECONNECT_DELAY_MS=1000",
@@ -450,13 +456,14 @@ WantedBy=multi-user.target
       "MONITOR_WORKER_ID=$INSTANCE_ID",
       "MONITOR_INSTANCE_ID=$INSTANCE_ID",
       "MONITOR_PRIVATE_IP=$MANAGER_PRIVATE_IP",
+      "AGENT_GITHUB_CONFIG_ROOT=/home/ec2-user/.config/agent-github",
+      `GIT_ASKPASS=${runtimeRoot}/git-askpass.sh`,
+      "GIT_TERMINAL_PROMPT=0",
       "ENVFILE",
+      `chown -R ec2-user:ec2-user ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
       writeFileCommand(
         "/etc/systemd/system/agent-swarm-manager-node.service",
-        managerNodeServiceUnit.replace(
-          "/opt/agent-swarm/swarm-manager/worker/agent.ts",
-          "/opt/agent-swarm/runtime/packages/swarm-manager/src/worker/agent.ts",
-        ),
+        managerNodeServiceUnit,
       ),
       "systemctl daemon-reload",
       "systemctl enable --now agent-swarm-monitor.service",

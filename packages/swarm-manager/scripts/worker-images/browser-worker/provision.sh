@@ -10,8 +10,8 @@ if [[ ! -x "$BUN_INSTALL/bin/bun" ]]; then
 fi
 install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
 
-mkdir -p /opt/agent-swarm/browser-runtime
-cd /opt/agent-swarm/browser-runtime
+mkdir -p /home/ec2-user/workspace/browser-runtime
+cd /home/ec2-user/workspace/browser-runtime
 
 cat > package.json <<'EOF'
 {
