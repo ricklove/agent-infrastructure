@@ -446,11 +446,11 @@ export async function ensureDashboardRuntime(
 
   await ensureDashboardBuilt(config.forceRebuild === true);
 
-  const dashboardPid = dashboardRunning && dashboardHealthy
-    ? (currentState?.dashboardPid as number)
-    : dashboardHealthy && discoveredDashboardPid > 0
-      ? discoveredDashboardPid
-      : await startDashboardServer(config);
+  const dashboardPid = dashboardHealthy
+    ? dashboardRunning
+      ? (currentState?.dashboardPid as number)
+      : discoveredDashboardPid
+    : await startDashboardServer(config);
 
   await waitForHealth(config.port);
 
