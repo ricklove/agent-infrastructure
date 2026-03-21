@@ -21,7 +21,7 @@ const AgentGraphFeatureScreen = lazy(() =>
         <module.AgentGraphScreen
           appVersion="dashboard-shell"
           apiRootUrl={`${window.location.origin}/api/agent-graph`}
-          wsRootUrl={`${window.location.origin.replace(/^http/, "ws")}/api/agent-graph/ws`}
+          wsRootUrl={`${window.location.origin.replace(/^http/, "ws")}/ws/agent-graph`}
         />
       )
     },
