@@ -96,6 +96,13 @@ cd ${runtimeDir}
 exec bun ${runtimeDir}/packages/swarm-manager/src/manager/test-worker-image-lifecycle.ts "$@"
 `;
 
+  const issueDashboardSessionWrapper = `#!/usr/bin/env bash
+set -euo pipefail
+${authEnvPrelude}
+cd ${runtimeDir}
+exec bun ${runtimeDir}/packages/swarm-manager/src/manager/issue-dashboard-session.ts "$@"
+`;
+
   const githubAppTokenWrapper = `#!/usr/bin/env bash
 set -euo pipefail
 export AGENT_GITHUB_CONFIG_ROOT="${agentGithubConfigRoot}"
@@ -166,6 +173,10 @@ exec bun ${runtimeDir}/packages/swarm-manager/src/worker/agent.ts "$@"
   writeExecutable(
     resolve(hostRoot, "test-worker-image-lifecycle.sh"),
     testWorkerImageLifecycleWrapper,
+  );
+  writeExecutable(
+    resolve(hostRoot, "issue-dashboard-session.sh"),
+    issueDashboardSessionWrapper,
   );
   writeExecutable(resolve(hostRoot, "github-app-token.sh"), githubAppTokenWrapper);
   writeExecutable(resolve(hostRoot, "git-askpass.sh"), gitAskpassWrapper);
