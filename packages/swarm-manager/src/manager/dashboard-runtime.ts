@@ -139,17 +139,26 @@ function clearRuntimeState(): void {
   } catch {}
 }
 
-function extractLatestQuickTunnelUrl(): string {
+function extractQuickTunnelUrls(): string[] {
   if (!existsSync(cloudflaredLogPath)) {
-    return "";
+    return [];
   }
 
   try {
     const log = readFileSync(cloudflaredLogPath, "utf8");
-    const matches = log.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/g);
-    return matches?.at(-1)?.trim() ?? "";
+    const matches = log.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/g) ?? [];
+    const deduped = new Set<string>();
+
+    for (const match of matches) {
+      const value = match.trim();
+      if (value) {
+        deduped.add(value);
+      }
+    }
+
+    return [...deduped];
   } catch {
-    return "";
+    return [];
   }
 }
 
@@ -173,7 +182,7 @@ function discoverPidByPattern(pattern: RegExp): number | null {
     return null;
   }
 
-  for (const line of output.split("\n")) {
+  for (const line of output.split("\n").reverse()) {
     const [pidToken] = line.trim().split(/\s+/, 1);
     const pid = Number.parseInt(pidToken ?? "", 10);
     if (Number.isInteger(pid) && pid > 0 && isPidRunning(pid)) {
@@ -204,13 +213,15 @@ async function recoverDashboardRuntimeState(
     };
   }
 
-  const publicUrl = extractLatestQuickTunnelUrl();
-  if (!publicUrl) {
-    return null;
+  let publicUrl = "";
+  for (const candidate of extractQuickTunnelUrls().reverse()) {
+    if (await isPublicDashboardReady(candidate)) {
+      publicUrl = candidate;
+      break;
+    }
   }
 
-  const publicDashboardReady = await isPublicDashboardReady(publicUrl);
-  if (!publicDashboardReady) {
+  if (!publicUrl) {
     return null;
   }
 
