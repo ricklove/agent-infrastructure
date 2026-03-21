@@ -50,6 +50,17 @@ export type SourceWorkspace = {
   edges: SourceEdge[];
 };
 
+export type BoardFile = {
+  kind: "agent-graph-board";
+  id: string;
+  label: string;
+  documents: string[];
+  revision: number;
+  layers: LayerDefinition[];
+  nodePositions: Record<string, { x: number; y: number }>;
+  pinnedNodeIds: string[];
+};
+
 export type LayerDefinition = {
   id: string;
   label: string;

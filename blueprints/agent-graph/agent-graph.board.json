@@ -1,0 +1,24 @@
+{
+  "kind": "agent-graph-board",
+  "id": "agent-graph",
+  "label": "Agent Graph",
+  "documents": [
+    "./agent-graph.agentish.ts",
+    "./agent-graph-boards.agentish.ts"
+  ],
+  "revision": 1,
+  "layers": [
+    {
+      "id": "layer-overview",
+      "label": "Overview",
+      "kind": "overview",
+      "nodeIds": [],
+      "visible": true,
+      "x": 40,
+      "y": 40,
+      "derivedFromLayerId": null
+    }
+  ],
+  "nodePositions": {},
+  "pinnedNodeIds": []
+}

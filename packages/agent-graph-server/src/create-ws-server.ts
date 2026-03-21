@@ -7,7 +7,7 @@ import {
 import type { ClientMessage, ServerMessage } from "@agent-infrastructure/agent-graph-protocol";
 import { applySourceMutation } from "./apply-source-mutation.js";
 import type { DocumentRepository } from "./document-repository.js";
-import { saveWorkspaceState } from "./workspace-state-repository.js";
+import { saveBoardFile } from "./workspace-state-repository.js";
 
 function snapshotMessage(repository: DocumentRepository): ServerMessage {
   const sourceWorkspace = repository.getSourceWorkspace();
@@ -73,6 +73,14 @@ function graphNodeId(sourceNodeId: string, layerId: string): string {
   return `${sourceNodeId}::${layerId}`;
 }
 
+async function persistWorkspaceState(
+  repository: DocumentRepository,
+  workspaceState: ReturnType<DocumentRepository["getWorkspaceState"]>,
+): Promise<void> {
+  repository.setWorkspaceState(workspaceState);
+  await saveBoardFile(repository.getBoardPath(), repository.getBoardFile());
+}
+
 async function applyWorkspaceIntent(repository: DocumentRepository, intent: GraphIntent): Promise<ServerMessage[]> {
   const workspaceState = structuredClone(repository.getWorkspaceState());
 
@@ -91,8 +99,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         derivedFromLayerId: layer.id,
       });
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -108,8 +115,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         layer.id === intent.layerId ? { ...layer, x: intent.x, y: intent.y } : layer,
       );
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -125,8 +131,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         layer.id === intent.layerId ? { ...layer, visible: intent.visible } : layer,
       );
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -143,8 +148,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         y: intent.y,
       };
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -163,8 +167,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         };
       }
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -180,8 +183,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         ? [...new Set([...workspaceState.pinnedNodeIds, intent.nodeId])]
         : workspaceState.pinnedNodeIds.filter((nodeId) => nodeId !== intent.nodeId);
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -205,8 +207,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         };
       });
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -231,8 +232,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         };
       });
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -261,8 +261,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         );
       addNodesToLayer(workspaceState, portal.layerId, revealedNodeIds);
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -285,8 +284,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         workspaceState.nodePositions[revealedGraphNodeId] = intent.position;
       }
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",
@@ -310,8 +308,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
       });
       addNodesToLayer(workspaceState, intent.layerId, revealedNodeIds);
       workspaceState.revision += 1;
-      repository.setWorkspaceState(workspaceState);
-      await saveWorkspaceState(workspaceState);
+      await persistWorkspaceState(repository, workspaceState);
       return [
         {
           type: "server/graph",

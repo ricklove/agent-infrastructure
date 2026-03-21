@@ -1,10 +1,17 @@
 import { readFile } from "node:fs/promises";
-import { basename } from "node:path";
-import type { SourceDocument, SourceEdge, SourceNode, SourceWorkspace, WorkspaceState } from "@agent-infrastructure/agent-graph-core";
+import { basename, dirname, resolve } from "node:path";
+import type {
+  BoardFile,
+  SourceDocument,
+  SourceEdge,
+  SourceNode,
+  SourceWorkspace,
+  WorkspaceState,
+} from "@agent-infrastructure/agent-graph-core";
 
-const AGENT_GRAPH_BLUEPRINT_PATH =
-  process.env.AGENT_GRAPH_BLUEPRINT_PATH ??
-  "/home/ec2-user/workspace/projects/agent-infrastructure/blueprints/agent-graph/agent-graph.agentish.ts";
+export const DEFAULT_AGENT_GRAPH_BOARD_PATH =
+  process.env.AGENT_GRAPH_BOARD_PATH ??
+  "/home/ec2-user/workspace/projects/agent-infrastructure/blueprints/agent-graph/agent-graph.board.json";
 
 function toId(value: string): string {
   return value
@@ -24,6 +31,13 @@ type ExtractedDefinition = {
   kind: string;
   section: string;
   sourcePath: string;
+};
+
+type LoadedBoard = {
+  boardPath: string;
+  boardFile: BoardFile;
+  sourceWorkspace: SourceWorkspace;
+  workspaceState: WorkspaceState;
 };
 
 function extractSections(source: string): Array<{ start: number; label: string }> {
@@ -55,8 +69,11 @@ function sectionForIndex(
   return current;
 }
 
-function extractObjectDefinitions(source: string): ExtractedDefinition[] {
-  const documentLabel = basename(AGENT_GRAPH_BLUEPRINT_PATH);
+function extractObjectDefinitions(args: {
+  source: string;
+  documentLabel: string;
+}): ExtractedDefinition[] {
+  const { source, documentLabel } = args;
   const sections = extractSections(source);
   const definitions: ExtractedDefinition[] = [];
   for (const objectMatch of source.matchAll(/const\s+([A-Za-z][A-Za-z0-9]*)\s*=\s*{([\s\S]*?)};/g)) {
@@ -79,8 +96,11 @@ function extractObjectDefinitions(source: string): ExtractedDefinition[] {
   return definitions;
 }
 
-function extractTopLevelDefinitions(source: string): ExtractedDefinition[] {
-  const documentLabel = basename(AGENT_GRAPH_BLUEPRINT_PATH);
+function extractTopLevelDefinitions(args: {
+  source: string;
+  documentLabel: string;
+}): ExtractedDefinition[] {
+  const { source, documentLabel } = args;
   const sections = extractSections(source);
   const definitions: ExtractedDefinition[] = [];
   for (const match of source.matchAll(
@@ -107,6 +127,7 @@ function extractReferencedTargets(args: string, knownReferences: Set<string>): s
 function extractRelationshipEdges(
   source: string,
   nodesByReference: Map<string, SourceNode>,
+  documentId: string,
 ): SourceEdge[] {
   const knownReferences = new Set(nodesByReference.keys());
   const edges: SourceEdge[] = [];
@@ -117,13 +138,13 @@ function extractRelationshipEdges(
   )) {
     const subjectReference = match[1];
     const relationship = match[2];
-    const args = match[3];
+    const callArgs = match[3];
     const subject = nodesByReference.get(subjectReference);
     if (!subject) {
       continue;
     }
 
-    for (const targetReference of extractReferencedTargets(args, knownReferences)) {
+    for (const targetReference of extractReferencedTargets(callArgs, knownReferences)) {
       if (targetReference === subjectReference) {
         continue;
       }
@@ -133,7 +154,7 @@ function extractRelationshipEdges(
         continue;
       }
 
-      const edgeKey = `${subject.id}:${relationship}:${target.id}`;
+      const edgeKey = `${documentId}:${subject.id}:${relationship}:${target.id}`;
       if (seen.has(edgeKey)) {
         continue;
       }
@@ -204,7 +225,7 @@ function extractDetailNodesAndEdges(args: {
 
     const section = sectionForIndex(sections, match.index ?? 0);
     for (const [index, entry] of strings.entries()) {
-      const nodeId = `detail-${toId(`${subjectReference}-${relationship}-${index}`)}`;
+      const nodeId = `detail-${toId(`${document.id}-${subjectReference}-${relationship}-${index}`)}`;
       nodes.push({
         id: nodeId,
         documentId: document.id,
@@ -214,7 +235,7 @@ function extractDetailNodesAndEdges(args: {
         sourcePath: `${document.label}/${section}`,
       });
       edges.push({
-        id: `edge-${toId(`${subject.id}-${relationship}-${nodeId}`)}`,
+        id: `edge-${toId(`${document.id}-${subject.id}-${relationship}-${nodeId}`)}`,
         sourceId: subject.id,
         targetId: nodeId,
         kind: relationship,
@@ -226,24 +247,28 @@ function extractDetailNodesAndEdges(args: {
   return { nodes, edges };
 }
 
-export async function loadAgentishSourceWorkspace(): Promise<SourceWorkspace> {
-  const source = await readFile(AGENT_GRAPH_BLUEPRINT_PATH, "utf8");
+async function loadSourceDocumentGraph(documentPath: string, relativePath: string): Promise<{
+  document: SourceDocument;
+  nodes: SourceNode[];
+  edges: SourceEdge[];
+}> {
+  const source = await readFile(documentPath, "utf8");
   const document: SourceDocument = {
-    id: "doc-agent-graph",
-    label: basename(AGENT_GRAPH_BLUEPRINT_PATH),
-    path: AGENT_GRAPH_BLUEPRINT_PATH,
+    id: `doc-${toId(relativePath)}`,
+    label: basename(documentPath),
+    path: documentPath,
   };
 
   const definitionMap = new Map<string, ExtractedDefinition>();
   for (const definition of [
-    ...extractTopLevelDefinitions(source),
-    ...extractObjectDefinitions(source),
+    ...extractTopLevelDefinitions({ source, documentLabel: document.label }),
+    ...extractObjectDefinitions({ source, documentLabel: document.label }),
   ]) {
     definitionMap.set(definition.reference, definition);
   }
 
   const nodes = [...definitionMap.values()].map<SourceNode>((definition) => ({
-    id: toId(definition.reference),
+    id: toId(`${document.id}:${definition.reference}`),
     documentId: document.id,
     label: definition.label,
     kind: definition.kind,
@@ -253,7 +278,9 @@ export async function loadAgentishSourceWorkspace(): Promise<SourceWorkspace> {
 
   const nodesByReference = new Map<string, SourceNode>();
   for (const definition of definitionMap.values()) {
-    const node = nodes.find((candidate) => candidate.id === toId(definition.reference));
+    const node = nodes.find(
+      (candidate) => candidate.id === toId(`${document.id}:${definition.reference}`),
+    );
     if (node) {
       nodesByReference.set(definition.reference, node);
     }
@@ -266,13 +293,29 @@ export async function loadAgentishSourceWorkspace(): Promise<SourceWorkspace> {
   });
 
   return {
-    id: "agent-graph",
-    label: "Agent Graph Workspace",
-    revision: 1,
-    documents: [document],
+    document,
     nodes: [...nodes, ...detailGraph.nodes],
-    edges: [...extractRelationshipEdges(source, nodesByReference), ...detailGraph.edges],
+    edges: [
+      ...extractRelationshipEdges(source, nodesByReference, document.id),
+      ...detailGraph.edges,
+    ],
   };
+}
+
+function isBoardFile(value: unknown): value is BoardFile {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<BoardFile>;
+  return (
+    candidate.kind === "agent-graph-board" &&
+    typeof candidate.id === "string" &&
+    typeof candidate.label === "string" &&
+    Array.isArray(candidate.documents) &&
+    typeof candidate.revision === "number" &&
+    Array.isArray(candidate.layers)
+  );
 }
 
 export function createWorkspaceStateForSourceWorkspace(
@@ -326,5 +369,59 @@ export function normalizeWorkspaceState(
     pinnedNodeIds: (workspaceState.pinnedNodeIds ?? []).filter((nodeId) =>
       validPinnedNodeIds.has(nodeId),
     ),
+  };
+}
+
+export function boardFileWithWorkspaceState(
+  boardFile: BoardFile,
+  workspaceState: WorkspaceState,
+): BoardFile {
+  return {
+    ...boardFile,
+    revision: workspaceState.revision,
+    layers: workspaceState.layers,
+    nodePositions: workspaceState.nodePositions,
+    pinnedNodeIds: workspaceState.pinnedNodeIds,
+  };
+}
+
+export async function loadAgentishBoard(
+  boardPath = DEFAULT_AGENT_GRAPH_BOARD_PATH,
+): Promise<LoadedBoard> {
+  const rawBoard = JSON.parse(await readFile(boardPath, "utf8")) as unknown;
+  if (!isBoardFile(rawBoard)) {
+    throw new Error(`Invalid agent graph board file: ${boardPath}`);
+  }
+
+  const boardFile = rawBoard;
+  const boardDir = dirname(boardPath);
+  const loadedDocuments = await Promise.all(
+    boardFile.documents.map(async (relativePath) =>
+      loadSourceDocumentGraph(resolve(boardDir, relativePath), relativePath),
+    ),
+  );
+
+  const sourceWorkspace: SourceWorkspace = {
+    id: boardFile.id,
+    label: boardFile.label,
+    revision: boardFile.revision,
+    documents: loadedDocuments.map((entry) => entry.document),
+    nodes: loadedDocuments.flatMap((entry) => entry.nodes),
+    edges: loadedDocuments.flatMap((entry) => entry.edges),
+  };
+
+  const workspaceState = normalizeWorkspaceState(sourceWorkspace, {
+    rootId: boardFile.id,
+    revision: boardFile.revision,
+    layers: boardFile.layers,
+    nodePositions: boardFile.nodePositions ?? {},
+    pinnedNodeIds: boardFile.pinnedNodeIds ?? [],
+  });
+
+  return {
+    boardPath,
+    boardFile: boardFileWithWorkspaceState(boardFile, workspaceState),
+    sourceWorkspace,
+    workspaceState,
   };
 }
