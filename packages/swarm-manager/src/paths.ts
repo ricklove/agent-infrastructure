@@ -1,4 +1,4 @@
-export const DEFAULT_AGENT_HOME = "/home/ec2-user";
+export const DEFAULT_AGENT_HOME = process.env.AGENT_HOME?.trim() || "/home/ec2-user";
 export const DEFAULT_RUNTIME_DIR = `${DEFAULT_AGENT_HOME}/runtime`;
 export const DEFAULT_STATE_DIR = `${DEFAULT_AGENT_HOME}/state`;
 export const DEFAULT_WORKSPACE_DIR = `${DEFAULT_AGENT_HOME}/workspace`;

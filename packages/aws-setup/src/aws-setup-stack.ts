@@ -14,21 +14,17 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import { Construct } from "constructs";
 import { randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sourceDir = dirname(fileURLToPath(import.meta.url));
-const agentHome = "/home/ec2-user";
-const runtimeRoot = `${agentHome}/runtime`;
-const stateRoot = `${agentHome}/state`;
-const workspaceRoot = `${agentHome}/workspace`;
 
 function writeFileCommand(targetPath: string, content: string): string {
   return `cat > ${targetPath} <<'EOF'\n${content}\nEOF`;
 }
 
 export interface AwsSetupStackProps extends StackProps {
+  agentHome: string;
   managerInstanceType: string;
   workerInstanceType: string;
   swarmMaxSize: number;
@@ -41,6 +37,9 @@ export class AwsSetupStack extends Stack {
     if (!Number.isFinite(props.swarmMaxSize) || props.swarmMaxSize < 1) {
       throw new Error("swarmMaxSize must be a positive integer");
     }
+    if (!props.agentHome || !props.agentHome.startsWith("/")) {
+      throw new Error("agentHome must be an absolute path");
+    }
 
     const swarmTagKey = "AgentSwarm";
     const swarmTagValue = `${this.stackName}-workers`;
@@ -48,10 +47,9 @@ export class AwsSetupStack extends Stack {
     const dashboardEnrollmentSecret = randomBytes(32).toString("hex");
     const runtimeRepoUrl = "https://github.com/ricklove/agent-infrastructure.git";
     const runtimeRepoRef = "development";
-    const swarmManagerScriptsDir = resolve(
-      sourceDir,
-      "../../swarm-manager/scripts",
-    );
+    const runtimeRoot = `${props.agentHome}/runtime`;
+    const stateRoot = `${props.agentHome}/state`;
+    const workspaceRoot = `${props.agentHome}/workspace`;
     const workerRuntimeReleaseBucket = new s3.Bucket(
       this,
       "WorkerRuntimeReleaseBucket",
@@ -64,41 +62,6 @@ export class AwsSetupStack extends Stack {
         autoDeleteObjects: true,
       },
     );
-    const managerServiceUnit = `[Unit]
-Description=Agent swarm monitoring server
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=ec2-user
-ExecStart=/home/ec2-user/runtime/run-manager.sh
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-`;
-    const managerNodeServiceUnit = `[Unit]
-Description=Agent swarm manager self telemetry
-After=network-online.target agent-swarm-monitor.service
-Wants=network-online.target agent-swarm-monitor.service
-
-[Service]
-Type=simple
-User=ec2-user
-ExecStart=/home/ec2-user/runtime/run-manager-node.sh
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-`;
-    const workerUserDataTemplate = readFileSync(
-      resolve(swarmManagerScriptsDir, "worker-user-data.sh"),
-      "utf8",
-    );
-
     const vpc = new ec2.Vpc(this, "AgentSwarmVpc", {
       maxAzs: 1,
       natGateways: 0,
@@ -314,7 +277,7 @@ WantedBy=multi-user.target
       role: managerRole,
       instanceType: new ec2.InstanceType(props.managerInstanceType),
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-      requireImdsv2: true,
+      httpTokens: ec2.HttpTokens.REQUIRED,
       ssmSessionPermissions: false,
     });
 
@@ -363,6 +326,7 @@ WantedBy=multi-user.target
           DASHBOARD_ACCESS_STATE_TABLE_NAME: dashboardAccessStateTable.tableName,
           DASHBOARD_ENROLLMENT_SECRET: dashboardEnrollmentSecret,
           MANAGER_SWARM_TAG_VALUE: swarmTagValue,
+          AGENT_HOME: props.agentHome,
           DASHBOARD_SESSION_TTL_SECONDS: "900",
         },
       },
@@ -393,6 +357,7 @@ WantedBy=multi-user.target
       workerSubnetIds: workerSubnets,
       runtimeRepoUrl,
       runtimeRepoRef,
+      agentHome: props.agentHome,
       workerRuntimeReleaseBucketName: workerRuntimeReleaseBucket.bucketName,
       managerMonitorPort,
       swarmMaxSize: props.swarmMaxSize,
@@ -401,73 +366,15 @@ WantedBy=multi-user.target
     };
 
     managerInstance.userData.addCommands(
-      "dnf install -y awscli git jq unzip zip openssl",
-      "curl -fsSL https://pkg.cloudflare.com/cloudflared.repo -o /etc/yum.repos.d/cloudflared.repo",
-      "dnf install -y cloudflared",
-      "export HOME=/root",
-      "export BUN_INSTALL=/opt/bun",
-      "curl -fsSL https://bun.sh/install | bash",
-      "install -m 0755 \"$BUN_INSTALL/bin/bun\" /usr/local/bin/bun",
+      "dnf install -y git",
       `mkdir -p ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
-      `chown -R ec2-user:ec2-user ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
       `cat > ${stateRoot}/bootstrap-context.json <<'EOF'\n${JSON.stringify(
         bootstrapPayload,
         null,
         2,
       )}\nEOF`,
-      `RUNTIME_REPO_URL=$(jq -r '.runtimeRepoUrl' ${stateRoot}/bootstrap-context.json)`,
-      `RUNTIME_REPO_REF=$(jq -r '.runtimeRepoRef' ${stateRoot}/bootstrap-context.json)`,
-      `if [[ -d ${runtimeRoot}/.git ]]; then cd ${runtimeRoot} && git fetch --tags origin && git checkout "$RUNTIME_REPO_REF" && git pull --ff-only origin "$RUNTIME_REPO_REF"; else rm -rf ${runtimeRoot} && git clone --branch "$RUNTIME_REPO_REF" --single-branch "$RUNTIME_REPO_URL" ${runtimeRoot}; fi`,
-      `cd ${runtimeRoot} && bun install --frozen-lockfile`,
-      `cd ${runtimeRoot} && bun run --filter @agent-infrastructure/swarm-manager run:install-host-scripts -- --runtime-dir ${runtimeRoot} --host-root ${runtimeRoot}`,
-      writeFileCommand(
-        "/etc/systemd/system/agent-swarm-monitor.service",
-        managerServiceUnit,
-      ),
-      writeFileCommand(`${runtimeRoot}/worker-user-data.sh`, workerUserDataTemplate),
-      `if [[ ! -s ${stateRoot}/swarm-shared-token ]]; then openssl rand -hex 32 > ${stateRoot}/swarm-shared-token; fi`,
-      "METADATA_TOKEN=$(curl -X PUT -s http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')",
-      "INSTANCE_ID=$(curl -s -H \"X-aws-ec2-metadata-token: $METADATA_TOKEN\" http://169.254.169.254/latest/meta-data/instance-id)",
-      "MANAGER_PRIVATE_IP=$(curl -s -H \"X-aws-ec2-metadata-token: $METADATA_TOKEN\" http://169.254.169.254/latest/meta-data/local-ipv4)",
-      `SWARM_SHARED_TOKEN=$(cat ${stateRoot}/swarm-shared-token)`,
-      `jq --arg managerPrivateIp "$MANAGER_PRIVATE_IP" --arg swarmSharedToken "$SWARM_SHARED_TOKEN" --argjson managerMonitorPort 8787 '. + {managerPrivateIp:$managerPrivateIp, swarmSharedToken:$swarmSharedToken, managerMonitorPort:$managerMonitorPort}' ${stateRoot}/bootstrap-context.json > ${stateRoot}/bootstrap-context.tmp`,
-      `mv ${stateRoot}/bootstrap-context.tmp ${stateRoot}/bootstrap-context.json`,
-      `if [[ ! -s ${stateRoot}/worker-runtime-release.json ]]; then ${runtimeRoot}/publish-worker-runtime-release.sh --release-id manager-bootstrap; fi`,
-      `chown -R ec2-user:ec2-user ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
-      `cat > ${stateRoot}/agent-swarm-monitor.env <<ENVFILE`,
-      "MANAGER_WS_HOST=0.0.0.0",
-      "MANAGER_WS_PORT=8787",
-      "SWARM_SHARED_TOKEN=$SWARM_SHARED_TOKEN",
-      `METRICS_DB_PATH=${stateRoot}/metrics.sqlite`,
-      "HEARTBEAT_TIMEOUT_SECONDS=5",
-      "RAW_RETENTION_DAYS=7",
-      "ROLLUP_1M_RETENTION_DAYS=30",
-      "ROLLUP_1H_RETENTION_DAYS=365",
-      "AGENT_GITHUB_CONFIG_ROOT=/home/ec2-user/.config/agent-github",
-      `GIT_ASKPASS=${runtimeRoot}/git-askpass.sh`,
-      `SWARM_BOOTSTRAP_CONTEXT_PATH=${stateRoot}/bootstrap-context.json`,
-      "GIT_TERMINAL_PROMPT=0",
-      "ENVFILE",
-      `cat > ${stateRoot}/agent-swarm-manager-node.env <<ENVFILE`,
-      "MONITOR_MANAGER_URL=ws://127.0.0.1:8787/workers/stream",
-      "MONITOR_SHARED_TOKEN=$SWARM_SHARED_TOKEN",
-      "MONITOR_RECONNECT_DELAY_MS=1000",
-      "MONITOR_NODE_ROLE=manager",
-      "MONITOR_WORKER_ID=$INSTANCE_ID",
-      "MONITOR_INSTANCE_ID=$INSTANCE_ID",
-      "MONITOR_PRIVATE_IP=$MANAGER_PRIVATE_IP",
-      "AGENT_GITHUB_CONFIG_ROOT=/home/ec2-user/.config/agent-github",
-      `GIT_ASKPASS=${runtimeRoot}/git-askpass.sh`,
-      "GIT_TERMINAL_PROMPT=0",
-      "ENVFILE",
-      `chown -R ec2-user:ec2-user ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
-      writeFileCommand(
-        "/etc/systemd/system/agent-swarm-manager-node.service",
-        managerNodeServiceUnit,
-      ),
-      "systemctl daemon-reload",
-      "systemctl enable --now agent-swarm-monitor.service",
-      "systemctl enable --now agent-swarm-manager-node.service",
+      `if [[ -d ${runtimeRoot}/.git ]]; then cd ${runtimeRoot} && git fetch --tags origin && git checkout "${runtimeRepoRef}" && git pull --ff-only origin "${runtimeRepoRef}"; else rm -rf ${runtimeRoot} && git clone --branch "${runtimeRepoRef}" --single-branch "${runtimeRepoUrl}" ${runtimeRoot}; fi`,
+      `bash ${runtimeRoot}/scripts/setup.sh --runtime-dir ${runtimeRoot} --state-dir ${stateRoot} --workspace-dir ${workspaceRoot} --bootstrap-context ${stateRoot}/bootstrap-context.json`,
     );
 
     new CfnOutput(this, "ManagerInstanceId", {

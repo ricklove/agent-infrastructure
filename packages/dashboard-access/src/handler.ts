@@ -52,6 +52,7 @@ const config = {
   stateTableName: process.env.DASHBOARD_ACCESS_STATE_TABLE_NAME ?? "",
   enrollmentSecret: process.env.DASHBOARD_ENROLLMENT_SECRET ?? "",
   managerSwarmTagValue: process.env.MANAGER_SWARM_TAG_VALUE ?? "",
+  agentHome: process.env.AGENT_HOME ?? "",
   dashboardSessionTtlSeconds: Number.parseInt(
     process.env.DASHBOARD_SESSION_TTL_SECONDS ?? "900",
     10,
@@ -62,7 +63,8 @@ if (
   !config.passkeyTableName ||
   !config.stateTableName ||
   !config.enrollmentSecret ||
-  !config.managerSwarmTagValue
+  !config.managerSwarmTagValue ||
+  !config.agentHome
 ) {
   throw new Error("dashboard access lambda is not fully configured");
 }
@@ -418,7 +420,7 @@ async function issueDashboardAccess(): Promise<string> {
       Parameters: {
         commands: [
           "set -euo pipefail",
-          `bash /home/ec2-user/runtime/issue-dashboard-session.sh --ttl-seconds ${config.dashboardSessionTtlSeconds}`,
+          `bash ${config.agentHome}/runtime/issue-dashboard-session.sh --ttl-seconds ${config.dashboardSessionTtlSeconds}`,
         ],
       },
     }),
