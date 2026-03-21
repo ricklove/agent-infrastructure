@@ -10,10 +10,6 @@ import { nextIntentId, queueIntent, type AgentGraphStore } from "./agent-graph-s
 
 const dashboardSessionStorageKey = "agent-infrastructure.dashboard.session";
 
-function wsOriginFromHttpOrigin(serverOrigin: string): string {
-  return serverOrigin.replace(/^http/, "ws");
-}
-
 function readStoredSessionToken(): string {
   if (typeof window === "undefined") {
     return "";
@@ -22,8 +18,9 @@ function readStoredSessionToken(): string {
   return window.sessionStorage.getItem(dashboardSessionStorageKey) ?? "";
 }
 
-function buildFeatureUrl(serverOrigin: string, pathname: string): string {
-  const url = new URL(pathname, `${serverOrigin}/`);
+function buildFeatureUrl(rootUrl: string, pathname = ""): string {
+  const baseUrl = rootUrl.endsWith("/") ? rootUrl : `${rootUrl}/`;
+  const url = new URL(pathname.replace(/^\/+/, ""), baseUrl);
   const sessionToken = readStoredSessionToken().trim();
   if (sessionToken) {
     url.searchParams.set("sessionToken", sessionToken);
@@ -33,10 +30,7 @@ function buildFeatureUrl(serverOrigin: string, pathname: string): string {
 
 function connect(store: AgentGraphStore): WebSocket {
   const ws = new WebSocket(
-    buildFeatureUrl(
-      wsOriginFromHttpOrigin(store.state$.connection.serverOrigin.get()),
-      "/api/agent-graph/ws",
-    ),
+    buildFeatureUrl(store.state$.connection.wsRootUrl.get()),
   );
   ws.addEventListener("open", () => {
     ws.send(JSON.stringify({ type: "client/hello" satisfies ClientMessage["type"] }));
@@ -124,10 +118,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       store.state$.connection.error.set(null);
       try {
         const response = await fetch(
-          buildFeatureUrl(
-            store.state$.connection.serverOrigin.get(),
-            "/api/agent-graph/workspace",
-          ),
+          buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "workspace"),
         );
         if (!response.ok) {
           throw new Error(`Workspace request failed with status ${response.status}.`);

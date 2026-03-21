@@ -13,7 +13,8 @@ import type {
 export type AgentGraphStoreState = {
   connection: {
     status: "idle" | "loading" | "ready" | "error";
-    serverOrigin: string;
+    apiRootUrl: string;
+    wsRootUrl: string;
     error: string | null;
   };
   workspace: WorkspaceSnapshot | null;
@@ -43,11 +44,12 @@ export type AgentGraphStoreState = {
 
 export type AgentGraphStore = ReturnType<typeof createAgentGraphStore>;
 
-export function createAgentGraphStore(serverOrigin: string) {
+export function createAgentGraphStore(apiRootUrl: string, wsRootUrl: string) {
   const state$ = observable<AgentGraphStoreState>({
     connection: {
       status: "idle",
-      serverOrigin,
+      apiRootUrl,
+      wsRootUrl,
       error: null,
     },
     workspace: null,

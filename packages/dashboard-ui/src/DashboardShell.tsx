@@ -2,7 +2,9 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react"
 
 const AgentSwarmScreen = lazy(() =>
   import("@agent-infrastructure/agent-swarm-ui").then((module) => ({
-    default: module.AgentSwarmScreen,
+    default: function LazyAgentSwarmScreen() {
+      return <module.AgentSwarmScreen apiRootUrl="/api/agent-swarm" />
+    },
   })),
 )
 
@@ -18,7 +20,8 @@ const AgentGraphFeatureScreen = lazy(() =>
       return (
         <module.AgentGraphScreen
           appVersion="dashboard-shell"
-          serverOrigin={window.location.origin}
+          apiRootUrl={`${window.location.origin}/api/agent-graph`}
+          wsRootUrl={`${window.location.origin.replace(/^http/, "ws")}/api/agent-graph/ws`}
         />
       )
     },

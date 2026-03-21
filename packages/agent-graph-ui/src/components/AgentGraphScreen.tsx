@@ -12,7 +12,8 @@ import { NodesToolPanel } from "./NodesToolPanel";
 
 export type AgentGraphScreenProps = {
   appVersion?: string;
-  serverOrigin?: string;
+  apiRootUrl?: string;
+  wsRootUrl?: string;
 };
 
 const DEFAULT_LEFT_COLUMN_WIDTH = 280;
@@ -37,10 +38,11 @@ function columnWidthsStorageKey(workspaceId: string): string {
 
 export const AgentGraphScreen = observer(function AgentGraphScreen({
   appVersion = "dev",
-  serverOrigin = "http://localhost:8788",
+  apiRootUrl = "http://localhost:8788/api/agent-graph",
+  wsRootUrl = "ws://localhost:8788/api/agent-graph/ws",
 }: AgentGraphScreenProps) {
   const [copiedVersion, setCopiedVersion] = useState(false);
-  const [store] = useState(() => createAgentGraphStore(serverOrigin));
+  const [store] = useState(() => createAgentGraphStore(apiRootUrl, wsRootUrl));
   const [actions] = useState(() => createAgentGraphActions(store));
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
   const rightColumnRef = useRef<HTMLDivElement | null>(null);

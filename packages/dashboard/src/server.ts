@@ -354,6 +354,16 @@ async function fetchManagerJson<T>(path: string): Promise<T> {
 
 async function handleApi(request: Request): Promise<Response> {
   const url = new URL(request.url);
+  const swarmApiAliases = {
+    health: new Set(["/api/health", "/api/agent-swarm/health"]),
+    workers: new Set(["/api/workers", "/api/agent-swarm/workers"]),
+    workerEvents: new Set([
+      "/api/workers/events",
+      "/api/agent-swarm/workers/events",
+    ]),
+    services: new Set(["/api/services", "/api/agent-swarm/services"]),
+    summary: new Set(["/api/summary", "/api/agent-swarm/summary"]),
+  };
 
   if (url.pathname === "/api/config") {
     return jsonResponse({
@@ -424,7 +434,7 @@ async function handleApi(request: Request): Promise<Response> {
     return unauthorized;
   }
 
-  if (url.pathname === "/api/health") {
+  if (swarmApiAliases.health.has(url.pathname)) {
     try {
       const managerHealth = await fetchManagerJson<ManagerHealthResponse>(
         "/health",
@@ -448,7 +458,7 @@ async function handleApi(request: Request): Promise<Response> {
     }
   }
 
-  if (url.pathname === "/api/workers") {
+  if (swarmApiAliases.workers.has(url.pathname)) {
     try {
       const workers = await fetchManagerJson<WorkersResponse>("/workers");
       return jsonResponse(workers);
@@ -464,7 +474,7 @@ async function handleApi(request: Request): Promise<Response> {
     }
   }
 
-  if (url.pathname === "/api/workers/events") {
+  if (swarmApiAliases.workerEvents.has(url.pathname)) {
     try {
       const search = new URLSearchParams();
       const workerId = url.searchParams.get("workerId")?.trim() ?? "";
@@ -495,7 +505,7 @@ async function handleApi(request: Request): Promise<Response> {
     }
   }
 
-  if (url.pathname === "/api/services") {
+  if (swarmApiAliases.services.has(url.pathname)) {
     try {
       const services = await fetchManagerJson<ServicesResponse>("/services");
       return jsonResponse(services);
@@ -511,7 +521,7 @@ async function handleApi(request: Request): Promise<Response> {
     }
   }
 
-  if (url.pathname === "/api/summary") {
+  if (swarmApiAliases.summary.has(url.pathname)) {
     try {
       const [managerHealth, workers, services] = await Promise.all([
         fetchManagerJson<ManagerHealthResponse>("/health"),

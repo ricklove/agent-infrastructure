@@ -54,6 +54,10 @@ type ServicesResponse = {
 
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
 
+export type AgentSwarmScreenProps = {
+  apiRootUrl?: string
+}
+
 function readStoredSessionToken(): string {
   return window.sessionStorage.getItem(sessionStorageKey) ?? ""
 }
@@ -70,6 +74,12 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
     ...init,
     headers,
   })
+}
+
+function featurePath(apiRootUrl: string, pathname: string): string {
+  const trimmedRoot = apiRootUrl.replace(/\/+$/, "")
+  const trimmedPath = pathname.replace(/^\/+/, "")
+  return `${trimmedRoot}/${trimmedPath}`
 }
 
 function formatBytes(bytes: number): string {
@@ -89,7 +99,9 @@ function formatTimestamp(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString()
 }
 
-export function AgentSwarmScreen() {
+export function AgentSwarmScreen({
+  apiRootUrl = "/api/agent-swarm",
+}: AgentSwarmScreenProps) {
   const [health, setHealth] = useState<DashboardHealth | null>(null)
   const [workers, setWorkers] = useState<Worker[]>([])
   const [services, setServices] = useState<Service[]>([])
@@ -103,9 +115,9 @@ export function AgentSwarmScreen() {
       try {
         const [healthResponse, workersResponse, servicesResponse] =
           await Promise.all([
-            apiFetch("/api/health"),
-            apiFetch("/api/workers"),
-            apiFetch("/api/services"),
+            apiFetch(featurePath(apiRootUrl, "health")),
+            apiFetch(featurePath(apiRootUrl, "workers")),
+            apiFetch(featurePath(apiRootUrl, "services")),
           ])
 
         if (
@@ -157,7 +169,7 @@ export function AgentSwarmScreen() {
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [])
+  }, [apiRootUrl])
 
   const summary = useMemo(() => {
     const connectedWorkers = workers.filter(
