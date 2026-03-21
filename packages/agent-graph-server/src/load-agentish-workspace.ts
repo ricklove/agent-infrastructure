@@ -388,7 +388,8 @@ export function boardFileWithWorkspaceState(
 export async function loadAgentishBoard(
   boardPath = DEFAULT_AGENT_GRAPH_BOARD_PATH,
 ): Promise<LoadedBoard> {
-  const rawBoard = JSON.parse(await readFile(boardPath, "utf8")) as unknown;
+  const rawContent = (await readFile(boardPath, "utf8")).replace(/\0+$/g, "");
+  const rawBoard = JSON.parse(rawContent) as unknown;
   if (!isBoardFile(rawBoard)) {
     throw new Error(`Invalid agent graph board file: ${boardPath}`);
   }

@@ -1,5 +1,6 @@
 import { observable } from "@legendapp/state";
 import type {
+  BoardSummary,
   ConflictPayload,
   GraphDiffSnapshot,
   GraphEdge,
@@ -18,6 +19,7 @@ export type AgentGraphStoreState = {
     error: string | null;
   };
   workspace: WorkspaceSnapshot | null;
+  boards: BoardSummary[];
   graph: GraphSnapshot | null;
   diff: GraphDiffSnapshot | null;
   activeLayerId: string | null;
@@ -53,6 +55,7 @@ export function createAgentGraphStore(apiRootUrl: string, wsRootUrl: string) {
       error: null,
     },
     workspace: null,
+    boards: [],
     graph: null,
     diff: null,
     activeLayerId: null,

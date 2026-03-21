@@ -1,10 +1,11 @@
 import type {
+  BoardSummary,
   GraphDiffSnapshot,
   GraphIntent,
   GraphSnapshot,
   WorkspaceSnapshot,
 } from "@agent-infrastructure/agent-graph-core";
-import type { GetWorkspaceResponse } from "@agent-infrastructure/agent-graph-protocol";
+import type { GetBoardsResponse, GetWorkspaceResponse } from "@agent-infrastructure/agent-graph-protocol";
 import type { ClientMessage, ServerMessage } from "@agent-infrastructure/agent-graph-protocol";
 import { nextIntentId, queueIntent, type AgentGraphStore } from "./agent-graph-store.js";
 
@@ -75,6 +76,18 @@ function applySnapshot(
   store.state$.connection.status.set("ready");
 }
 
+async function fetchBoards(store: AgentGraphStore): Promise<BoardSummary[]> {
+  const response = await fetch(
+    buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "boards"),
+  );
+  if (!response.ok) {
+    throw new Error(`Boards request failed with status ${response.status}.`);
+  }
+  const payload = (await response.json()) as GetBoardsResponse;
+  store.state$.boards.set(payload.boards);
+  return payload.boards;
+}
+
 function handleServerMessage(store: AgentGraphStore, message: ServerMessage): void {
   switch (message.type) {
     case "server/connected":
@@ -126,6 +139,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
 
         const payload = (await response.json()) as GetWorkspaceResponse;
         applySnapshot(store, payload.workspace, payload.graph, payload.diff);
+        await fetchBoards(store);
         ws = connect(store);
       } catch (error) {
         store.state$.connection.status.set("error");
@@ -358,6 +372,67 @@ export function createAgentGraphActions(store: AgentGraphStore) {
 
     requestDiff(): void {
       sendIntent(ws, store, { kind: "request-diff" });
+    },
+
+    async refreshBoards(): Promise<void> {
+      await fetchBoards(store);
+    },
+
+    async openBoard(path: string): Promise<void> {
+      const response = await fetch(
+        buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "open-board"),
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+          },
+          body: JSON.stringify({ path }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Open board failed with status ${response.status}.`);
+      }
+      const payload = (await response.json()) as GetWorkspaceResponse;
+      applySnapshot(store, payload.workspace, payload.graph, payload.diff);
+      await fetchBoards(store);
+    },
+
+    async saveBoardAs(path: string, label?: string): Promise<void> {
+      const response = await fetch(
+        buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "save-board-as"),
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+          },
+          body: JSON.stringify({ path, label }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Save board as failed with status ${response.status}.`);
+      }
+      const payload = (await response.json()) as GetWorkspaceResponse;
+      applySnapshot(store, payload.workspace, payload.graph, payload.diff);
+      await fetchBoards(store);
+    },
+
+    async addBoardDocument(path: string): Promise<void> {
+      const response = await fetch(
+        buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "add-board-document"),
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+          },
+          body: JSON.stringify({ path }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Add board document failed with status ${response.status}.`);
+      }
+      const payload = (await response.json()) as GetWorkspaceResponse;
+      applySnapshot(store, payload.workspace, payload.graph, payload.diff);
+      await fetchBoards(store);
     },
   };
 }

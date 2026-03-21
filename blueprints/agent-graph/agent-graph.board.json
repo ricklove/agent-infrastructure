@@ -12,11 +12,7 @@
       "id": "layer-overview",
       "label": "Overview",
       "kind": "overview",
-      "nodeIds": [],
-      "visible": true,
-      "x": 40,
-      "y": 40,
-      "derivedFromLayerId": null
+      "nodeIds": []
     }
   ],
   "nodePositions": {},

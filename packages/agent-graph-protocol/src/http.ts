@@ -1,4 +1,5 @@
 import type {
+  BoardSummary,
   GraphDiffSnapshot,
   GraphSnapshot,
   WorkspaceSnapshot,
@@ -8,4 +9,9 @@ export type GetWorkspaceResponse = {
   workspace: WorkspaceSnapshot;
   graph: GraphSnapshot;
   diff: GraphDiffSnapshot | null;
+};
+
+export type GetBoardsResponse = {
+  boards: BoardSummary[];
+  currentBoardPath: string;
 };

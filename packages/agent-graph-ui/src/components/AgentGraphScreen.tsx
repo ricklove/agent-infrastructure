@@ -294,7 +294,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
             style={{ width: leftColumnWidth }}
           >
             <div className="min-h-0" style={{ height: `${leftPanelHeights[0] * 100}%` }}>
-              <DocumentsToolPanel store={store} />
+              <DocumentsToolPanel store={store} actions={actions} />
             </div>
             <button
               type="button"

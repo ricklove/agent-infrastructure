@@ -15,6 +15,7 @@ function snapshotMessage(repository: DocumentRepository): ServerMessage {
   return {
     type: "server/connected",
     workspace: {
+      board: repository.getBoardSummary(),
       workspace: {
         id: sourceWorkspace.id,
         label: sourceWorkspace.label,

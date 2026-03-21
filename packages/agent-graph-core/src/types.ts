@@ -61,6 +61,12 @@ export type BoardFile = {
   pinnedNodeIds: string[];
 };
 
+export type BoardSummary = {
+  path: string;
+  id: string;
+  label: string;
+};
+
 export type LayerDefinition = {
   id: string;
   label: string;
@@ -131,6 +137,7 @@ export type GraphDiffSnapshot = {
 };
 
 export type WorkspaceSnapshot = {
+  board: BoardSummary;
   workspace: {
     id: string;
     label: string;
