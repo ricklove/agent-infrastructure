@@ -18,16 +18,13 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sourceDir = dirname(fileURLToPath(import.meta.url));
-const agentHome = "/home/ec2-user";
-const runtimeRoot = `${agentHome}/runtime`;
-const stateRoot = `${agentHome}/state`;
-const workspaceRoot = `${agentHome}/workspace`;
 
 function writeFileCommand(targetPath: string, content: string): string {
   return `cat > ${targetPath} <<'EOF'\n${content}\nEOF`;
 }
 
 export interface AwsSetupStackProps extends StackProps {
+  agentHome: string;
   managerInstanceType: string;
   workerInstanceType: string;
   swarmMaxSize: number;
@@ -40,6 +37,9 @@ export class AwsSetupStack extends Stack {
     if (!Number.isFinite(props.swarmMaxSize) || props.swarmMaxSize < 1) {
       throw new Error("swarmMaxSize must be a positive integer");
     }
+    if (!props.agentHome || !props.agentHome.startsWith("/")) {
+      throw new Error("agentHome must be an absolute path");
+    }
 
     const swarmTagKey = "AgentSwarm";
     const swarmTagValue = `${this.stackName}-workers`;
@@ -47,6 +47,9 @@ export class AwsSetupStack extends Stack {
     const dashboardEnrollmentSecret = randomBytes(32).toString("hex");
     const runtimeRepoUrl = "https://github.com/ricklove/agent-infrastructure.git";
     const runtimeRepoRef = "development";
+    const runtimeRoot = `${props.agentHome}/runtime`;
+    const stateRoot = `${props.agentHome}/state`;
+    const workspaceRoot = `${props.agentHome}/workspace`;
     const workerRuntimeReleaseBucket = new s3.Bucket(
       this,
       "WorkerRuntimeReleaseBucket",
@@ -323,6 +326,7 @@ export class AwsSetupStack extends Stack {
           DASHBOARD_ACCESS_STATE_TABLE_NAME: dashboardAccessStateTable.tableName,
           DASHBOARD_ENROLLMENT_SECRET: dashboardEnrollmentSecret,
           MANAGER_SWARM_TAG_VALUE: swarmTagValue,
+          AGENT_HOME: props.agentHome,
           DASHBOARD_SESSION_TTL_SECONDS: "900",
         },
       },
@@ -353,6 +357,7 @@ export class AwsSetupStack extends Stack {
       workerSubnetIds: workerSubnets,
       runtimeRepoUrl,
       runtimeRepoRef,
+      agentHome: props.agentHome,
       workerRuntimeReleaseBucketName: workerRuntimeReleaseBucket.bucketName,
       managerMonitorPort,
       swarmMaxSize: props.swarmMaxSize,

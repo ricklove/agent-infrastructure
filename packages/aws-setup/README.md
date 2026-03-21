@@ -31,6 +31,7 @@ You can override the defaults at synth or deploy time:
 cd packages/aws-setup
 bunx cdk synth \
   -c stackName=AgentSwarmAwsSetup \
+  -c agentHome=/home/ec2-user \
   -c managerInstanceType=t3.medium \
   -c workerInstanceType=t3.small \
   -c swarmMaxSize=20
@@ -39,6 +40,7 @@ bunx cdk synth \
 Defaults:
 
 - `stackName=AgentSwarmAwsSetup`
+- `agentHome=/home/ec2-user`
 - `managerInstanceType=t3.medium`
 - `workerInstanceType=t3.small`
 - `swarmMaxSize=12`

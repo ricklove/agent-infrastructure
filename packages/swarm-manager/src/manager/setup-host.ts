@@ -152,6 +152,7 @@ async function main(): Promise<void> {
   const metricsDbPath = `${config.stateDir}/metrics.sqlite`;
   const swarmSharedTokenPath = `${config.stateDir}/swarm-shared-token`;
   const workerRuntimeReleaseManifestPath = `${config.stateDir}/worker-runtime-release.json`;
+  process.env.AGENT_HOME = process.env.AGENT_HOME?.trim() || config.runtimeDir.replace(/\/runtime$/, "");
 
   const bootstrapContext = readBootstrapContext(config.bootstrapContextPath);
   const monitorPort = Number(bootstrapContext.managerMonitorPort ?? 8787);
@@ -216,6 +217,11 @@ async function main(): Promise<void> {
 
   writeFileSync(
     managerEnvPath,
+    ensureTrailingNewline(`AGENT_HOME=${process.env.AGENT_HOME}
+AGENT_RUNTIME_DIR=${config.runtimeDir}
+AGENT_STATE_DIR=${config.stateDir}
+AGENT_WORKSPACE_DIR=${config.workspaceDir}
+`) +
     ensureTrailingNewline(`MANAGER_WS_HOST=0.0.0.0
 MANAGER_WS_PORT=${monitorPort}
 SWARM_SHARED_TOKEN=${swarmSharedToken}
@@ -233,6 +239,11 @@ GIT_TERMINAL_PROMPT=0
 
   writeFileSync(
     managerNodeEnvPath,
+    ensureTrailingNewline(`AGENT_HOME=${process.env.AGENT_HOME}
+AGENT_RUNTIME_DIR=${config.runtimeDir}
+AGENT_STATE_DIR=${config.stateDir}
+AGENT_WORKSPACE_DIR=${config.workspaceDir}
+`) +
     ensureTrailingNewline(`MONITOR_MANAGER_URL=ws://127.0.0.1:${monitorPort}/workers/stream
 MONITOR_SHARED_TOKEN=${swarmSharedToken}
 MONITOR_RECONNECT_DELAY_MS=1000

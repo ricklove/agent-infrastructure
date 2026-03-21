@@ -3,8 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_ROOT="${ROOT_DIR}"
-STATE_ROOT="/home/ec2-user/state"
-WORKSPACE_ROOT="/home/ec2-user/workspace"
+AGENT_HOME="${AGENT_HOME:-$(cd "${RUNTIME_ROOT}/.." && pwd)}"
+STATE_ROOT="${AGENT_HOME}/state"
+WORKSPACE_ROOT="${AGENT_HOME}/workspace"
 BOOTSTRAP_CONTEXT_PATH="${STATE_ROOT}/bootstrap-context.json"
 
 while [[ $# -gt 0 ]]; do
@@ -31,6 +32,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+export AGENT_HOME
+export AGENT_RUNTIME_DIR="${RUNTIME_ROOT}"
+export AGENT_STATE_DIR="${STATE_ROOT}"
+export AGENT_WORKSPACE_DIR="${WORKSPACE_ROOT}"
 
 mkdir -p "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
 

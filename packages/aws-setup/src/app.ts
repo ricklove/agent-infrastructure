@@ -3,6 +3,7 @@ import { AwsSetupStack } from "./aws-setup-stack.js";
 
 const app = new App();
 const stackName = app.node.tryGetContext("stackName")?.trim() || "AgentSwarmAwsSetup";
+const agentHome = app.node.tryGetContext("agentHome")?.trim() || "/home/ec2-user";
 
 const managerInstanceType =
   app.node.tryGetContext("managerInstanceType") ??
@@ -23,6 +24,7 @@ new AwsSetupStack(app, stackName, {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,
   },
+  agentHome,
   managerInstanceType,
   workerInstanceType,
   swarmMaxSize,
