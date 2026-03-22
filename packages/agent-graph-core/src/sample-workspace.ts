@@ -1,7 +1,8 @@
 import type { LayerDefinition, SourceWorkspace, WorkspaceState } from "./types.js";
 
 const agentGraphBlueprintPath =
-  process.env.AGENT_GRAPH_BLUEPRINT_PATH ??
+  (((globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ??
+    {})["AGENT_GRAPH_BLUEPRINT_PATH"]) ??
   "/home/ec2-user/workspace/projects/agent-infrastructure/blueprints/agent-graph/agent-graph.agentish.ts";
 
 export function createSampleSourceWorkspace(): SourceWorkspace {

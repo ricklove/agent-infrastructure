@@ -1,6 +1,14 @@
+import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 type ManagerHealthResponse = {
@@ -114,9 +122,17 @@ type DashboardSessionStore = {
 };
 
 type ProxyWsData = {
+  kind: "graph-proxy";
   upstream: WebSocket | null;
   queue: string[];
 };
+
+type DashboardStatusWsData = {
+  kind: "dashboard-status";
+  heartbeatTimer: ReturnType<typeof setInterval> | null;
+};
+
+type DashboardWsData = ProxyWsData | DashboardStatusWsData;
 
 const sourceDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(sourceDir, "../../..");
@@ -150,6 +166,56 @@ const browserSessionRenewIntervalMs =
 
 if (!Number.isInteger(port) || port <= 0) {
   throw new Error("DASHBOARD_PORT must be a positive integer");
+}
+
+const dashboardBackendRoots = [
+  resolve(repoRoot, "packages/dashboard/package.json"),
+  resolve(repoRoot, "packages/dashboard/src"),
+];
+
+function collectFiles(root: string): string[] {
+  const stats = statSync(root);
+  if (stats.isFile()) {
+    return [root];
+  }
+
+  return readdirSync(root, { withFileTypes: true })
+    .flatMap((entry) => collectFiles(resolve(root, entry.name)))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function computeDashboardBackendVersion(): string {
+  try {
+    const gitHead = execFileSync("git", ["rev-parse", "--short=10", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    }).trim();
+    if (gitHead) {
+      return `dashboard-${gitHead}`;
+    }
+  } catch {}
+
+  const hash = createHash("sha256");
+  const files = dashboardBackendRoots.flatMap((root) => collectFiles(root));
+
+  for (const file of files) {
+    hash.update(relative(repoRoot, file));
+    hash.update("\n");
+    hash.update(readFileSync(file));
+    hash.update("\n");
+  }
+  return `dashboard-${hash.digest("hex").slice(0, 10)}`;
+}
+
+const dashboardBackendVersion = computeDashboardBackendVersion();
+
+function dashboardStatusPayload() {
+  return {
+    type: "dashboard_status",
+    ok: true,
+    backendVersion: dashboardBackendVersion,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -651,7 +717,7 @@ async function serveStatic(url: URL): Promise<Response> {
   });
 }
 
-const server = Bun.serve<ProxyWsData>({
+const server = Bun.serve<DashboardWsData>({
   port,
   idleTimeout: 30,
   async fetch(request) {
@@ -666,7 +732,31 @@ const server = Bun.serve<ProxyWsData>({
         return unauthorized;
       }
 
-      if (server.upgrade(request, { data: { upstream: null, queue: [] } })) {
+      if (
+        server.upgrade(request, {
+          data: { kind: "graph-proxy", upstream: null, queue: [] },
+        })
+      ) {
+        return undefined;
+      }
+
+      return new Response("upgrade failed", { status: 500 });
+    }
+
+    if (
+      url.pathname === "/ws/dashboard-status" ||
+      url.pathname === "/ws/dashboard-status/"
+    ) {
+      const unauthorized = requireDashboardSession(request);
+      if (unauthorized) {
+        return unauthorized;
+      }
+
+      if (
+        server.upgrade(request, {
+          data: { kind: "dashboard-status", heartbeatTimer: null },
+        })
+      ) {
         return undefined;
       }
 
@@ -681,16 +771,27 @@ const server = Bun.serve<ProxyWsData>({
   },
   websocket: {
     open(ws) {
+      if (ws.data.kind === "dashboard-status") {
+        ws.send(JSON.stringify(dashboardStatusPayload()));
+        ws.data.heartbeatTimer = setInterval(() => {
+          try {
+            ws.send(JSON.stringify(dashboardStatusPayload()));
+          } catch {}
+        }, 15000);
+        return;
+      }
+
+      const proxyData = ws.data;
       const upstream = new WebSocket(
         `${wsBaseUrlFromHttpOrigin(agentGraphBaseUrl)}/api/agent-graph/ws`,
       );
-      ws.data.upstream = upstream;
+      proxyData.upstream = upstream;
 
       upstream.addEventListener("open", () => {
-        for (const message of ws.data.queue) {
+        for (const message of proxyData.queue) {
           upstream.send(message);
         }
-        ws.data.queue = [];
+        proxyData.queue = [];
       });
 
       upstream.addEventListener("message", (event) => {
@@ -710,6 +811,10 @@ const server = Bun.serve<ProxyWsData>({
       });
     },
     message(ws, message) {
+      if (ws.data.kind === "dashboard-status") {
+        return;
+      }
+
       const payload = String(message);
       const upstream = ws.data.upstream;
       if (upstream && upstream.readyState === WebSocket.OPEN) {
@@ -720,6 +825,14 @@ const server = Bun.serve<ProxyWsData>({
       ws.data.queue.push(payload);
     },
     close(ws) {
+      if (ws.data.kind === "dashboard-status") {
+        if (ws.data.heartbeatTimer) {
+          clearInterval(ws.data.heartbeatTimer);
+          ws.data.heartbeatTimer = null;
+        }
+        return;
+      }
+
       try {
         ws.data.upstream?.close();
       } catch {}
@@ -732,6 +845,7 @@ console.log(
     ok: true,
     event: "dashboard_server_started",
     url: `http://${server.hostname}:${server.port}`,
+    backendVersion: dashboardBackendVersion,
     managerBaseUrl,
     dashboardDistDir,
     accessApiBaseUrl,

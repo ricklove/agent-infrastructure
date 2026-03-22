@@ -50,7 +50,6 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
   apiRootUrl = "http://localhost:8788/api/agent-graph",
   wsRootUrl = "ws://localhost:8788/api/agent-graph/ws",
 }: AgentGraphScreenProps) {
-  const [copiedVersion, setCopiedVersion] = useState(false);
   const [store] = useState(() => createAgentGraphStore(apiRootUrl, wsRootUrl));
   const [actions] = useState(() => createAgentGraphActions(store));
   const leftColumnRef = useRef<HTMLDivElement | null>(null);
@@ -106,15 +105,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
     pinnedNodeIds.includes(node.id),
   ).length;
   const movableNodeCount = activeLayerVisibleSemanticNodes.length - pinnedVisibleNodeCount;
-  const revisionLabel = graph ? String(graph.revision) : "--";
   const workspaceId = workspace?.workspace.id ?? null;
-  const connectionTone =
-    connection.status === "ready"
-      ? "text-emerald-300"
-      : connection.status === "error"
-        ? "text-rose-300"
-        : "text-amber-200";
-  const workspaceLabel = workspace ? "Loaded" : "Loading...";
   const beginHidePreview = useCallback((layerId: string | null, sourceNodeIds: string[]) => {
     setHidePreview({ layerId, sourceNodeIds });
   }, []);
@@ -265,13 +256,6 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
     window.addEventListener("pointerup", onPointerUp);
   }
 
-  function copyVersionLabel(): void {
-    const value = `Version: ${appVersion}`;
-    void navigator.clipboard.writeText(value);
-    setCopiedVersion(true);
-    window.setTimeout(() => setCopiedVersion(false), 1200);
-  }
-
   return (
     <div className="relative h-screen overflow-hidden bg-stone-950 text-stone-100">
       <div className="h-full w-full">
@@ -361,24 +345,6 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
             className="pointer-events-auto flex h-full min-h-0 flex-col gap-3"
             style={{ width: rightColumnWidth }}
           >
-            <div className="self-end rounded-2xl border border-stone-800/90 bg-stone-950/88 px-3 py-2 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-              <div className="flex items-center justify-end gap-3 whitespace-nowrap">
-                <span className="inline-flex items-center gap-2">
-                  <span>Version: {appVersion}</span>
-                  <button
-                    type="button"
-                    onClick={copyVersionLabel}
-                    className="rounded-full border border-stone-700 px-2 py-0.5 text-[10px] text-stone-200 hover:bg-stone-800"
-                    title="Copy version"
-                  >
-                    {copiedVersion ? "Copied" : "Copy"}
-                  </button>
-                </span>
-                <span className={connectionTone}>Connection: {connection.status}</span>
-                <span>Workspace: {workspaceLabel}</span>
-                <span>Revision: {revisionLabel}</span>
-              </div>
-            </div>
             <div ref={rightColumnRef} className="flex min-h-0 flex-1 flex-col">
               <div
                 className="min-h-0 overflow-y-auto"

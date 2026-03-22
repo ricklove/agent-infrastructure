@@ -14,20 +14,6 @@ const AgentChatScreen = lazy(() =>
   })),
 )
 
-const AgentGraphFeatureScreen = lazy(() =>
-  import("@agent-infrastructure/agent-graph-ui").then((module) => ({
-    default: function DashboardAgentGraphScreen() {
-      return (
-        <module.AgentGraphScreen
-          appVersion="dashboard-shell"
-          apiRootUrl={`${window.location.origin}/api/agent-graph`}
-          wsRootUrl={`${window.location.origin.replace(/^http/, "ws")}/ws/agent-graph`}
-        />
-      )
-    },
-  })),
-)
-
 type DashboardConfig = {
   ok: boolean
   accessAppUrl: string
@@ -38,6 +24,13 @@ type SessionExchangeResponse = {
   ok: boolean
   sessionToken: string
   expiresAtMs: number
+}
+
+type DashboardGatewayStatusMessage = {
+  type: "dashboard_status"
+  ok: boolean
+  backendVersion: string
+  timestamp: string
 }
 
 type FeatureId = "swarm" | "chat" | "graph"
@@ -111,33 +104,6 @@ function GraphIcon(props: { className?: string }) {
   )
 }
 
-const featureDefinitions: FeatureDefinition[] = [
-  {
-    id: "swarm",
-    label: "Agent Swarm",
-    href: "/swarm",
-    description: "Manager, fleet, registry, and access operations.",
-    component: AgentSwarmScreen,
-    icon: SwarmIcon,
-  },
-  {
-    id: "chat",
-    label: "Agent Chat",
-    href: "/chat",
-    description: "Multi-session chat will live here.",
-    component: AgentChatScreen,
-    icon: ChatIcon,
-  },
-  {
-    id: "graph",
-    label: "Agent Graph",
-    href: "/graph",
-    description: "Graph exploration and editing.",
-    component: AgentGraphFeatureScreen,
-    icon: GraphIcon,
-  },
-]
-
 function readStoredSessionToken(): string {
   return window.sessionStorage.getItem(sessionStorageKey) ?? ""
 }
@@ -154,7 +120,53 @@ function featureIdFromPath(pathname: string): FeatureId {
   return "swarm"
 }
 
-export function DashboardShell() {
+export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersion?: string }) {
+  const AgentGraphFeatureScreen = useMemo(
+    () =>
+      lazy(() =>
+        import("@agent-infrastructure/agent-graph-ui").then((module) => ({
+          default: function DashboardAgentGraphScreen() {
+            return (
+              <module.AgentGraphScreen
+                appVersion={appVersion}
+                apiRootUrl={`${window.location.origin}/api/agent-graph`}
+                wsRootUrl={`${window.location.origin.replace(/^http/, "ws")}/ws/agent-graph`}
+              />
+            )
+          },
+        })),
+      ),
+    [appVersion],
+  )
+  const featureDefinitions: FeatureDefinition[] = useMemo(
+    () => [
+      {
+        id: "swarm",
+        label: "Agent Swarm",
+        href: "/swarm",
+        description: "Manager, fleet, registry, and access operations.",
+        component: AgentSwarmScreen,
+        icon: SwarmIcon,
+      },
+      {
+        id: "chat",
+        label: "Agent Chat",
+        href: "/chat",
+        description: "Multi-session chat will live here.",
+        component: AgentChatScreen,
+        icon: ChatIcon,
+      },
+      {
+        id: "graph",
+        label: "Agent Graph",
+        href: "/graph",
+        description: "Graph exploration and editing.",
+        component: AgentGraphFeatureScreen,
+        icon: GraphIcon,
+      },
+    ],
+    [AgentGraphFeatureScreen],
+  )
   const [activeFeatureId, setActiveFeatureId] = useState<FeatureId>(() =>
     featureIdFromPath(window.location.pathname),
   )
@@ -166,6 +178,11 @@ export function DashboardShell() {
   const [error, setError] = useState("")
   const [accessMessage, setAccessMessage] = useState("")
   const [authRequired, setAuthRequired] = useState(false)
+  const [gatewayConnectionStatus, setGatewayConnectionStatus] = useState<
+    "connecting" | "ready" | "error" | "idle"
+  >("idle")
+  const [gatewayBackendVersion, setGatewayBackendVersion] = useState("--")
+  const [copiedStatus, setCopiedStatus] = useState(false)
 
   const activeFeature = useMemo(
     () =>
@@ -191,6 +208,92 @@ export function DashboardShell() {
       window.removeEventListener("popstate", handlePopState)
     }
   }, [])
+
+  useEffect(() => {
+    if (initializing) {
+      return
+    }
+
+    const sessionToken = readStoredSessionToken().trim()
+    if (config?.requiresSession && !sessionToken) {
+      setGatewayConnectionStatus("idle")
+      setGatewayBackendVersion("--")
+      return
+    }
+
+    let disposed = false
+    let socket: WebSocket | null = null
+    let reconnectTimer: number | null = null
+
+    const connect = () => {
+      if (disposed) {
+        return
+      }
+
+      setGatewayConnectionStatus("connecting")
+      const wsUrl = new URL(
+        `${window.location.origin.replace(/^http/, "ws")}/ws/dashboard-status`,
+      )
+      if (sessionToken) {
+        wsUrl.searchParams.set("sessionToken", sessionToken)
+      }
+
+      socket = new WebSocket(wsUrl.toString())
+      socket.addEventListener("message", (event) => {
+        try {
+          const payload = JSON.parse(String(event.data)) as DashboardGatewayStatusMessage
+          if (payload.type === "dashboard_status") {
+            setGatewayBackendVersion(payload.backendVersion)
+            setGatewayConnectionStatus("ready")
+          }
+        } catch {
+          setGatewayConnectionStatus("error")
+        }
+      })
+      socket.addEventListener("error", () => {
+        setGatewayConnectionStatus("error")
+      })
+      socket.addEventListener("close", () => {
+        if (disposed) {
+          return
+        }
+        setGatewayConnectionStatus("error")
+        reconnectTimer = window.setTimeout(connect, 1200)
+      })
+    }
+
+    connect()
+
+    return () => {
+      disposed = true
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer)
+      }
+      socket?.close()
+    }
+  }, [config?.requiresSession, initializing])
+
+  const gatewayConnectionTone =
+    gatewayConnectionStatus === "ready"
+      ? "text-emerald-300"
+      : gatewayConnectionStatus === "error"
+        ? "text-rose-300"
+        : gatewayConnectionStatus === "connecting"
+          ? "text-amber-200"
+          : "text-stone-400"
+  const backendVersionMismatch =
+    gatewayBackendVersion !== "--" && gatewayBackendVersion !== appVersion
+
+  function copyStatusLabel() {
+    const parts = [`Version: ${appVersion}`]
+    if (backendVersionMismatch) {
+      parts.push(`Backend: ${gatewayBackendVersion}`)
+    }
+    parts.push(`WS: ${gatewayConnectionStatus}`)
+    void navigator.clipboard.writeText(parts.join(" | "))
+    setCopiedStatus(true)
+    window.setTimeout(() => setCopiedStatus(false), 1200)
+  }
 
   useEffect(() => {
     setLoadedFeatureIds((currentValue) =>
@@ -352,6 +455,27 @@ export function DashboardShell() {
           </Suspense>
         </main>
         <div className="pointer-events-none absolute right-4 top-4 z-50 flex max-w-[32rem] flex-col items-end gap-2">
+          <div className="rounded-2xl border border-stone-800/90 bg-stone-950/88 px-3 py-2 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+            <div className="flex items-center justify-end gap-3 whitespace-nowrap">
+              <span>Version: {appVersion}</span>
+              {backendVersionMismatch ? (
+                <span className="text-rose-300">
+                  Backend: {gatewayBackendVersion}
+                </span>
+              ) : null}
+              <span className={gatewayConnectionTone}>
+                WS: {gatewayConnectionStatus}
+              </span>
+              <button
+                type="button"
+                onClick={copyStatusLabel}
+                className="pointer-events-auto rounded-full border border-stone-700 px-2 py-0.5 text-[10px] text-stone-200 hover:bg-stone-800"
+                title="Copy status"
+              >
+                {copiedStatus ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </div>
           {initializing ? (
             <div className="rounded-xl border border-white/10 bg-[#0d131c]/90 px-3 py-2 text-xs text-slate-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
               Initializing dashboard shell...
