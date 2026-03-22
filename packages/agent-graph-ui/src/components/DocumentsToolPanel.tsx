@@ -1,5 +1,6 @@
 import { observer, useSelector } from "@legendapp/state/react";
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
 
 type DocumentsToolPanelProps = {
@@ -131,6 +132,134 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
     await actions.saveBoardAs(nextPath.trim(), nextLabel?.trim() || undefined);
   }
 
+  const pickerModal =
+    picker && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[120] flex items-center justify-center bg-stone-950/80 p-6 backdrop-blur-sm"
+            onClick={closePicker}
+          >
+            <div
+              className="flex max-h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-stone-700 bg-[linear-gradient(180deg,rgba(28,25,23,0.98),rgba(12,10,9,0.98))] shadow-[0_24px_100px_rgba(0,0,0,0.55)]"
+              role="dialog"
+              aria-modal="true"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4 border-b border-stone-800 px-5 py-4">
+                <div className="min-w-0">
+                  <h3 className="font-['Space_Grotesk'] text-lg font-medium text-stone-50">
+                    {picker === "boards" ? "Open Board" : "Add Document"}
+                  </h3>
+                  <p className="mt-1 text-sm text-stone-400">
+                    {picker === "boards"
+                      ? "Pick a workspace board to open."
+                      : "Pick an Agentish document to include in the current board."}
+                  </p>
+                  <div className="mt-2 inline-flex rounded-full border border-stone-700 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-400">
+                    {picker === "boards" ? `${boards.length} boards` : `${documents.length} documents`}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closePicker}
+                  className="rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-300 hover:bg-stone-800"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="border-b border-stone-800 px-5 py-4">
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={picker === "boards" ? "Search boards" : "Search documents"}
+                  className="w-full rounded-2xl border border-stone-700 bg-stone-900 px-4 py-3 text-sm text-stone-100 outline-none ring-0 placeholder:text-stone-500 focus:border-stone-500"
+                />
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
+                {picker === "boards"
+                  ? filteredBoards.map((board) => {
+                      const isCurrent = board.path === workspace?.board.path;
+                      return (
+                        <button
+                          key={board.path}
+                          type="button"
+                          disabled={isCurrent}
+                          onClick={() => {
+                            void actions.openBoard(board.path);
+                            closePicker();
+                          }}
+                          className={`block w-full rounded-2xl border px-4 py-3 text-left transition ${
+                            isCurrent
+                              ? "border-emerald-500/35 bg-emerald-500/10"
+                              : "border-stone-800 bg-stone-900/70 hover:border-stone-600 hover:bg-stone-900"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-stone-100">{board.label}</div>
+                              <div className="mt-1 break-all text-[11px] leading-5 text-stone-500">
+                                {board.path}
+                              </div>
+                            </div>
+                            <div className="mt-0.5 shrink-0 text-emerald-300">
+                              {isCurrent ? <CheckIcon /> : <FolderIcon />}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  : filteredDocuments.map((document) => {
+                      const alreadyIncluded = workspace?.documents.some(
+                        (current) => current.path === `/home/ec2-user/workspace/${document.path}`,
+                      );
+                      return (
+                        <button
+                          key={document.path}
+                          type="button"
+                          disabled={alreadyIncluded}
+                          onClick={() => {
+                            void actions.addBoardDocument(document.path);
+                            closePicker();
+                          }}
+                          className={`block w-full rounded-2xl border px-4 py-3 text-left transition ${
+                            alreadyIncluded
+                              ? "border-stone-800 bg-stone-900/55"
+                              : "border-stone-800 bg-stone-900/70 hover:border-stone-600 hover:bg-stone-900"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-stone-100">
+                                {document.label}
+                              </div>
+                              <div className="mt-1 break-all text-[11px] leading-5 text-stone-500">{document.path}</div>
+                            </div>
+                            <div className={`mt-0.5 shrink-0 ${alreadyIncluded ? "text-stone-500" : "text-stone-300"}`}>
+                              {alreadyIncluded ? <CheckIcon /> : <PlusIcon />}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                {picker === "boards" && filteredBoards.length === 0 ? (
+                  <div className="rounded-2xl border border-stone-800 bg-stone-900 p-4 text-sm text-stone-400">
+                    No boards match this search.
+                  </div>
+                ) : null}
+                {picker === "documents" && filteredDocuments.length === 0 ? (
+                  <div className="rounded-2xl border border-stone-800 bg-stone-900 p-4 text-sm text-stone-400">
+                    No documents match this search.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
       <div className="flex items-start justify-between gap-3">
@@ -201,130 +330,7 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
         </div>
 
       </div>
-
-      {picker ? (
-        <div
-          className="absolute inset-0 z-20 flex items-center justify-center bg-stone-950/80 p-4 backdrop-blur-sm"
-          onClick={closePicker}
-        >
-          <div
-            className="flex max-h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-stone-700 bg-[linear-gradient(180deg,rgba(28,25,23,0.98),rgba(12,10,9,0.98))] shadow-[0_24px_100px_rgba(0,0,0,0.55)]"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-stone-800 px-5 py-4">
-              <div className="min-w-0">
-                <h3 className="font-['Space_Grotesk'] text-lg font-medium text-stone-50">
-                  {picker === "boards" ? "Open Board" : "Add Document"}
-                </h3>
-                <p className="mt-1 text-sm text-stone-400">
-                  {picker === "boards"
-                    ? "Pick a workspace board to open."
-                    : "Pick an Agentish document to include in the current board."}
-                </p>
-                <div className="mt-2 inline-flex rounded-full border border-stone-700 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-400">
-                  {picker === "boards" ? `${boards.length} boards` : `${documents.length} documents`}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={closePicker}
-                className="rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-300 hover:bg-stone-800"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="border-b border-stone-800 px-5 py-4">
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={picker === "boards" ? "Search boards" : "Search documents"}
-                className="w-full rounded-2xl border border-stone-700 bg-stone-900 px-4 py-3 text-sm text-stone-100 outline-none ring-0 placeholder:text-stone-500 focus:border-stone-500"
-              />
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
-              {picker === "boards"
-                ? filteredBoards.map((board) => {
-                    const isCurrent = board.path === workspace?.board.path;
-                    return (
-                      <button
-                        key={board.path}
-                        type="button"
-                        disabled={isCurrent}
-                        onClick={() => {
-                          void actions.openBoard(board.path);
-                          closePicker();
-                        }}
-                        className={`block w-full rounded-2xl border px-4 py-3 text-left transition ${
-                          isCurrent
-                            ? "border-emerald-500/35 bg-emerald-500/10"
-                            : "border-stone-800 bg-stone-900/70 hover:border-stone-600 hover:bg-stone-900"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium text-stone-100">{board.label}</div>
-                            <div className="mt-1 break-all text-[11px] leading-5 text-stone-500">
-                              {board.path}
-                            </div>
-                          </div>
-                          <div className="mt-0.5 shrink-0 text-emerald-300">
-                            {isCurrent ? <CheckIcon /> : <FolderIcon />}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })
-                : filteredDocuments.map((document) => {
-                    const alreadyIncluded = workspace?.documents.some(
-                      (current) => current.path === `/home/ec2-user/workspace/${document.path}`,
-                    );
-                    return (
-                      <button
-                        key={document.path}
-                        type="button"
-                        disabled={alreadyIncluded}
-                        onClick={() => {
-                          void actions.addBoardDocument(document.path);
-                          closePicker();
-                        }}
-                        className={`block w-full rounded-2xl border px-4 py-3 text-left transition ${
-                          alreadyIncluded
-                            ? "border-stone-800 bg-stone-900/55"
-                            : "border-stone-800 bg-stone-900/70 hover:border-stone-600 hover:bg-stone-900"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium text-stone-100">
-                              {document.label}
-                            </div>
-                            <div className="mt-1 break-all text-[11px] leading-5 text-stone-500">{document.path}</div>
-                          </div>
-                          <div className={`mt-0.5 shrink-0 ${alreadyIncluded ? "text-stone-500" : "text-stone-300"}`}>
-                            {alreadyIncluded ? <CheckIcon /> : <PlusIcon />}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-              {picker === "boards" && filteredBoards.length === 0 ? (
-                <div className="rounded-2xl border border-stone-800 bg-stone-900 p-4 text-sm text-stone-400">
-                  No boards match this search.
-                </div>
-              ) : null}
-              {picker === "documents" && filteredDocuments.length === 0 ? (
-                <div className="rounded-2xl border border-stone-800 bg-stone-900 p-4 text-sm text-stone-400">
-                  No documents match this search.
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {pickerModal}
     </section>
   );
 });
