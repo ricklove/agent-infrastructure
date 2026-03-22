@@ -7,8 +7,8 @@ export const agentGraphDashboardPlugin: DashboardFeaturePlugin = {
   description: "Graph exploration and editing.",
   icon: "graph",
   screen: {
-    getProps: ({ windowWsOrigin }) => ({
-      apiRootUrl: "/api/agent-graph",
+    getProps: ({ windowOrigin, windowWsOrigin }) => ({
+      apiRootUrl: `${windowOrigin}/api/agent-graph`,
       wsRootUrl: `${windowWsOrigin}/ws/agent-graph`,
     }),
   },

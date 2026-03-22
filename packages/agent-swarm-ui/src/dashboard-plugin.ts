@@ -7,8 +7,8 @@ export const agentSwarmDashboardPlugin: DashboardFeaturePlugin = {
   description: "Manager, fleet, registry, and access operations.",
   icon: "swarm",
   screen: {
-    getProps: () => ({
-      apiRootUrl: "/api/agent-swarm",
+    getProps: ({ windowOrigin }) => ({
+      apiRootUrl: `${windowOrigin}/api/agent-swarm`,
     }),
   },
   backend: {

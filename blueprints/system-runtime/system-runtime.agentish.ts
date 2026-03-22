@@ -192,6 +192,8 @@ Policy.fullUpdateWorkflow.means(`
 - update runtime by checkout to the pushed revision
 - restart or reissue affected runtime processes
 - run post-deploy health and behavior checks
+- use the browser tool on the real UI for post-deploy verification
+- capture screenshots as evidence of post-deploy UI state
 `);
 
 Gateway.lazyStart.means(`
@@ -246,7 +248,8 @@ when(Operator.requests("the full manager development process"))
   .then(SystemRuntime.requires(Policy.fullUpdateWorkflow))
   .and(SystemRuntime.requires(Policy.sourceOfTruth))
   .and(SystemRuntime.requires(Policy.runtimeCheckoutOnly))
-  .and(SystemRuntime.requires("post-deploy checks before declaring success"));
+  .and(SystemRuntime.requires("post-deploy checks before declaring success"))
+  .and(SystemRuntime.requires("browser-tool verification with screenshots for UI-facing changes"));
 
 when(RuntimeCode.workerPower.isUsedBy("a manager test or manager workflow"))
   .then(SystemRuntime.prefers("direct TS invocation"))
@@ -271,4 +274,5 @@ SystemRuntime.prescribes(`
 - the dashboard gateway owns lazy feature backend startup
 - each lazy backend should be described once through a backend definition rather than hardcoded repeatedly
 - the default manager update process is source edit, local verification, commit, push, runtime checkout, restart, and post-deploy verification
+- post-deploy verification for UI-facing work includes browser-tool checks and saved screenshots
 `);
