@@ -39,10 +39,16 @@ type CredentialRecord = {
 
 type StateRecord = {
   stateId: string;
-  kind: "enrollment" | "registration" | "authentication";
+  kind: "enrollment" | "registration" | "authentication" | "authentication-status";
   challenge?: string;
   expiresAtMs: number;
   usedAtMs?: number;
+  progressStep?: string;
+  progressMessage?: string;
+  progressDetail?: Record<string, unknown> | null;
+  failureStep?: string;
+  error?: string;
+  dashboardUrl?: string;
 };
 
 type JsonBody = Record<string, unknown> | null;
@@ -80,6 +86,20 @@ function logAuthStep(step: string, detail?: Record<string, unknown>): void {
     return;
   }
   console.log(`[dashboard-access] ${step}`);
+}
+
+function errorDetail(error: unknown): Record<string, unknown> {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    error: String(error),
+  };
 }
 
 function nowMs(): number {
@@ -143,6 +163,10 @@ function randomId(bytes = 24): string {
   return randomBytes(bytes).toString("hex");
 }
 
+function authStatusStateId(flowId: string): string {
+  return `auth-status:${flowId}`;
+}
+
 function normalizeCredentialId(value: string | Uint8Array): string {
   return typeof value === "string"
     ? value
@@ -203,6 +227,30 @@ async function updateState(
       ExpressionAttributeValues: values,
     }),
   );
+}
+
+async function putAuthStatus(
+  flowId: string,
+  attributes: Partial<StateRecord>,
+): Promise<void> {
+  const currentTime = nowMs();
+  const current = await getState(authStatusStateId(flowId));
+  await putState({
+    stateId: authStatusStateId(flowId),
+    kind: "authentication-status",
+    expiresAtMs: current?.expiresAtMs ?? currentTime + 10 * 60 * 1000,
+    ...(current ?? {}),
+    ...attributes,
+  });
+}
+
+async function getAuthStatus(flowId: string): Promise<StateRecord | null> {
+  const record = await getState(authStatusStateId(flowId));
+  if (!record || record.kind !== "authentication-status" || record.expiresAtMs <= nowMs()) {
+    return null;
+  }
+
+  return record;
 }
 
 async function isEnrollmentTicketValid(ticket: string): Promise<boolean> {
@@ -399,6 +447,14 @@ async function beginAuthentication(
     kind: "authentication",
     challenge: options.challenge,
     expiresAtMs: nowMs() + 5 * 60 * 1000,
+  });
+  await putAuthStatus(flowId, {
+    progressStep: "auth.begin.ready",
+    progressMessage: "Passkey challenge created.",
+    progressDetail: { flowId },
+    error: undefined,
+    failureStep: undefined,
+    dashboardUrl: undefined,
   });
 
   logAuthStep("auth.begin.ready", { flowId });
@@ -601,49 +657,180 @@ async function finishAuthentication(
     return jsonResponse({ ok: false, error: "unknown passkey" }, 401);
   }
 
-  const verification = await verifyAuthenticationResponse({
-    response: credential as never,
-    expectedChallenge: authState.challenge ?? "",
-    expectedOrigin: getOrigin(event),
-    expectedRPID: getRpId(event),
-    credential: {
-      id: credentialRecord.credentialId,
-      publicKey: Buffer.from(credentialRecord.credentialPublicKey, "base64url"),
-      counter: credentialRecord.counter,
-      transports: credentialRecord.transports as never,
-    },
-    requireUserVerification: true,
-  });
+  let failureStep = "verification";
+  try {
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.verification.started",
+      progressMessage: "Verifying the passkey response.",
+      progressDetail: {
+        credentialId: credential.id,
+        expectedOrigin: getOrigin(event),
+        expectedRpId: getRpId(event),
+        storedCounter: credentialRecord.counter,
+      },
+      error: undefined,
+      failureStep: undefined,
+      dashboardUrl: undefined,
+    });
+    logAuthStep("auth.finish.verification.started", {
+      flowId,
+      credentialId: credential.id,
+      expectedOrigin: getOrigin(event),
+      expectedRpId: getRpId(event),
+      storedCounter: credentialRecord.counter,
+    });
 
-  if (!verification.verified) {
-    logAuthStep("auth.finish.rejected", { reason: "verification-failed", flowId });
-    return jsonResponse({ ok: false, error: "passkey authentication failed" }, 401);
+    const verification = await verifyAuthenticationResponse({
+      response: credential as never,
+      expectedChallenge: authState.challenge ?? "",
+      expectedOrigin: getOrigin(event),
+      expectedRPID: getRpId(event),
+      credential: {
+        id: credentialRecord.credentialId,
+        publicKey: Buffer.from(credentialRecord.credentialPublicKey, "base64url"),
+        counter: credentialRecord.counter,
+        transports: credentialRecord.transports as never,
+      },
+      requireUserVerification: true,
+    });
+
+    if (!verification.verified) {
+      logAuthStep("auth.finish.rejected", { reason: "verification-failed", flowId });
+      return jsonResponse({ ok: false, error: "passkey authentication failed" }, 401);
+    }
+
+    logAuthStep("auth.finish.verified", {
+      flowId,
+      credentialId: credential.id,
+      newCounter: verification.authenticationInfo.newCounter,
+    });
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.verified",
+      progressMessage: "Passkey verified.",
+      progressDetail: {
+        credentialId: credential.id,
+        newCounter: verification.authenticationInfo.newCounter,
+      },
+    });
+
+    logAuthStep("auth.finish.credential.update.started", {
+      flowId,
+      credentialId: credential.id,
+      newCounter: verification.authenticationInfo.newCounter,
+    });
+    failureStep = "credential.update";
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.credential.update.started",
+      progressMessage: "Updating credential counter.",
+      progressDetail: {
+        credentialId: credential.id,
+        newCounter: verification.authenticationInfo.newCounter,
+      },
+    });
+    await putCredential({
+      ...credentialRecord,
+      counter: verification.authenticationInfo.newCounter,
+    });
+    logAuthStep("auth.finish.credential.update.completed", {
+      flowId,
+      credentialId: credential.id,
+    });
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.credential.update.completed",
+      progressMessage: "Credential counter updated.",
+      progressDetail: {
+        credentialId: credential.id,
+      },
+    });
+
+    logAuthStep("auth.finish.state.delete.started", { flowId });
+    failureStep = "state.delete";
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.state.delete.started",
+      progressMessage: "Clearing authentication flow state.",
+      progressDetail: { flowId },
+    });
+    await dynamo.send(
+      new DeleteCommand({
+        TableName: config.stateTableName,
+        Key: { stateId: flowId },
+      }),
+    );
+    logAuthStep("auth.finish.state.delete.completed", { flowId });
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.state.delete.completed",
+      progressMessage: "Authentication flow state cleared.",
+      progressDetail: { flowId },
+    });
+
+    logAuthStep("auth.finish.dashboard-session.started", { flowId });
+    failureStep = "dashboard.session.issue";
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.dashboard-session.started",
+      progressMessage: "Requesting dashboard session from manager.",
+      progressDetail: { flowId },
+    });
+    const dashboardUrl = await issueDashboardAccess();
+    logAuthStep("auth.finish.dashboard-session.url.received", { flowId, dashboardUrl });
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.dashboard-session.url.received",
+      progressMessage: "Dashboard session URL received.",
+      progressDetail: { flowId, dashboardUrl },
+      dashboardUrl,
+    });
+
+    failureStep = "dashboard.session.readiness";
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.dashboard-session.readiness.started",
+      progressMessage: "Waiting for dashboard readiness.",
+      progressDetail: { flowId, dashboardUrl },
+      dashboardUrl,
+    });
+    await waitForDashboardAccessReady(dashboardUrl);
+    logAuthStep("auth.finish.completed", { flowId, dashboardUrl });
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.completed",
+      progressMessage: "Authentication complete.",
+      progressDetail: { flowId, dashboardUrl },
+      dashboardUrl,
+    });
+    return jsonResponse({
+      ok: true,
+      dashboardUrl,
+    });
+  } catch (error) {
+    logAuthStep("auth.finish.error", {
+      flowId,
+      credentialId: credential.id,
+      failureStep,
+      ...errorDetail(error),
+    });
+    await putAuthStatus(flowId, {
+      progressStep: "auth.finish.error",
+      progressMessage: "Authentication failed.",
+      progressDetail: {
+        flowId,
+        credentialId: credential.id,
+        ...errorDetail(error),
+      },
+      failureStep,
+      error:
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "authentication failed",
+    });
+    return jsonResponse(
+      {
+        ok: false,
+        error:
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "authentication failed",
+        failureStep,
+      },
+      500,
+    );
   }
-
-  logAuthStep("auth.finish.verified", {
-    flowId,
-    credentialId: credential.id,
-    newCounter: verification.authenticationInfo.newCounter,
-  });
-
-  await putCredential({
-    ...credentialRecord,
-    counter: verification.authenticationInfo.newCounter,
-  });
-  await dynamo.send(
-    new DeleteCommand({
-      TableName: config.stateTableName,
-      Key: { stateId: flowId },
-    }),
-  );
-
-  const dashboardUrl = await issueDashboardAccess();
-  await waitForDashboardAccessReady(dashboardUrl);
-  logAuthStep("auth.finish.completed", { flowId, dashboardUrl });
-  return jsonResponse({
-    ok: true,
-    dashboardUrl,
-  });
 }
 
 async function createEnrollmentTicket(
@@ -724,6 +911,17 @@ function renderPage(
         color: #06100b;
         background: linear-gradient(135deg, #8de2ac 0%, #d4f39f 100%);
       }
+      .actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+      }
+      .actions button.secondary {
+        color: #d8efe1;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.12);
+      }
       .message {
         min-height: 48px;
         margin-top: 16px;
@@ -782,6 +980,9 @@ function renderPage(
       <button id="actionButton">${
         mode === "register" ? "Register Passkey" : "Sign In With Passkey"
       }</button>
+      <div class="actions">
+        <button id="copyHistoryButton" type="button" class="secondary">Copy History</button>
+      </div>
       <div id="message" class="message"></div>
       <section class="steps">
         <h2>Auth Steps</h2>
@@ -792,8 +993,10 @@ function renderPage(
       const mode = ${JSON.stringify(mode)};
       const registrationTicket = ${JSON.stringify(registrationTicket)};
       const button = document.getElementById("actionButton");
+      const copyHistoryButton = document.getElementById("copyHistoryButton");
       const message = document.getElementById("message");
       const stepLog = document.getElementById("stepLog");
+      const uiHistory = [];
 
       if (mode === "register" && window.location.search) {
         window.history.replaceState({}, "", "/register");
@@ -804,6 +1007,12 @@ function renderPage(
       }
 
       function pushStep(step, detail) {
+        const record = {
+          at: new Date().toISOString(),
+          step,
+          detail: detail ?? null,
+        };
+        uiHistory.push(record);
         const entry = document.createElement("li");
         const summary = document.createElement("div");
         summary.textContent = step;
@@ -814,7 +1023,50 @@ function renderPage(
           entry.appendChild(detailCode);
         }
         stepLog.appendChild(entry);
-        console.log("[dashboard-access-ui]", step, detail ?? "");
+        console.log("[dashboard-access-ui]", record);
+      }
+
+      async function copyHistory() {
+        const payload = JSON.stringify(uiHistory, null, 2);
+        try {
+          await navigator.clipboard.writeText(payload);
+          setMessage("Copied auth history to clipboard.");
+        } catch {
+          setMessage("Failed to copy auth history to clipboard.");
+        }
+      }
+
+      function formatErrorMessage(payload, fallback) {
+        if (payload && typeof payload === "object") {
+          const message = typeof payload.error === "string" ? payload.error : fallback;
+          const failureStep = typeof payload.failureStep === "string" ? payload.failureStep : "";
+          return failureStep ? message + " (step: " + failureStep + ")" : message;
+        }
+        return fallback;
+      }
+
+      async function readJsonSafely(response) {
+        const text = await response.text();
+        if (!text) {
+          return null;
+        }
+
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { ok: false, error: text };
+        }
+      }
+
+      async function fetchAuthStatus(flowId) {
+        const response = await fetch("/api/passkeys/auth/status?flowId=" + encodeURIComponent(flowId), {
+          method: "GET",
+          headers: { "cache-control": "no-store" },
+        });
+        return {
+          response,
+          payload: await readJsonSafely(response),
+        };
       }
 
       function base64urlToBuffer(base64url) {
@@ -983,6 +1235,38 @@ function renderPage(
         }
 
         pushStep("auth.finish.requested", { flowId: beginPayload.flowId, credentialId: credential.id });
+        setMessage("Finishing authentication with the server...");
+        let stopStatusPolling = false;
+        let lastProgressStep = "";
+        const statusPoller = (async () => {
+          while (!stopStatusPolling) {
+            try {
+              const { response, payload } = await fetchAuthStatus(beginPayload.flowId);
+              if (
+                response.ok &&
+                payload &&
+                typeof payload.progressStep === "string" &&
+                payload.progressStep !== lastProgressStep
+              ) {
+                lastProgressStep = payload.progressStep;
+                pushStep(payload.progressStep, payload.progressDetail ?? null);
+                if (typeof payload.progressMessage === "string" && payload.progressMessage.length > 0) {
+                  setMessage(payload.progressMessage);
+                }
+              }
+            } catch (error) {
+              console.log("[dashboard-access-ui]", {
+                at: new Date().toISOString(),
+                step: "auth.finish.status.poll.error",
+                detail: {
+                  message: error?.message ?? String(error),
+                },
+              });
+            }
+
+            await new Promise((resolve) => window.setTimeout(resolve, 500));
+          }
+        })();
         const finishResponse = await fetch("/api/passkeys/auth/finish", {
           method: "POST",
           headers: { "content-type": "application/json; charset=utf-8" },
@@ -991,10 +1275,18 @@ function renderPage(
             credential: credentialToJSON(credential),
           }),
         });
-        const finishPayload = await finishResponse.json();
+        stopStatusPolling = true;
+        await statusPoller;
+        const finishPayload = await readJsonSafely(finishResponse);
         pushStep("auth.finish.response", { status: finishResponse.status, payload: finishPayload });
         if (!finishResponse.ok) {
-          setMessage(finishPayload.error || "Failed to authenticate.");
+          const errorMessage = formatErrorMessage(finishPayload, "Failed to authenticate.");
+          pushStep("auth.finish.failed", {
+            status: finishResponse.status,
+            error: finishPayload?.error ?? null,
+            failureStep: finishPayload?.failureStep ?? null,
+          });
+          setMessage(errorMessage);
           return;
         }
 
@@ -1010,6 +1302,9 @@ function renderPage(
         }
 
         void authenticate();
+      });
+      copyHistoryButton.addEventListener("click", () => {
+        void copyHistory();
       });
     </script>
   </body>
@@ -1053,6 +1348,28 @@ export async function handler(
 
   if (method === "POST" && path === "/api/passkeys/auth/finish") {
     return finishAuthentication(event, await parseJsonBody(event));
+  }
+
+  if (method === "GET" && path === "/api/passkeys/auth/status") {
+    const flowId = event.queryStringParameters?.flowId?.trim() ?? "";
+    if (!flowId) {
+      return jsonResponse({ ok: false, error: "flowId is required" }, 400);
+    }
+
+    const status = await getAuthStatus(flowId);
+    if (!status) {
+      return jsonResponse({ ok: false, error: "status not found" }, 404);
+    }
+
+    return jsonResponse({
+      ok: true,
+      progressStep: status.progressStep ?? null,
+      progressMessage: status.progressMessage ?? null,
+      progressDetail: status.progressDetail ?? null,
+      failureStep: status.failureStep ?? null,
+      error: status.error ?? null,
+      dashboardUrl: status.dashboardUrl ?? null,
+    });
   }
 
   return jsonResponse({ ok: false, error: "not found" }, 404);
