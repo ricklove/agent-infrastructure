@@ -2,6 +2,7 @@ import {
   type SourceWorkspace,
   type BoardFile,
   type WorkspaceState,
+  type DocumentSummary,
 } from "@agent-infrastructure/agent-graph-core";
 import {
   boardFileWithWorkspaceState,
@@ -11,12 +12,15 @@ import {
 import type { BoardSummary } from "@agent-infrastructure/agent-graph-core";
 import { basename, dirname, relative } from "node:path";
 
+const WORKSPACE_ROOT = "/home/ec2-user/workspace";
+
 export type DocumentRepository = {
   getBoardPath(): string;
   getBoardFile(): BoardFile;
   setBoardFile(nextBoardFile: BoardFile): void;
   getBoardSummary(): BoardSummary;
   listBoards(): Promise<BoardSummary[]>;
+  listDocuments(): Promise<DocumentSummary[]>;
   openBoard(boardPath: string): Promise<void>;
   getSourceWorkspace(): SourceWorkspace;
   setSourceWorkspace(nextWorkspace: SourceWorkspace): void;
@@ -27,9 +31,8 @@ export type DocumentRepository = {
 };
 
 function toBoardSummary(boardPath: string, boardFile: BoardFile): BoardSummary {
-  const baseDir = dirname(DEFAULT_AGENT_GRAPH_BOARD_PATH);
   return {
-    path: relative(baseDir, boardPath) || basename(boardPath),
+    path: relative(WORKSPACE_ROOT, boardPath) || basename(boardPath),
     id: boardFile.id,
     label: boardFile.label,
   };
@@ -57,10 +60,9 @@ export async function createDocumentRepository(): Promise<DocumentRepository> {
       return toBoardSummary(boardPath, boardFile);
     },
     async listBoards() {
-      const boardRoot = dirname(DEFAULT_AGENT_GRAPH_BOARD_PATH);
       const boardPaths = await Array.fromAsync(
         new Bun.Glob("**/*.board.json").scan({
-          cwd: boardRoot,
+          cwd: WORKSPACE_ROOT,
           absolute: true,
         }),
       );
@@ -71,6 +73,20 @@ export async function createDocumentRepository(): Promise<DocumentRepository> {
         }),
       );
       return boards.sort((left, right) => left.label.localeCompare(right.label));
+    },
+    async listDocuments() {
+      const documentPaths = await Array.fromAsync(
+        new Bun.Glob("**/*.agentish.ts").scan({
+          cwd: WORKSPACE_ROOT,
+          absolute: true,
+        }),
+      );
+      return documentPaths
+        .map((documentPath) => ({
+          path: relative(WORKSPACE_ROOT, documentPath) || basename(documentPath),
+          label: basename(documentPath),
+        }))
+        .sort((left, right) => left.path.localeCompare(right.path));
     },
     async openBoard(nextBoardPath) {
       const loaded = await loadAgentishBoard(nextBoardPath);

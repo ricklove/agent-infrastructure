@@ -1,11 +1,16 @@
 import type {
   BoardSummary,
+  DocumentSummary,
   GraphDiffSnapshot,
   GraphIntent,
   GraphSnapshot,
   WorkspaceSnapshot,
 } from "@agent-infrastructure/agent-graph-core";
-import type { GetBoardsResponse, GetWorkspaceResponse } from "@agent-infrastructure/agent-graph-protocol";
+import type {
+  GetBoardsResponse,
+  GetDocumentsResponse,
+  GetWorkspaceResponse,
+} from "@agent-infrastructure/agent-graph-protocol";
 import type { ClientMessage, ServerMessage } from "@agent-infrastructure/agent-graph-protocol";
 import { nextIntentId, queueIntent, type AgentGraphStore } from "./agent-graph-store.js";
 
@@ -88,6 +93,18 @@ async function fetchBoards(store: AgentGraphStore): Promise<BoardSummary[]> {
   return payload.boards;
 }
 
+async function fetchDocuments(store: AgentGraphStore): Promise<DocumentSummary[]> {
+  const response = await fetch(
+    buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "documents"),
+  );
+  if (!response.ok) {
+    throw new Error(`Documents request failed with status ${response.status}.`);
+  }
+  const payload = (await response.json()) as GetDocumentsResponse;
+  store.state$.documents.set(payload.documents);
+  return payload.documents;
+}
+
 function handleServerMessage(store: AgentGraphStore, message: ServerMessage): void {
   switch (message.type) {
     case "server/connected":
@@ -140,6 +157,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
         const payload = (await response.json()) as GetWorkspaceResponse;
         applySnapshot(store, payload.workspace, payload.graph, payload.diff);
         await fetchBoards(store);
+        await fetchDocuments(store);
         ws = connect(store);
       } catch (error) {
         store.state$.connection.status.set("error");
@@ -376,6 +394,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
 
     async refreshBoards(): Promise<void> {
       await fetchBoards(store);
+      await fetchDocuments(store);
     },
 
     async openBoard(path: string): Promise<void> {
@@ -395,6 +414,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       const payload = (await response.json()) as GetWorkspaceResponse;
       applySnapshot(store, payload.workspace, payload.graph, payload.diff);
       await fetchBoards(store);
+      await fetchDocuments(store);
     },
 
     async saveBoardAs(path: string, label?: string): Promise<void> {
@@ -414,6 +434,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       const payload = (await response.json()) as GetWorkspaceResponse;
       applySnapshot(store, payload.workspace, payload.graph, payload.diff);
       await fetchBoards(store);
+      await fetchDocuments(store);
     },
 
     async addBoardDocument(path: string): Promise<void> {
@@ -433,6 +454,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       const payload = (await response.json()) as GetWorkspaceResponse;
       applySnapshot(store, payload.workspace, payload.graph, payload.diff);
       await fetchBoards(store);
+      await fetchDocuments(store);
     },
   };
 }

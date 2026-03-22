@@ -1,10 +1,16 @@
 import { buildCompleteGraph, buildDiffLayers } from "@agent-infrastructure/agent-graph-core";
 import { createWsMessageHandler } from "./create-ws-server.js";
 import type { DocumentRepository } from "./document-repository.js";
-import type { GetBoardsResponse, GetWorkspaceResponse } from "@agent-infrastructure/agent-graph-protocol";
-import { boardFileWithWorkspaceState, DEFAULT_AGENT_GRAPH_BOARD_PATH } from "./load-agentish-workspace.js";
-import { dirname, resolve } from "node:path";
+import type {
+  GetBoardsResponse,
+  GetDocumentsResponse,
+  GetWorkspaceResponse,
+} from "@agent-infrastructure/agent-graph-protocol";
+import { boardFileWithWorkspaceState } from "./load-agentish-workspace.js";
+import { dirname, relative, resolve } from "node:path";
 import { saveBoardFile } from "./workspace-state-repository.js";
+
+const WORKSPACE_ROOT = "/home/ec2-user/workspace";
 
 function snapshotPayload(repository: DocumentRepository): GetWorkspaceResponse {
   const sourceWorkspace = repository.getSourceWorkspace();
@@ -37,7 +43,6 @@ function snapshotPayload(repository: DocumentRepository): GetWorkspaceResponse {
 export async function createHttpServer(repository: DocumentRepository) {
   const handleWsMessage = createWsMessageHandler(repository);
   const sockets = new Set<Bun.ServerWebSocket<unknown>>();
-  const boardRoot = dirname(DEFAULT_AGENT_GRAPH_BOARD_PATH);
 
   return Bun.serve({
     port: 8788,
@@ -70,12 +75,23 @@ export async function createHttpServer(repository: DocumentRepository) {
         });
       }
 
+      if (url.pathname === "/api/agent-graph/documents") {
+        const response: GetDocumentsResponse = {
+          documents: await repository.listDocuments(),
+        };
+        return Response.json(response, {
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
       if (url.pathname === "/api/agent-graph/open-board" && request.method === "POST") {
         const payload = (await request.json()) as { path?: string };
         if (!payload.path) {
           return new Response("board path required", { status: 400 });
         }
-        const nextBoardPath = resolve(boardRoot, payload.path);
+        const nextBoardPath = resolve(WORKSPACE_ROOT, payload.path);
         await repository.openBoard(nextBoardPath);
         return Response.json(snapshotPayload(repository));
       }
@@ -85,7 +101,7 @@ export async function createHttpServer(repository: DocumentRepository) {
         if (!payload.path) {
           return new Response("board path required", { status: 400 });
         }
-        const nextBoardPath = resolve(boardRoot, payload.path);
+        const nextBoardPath = resolve(WORKSPACE_ROOT, payload.path);
         const nextBoardFile = {
           ...boardFileWithWorkspaceState(
             repository.getBoardFile(),
@@ -103,7 +119,8 @@ export async function createHttpServer(repository: DocumentRepository) {
         if (!payload.path) {
           return new Response("document path required", { status: 400 });
         }
-        const nextDocumentPath = payload.path.trim();
+        const absoluteDocumentPath = resolve(WORKSPACE_ROOT, payload.path.trim());
+        const nextDocumentPath = relative(dirname(repository.getBoardPath()), absoluteDocumentPath);
         const nextBoardFile = {
           ...repository.getBoardFile(),
           documents: [...new Set([...repository.getBoardFile().documents, nextDocumentPath])],

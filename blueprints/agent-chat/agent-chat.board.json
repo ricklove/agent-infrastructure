@@ -1,0 +1,23 @@
+{
+  "kind": "agent-graph-board",
+  "id": "agent-chat",
+  "label": "Agent Chat",
+  "documents": [
+    "./agent-chat.agentish.ts"
+  ],
+  "revision": 1,
+  "layers": [
+    {
+      "id": "layer-overview",
+      "label": "Overview",
+      "kind": "overview",
+      "nodeIds": [],
+      "visible": true,
+      "x": 40,
+      "y": 40,
+      "derivedFromLayerId": null
+    }
+  ],
+  "nodePositions": {},
+  "pinnedNodeIds": []
+}

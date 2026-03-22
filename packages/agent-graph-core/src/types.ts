@@ -67,6 +67,11 @@ export type BoardSummary = {
   label: string;
 };
 
+export type DocumentSummary = {
+  path: string;
+  label: string;
+};
+
 export type LayerDefinition = {
   id: string;
   label: string;
