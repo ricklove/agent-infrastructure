@@ -381,7 +381,7 @@ function launchWorker(config: BenchmarkConfig, imageId: string): {
   const launchResult = runCheckedJson<LaunchWorkerResult>(
     [
       "bash",
-      join(config.runtimeDir, "packages/swarm-manager/scripts/launch-worker.sh"),
+      join(config.runtimeDir, "scripts/launch-worker.sh"),
       "--instance-type",
       config.instanceType,
       "--image-id",

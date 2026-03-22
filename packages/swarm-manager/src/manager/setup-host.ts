@@ -128,7 +128,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=ec2-user
-ExecStart=/usr/bin/env bash ${hostRoot}/packages/swarm-manager/scripts/run-manager.sh
+ExecStart=/usr/bin/env bash ${hostRoot}/scripts/run-manager.sh
 Restart=always
 RestartSec=2
 
@@ -146,7 +146,7 @@ Wants=network-online.target agent-swarm-monitor.service
 [Service]
 Type=simple
 User=ec2-user
-ExecStart=/usr/bin/env bash ${hostRoot}/packages/swarm-manager/scripts/run-manager-node.sh
+ExecStart=/usr/bin/env bash ${hostRoot}/scripts/run-manager-node.sh
 Restart=always
 RestartSec=2
 
@@ -231,7 +231,7 @@ ROLLUP_1H_RETENTION_DAYS=365
 AGENT_GITHUB_CONFIG_ROOT=${config.agentGithubConfigRoot}
 SWARM_BOOTSTRAP_CONTEXT_PATH=${config.bootstrapContextPath}
 GIT_TERMINAL_PROMPT=0
-GIT_ASKPASS=${config.runtimeDir}/packages/swarm-manager/scripts/git-askpass.sh
+GIT_ASKPASS=${config.runtimeDir}/scripts/git-askpass.sh
 `),
   );
 
@@ -250,7 +250,7 @@ MONITOR_WORKER_ID=${instanceId}
 MONITOR_INSTANCE_ID=${instanceId}
 MONITOR_PRIVATE_IP=${managerPrivateIp}
 AGENT_GITHUB_CONFIG_ROOT=${config.agentGithubConfigRoot}
-GIT_ASKPASS=${config.runtimeDir}/packages/swarm-manager/scripts/git-askpass.sh
+GIT_ASKPASS=${config.runtimeDir}/scripts/git-askpass.sh
 GIT_TERMINAL_PROMPT=0
 `),
   );
