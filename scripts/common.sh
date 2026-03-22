@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUNTIME_ROOT="${AGENT_RUNTIME_DIR:-$(cd "${SCRIPT_DIR}/../../.." && pwd)}"
+RUNTIME_ROOT="${AGENT_RUNTIME_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 STATE_ROOT="${AGENT_STATE_DIR:-/home/ec2-user/state}"
 WORKSPACE_ROOT="${AGENT_WORKSPACE_DIR:-/home/ec2-user/workspace}"
 SYSTEM_EVENT_LOG_PATH="${SYSTEM_EVENT_LOG_PATH:-${STATE_ROOT}/logs/system-events.log}"
