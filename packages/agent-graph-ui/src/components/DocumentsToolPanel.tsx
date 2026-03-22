@@ -66,7 +66,7 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
+    <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-['Space_Grotesk'] text-base font-medium text-stone-50">
@@ -108,71 +108,73 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
         </div>
       </div>
 
-      {workspace ? (
-        <div className="mt-3 rounded-[1.6rem] border border-stone-800 bg-stone-950/80 p-3.5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-stone-500">
-                Current Board
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {workspace ? (
+          <div className="mt-3 rounded-[1.6rem] border border-stone-800 bg-stone-950/80 p-3.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-stone-500">
+                  Current Board
+                </div>
+                <div className="mt-2 text-lg font-medium text-stone-100">{workspace.board.label}</div>
+                <div className="mt-1 truncate text-[11px] text-stone-500">{workspace.board.path}</div>
               </div>
-              <div className="mt-2 text-lg font-medium text-stone-100">{workspace.board.label}</div>
-              <div className="mt-1 truncate text-[11px] text-stone-500">{workspace.board.path}</div>
+              <div className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-amber-200">
+                Live
+              </div>
             </div>
-            <div className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-amber-200">
-              Live
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => openPicker("boards")}
+                className="rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-950 hover:bg-white"
+              >
+                Open Board
+              </button>
+              <button
+                type="button"
+                onClick={() => openPicker("documents")}
+                className="rounded-full border border-stone-700 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
+              >
+                Add Document
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveBoardAs()}
+                className="rounded-full border border-stone-700 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
+              >
+                Save As
+              </button>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => openPicker("boards")}
-              className="rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-950 hover:bg-white"
-            >
-              Open Board
-            </button>
-            <button
-              type="button"
-              onClick={() => openPicker("documents")}
-              className="rounded-full border border-stone-700 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
-            >
-              Add Document
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSaveBoardAs()}
-              className="rounded-full border border-stone-700 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
-            >
-              Save As
-            </button>
-          </div>
+        ) : null}
+
+        <div className="mt-3 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">
+          Board Documents
         </div>
-      ) : null}
 
-      <div className="mt-3 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">
-        Board Documents
-      </div>
-
-      <div className="mt-2 max-h-36 min-h-0 space-y-2 overflow-auto pr-1">
-        {workspace?.documents.length ? (
-          workspace.documents.map((document) => (
-            <div
-              key={document.id}
-              className="rounded-2xl border border-stone-800 bg-stone-950/70 p-2.5"
-            >
-              <div className="text-sm font-medium text-stone-100">{document.label}</div>
-              <div className="mt-1 text-[11px] text-stone-500">{document.path}</div>
+        <div className="mt-2 max-h-36 min-h-0 space-y-2 overflow-auto pr-1">
+          {workspace?.documents.length ? (
+            workspace.documents.map((document) => (
+              <div
+                key={document.id}
+                className="rounded-2xl border border-stone-800 bg-stone-950/70 p-2.5"
+              >
+                <div className="text-sm font-medium text-stone-100">{document.label}</div>
+                <div className="mt-1 text-[11px] text-stone-500">{document.path}</div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-3 text-sm text-stone-400">
+              Loading documents…
             </div>
-          ))
-        ) : (
-          <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-3 text-sm text-stone-400">
-            Loading documents…
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      <div className="mt-3 rounded-2xl border border-stone-800 bg-stone-950/60 p-3 text-xs text-stone-400">
-        Boards and Agentish documents now come from workspace-wide discovery. Use the actions above
-        to browse instead of typing paths manually.
+        <div className="mt-3 rounded-2xl border border-stone-800 bg-stone-950/60 p-3 text-xs text-stone-400">
+          Boards and Agentish documents now come from workspace-wide discovery. Use the actions above
+          to browse instead of typing paths manually.
+        </div>
       </div>
 
       {picker ? (
