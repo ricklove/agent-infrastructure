@@ -74,6 +74,14 @@ const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const ssm = new SSMClient({});
 let resolvedManagerInstanceId: string | null = null;
 
+function logAuthStep(step: string, detail?: Record<string, unknown>): void {
+  if (detail) {
+    console.log(`[dashboard-access] ${step}`, detail);
+    return;
+  }
+  console.log(`[dashboard-access] ${step}`);
+}
+
 function nowMs(): number {
   return Date.now();
 }
@@ -241,8 +249,12 @@ async function beginRegistration(
   event: APIGatewayProxyEventV2,
   body: JsonBody,
 ): Promise<APIGatewayProxyStructuredResultV2> {
+  logAuthStep("register.begin.requested", {
+    hasTicket: typeof body?.ticket === "string" && body.ticket.trim().length > 0,
+  });
   const ticket = typeof body?.ticket === "string" ? body.ticket.trim() : "";
   if (!ticket) {
+    logAuthStep("register.begin.rejected", { reason: "missing-ticket" });
     return jsonResponse({ ok: false, error: "ticket is required" }, 400);
   }
 
@@ -253,6 +265,7 @@ async function beginRegistration(
     ticketState.expiresAtMs <= nowMs() ||
     ticketState.usedAtMs
   ) {
+    logAuthStep("register.begin.rejected", { reason: "invalid-ticket" });
     return jsonResponse({ ok: false, error: "invalid enrollment ticket" }, 401);
   }
 
@@ -282,6 +295,11 @@ async function beginRegistration(
     expiresAtMs: nowMs() + 5 * 60 * 1000,
   });
 
+  logAuthStep("register.begin.ready", {
+    rpId: rpID,
+    excludedCredentialCount: existingCredentials.length,
+  });
+
   return jsonResponse({
     ok: true,
     options,
@@ -292,10 +310,15 @@ async function finishRegistration(
   event: APIGatewayProxyEventV2,
   body: JsonBody,
 ): Promise<APIGatewayProxyStructuredResultV2> {
+  logAuthStep("register.finish.requested", {
+    hasTicket: typeof body?.ticket === "string" && body.ticket.trim().length > 0,
+    hasCredential: Boolean(body?.credential),
+  });
   const ticket = typeof body?.ticket === "string" ? body.ticket.trim() : "";
   const credential = body?.credential;
 
   if (!ticket || !credential) {
+    logAuthStep("register.finish.rejected", { reason: "missing-ticket-or-credential" });
     return jsonResponse({ ok: false, error: "ticket and credential are required" }, 400);
   }
 
@@ -310,6 +333,7 @@ async function finishRegistration(
     registrationState.expiresAtMs <= nowMs() ||
     ticketState.usedAtMs
   ) {
+    logAuthStep("register.finish.rejected", { reason: "registration-ticket-invalid" });
     return jsonResponse({ ok: false, error: "registration ticket is no longer valid" }, 401);
   }
 
@@ -322,6 +346,7 @@ async function finishRegistration(
   });
 
   if (!verification.verified || !verification.registrationInfo) {
+    logAuthStep("register.finish.rejected", { reason: "verification-failed" });
     return jsonResponse({ ok: false, error: "passkey registration failed" }, 401);
   }
 
@@ -348,12 +373,20 @@ async function finishRegistration(
     }),
   );
 
+  logAuthStep("register.finish.completed", {
+    credentialId: normalizeCredentialId(verification.registrationInfo.credential.id),
+  });
+
   return jsonResponse({ ok: true });
 }
 
 async function beginAuthentication(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
+  logAuthStep("auth.begin.requested", {
+    rpId: getRpId(event),
+    origin: getOrigin(event),
+  });
   const flowId = `auth:${randomId(18)}`;
   const options = await generateAuthenticationOptions({
     rpID: getRpId(event),
@@ -367,6 +400,8 @@ async function beginAuthentication(
     challenge: options.challenge,
     expiresAtMs: nowMs() + 5 * 60 * 1000,
   });
+
+  logAuthStep("auth.begin.ready", { flowId });
 
   return jsonResponse({
     ok: true,
@@ -412,7 +447,9 @@ async function resolveManagerInstanceId(): Promise<string> {
 }
 
 async function issueDashboardAccess(): Promise<string> {
+  logAuthStep("auth.finish.dashboard-session.issue.requested");
   const managerInstanceId = await resolveManagerInstanceId();
+  logAuthStep("auth.finish.dashboard-session.manager.resolved", { managerInstanceId });
   const send = await ssm.send(
     new SendCommandCommand({
       InstanceIds: [managerInstanceId],
@@ -428,8 +465,11 @@ async function issueDashboardAccess(): Promise<string> {
 
   const commandId = send.Command?.CommandId;
   if (!commandId) {
+    logAuthStep("auth.finish.dashboard-session.issue.failed", { reason: "missing-command-id" });
     throw new Error("failed to create dashboard session command");
   }
+
+  logAuthStep("auth.finish.dashboard-session.command.sent", { commandId });
 
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
@@ -464,13 +504,17 @@ async function issueDashboardAccess(): Promise<string> {
         .at(-1);
 
       if (!line) {
+        logAuthStep("auth.finish.dashboard-session.issue.failed", { reason: "missing-json-output" });
         throw new Error("dashboard session command did not return JSON");
       }
 
       const payload = JSON.parse(line) as { sessionUrl?: string };
       if (!payload.sessionUrl) {
+        logAuthStep("auth.finish.dashboard-session.issue.failed", { reason: "missing-session-url" });
         throw new Error("dashboard session URL was missing");
       }
+
+      logAuthStep("auth.finish.dashboard-session.issued", { sessionUrl: payload.sessionUrl });
 
       return payload.sessionUrl;
     }
@@ -481,6 +525,9 @@ async function issueDashboardAccess(): Promise<string> {
       invocation.Status === "Failed" ||
       invocation.Status === "TimedOut"
     ) {
+      logAuthStep("auth.finish.dashboard-session.issue.failed", {
+        reason: invocation.Status ?? "unknown-status",
+      });
       throw new Error(
         invocation.StandardErrorContent?.trim() || "dashboard session command failed",
       );
@@ -489,10 +536,12 @@ async function issueDashboardAccess(): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
+  logAuthStep("auth.finish.dashboard-session.issue.failed", { reason: "timeout" });
   throw new Error("dashboard session command timed out");
 }
 
 async function waitForDashboardAccessReady(dashboardUrl: string): Promise<void> {
+  logAuthStep("auth.finish.dashboard-session.readiness.waiting", { dashboardUrl });
   const url = new URL(dashboardUrl);
   const readinessUrl = `${url.origin}/api/config`;
   const deadline = Date.now() + 30_000;
@@ -504,6 +553,7 @@ async function waitForDashboardAccessReady(dashboardUrl: string): Promise<void> 
       });
 
       if (response.ok) {
+        logAuthStep("auth.finish.dashboard-session.readiness.ready", { dashboardUrl });
         return;
       }
     } catch {}
@@ -511,6 +561,7 @@ async function waitForDashboardAccessReady(dashboardUrl: string): Promise<void> 
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
+  logAuthStep("auth.finish.dashboard-session.readiness.failed", { reason: "timeout" });
   throw new Error("dashboard access URL did not become ready in time");
 }
 
@@ -518,10 +569,19 @@ async function finishAuthentication(
   event: APIGatewayProxyEventV2,
   body: JsonBody,
 ): Promise<APIGatewayProxyStructuredResultV2> {
+  logAuthStep("auth.finish.requested", {
+    hasFlowId: typeof body?.flowId === "string" && body.flowId.trim().length > 0,
+    hasCredential: Boolean(body?.credential),
+    credentialId:
+      body?.credential && typeof (body.credential as Record<string, unknown>).id === "string"
+        ? (body.credential as Record<string, unknown>).id
+        : null,
+  });
   const flowId = typeof body?.flowId === "string" ? body.flowId.trim() : "";
   const credential = body?.credential as Record<string, unknown> | undefined;
 
   if (!flowId || !credential || typeof credential.id !== "string") {
+    logAuthStep("auth.finish.rejected", { reason: "missing-flow-or-credential" });
     return jsonResponse({ ok: false, error: "flowId and credential are required" }, 400);
   }
 
@@ -531,11 +591,13 @@ async function finishAuthentication(
     authState.kind !== "authentication" ||
     authState.expiresAtMs <= nowMs()
   ) {
+    logAuthStep("auth.finish.rejected", { reason: "authentication-session-expired", flowId });
     return jsonResponse({ ok: false, error: "authentication session expired" }, 401);
   }
 
   const credentialRecord = await getCredential(credential.id);
   if (!credentialRecord) {
+    logAuthStep("auth.finish.rejected", { reason: "unknown-passkey", credentialId: credential.id });
     return jsonResponse({ ok: false, error: "unknown passkey" }, 401);
   }
 
@@ -554,8 +616,15 @@ async function finishAuthentication(
   });
 
   if (!verification.verified) {
+    logAuthStep("auth.finish.rejected", { reason: "verification-failed", flowId });
     return jsonResponse({ ok: false, error: "passkey authentication failed" }, 401);
   }
+
+  logAuthStep("auth.finish.verified", {
+    flowId,
+    credentialId: credential.id,
+    newCounter: verification.authenticationInfo.newCounter,
+  });
 
   await putCredential({
     ...credentialRecord,
@@ -570,6 +639,7 @@ async function finishAuthentication(
 
   const dashboardUrl = await issueDashboardAccess();
   await waitForDashboardAccessReady(dashboardUrl);
+  logAuthStep("auth.finish.completed", { flowId, dashboardUrl });
   return jsonResponse({
     ok: true,
     dashboardUrl,
@@ -582,6 +652,7 @@ async function createEnrollmentTicket(
   if (
     event.headers["x-dashboard-enrollment-secret"] !== config.enrollmentSecret
   ) {
+    logAuthStep("enrollment-ticket.rejected", { reason: "forbidden" });
     return jsonResponse({ ok: false, error: "forbidden" }, 403);
   }
 
@@ -592,6 +663,8 @@ async function createEnrollmentTicket(
     kind: "enrollment",
     expiresAtMs,
   });
+
+  logAuthStep("enrollment-ticket.created", { ticket, expiresAtMs });
 
   return jsonResponse({
     ok: true,
@@ -657,6 +730,35 @@ function renderPage(
         color: rgba(244,246,247,0.86);
         white-space: pre-wrap;
       }
+      .steps {
+        margin-top: 18px;
+        padding: 14px;
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.04);
+      }
+      .steps h2 {
+        margin: 0 0 10px;
+        font-size: 0.82rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,0.56);
+      }
+      .steps ol {
+        margin: 0;
+        padding-left: 18px;
+        color: rgba(216, 239, 225, 0.92);
+        font-size: 0.93rem;
+        line-height: 1.55;
+      }
+      .steps li + li {
+        margin-top: 8px;
+      }
+      .steps code {
+        margin-top: 6px;
+        font-size: 0.78rem;
+        color: #c9efe0;
+      }
       code {
         display: block;
         margin-top: 14px;
@@ -681,12 +783,17 @@ function renderPage(
         mode === "register" ? "Register Passkey" : "Sign In With Passkey"
       }</button>
       <div id="message" class="message"></div>
+      <section class="steps">
+        <h2>Auth Steps</h2>
+        <ol id="stepLog"></ol>
+      </section>
     </main>
     <script type="module">
       const mode = ${JSON.stringify(mode)};
       const registrationTicket = ${JSON.stringify(registrationTicket)};
       const button = document.getElementById("actionButton");
       const message = document.getElementById("message");
+      const stepLog = document.getElementById("stepLog");
 
       if (mode === "register" && window.location.search) {
         window.history.replaceState({}, "", "/register");
@@ -694,6 +801,20 @@ function renderPage(
 
       function setMessage(value) {
         message.textContent = value;
+      }
+
+      function pushStep(step, detail) {
+        const entry = document.createElement("li");
+        const summary = document.createElement("div");
+        summary.textContent = step;
+        entry.appendChild(summary);
+        if (detail !== undefined) {
+          const detailCode = document.createElement("code");
+          detailCode.textContent = typeof detail === "string" ? detail : JSON.stringify(detail, null, 2);
+          entry.appendChild(detailCode);
+        }
+        stepLog.appendChild(entry);
+        console.log("[dashboard-access-ui]", step, detail ?? "");
       }
 
       function base64urlToBuffer(base64url) {
@@ -773,10 +894,12 @@ function renderPage(
       async function registerPasskey() {
         const ticket = registrationTicket;
         if (!ticket) {
+          pushStep("register.redirect.no-ticket");
           window.location.replace("/");
           return;
         }
 
+        pushStep("register.begin.requested", { ticket });
         setMessage("Preparing passkey registration...");
         const beginResponse = await fetch("/api/passkeys/register/begin", {
           method: "POST",
@@ -784,6 +907,7 @@ function renderPage(
           body: JSON.stringify({ ticket }),
         });
         const beginPayload = await beginResponse.json();
+        pushStep("register.begin.response", { status: beginResponse.status, payload: beginPayload });
         if (!beginResponse.ok) {
           if (
             beginResponse.status === 401 &&
@@ -797,9 +921,11 @@ function renderPage(
           return;
         }
 
+        pushStep("register.browser.credentials.create.start");
         const credential = await navigator.credentials.create({
           publicKey: creationOptionsFromJSON(beginPayload.options),
         });
+        pushStep("register.browser.credentials.create.success", { id: credential.id, type: credential.type });
 
         const finishResponse = await fetch("/api/passkeys/register/finish", {
           method: "POST",
@@ -810,6 +936,7 @@ function renderPage(
           }),
         });
         const finishPayload = await finishResponse.json();
+        pushStep("register.finish.response", { status: finishResponse.status, payload: finishPayload });
         if (!finishResponse.ok) {
           setMessage(finishPayload.error || "Failed to finish registration.");
           return;
@@ -819,6 +946,7 @@ function renderPage(
       }
 
       async function authenticate() {
+        pushStep("auth.begin.requested");
         setMessage("Waiting for your passkey...");
         const beginResponse = await fetch("/api/passkeys/auth/begin", {
           method: "POST",
@@ -826,15 +954,35 @@ function renderPage(
           body: JSON.stringify({}),
         });
         const beginPayload = await beginResponse.json();
+        pushStep("auth.begin.response", { status: beginResponse.status, payload: beginPayload });
         if (!beginResponse.ok) {
           setMessage(beginPayload.error || "Failed to start authentication.");
           return;
         }
 
-        const credential = await navigator.credentials.get({
-          publicKey: requestOptionsFromJSON(beginPayload.options),
-        });
+        let credential;
+        try {
+          pushStep("auth.browser.credentials.get.start", {
+            flowId: beginPayload.flowId,
+            rpId: beginPayload.options?.rpId,
+          });
+          credential = await navigator.credentials.get({
+            publicKey: requestOptionsFromJSON(beginPayload.options),
+          });
+          pushStep("auth.browser.credentials.get.success", {
+            id: credential?.id ?? null,
+            type: credential?.type ?? null,
+          });
+        } catch (error) {
+          pushStep("auth.browser.credentials.get.error", {
+            name: error?.name ?? null,
+            message: error?.message ?? String(error),
+          });
+          setMessage(error?.message || "Passkey request failed before authentication could finish.");
+          return;
+        }
 
+        pushStep("auth.finish.requested", { flowId: beginPayload.flowId, credentialId: credential.id });
         const finishResponse = await fetch("/api/passkeys/auth/finish", {
           method: "POST",
           headers: { "content-type": "application/json; charset=utf-8" },
@@ -844,11 +992,13 @@ function renderPage(
           }),
         });
         const finishPayload = await finishResponse.json();
+        pushStep("auth.finish.response", { status: finishResponse.status, payload: finishPayload });
         if (!finishResponse.ok) {
           setMessage(finishPayload.error || "Failed to authenticate.");
           return;
         }
 
+        pushStep("auth.redirect.dashboard", { dashboardUrl: finishPayload.dashboardUrl });
         setMessage("Access granted. Waiting for the dashboard link to become ready...");
         window.location.href = finishPayload.dashboardUrl;
       }
