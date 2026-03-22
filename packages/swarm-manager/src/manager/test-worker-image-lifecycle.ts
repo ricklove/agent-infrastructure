@@ -592,8 +592,12 @@ async function main(): Promise<void> {
       elapsedSeconds: number;
     }>(
       [
-        "bash",
-        join(config.runtimeDir, "packages/swarm-manager/scripts/hibernate-workers.sh"),
+        "bun",
+        join(config.runtimeDir, "packages/swarm-manager/src/manager/worker-power.ts"),
+        "--action",
+        "hibernate",
+        "--bootstrap-context",
+        config.bootstrapContextPath,
         worker.instanceId,
       ],
       config.runtimeDir,
@@ -613,8 +617,12 @@ async function main(): Promise<void> {
       elapsedSeconds: number;
     }>(
       [
-        "bash",
-        join(config.runtimeDir, "packages/swarm-manager/scripts/wake-workers.sh"),
+        "bun",
+        join(config.runtimeDir, "packages/swarm-manager/src/manager/worker-power.ts"),
+        "--action",
+        "wake",
+        "--bootstrap-context",
+        config.bootstrapContextPath,
         worker.instanceId,
       ],
       config.runtimeDir,
