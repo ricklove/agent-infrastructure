@@ -428,18 +428,17 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
           >
             AI
           </button>
-          <div className="pointer-events-auto absolute left-[calc(100%+0.75rem)] top-0 z-50 hidden min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur group-hover:block">
-            <div className="mb-2 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={copyStatusLabel}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-stone-700 text-stone-300 transition hover:bg-stone-800 hover:text-stone-100"
-                title={copiedStatus ? "Copied" : "Copy status"}
-              >
-                <CopyIcon className="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <div className="space-y-1.5">
+          <div className="pointer-events-auto absolute left-full top-0 z-50 ml-2 hidden min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur group-hover:block">
+            <div className="absolute inset-y-0 -left-3 w-3" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={copyStatusLabel}
+              className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-stone-700 text-stone-300 transition hover:bg-stone-800 hover:text-stone-100"
+              title={copiedStatus ? "Copied" : "Copy status"}
+            >
+              <CopyIcon className="h-3.5 w-3.5" />
+            </button>
+            <div className="space-y-1.5 pr-8">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-stone-500">Version</span>
                 <span className="font-medium text-stone-100">{appVersion}</span>
