@@ -20,6 +20,10 @@ type UpdateRuntimeConfig = {
   restartServices: boolean;
 };
 
+function logStep(message: string): void {
+  console.log(`[${new Date().toISOString()}] ${message}`);
+}
+
 function optionalOne(args: string[], flag: string): string | undefined {
   const index = args.findIndex((value) => value === `--${flag}`);
   if (index === -1) {
@@ -86,6 +90,7 @@ function runChecked(
   cwd?: string,
   extraEnv?: Record<string, string>,
 ): void {
+  logStep(`update-runtime: run ${command.join(" ")}`);
   const result = Bun.spawnSync(command, {
     cwd,
     env: {
@@ -97,6 +102,7 @@ function runChecked(
   });
 
   if (result.exitCode !== 0) {
+    logStep(`update-runtime: command failed (${result.exitCode}) ${command.join(" ")}`);
     throw new Error(`command failed: ${command.join(" ")}`);
   }
 }
@@ -121,6 +127,7 @@ function ensureGitCheckout(config: UpdateRuntimeConfig): void {
 }
 
 function maybeRestartService(name: string): void {
+  logStep(`update-runtime: restart ${name}`);
   const result = Bun.spawnSync(["systemctl", "restart", name], {
     stdout: "inherit",
     stderr: "inherit",
@@ -133,6 +140,7 @@ function maybeRestartService(name: string): void {
 
 async function main(): Promise<void> {
   const config = parseArgs(process.argv.slice(2));
+  logStep(`update-runtime: start runtimeDir=${config.runtimeDir} repoRef=${config.repoRef}`);
 
   ensureGitCheckout(config);
   runChecked(["bun", "install", "--frozen-lockfile"], config.runtimeDir);
@@ -172,6 +180,8 @@ async function main(): Promise<void> {
     maybeRestartService("agent-swarm-monitor.service");
     maybeRestartService("agent-swarm-manager-node.service");
   }
+
+  logStep("update-runtime: complete");
 
   console.log(
     JSON.stringify({

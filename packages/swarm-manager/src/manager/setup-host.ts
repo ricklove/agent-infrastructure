@@ -20,6 +20,10 @@ type SetupHostConfig = {
   agentGithubConfigRoot: string;
 };
 
+function logStep(message: string): void {
+  console.log(`[${new Date().toISOString()}] ${message}`);
+}
+
 function optionalOne(args: string[], flag: string): string | undefined {
   const index = args.findIndex((value) => value === `--${flag}`);
   if (index === -1) {
@@ -43,6 +47,7 @@ function runChecked(
   cwd?: string,
   extraEnv?: Record<string, string>,
 ): void {
+  logStep(`setup-host: run ${command.join(" ")}`);
   const result = Bun.spawnSync(command, {
     cwd,
     env: {
@@ -54,11 +59,13 @@ function runChecked(
   });
 
   if (result.exitCode !== 0) {
+    logStep(`setup-host: command failed (${result.exitCode}) ${command.join(" ")}`);
     throw new Error(`command failed: ${command.join(" ")}`);
   }
 }
 
 function commandOutput(command: string[]): string {
+  logStep(`setup-host: capture ${command.join(" ")}`);
   const result = Bun.spawnSync(command, {
     stdout: "pipe",
     stderr: "pipe",
@@ -143,6 +150,7 @@ WantedBy=multi-user.target
 
 async function main(): Promise<void> {
   const config = parseArgs(process.argv.slice(2));
+  logStep(`setup-host: start runtimeDir=${config.runtimeDir} stateDir=${config.stateDir}`);
   mkdirSync(config.runtimeDir, { recursive: true });
   mkdirSync(config.stateDir, { recursive: true });
   mkdirSync(config.workspaceDir, { recursive: true });
@@ -209,10 +217,12 @@ async function main(): Promise<void> {
     "/etc/systemd/system/agent-swarm-monitor.service",
     managerServiceUnit(config.hostRoot),
   );
+  logStep("setup-host: wrote /etc/systemd/system/agent-swarm-monitor.service");
   writeFileSync(
     "/etc/systemd/system/agent-swarm-manager-node.service",
     managerNodeServiceUnit(config.hostRoot),
   );
+  logStep("setup-host: wrote /etc/systemd/system/agent-swarm-manager-node.service");
 
   writeFileSync(
     managerEnvPath,
@@ -289,6 +299,7 @@ GIT_TERMINAL_PROMPT=0
   runChecked(["systemctl", "daemon-reload"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-monitor.service"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-manager-node.service"]);
+  logStep("setup-host: complete");
 
   console.log(
     JSON.stringify({
