@@ -59,6 +59,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
   const [leftColumnWidth, setLeftColumnWidth] = useState(DEFAULT_LEFT_COLUMN_WIDTH);
   const [rightColumnWidth, setRightColumnWidth] = useState(DEFAULT_RIGHT_COLUMN_WIDTH);
   const [columnWidthsReady, setColumnWidthsReady] = useState(false);
+  const workspaceRetryTimerRef = useRef<number | null>(null);
   const [hidePreview, setHidePreview] = useState<{ layerId: string | null; sourceNodeIds: string[] }>({
     layerId: null,
     sourceNodeIds: [],
@@ -195,7 +196,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
               tone: workspace ? "good" : connection.status === "error" ? "bad" : "warn",
             },
             {
-              label: "Graph WS",
+              label: "WS",
               value: connection.status,
               tone:
                 connection.status === "ready"
@@ -209,6 +210,37 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
       }),
     );
   }, [connection.status, workspace]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (workspaceRetryTimerRef.current !== null) {
+      window.clearTimeout(workspaceRetryTimerRef.current);
+      workspaceRetryTimerRef.current = null;
+    }
+
+    const shouldRetry =
+      connection.status === "error" ||
+      (connection.status === "idle" && workspace === null);
+
+    if (!shouldRetry) {
+      return;
+    }
+
+    workspaceRetryTimerRef.current = window.setTimeout(() => {
+      workspaceRetryTimerRef.current = null;
+      void actions.openWorkspace();
+    }, 1500);
+
+    return () => {
+      if (workspaceRetryTimerRef.current !== null) {
+        window.clearTimeout(workspaceRetryTimerRef.current);
+        workspaceRetryTimerRef.current = null;
+      }
+    };
+  }, [actions, connection.status, workspace]);
 
   function beginResize(
     columnRef: RefObject<HTMLDivElement | null>,
