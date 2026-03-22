@@ -1,34 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SYSTEM_EVENT_LOG_PATH="${SYSTEM_EVENT_LOG_PATH:-/home/ec2-user/state/logs/system-events.jsonl}"
-
 system_event_log() {
   local component="$1"
   local event="$2"
   local details="${3:-}"
-  mkdir -p "$(dirname "$SYSTEM_EVENT_LOG_PATH")"
-  python3 - "$SYSTEM_EVENT_LOG_PATH" "$component" "$event" "$details" "$PWD" "$$" "$PPID" "$0" "$@" <<'PY'
-import json
-import sys
-from datetime import datetime, timezone
-
-path, component, event, details, cwd, pid, ppid, script, *argv = sys.argv[1:]
-record = {
-    "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    "component": component,
-    "event": event,
-    "pid": int(pid),
-    "ppid": int(ppid),
-    "cwd": cwd,
-    "script": script,
-    "argv": argv,
-}
-if details:
-    record["details"] = details
-with open(path, "a", encoding="utf-8") as fh:
-    fh.write(json.dumps(record) + "\\n")
-PY
+  if [[ -n "${details}" ]]; then
+    logger -t "${component}" -- "event=${event} ${details}"
+  else
+    logger -t "${component}" -- "event=${event}"
+  fi
 }
 
 system_event_run() {
@@ -45,7 +26,7 @@ system_event_run() {
   return "$exit_code"
 }
 
-system_event_log "scripts/setup.sh" "start" "bootstrap"
+system_event_log "scripts/setup.sh" "start" "phase=bootstrap"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_ROOT="${ROOT_DIR}"
@@ -92,23 +73,23 @@ agent_group="$(stat -c '%G' "${AGENT_HOME}")"
 
 mkdir -p "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
 
-system_event_run "scripts/setup.sh" "target=dnf install awscli git jq unzip zip openssl" \
+system_event_run "scripts/setup.sh" "target=dnf-install-packages" \
   dnf install -y awscli git jq unzip zip openssl
 
 if [[ ! -f /etc/yum.repos.d/cloudflared.repo ]]; then
-  system_event_run "scripts/setup.sh" "target=cloudflared.repo" \
+  system_event_run "scripts/setup.sh" "target=cloudflared-repo" \
     curl -fsSL https://pkg.cloudflare.com/cloudflared.repo -o /etc/yum.repos.d/cloudflared.repo
 fi
-system_event_run "scripts/setup.sh" "target=dnf install cloudflared" dnf install -y cloudflared
+system_event_run "scripts/setup.sh" "target=dnf-install-cloudflared" dnf install -y cloudflared
 
 mkdir -p "${NVM_DIR}"
 if [[ ! -s "${NVM_DIR}/nvm.sh" ]]; then
-  system_event_log "scripts/setup.sh" "start" "target=nvm install script" bash
+  system_event_log "scripts/setup.sh" "start" "target=nvm-install-script"
   set +e
   curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE=/dev/null NVM_DIR="${NVM_DIR}" bash
   exit_code=$?
   set -e
-  system_event_log "scripts/setup.sh" "exit" "target=nvm install script exit_code=${exit_code}" bash
+  system_event_log "scripts/setup.sh" "exit" "target=nvm-install-script exit_code=${exit_code}"
   if [[ "${exit_code}" -ne 0 ]]; then
     exit "${exit_code}"
   fi
@@ -116,9 +97,9 @@ fi
 
 # shellcheck source=/dev/null
 source "${NVM_DIR}/nvm.sh"
-system_event_run "scripts/setup.sh" "target=nvm install" nvm install "${NODE_VERSION}"
-system_event_run "scripts/setup.sh" "target=nvm alias default" nvm alias default "${NODE_VERSION}"
-system_event_run "scripts/setup.sh" "target=nvm use default" nvm use default
+system_event_run "scripts/setup.sh" "target=nvm-install" nvm install "${NODE_VERSION}"
+system_event_run "scripts/setup.sh" "target=nvm-alias-default" nvm alias default "${NODE_VERSION}"
+system_event_run "scripts/setup.sh" "target=nvm-use-default" nvm use default
 
 agent_shell_profile="${AGENT_HOME}/.bashrc"
 touch "${agent_shell_profile}"
@@ -133,22 +114,22 @@ chown -R "${agent_user}:${agent_group}" "${NVM_DIR}" "${agent_shell_profile}"
 
 export BUN_INSTALL=/opt/bun
 if [[ ! -x "$BUN_INSTALL/bin/bun" ]]; then
-  system_event_log "scripts/setup.sh" "start" "target=bun install script" bash
+  system_event_log "scripts/setup.sh" "start" "target=bun-install-script"
   set +e
   curl -fsSL https://bun.sh/install | bash
   exit_code=$?
   set -e
-  system_event_log "scripts/setup.sh" "exit" "target=bun install script exit_code=${exit_code}" bash
+  system_event_log "scripts/setup.sh" "exit" "target=bun-install-script exit_code=${exit_code}"
   if [[ "${exit_code}" -ne 0 ]]; then
     exit "${exit_code}"
   fi
 fi
-system_event_run "scripts/setup.sh" "target=install bun binary" \
+system_event_run "scripts/setup.sh" "target=install-bun-binary" \
   install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
 
 cd "$RUNTIME_ROOT"
-system_event_run "scripts/setup.sh" "target=bun install" bun install --frozen-lockfile
-system_event_run "scripts/setup.sh" "target=run setup-host" \
+system_event_run "scripts/setup.sh" "target=bun-install" bun install --frozen-lockfile
+system_event_run "scripts/setup.sh" "target=run-setup-host" \
   bun run --filter @agent-infrastructure/swarm-manager run:setup-host -- \
   --runtime-dir "$RUNTIME_ROOT" \
   --state-dir "$STATE_ROOT" \
@@ -156,4 +137,4 @@ system_event_run "scripts/setup.sh" "target=run setup-host" \
   --host-root "$RUNTIME_ROOT" \
   --bootstrap-context "$BOOTSTRAP_CONTEXT_PATH"
 
-system_event_log "scripts/setup.sh" "complete" "bootstrap"
+system_event_log "scripts/setup.sh" "complete" "phase=bootstrap"

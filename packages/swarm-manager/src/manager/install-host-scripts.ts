@@ -50,34 +50,15 @@ export GIT_TERMINAL_PROMPT=0`;
   const systemEventLogHelper = `#!/usr/bin/env bash
 set -euo pipefail
 
-SYSTEM_EVENT_LOG_PATH="\${SYSTEM_EVENT_LOG_PATH:-/home/ec2-user/state/logs/system-events.jsonl}"
-
 system_event_log() {
   local component="$1"
   local event="$2"
   local details="\${3:-}"
-  mkdir -p "$(dirname "$SYSTEM_EVENT_LOG_PATH")"
-  python3 - "$SYSTEM_EVENT_LOG_PATH" "$component" "$event" "$details" "$PWD" "$$" "$PPID" "$0" "$@" <<'PY'
-import json
-import sys
-from datetime import datetime, timezone
-
-path, component, event, details, cwd, pid, ppid, script, *argv = sys.argv[1:]
-record = {
-    "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    "component": component,
-    "event": event,
-    "pid": int(pid),
-    "ppid": int(ppid),
-    "cwd": cwd,
-    "script": script,
-    "argv": argv,
-}
-if details:
-    record["details"] = details
-with open(path, "a", encoding="utf-8") as fh:
-    fh.write(json.dumps(record) + "\\n")
-PY
+  if [[ -n "\${details}" ]]; then
+    logger -t "\${component}" -- "event=\${event} \${details}"
+  else
+    logger -t "\${component}" -- "event=\${event}"
+  fi
 }
 
 system_event_run() {
@@ -107,7 +88,7 @@ set -euo pipefail
 . ${hostRoot}/system-event-log.sh
 ${authEnvPrelude}
 cd ${runtimeDir}
-system_event_run "update-runtime.sh" "target=update-runtime.ts" \\
+system_event_run "update-runtime.sh" "target=update-runtime.ts args=$*" \\
   bun ${runtimeDir}/packages/swarm-manager/src/manager/update-runtime.ts "$@"
 `;
 
@@ -116,7 +97,7 @@ set -euo pipefail
 . ${hostRoot}/system-event-log.sh
 ${authEnvPrelude}
 cd ${runtimeDir}
-system_event_run "publish-worker-runtime-release.sh" "target=publish-worker-runtime-release.ts" \\
+system_event_run "publish-worker-runtime-release.sh" "target=publish-worker-runtime-release.ts args=$*" \\
   bun ${runtimeDir}/packages/swarm-manager/src/manager/publish-worker-runtime-release.ts "$@"
 `;
 
@@ -152,7 +133,7 @@ exec bun ${runtimeDir}/packages/swarm-manager/src/manager/test-worker-image-life
 set -euo pipefail
 . ${hostRoot}/system-event-log.sh
 if [ "\${AGENT_RUN_AS_USER_DONE:-0}" != "1" ] && [ "\$(id -u)" = "0" ]; then
-  system_event_log "issue-dashboard-session.sh" "sudo.reexec" "user=ec2-user" "$@"
+  system_event_log "issue-dashboard-session.sh" "sudo.reexec" "user=ec2-user"
   exec sudo -H -u ec2-user env \\
     AGENT_RUN_AS_USER_DONE=1 \\
     AGENT_GITHUB_CONFIG_ROOT="${agentGithubConfigRoot}" \\
@@ -162,7 +143,7 @@ if [ "\${AGENT_RUN_AS_USER_DONE:-0}" != "1" ] && [ "\$(id -u)" = "0" ]; then
 fi
 ${authEnvPrelude}
 cd ${runtimeDir}
-system_event_run "issue-dashboard-session.sh" "target=issue-dashboard-session.ts" \\
+system_event_run "issue-dashboard-session.sh" "target=issue-dashboard-session.ts args=$*" \\
   bun ${runtimeDir}/packages/swarm-manager/src/manager/issue-dashboard-session.ts "$@"
 `;
 
@@ -198,7 +179,7 @@ set -a
 source ${DEFAULT_MANAGER_ENV_PATH}
 set +a
 cd ${runtimeDir}
-system_event_run "run-manager.sh" "target=server.ts" \\
+system_event_run "run-manager.sh" "target=server.ts args=$*" \\
   bun ${runtimeDir}/packages/swarm-manager/src/manager/server.ts "$@"
 `;
 
@@ -209,7 +190,7 @@ set -a
 source ${DEFAULT_MANAGER_NODE_ENV_PATH}
 set +a
 cd ${runtimeDir}
-system_event_run "run-manager-node.sh" "target=worker/agent.ts" \\
+system_event_run "run-manager-node.sh" "target=worker/agent.ts args=$*" \\
   bun ${runtimeDir}/packages/swarm-manager/src/worker/agent.ts "$@"
 `;
 
