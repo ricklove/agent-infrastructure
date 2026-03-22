@@ -171,10 +171,6 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
           )}
         </div>
 
-        <div className="mt-3 rounded-2xl border border-stone-800 bg-stone-950/60 p-3 text-xs text-stone-400">
-          Boards and Agentish documents now come from workspace-wide discovery. Use the actions above
-          to browse instead of typing paths manually.
-        </div>
       </div>
 
       {picker ? (
