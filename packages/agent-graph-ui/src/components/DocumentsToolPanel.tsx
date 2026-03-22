@@ -68,13 +68,13 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
   return (
     <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h2 className="font-['Space_Grotesk'] text-base font-medium text-stone-50">
             Board
           </h2>
-          <p className="text-[11px] text-stone-500">
-            Repo-backed board file and included Agentish documents.
-          </p>
+          {workspace ? (
+            <div className="mt-1 truncate text-[11px] text-stone-500">{workspace.board.label}</div>
+          ) : null}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <button
@@ -110,38 +110,37 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         {workspace ? (
-          <div className="mt-3 rounded-[1.6rem] border border-stone-800 bg-stone-950/80 p-3.5">
-            <div className="flex items-start justify-between gap-3">
+          <div className="mt-3 rounded-2xl border border-stone-800 bg-stone-950/80 p-3">
+            <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-stone-500">
-                  Current Board
+                <div className="truncate text-sm font-medium text-stone-100">
+                  {workspace.board.label}
                 </div>
-                <div className="mt-2 text-lg font-medium text-stone-100">{workspace.board.label}</div>
                 <div className="mt-1 truncate text-[11px] text-stone-500">{workspace.board.path}</div>
               </div>
-              <div className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-amber-200">
-                Live
+              <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-200">
+                Open
               </div>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => openPicker("boards")}
-                className="rounded-full bg-stone-100 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-950 hover:bg-white"
+                className="rounded-full bg-stone-100 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-950 hover:bg-white"
               >
                 Open Board
               </button>
               <button
                 type="button"
                 onClick={() => openPicker("documents")}
-                className="rounded-full border border-stone-700 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
+                className="rounded-full border border-stone-700 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
               >
                 Add Document
               </button>
               <button
                 type="button"
                 onClick={() => void handleSaveBoardAs()}
-                className="rounded-full border border-stone-700 px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
+                className="rounded-full border border-stone-700 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
               >
                 Save As
               </button>
@@ -149,11 +148,16 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
           </div>
         ) : null}
 
-        <div className="mt-3 text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">
-          Board Documents
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-stone-500">
+            Documents
+          </div>
+          <div className="text-[10px] uppercase tracking-[0.16em] text-stone-600">
+            {workspace?.documents.length ?? 0}
+          </div>
         </div>
 
-        <div className="mt-2 max-h-36 min-h-0 space-y-2 overflow-auto pr-1">
+        <div className="mt-2 min-h-0 space-y-2 overflow-auto pr-1">
           {workspace?.documents.length ? (
             workspace.documents.map((document) => (
               <div
@@ -161,7 +165,7 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                 className="rounded-2xl border border-stone-800 bg-stone-950/70 p-2.5"
               >
                 <div className="text-sm font-medium text-stone-100">{document.label}</div>
-                <div className="mt-1 text-[11px] text-stone-500">{document.path}</div>
+                <div className="mt-1 truncate text-[11px] text-stone-500">{document.path}</div>
               </div>
             ))
           ) : (
