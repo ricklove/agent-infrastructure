@@ -11,7 +11,6 @@
     "run:open-dashboard": "bun run src/manager/open-dashboard.ts",
     "run:update-runtime": "bun run src/manager/update-runtime.ts",
     "run:setup-host": "bun run src/manager/setup-host.ts",
-    "run:install-host-scripts": "bun run src/manager/install-host-scripts.ts",
     "run:publish-worker-runtime-release": "bun run src/manager/publish-worker-runtime-release.ts",
     "run:build-worker-image": "bun run src/manager/build-worker-image.ts",
     "run:test-worker-image-lifecycle": "bun run src/manager/test-worker-image-lifecycle.ts",

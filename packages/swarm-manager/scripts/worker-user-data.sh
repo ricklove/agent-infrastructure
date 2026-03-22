@@ -185,7 +185,7 @@ Wants=network-online.target docker.service
 [Service]
 Type=simple
 User=ec2-user
-ExecStart=/home/ec2-user/runtime/run-worker-monitor.sh
+ExecStart=/usr/bin/env bash /home/ec2-user/runtime/packages/swarm-manager/scripts/run-worker-monitor.sh
 Restart=always
 RestartSec=2
 

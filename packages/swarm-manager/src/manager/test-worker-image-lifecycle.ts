@@ -381,7 +381,7 @@ function launchWorker(config: BenchmarkConfig, imageId: string): {
   const launchResult = runCheckedJson<LaunchWorkerResult>(
     [
       "bash",
-      join(config.runtimeDir, "launch-worker.sh"),
+      join(config.runtimeDir, "packages/swarm-manager/scripts/launch-worker.sh"),
       "--instance-type",
       config.instanceType,
       "--image-id",
@@ -591,7 +591,11 @@ async function main(): Promise<void> {
       completedAtMs: number;
       elapsedSeconds: number;
     }>(
-      ["bash", join(config.runtimeDir, "hibernate-workers.sh"), worker.instanceId],
+      [
+        "bash",
+        join(config.runtimeDir, "packages/swarm-manager/scripts/hibernate-workers.sh"),
+        worker.instanceId,
+      ],
       config.runtimeDir,
     );
 
@@ -608,7 +612,11 @@ async function main(): Promise<void> {
       completedAtMs: number;
       elapsedSeconds: number;
     }>(
-      ["bash", join(config.runtimeDir, "wake-workers.sh"), worker.instanceId],
+      [
+        "bash",
+        join(config.runtimeDir, "packages/swarm-manager/scripts/wake-workers.sh"),
+        worker.instanceId,
+      ],
       config.runtimeDir,
     );
 

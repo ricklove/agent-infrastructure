@@ -153,19 +153,6 @@ async function main(): Promise<void> {
 
   ensureGitCheckout(config);
   runChecked(["bun", "install", "--frozen-lockfile"], config.runtimeDir);
-  runChecked(
-    [
-      "bun",
-      "run",
-      "--filter",
-      "@agent-infrastructure/swarm-manager",
-      "run:install-host-scripts",
-      "--",
-      "--runtime-dir",
-      config.runtimeDir,
-    ],
-    config.runtimeDir,
-  );
   runChecked(["bun", "run", "build:dashboard"], config.runtimeDir);
   runChecked(
     [

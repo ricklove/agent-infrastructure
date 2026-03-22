@@ -4,7 +4,7 @@ This repository is a Bun monorepo for infrastructure used to run agent systems.
 
 The current filesystem layout for deployed and local manager-host usage is:
 
-- `~/runtime`: checked-out runtime code plus generated helper scripts
+- `~/runtime`: checked-out runtime code
 - `~/state`: bootstrap metadata, tokens, manifests, SQLite, and dashboard/session state
 - `~/workspace`: checked-out repos and other working directories used by the system
 

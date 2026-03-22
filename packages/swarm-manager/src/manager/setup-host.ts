@@ -128,7 +128,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=ec2-user
-ExecStart=${hostRoot}/run-manager.sh
+ExecStart=/usr/bin/env bash ${hostRoot}/packages/swarm-manager/scripts/run-manager.sh
 Restart=always
 RestartSec=2
 
@@ -146,7 +146,7 @@ Wants=network-online.target agent-swarm-monitor.service
 [Service]
 Type=simple
 User=ec2-user
-ExecStart=${hostRoot}/run-manager-node.sh
+ExecStart=/usr/bin/env bash ${hostRoot}/packages/swarm-manager/scripts/run-manager-node.sh
 Restart=always
 RestartSec=2
 
@@ -202,24 +202,6 @@ async function main(): Promise<void> {
     )}\n`,
   );
 
-  runChecked(
-    [
-      "bun",
-      "run",
-      "--filter",
-      "@agent-infrastructure/swarm-manager",
-      "run:install-host-scripts",
-      "--",
-      "--runtime-dir",
-      config.runtimeDir,
-      "--host-root",
-      config.hostRoot,
-      "--agent-github-config-root",
-      config.agentGithubConfigRoot,
-    ],
-    config.runtimeDir,
-  );
-
   writeFileSync(
     "/etc/systemd/system/agent-swarm-monitor.service",
     managerServiceUnit(config.hostRoot),
@@ -247,9 +229,9 @@ RAW_RETENTION_DAYS=7
 ROLLUP_1M_RETENTION_DAYS=30
 ROLLUP_1H_RETENTION_DAYS=365
 AGENT_GITHUB_CONFIG_ROOT=${config.agentGithubConfigRoot}
-GIT_ASKPASS=${config.hostRoot}/git-askpass.sh
 SWARM_BOOTSTRAP_CONTEXT_PATH=${config.bootstrapContextPath}
 GIT_TERMINAL_PROMPT=0
+GIT_ASKPASS=${config.runtimeDir}/packages/swarm-manager/scripts/git-askpass.sh
 `),
   );
 
@@ -268,7 +250,7 @@ MONITOR_WORKER_ID=${instanceId}
 MONITOR_INSTANCE_ID=${instanceId}
 MONITOR_PRIVATE_IP=${managerPrivateIp}
 AGENT_GITHUB_CONFIG_ROOT=${config.agentGithubConfigRoot}
-GIT_ASKPASS=${config.hostRoot}/git-askpass.sh
+GIT_ASKPASS=${config.runtimeDir}/packages/swarm-manager/scripts/git-askpass.sh
 GIT_TERMINAL_PROMPT=0
 `),
   );
