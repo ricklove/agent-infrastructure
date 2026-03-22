@@ -304,19 +304,35 @@ const Runtime = {
   browser: define.system("BrowserClient"),
   reactFlow: define.system("ReactFlowCanvas"),
   legendState: define.system("LegendStateStore"),
+  gateway: define.system("DashboardGateway"),
   bun: define.system("BunGraphServer"),
   filesystem: define.system("WorkspaceFilesystem"),
+  lazyStart: define.concept("LazyGraphBackendStartup"),
 };
 
 AgentGraph.runsOn(`
 - React and React Flow in the browser.
+- Dashboard gateway as the proxied entrypoint in the integrated shell.
 - Legend State for client graph workspace state.
 - Bun HTTP and WSS on the server.
 - Workspace filesystem as the authoritative persistence layer.
 `);
 
 Runtime.browser.uses(Runtime.reactFlow, Runtime.legendState);
+Runtime.browser.reaches(Runtime.bun).through(Runtime.gateway);
 Runtime.bun.accesses(Runtime.filesystem);
+
+Runtime.lazyStart.means(`
+- the graph backend is started only when graph HTTP or WS traffic is actually used
+- the dashboard gateway probes graph health before proxying
+- the dashboard gateway may start the graph backend when it is missing or unhealthy
+- graph is not an always-on server requirement for unrelated dashboard features
+`);
+
+when(Runtime.gateway.proxies("graph HTTP or WS traffic"))
+  .then(Runtime.gateway.ensures(Runtime.bun))
+  .and(Runtime.gateway.applies(Runtime.lazyStart))
+  .and(AgentGraph.keeps("graph backend startup lazy in the integrated dashboard"));
 
 when(Runtime.browser.connectsTo(Runtime.bun))
   .then(Runtime.browser.requests("workspace and graph snapshots"))

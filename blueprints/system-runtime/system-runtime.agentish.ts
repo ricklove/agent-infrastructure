@@ -19,6 +19,14 @@ const AWS = {
   ec2: define.system("AwsEc2"),
 };
 
+const Gateway = {
+  dashboard: define.system("DashboardGateway"),
+  backend: define.entity("GatewayBackend"),
+  definition: define.entity("GatewayBackendDefinition"),
+  health: define.entity("GatewayBackendHealthCheck"),
+  lazyStart: define.entity("GatewayLazyStartRule"),
+};
+
 const Host = {
   manager: define.system("ManagerHost"),
   worker: define.system("WorkerHost"),
@@ -53,9 +61,11 @@ const RuntimeCode = {
   setupHost: define.entity("SetupHostProgram"),
   updateRuntime: define.entity("UpdateRuntimeProgram"),
   dashboardRuntime: define.entity("DashboardRuntimeProgram"),
+  dashboardServer: define.entity("DashboardServerProgram"),
   workerPower: define.entity("WorkerPowerProgram"),
   managerServer: define.entity("ManagerServerProgram"),
   workerAgent: define.entity("WorkerAgentProgram"),
+  graphServer: define.entity("GraphServerProgram"),
   accessHandler: define.entity("DashboardAccessHandler"),
 };
 
@@ -88,6 +98,9 @@ SystemRuntime.enforces(`
 - Convenience wrapper scripts that merely bounce TS to TS are not justified.
 - System-level logs should be simple human-readable lines, not overengineered structured logging glue.
 - System event lines are written to a fixed file.
+- Feature backends behind the dashboard gateway are lazy by default.
+- The dashboard gateway may start a backend only when a feature path is actually used.
+- The dashboard gateway should prefer declared backend definitions over ad hoc one-off launch logic.
 `);
 
 SystemRuntime.defines(`
@@ -99,6 +112,7 @@ SystemRuntime.defines(`
 - RuntimeCheckoutOnly means the host runtime tree is updated by version checkout rather than ad hoc editing.
 - ScriptBoundaryRule means shell exists only at real system edges.
 - SystemLoggingRule means important system events emit short timestamped comments to a fixed log file.
+- GatewayBackendDefinition means one declared lazy backend contract with base URL, health probe, and optional start command.
 `);
 
 Host.manager.contains(
@@ -108,6 +122,7 @@ Host.manager.contains(
   Host.service,
   Host.journal,
   Host.logFile,
+  Gateway.dashboard,
 );
 
 Host.runtime.contains(Layout.scripts, Layout.tools, Layout.packageScripts);
@@ -130,6 +145,8 @@ Entrypoint.workerMonitor.contains(RuntimeCode.workerAgent);
 Entrypoint.issueDashboardSession.contains(RuntimeCode.dashboardRuntime);
 Entrypoint.launchWorker.contains(Layout.bootstrapAsset);
 Entrypoint.askpass.contains(define.entity("GitHubAppTokenResolution"));
+Gateway.dashboard.contains(Gateway.backend, Gateway.definition, Gateway.health, Gateway.lazyStart);
+Gateway.backend.contains(RuntimeCode.graphServer);
 
 Host.state.contains(Layout.envFile, Layout.unitFile, Host.logFile);
 Host.logFile.contains(Eventing.start, Eventing.exit, Eventing.error, Eventing.setup, Eventing.teardown, Eventing.mutation);
@@ -140,6 +157,7 @@ SystemRuntime.means(`
 - a script-placement contract
 - a deployment workflow contract
 - a system-level logging contract
+- a lazy gateway-backend contract
 `);
 
 Policy.sourceOfTruth.means(`
@@ -161,6 +179,13 @@ Policy.logging.means(`
 - one fixed log file for system-level events
 - log start, exit, error, setup, teardown, and important system mutations
 - optimize for operator readability over logging cleverness
+`);
+
+Gateway.lazyStart.means(`
+- feature backend processes are started only on first use
+- gateway proxy traffic is the trigger point
+- unhealthy backends may be started or restarted by the gateway
+- backends should not be kept always-on merely because they exist
 `);
 
 when(Operator.changes("server code"))
@@ -192,6 +217,18 @@ when(RuntimeCode.updateRuntime.restarts(Host.service))
   .and(Host.logFile.records(Eventing.start))
   .and(SystemRuntime.treats("service restart as a system-level event"));
 
+when(Gateway.dashboard.proxies("feature traffic"))
+  .then(Gateway.dashboard.mayEnsure(Gateway.backend))
+  .and(Gateway.backend.uses(Gateway.definition))
+  .and(Gateway.definition.includes(Gateway.health))
+  .and(Gateway.definition.mayInclude("a lazy start command"));
+
+when(Gateway.dashboard.detects("an unhealthy feature backend"))
+  .then(Gateway.dashboard.applies(Gateway.lazyStart))
+  .and(Host.logFile.records(Eventing.start))
+  .and(Host.logFile.records(Eventing.error))
+  .and(SystemRuntime.treats("gateway-triggered backend recovery as a system-level event"));
+
 when(RuntimeCode.workerPower.isUsedBy("a manager test or manager workflow"))
   .then(SystemRuntime.prefers("direct TS invocation"))
   .and(SystemRuntime.reduces("TS to shell to TS indirection"));
@@ -212,4 +249,6 @@ SystemRuntime.prescribes(`
 - systemd points at top-level runtime scripts
 - Lambda or SSM points at top-level runtime scripts
 - worker user data may remain package-local when it is an internal bootstrap asset rather than an operator entrypoint
+- the dashboard gateway owns lazy feature backend startup
+- each lazy backend should be described once through a backend definition rather than hardcoded repeatedly
 `);
