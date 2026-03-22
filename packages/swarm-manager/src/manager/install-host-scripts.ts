@@ -50,15 +50,20 @@ export GIT_TERMINAL_PROMPT=0`;
   const systemEventLogHelper = `#!/usr/bin/env bash
 set -euo pipefail
 
+SYSTEM_EVENT_LOG_PATH="\${SYSTEM_EVENT_LOG_PATH:-/home/ec2-user/state/logs/system-events.log}"
+
 system_event_log() {
   local component="$1"
-  local event="$2"
+  local comment="$2"
   local details="\${3:-}"
+  local line
+  mkdir -p "$(dirname "$SYSTEM_EVENT_LOG_PATH")"
+  line="[$(date -u +"%Y-%m-%dT%H:%M:%SZ"):\${component}] \${comment}"
   if [[ -n "\${details}" ]]; then
-    logger -t "\${component}" -- "event=\${event} \${details}"
-  else
-    logger -t "\${component}" -- "event=\${event}"
+    line="\${line} \${details}"
   fi
+  printf '%s\\n' "\${line}" >> "$SYSTEM_EVENT_LOG_PATH"
+  printf '%s\\n' "\${line}" >&2
 }
 
 system_event_run() {
@@ -66,12 +71,16 @@ system_event_run() {
   shift
   local details="$1"
   shift
-  system_event_log "$component" "start" "$details" "$@"
+  system_event_log "$component" "start" "$details"
   set +e
   "$@"
   local exit_code=$?
   set -e
-  system_event_log "$component" "exit" "exit_code=$exit_code" "$@"
+  if [[ "$exit_code" -eq 0 ]]; then
+    system_event_log "$component" "exit" "exit_code=0"
+  else
+    system_event_log "$component" "error" "exit_code=$exit_code"
+  fi
   return "$exit_code"
 }
 `;
@@ -196,11 +205,13 @@ system_event_run "run-manager-node.sh" "target=worker/agent.ts args=$*" \\
 
   const runWorkerMonitorWrapper = `#!/usr/bin/env bash
 set -euo pipefail
+. ${hostRoot}/system-event-log.sh
 set -a
 source ${DEFAULT_WORKER_MONITOR_ENV_PATH}
 set +a
 cd ${runtimeDir}
-exec bun ${runtimeDir}/packages/swarm-manager/src/worker/agent.ts "$@"
+system_event_run "run-worker-monitor.sh" "target=worker/agent.ts args=$*" \\
+  bun ${runtimeDir}/packages/swarm-manager/src/worker/agent.ts "$@"
 `;
 
   writeExecutable(resolve(hostRoot, "launch-worker.sh"), launchWorkerWrapper);

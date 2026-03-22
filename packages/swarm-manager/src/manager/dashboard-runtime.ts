@@ -1,4 +1,5 @@
 import {
+  appendFileSync,
   rmSync,
   existsSync,
   mkdirSync,
@@ -74,6 +75,15 @@ const browserSessionRenewIntervalMs =
       10,
     ) || 300,
   ) * 1000;
+const SYSTEM_EVENT_LOG_PATH =
+  process.env.SYSTEM_EVENT_LOG_PATH?.trim() || "/home/ec2-user/state/logs/system-events.log";
+
+function logSystemStep(source: string, message: string): void {
+  const line = `[${new Date().toISOString()}:${source}] ${message}`;
+  mkdirSync("/home/ec2-user/state/logs", { recursive: true });
+  appendFileSync(SYSTEM_EVENT_LOG_PATH, `${line}\n`);
+  console.error(line);
+}
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
@@ -316,6 +326,7 @@ async function spawnDetached(
   logPath: string,
   env?: Record<string, string>,
 ): Promise<number> {
+  logSystemStep("dashboard-runtime", `start detached=${command}`);
   ensureParentDir(logPath);
   writeFileSync(logPath, "");
 
@@ -337,27 +348,35 @@ async function spawnDetached(
   await processHandle.exited;
 
   if (processHandle.exitCode !== 0) {
+    logSystemStep("dashboard-runtime", `error failed_launch=${command}`);
     throw new Error(stderr.trim() || `failed to launch command: ${command}`);
   }
 
   if (stderr.trim().length > 0) {
+    logSystemStep("dashboard-runtime", `error launch_stderr=${stderr.trim()}`);
     throw new Error(stderr.trim());
   }
 
   const pid = Number.parseInt(stdout.trim(), 10);
   if (!Number.isInteger(pid) || pid <= 0) {
+    logSystemStep("dashboard-runtime", `error invalid_pid=${command}`);
     throw new Error(`failed to capture pid for command: ${command}`);
   }
+
+  logSystemStep("dashboard-runtime", `exit detached_pid=${pid} command=${command}`);
 
   return pid;
 }
 
 async function ensureDashboardBuilt(forceRebuild = false): Promise<void> {
   if (!forceRebuild && existsSync(dashboardDistDir)) {
+    logSystemStep("dashboard-runtime", "exit dashboard_build=reused");
     return;
   }
 
+  logSystemStep("dashboard-runtime", "start dashboard_build");
   runChecked(["bun", "run", "--filter", "@agent-infrastructure/dashboard-app", "build"]);
+  logSystemStep("dashboard-runtime", "exit dashboard_build=completed");
 }
 
 async function startDashboardServer(config: DashboardRuntimeConfig): Promise<number> {
@@ -368,6 +387,7 @@ async function startDashboardServer(config: DashboardRuntimeConfig): Promise<num
 
   const command = ["bun", dashboardServerEntry].map(shellQuote).join(" ");
 
+  logSystemStep("dashboard-runtime", `start dashboard_server port=${config.port}`);
   return spawnDetached(command, dashboardLogPath, {
     DASHBOARD_PORT: String(config.port),
     MANAGER_INTERNAL_URL: config.managerUrl,
@@ -404,12 +424,14 @@ async function startCloudflared(port: number): Promise<{ pid: number; url: strin
     await Bun.sleep(500);
   }
 
+  logSystemStep("dashboard-runtime", `error cloudflared_no_url port=${port}`);
   throw new Error("cloudflared did not return a quick tunnel URL in time");
 }
 
 export async function ensureDashboardRuntime(
   config: DashboardRuntimeConfig,
 ): Promise<DashboardRuntimeState> {
+  logSystemStep("dashboard-runtime", `setup.start port=${config.port} cloudflared=${config.useCloudflared}`);
   mkdirSync(runtimeDir, { recursive: true });
 
   const currentState =
@@ -443,12 +465,14 @@ export async function ensureDashboardRuntime(
         publicDashboardReady));
 
   if (canReuseDashboard) {
+    logSystemStep("dashboard-runtime", "exit runtime=reused-current-state");
     writeRuntimeState(currentState);
     return currentState;
   }
 
   const recoveredState = await recoverDashboardRuntimeState(config);
   if (recoveredState) {
+    logSystemStep("dashboard-runtime", "exit runtime=recovered-state");
     writeRuntimeState(recoveredState);
     return recoveredState;
   }
@@ -472,6 +496,7 @@ export async function ensureDashboardRuntime(
   };
 
   if (!config.useCloudflared) {
+    logSystemStep("dashboard-runtime", "setup.complete local_only=true");
     writeRuntimeState(nextState);
     return nextState;
   }
@@ -483,6 +508,7 @@ export async function ensureDashboardRuntime(
       cloudflaredLogPath: currentState.cloudflaredLogPath ?? cloudflaredLogPath,
       publicUrl: currentState.publicUrl,
     };
+    logSystemStep("dashboard-runtime", "exit cloudflared=reused");
     writeRuntimeState(nextState);
     return nextState;
   }
@@ -494,6 +520,7 @@ export async function ensureDashboardRuntime(
     cloudflaredLogPath,
     publicUrl: tunnel.url,
   };
+  logSystemStep("dashboard-runtime", `setup.complete public_url=${tunnel.url}`);
   writeRuntimeState(nextState);
   return nextState;
 }
@@ -633,6 +660,7 @@ export async function issueDashboardSession(input?: {
   dashboardPid: number;
   cloudflaredPid: number;
 }> {
+  logSystemStep("dashboard-runtime", "start issue_dashboard_session");
   const runtime = await ensureDashboardRuntime({
     port: input?.port ?? 3000,
     managerUrl: input?.managerUrl ?? "http://127.0.0.1:8787",
@@ -660,6 +688,7 @@ export async function issueDashboardSession(input?: {
   writeSessionStore({ sessions: nextSessions });
 
   const sessionUrl = `${runtime.publicUrl}/?sessionKey=${token}`;
+  logSystemStep("dashboard-runtime", `exit issue_dashboard_session expires_at_ms=${expiresAtMs}`);
   return {
     token,
     expiresAtMs,

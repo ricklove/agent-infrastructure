@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
   DEFAULT_AGENT_HOME,
   DEFAULT_BOOTSTRAP_CONTEXT_PATH,
@@ -6,6 +6,9 @@ import {
   DEFAULT_STATE_DIR,
   DEFAULT_WORKSPACE_DIR,
 } from "../paths.js";
+
+const SYSTEM_EVENT_LOG_PATH =
+  process.env.SYSTEM_EVENT_LOG_PATH?.trim() || "/home/ec2-user/state/logs/system-events.log";
 
 type BootstrapContext = Record<string, unknown> & {
   managerMonitorPort?: number;
@@ -21,7 +24,10 @@ type SetupHostConfig = {
 };
 
 function logStep(message: string): void {
-  console.log(`[${new Date().toISOString()}] ${message}`);
+  const line = `[${new Date().toISOString()}:setup-host] ${message}`;
+  mkdirSync("/home/ec2-user/state/logs", { recursive: true });
+  appendFileSync(SYSTEM_EVENT_LOG_PATH, `${line}\n`);
+  console.error(line);
 }
 
 function optionalOne(args: string[], flag: string): string | undefined {
@@ -47,7 +53,7 @@ function runChecked(
   cwd?: string,
   extraEnv?: Record<string, string>,
 ): void {
-  logStep(`setup-host: run ${command.join(" ")}`);
+  logStep(`run ${command.join(" ")}`);
   const result = Bun.spawnSync(command, {
     cwd,
     env: {
@@ -59,13 +65,14 @@ function runChecked(
   });
 
   if (result.exitCode !== 0) {
-    logStep(`setup-host: command failed (${result.exitCode}) ${command.join(" ")}`);
+    logStep(`error exit_code=${result.exitCode} command=${command.join(" ")}`);
     throw new Error(`command failed: ${command.join(" ")}`);
   }
+  logStep(`exit exit_code=0 command=${command.join(" ")}`);
 }
 
 function commandOutput(command: string[]): string {
-  logStep(`setup-host: capture ${command.join(" ")}`);
+  logStep(`start capture=${command.join(" ")}`);
   const result = Bun.spawnSync(command, {
     stdout: "pipe",
     stderr: "pipe",
@@ -150,7 +157,7 @@ WantedBy=multi-user.target
 
 async function main(): Promise<void> {
   const config = parseArgs(process.argv.slice(2));
-  logStep(`setup-host: start runtimeDir=${config.runtimeDir} stateDir=${config.stateDir}`);
+  logStep(`setup.start runtimeDir=${config.runtimeDir} stateDir=${config.stateDir}`);
   mkdirSync(config.runtimeDir, { recursive: true });
   mkdirSync(config.stateDir, { recursive: true });
   mkdirSync(config.workspaceDir, { recursive: true });
@@ -217,12 +224,12 @@ async function main(): Promise<void> {
     "/etc/systemd/system/agent-swarm-monitor.service",
     managerServiceUnit(config.hostRoot),
   );
-  logStep("setup-host: wrote /etc/systemd/system/agent-swarm-monitor.service");
+  logStep("wrote /etc/systemd/system/agent-swarm-monitor.service");
   writeFileSync(
     "/etc/systemd/system/agent-swarm-manager-node.service",
     managerNodeServiceUnit(config.hostRoot),
   );
-  logStep("setup-host: wrote /etc/systemd/system/agent-swarm-manager-node.service");
+  logStep("wrote /etc/systemd/system/agent-swarm-manager-node.service");
 
   writeFileSync(
     managerEnvPath,
@@ -299,7 +306,7 @@ GIT_TERMINAL_PROMPT=0
   runChecked(["systemctl", "daemon-reload"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-monitor.service"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-manager-node.service"]);
-  logStep("setup-host: complete");
+  logStep("setup.complete");
 
   console.log(
     JSON.stringify({

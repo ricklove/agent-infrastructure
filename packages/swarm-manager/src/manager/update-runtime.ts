@@ -1,8 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import {
   DEFAULT_BOOTSTRAP_CONTEXT_PATH,
   DEFAULT_RUNTIME_DIR,
 } from "../paths.js";
+
+const SYSTEM_EVENT_LOG_PATH =
+  process.env.SYSTEM_EVENT_LOG_PATH?.trim() || "/home/ec2-user/state/logs/system-events.log";
 
 type BootstrapContext = {
   runtimeRepoUrl?: string;
@@ -21,7 +24,10 @@ type UpdateRuntimeConfig = {
 };
 
 function logStep(message: string): void {
-  console.log(`[${new Date().toISOString()}] ${message}`);
+  const line = `[${new Date().toISOString()}:update-runtime] ${message}`;
+  mkdirSync("/home/ec2-user/state/logs", { recursive: true });
+  appendFileSync(SYSTEM_EVENT_LOG_PATH, `${line}\n`);
+  console.error(line);
 }
 
 function optionalOne(args: string[], flag: string): string | undefined {
@@ -90,7 +96,7 @@ function runChecked(
   cwd?: string,
   extraEnv?: Record<string, string>,
 ): void {
-  logStep(`update-runtime: run ${command.join(" ")}`);
+  logStep(`run ${command.join(" ")}`);
   const result = Bun.spawnSync(command, {
     cwd,
     env: {
@@ -102,9 +108,10 @@ function runChecked(
   });
 
   if (result.exitCode !== 0) {
-    logStep(`update-runtime: command failed (${result.exitCode}) ${command.join(" ")}`);
+    logStep(`error exit_code=${result.exitCode} command=${command.join(" ")}`);
     throw new Error(`command failed: ${command.join(" ")}`);
   }
+  logStep(`exit exit_code=0 command=${command.join(" ")}`);
 }
 
 function ensureGitCheckout(config: UpdateRuntimeConfig): void {
@@ -127,20 +134,22 @@ function ensureGitCheckout(config: UpdateRuntimeConfig): void {
 }
 
 function maybeRestartService(name: string): void {
-  logStep(`update-runtime: restart ${name}`);
+  logStep(`start restart=${name}`);
   const result = Bun.spawnSync(["systemctl", "restart", name], {
     stdout: "inherit",
     stderr: "inherit",
   });
 
   if (result.exitCode !== 0) {
+    logStep(`error exit_code=${result.exitCode} restart=${name}`);
     throw new Error(`failed to restart ${name}`);
   }
+  logStep(`exit exit_code=0 restart=${name}`);
 }
 
 async function main(): Promise<void> {
   const config = parseArgs(process.argv.slice(2));
-  logStep(`update-runtime: start runtimeDir=${config.runtimeDir} repoRef=${config.repoRef}`);
+  logStep(`setup.start runtimeDir=${config.runtimeDir} repoRef=${config.repoRef}`);
 
   ensureGitCheckout(config);
   runChecked(["bun", "install", "--frozen-lockfile"], config.runtimeDir);
@@ -181,7 +190,7 @@ async function main(): Promise<void> {
     maybeRestartService("agent-swarm-manager-node.service");
   }
 
-  logStep("update-runtime: complete");
+  logStep("setup.complete");
 
   console.log(
     JSON.stringify({

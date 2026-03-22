@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SYSTEM_EVENT_LOG_PATH="${SYSTEM_EVENT_LOG_PATH:-/home/ec2-user/state/logs/system-events.log}"
+
+system_event_log() {
+  local source="$1"
+  local comment="$2"
+  local details="${3:-}"
+  local line
+  mkdir -p "$(dirname "$SYSTEM_EVENT_LOG_PATH")"
+  line="[$(date -u +"%Y-%m-%dT%H:%M:%SZ"):${source}] ${comment}"
+  if [[ -n "${details}" ]]; then
+    line="${line} ${details}"
+  fi
+  printf '%s\n' "${line}" >> "$SYSTEM_EVENT_LOG_PATH"
+  printf '%s\n' "${line}" >&2
+}
+
 TOKEN=$(curl -X PUT -s http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')
 INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
 LOCAL_IPV4=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)
@@ -88,6 +104,7 @@ EOF
 }
 
 emit_event cloud_init_started "{\"stage\":\"user-data\"}"
+system_event_log "worker-user-data.sh" "setup.start" "instance_id=${INSTANCE_ID}"
 BAKED_RUNTIME_PROFILE=""
 if [[ -f "$WORKER_IMAGE_PROFILE_PATH" ]]; then
   BAKED_RUNTIME_PROFILE="$(jq -r '.profile // ""' "$WORKER_IMAGE_PROFILE_PATH" 2>/dev/null || true)"
@@ -110,10 +127,12 @@ else
   fi
 fi
 emit_event packages_install_started "{\"packages\":[\"aws\",\"docker\",\"jq\",\"unzip\"],\"missingPackageCount\":${#MISSING_PACKAGES[@]},\"alreadyInstalled\":$(json_bool "$PACKAGES_ALREADY_PRESENT"),\"skipped\":$(json_bool "$PACKAGES_SKIPPED"),\"bakedProfile\":\"$BAKED_RUNTIME_PROFILE\"}"
+system_event_log "worker-user-data.sh" "start" "packages_install missing_count=${#MISSING_PACKAGES[@]}"
 if [[ "$PACKAGES_SKIPPED" != "true" && ${#MISSING_PACKAGES[@]} -gt 0 ]]; then
   dnf install -y "${MISSING_PACKAGES[@]}"
 fi
 emit_event packages_install_completed "{\"packages\":[\"aws\",\"docker\",\"jq\",\"unzip\"],\"missingPackageCount\":${#MISSING_PACKAGES[@]},\"alreadyInstalled\":$(json_bool "$PACKAGES_ALREADY_PRESENT"),\"skipped\":$(json_bool "$PACKAGES_SKIPPED"),\"bakedProfile\":\"$BAKED_RUNTIME_PROFILE\"}"
+system_event_log "worker-user-data.sh" "exit" "packages_install exit_code=0"
 
 export HOME=/root
 export BUN_INSTALL=/opt/bun
@@ -126,24 +145,30 @@ if [[ -n "$BAKED_RUNTIME_PROFILE" && "$BUN_ALREADY_PRESENT" == "true" ]]; then
   SKIP_BUN_INSTALL=true
 fi
 emit_event bun_install_started "{\"installDir\":\"$BUN_INSTALL\",\"alreadyInstalled\":$(json_bool "$BUN_ALREADY_PRESENT"),\"skipped\":$(json_bool "$SKIP_BUN_INSTALL"),\"bakedProfile\":\"$BAKED_RUNTIME_PROFILE\"}"
+system_event_log "worker-user-data.sh" "start" "bun_install skipped=${SKIP_BUN_INSTALL}"
 if [[ "$SKIP_BUN_INSTALL" != "true" && "$BUN_ALREADY_PRESENT" != "true" ]]; then
   curl -fsSL https://bun.sh/install | bash
 fi
 install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
 emit_event bun_install_completed "{\"binaryPath\":\"/usr/local/bin/bun\",\"alreadyInstalled\":$(json_bool "$BUN_ALREADY_PRESENT"),\"skipped\":$(json_bool "$SKIP_BUN_INSTALL"),\"bakedProfile\":\"$BAKED_RUNTIME_PROFILE\"}"
+system_event_log "worker-user-data.sh" "exit" "bun_install exit_code=0"
 
 emit_event docker_enable_started "{}"
+system_event_log "worker-user-data.sh" "start" "docker_enable"
 systemctl enable --now docker
 usermod -aG docker ec2-user
 emit_event docker_ready "{}"
+system_event_log "worker-user-data.sh" "exit" "docker_enable exit_code=0"
 
 mkdir -p "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
 emit_event runtime_download_started "{\"bucket\":\"__WORKER_RUNTIME_RELEASE_BUCKET__\",\"key\":\"__WORKER_RUNTIME_RELEASE_KEY__\"}"
+system_event_log "worker-user-data.sh" "start" "runtime_download"
 aws s3 cp "s3://__WORKER_RUNTIME_RELEASE_BUCKET__/__WORKER_RUNTIME_RELEASE_KEY__" "${STATE_ROOT}/runtime.zip" --region "__REGION__"
 rm -rf "${RUNTIME_ROOT}"/*
 unzip -q "${STATE_ROOT}/runtime.zip" -d "$RUNTIME_ROOT"
 chown -R ec2-user:ec2-user "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
 emit_event runtime_download_completed "{}"
+system_event_log "worker-user-data.sh" "exit" "runtime_download exit_code=0"
 
 cat > "${WORKER_MONITOR_ENV_PATH}" <<'ENVFILE'
 MONITOR_MANAGER_URL=ws://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/workers/stream
@@ -167,6 +192,7 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 SERVICE
+system_event_log "worker-user-data.sh" "setup.write" "path=/etc/systemd/system/agent-swarm-worker-monitor.service"
 
 cat > "${STATE_ROOT}/worker-runtime.json" <<RUNTIME
 {
@@ -176,7 +202,10 @@ cat > "${STATE_ROOT}/worker-runtime.json" <<RUNTIME
 RUNTIME
 
 chown -R ec2-user:ec2-user "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
+system_event_log "worker-user-data.sh" "start" "systemd_daemon_reload"
 systemctl daemon-reload
 emit_event telemetry_service_start_requested "{\"unit\":\"agent-swarm-worker-monitor.service\"}"
+system_event_log "worker-user-data.sh" "start" "telemetry_service_enable unit=agent-swarm-worker-monitor.service"
 systemctl enable --now agent-swarm-worker-monitor.service
 flush_pending_events || true
+system_event_log "worker-user-data.sh" "setup.complete" "instance_id=${INSTANCE_ID}"

@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SYSTEM_EVENT_LOG_PATH="${SYSTEM_EVENT_LOG_PATH:-/home/ec2-user/state/logs/system-events.log}"
+
+system_event_log() {
+  local source="$1"
+  local comment="$2"
+  local details="${3:-}"
+  local line
+  mkdir -p "$(dirname "$SYSTEM_EVENT_LOG_PATH")"
+  line="[$(date -u +"%Y-%m-%dT%H:%M:%SZ"):${source}] ${comment}"
+  if [[ -n "${details}" ]]; then
+    line="${line} ${details}"
+  fi
+  printf '%s\n' "${line}" >> "$SYSTEM_EVENT_LOG_PATH"
+  printf '%s\n' "${line}" >&2
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_ROOT="${AGENT_STATE_ROOT:-/home/ec2-user/state}"
 CONFIG="${STATE_ROOT}/bootstrap-context.json"
@@ -13,6 +29,7 @@ SWARM_SHARED_TOKEN=$(jq -r '.swarmSharedToken' "$CONFIG")
 RELEASE_CONFIG="${STATE_ROOT}/worker-runtime-release.json"
 
 if [[ ! -s "$RELEASE_CONFIG" ]]; then
+  system_event_log "launch-worker.sh" "error" "missing_release_config=${RELEASE_CONFIG}"
   echo 'worker runtime release metadata is missing' >&2
   exit 1
 fi
@@ -91,6 +108,7 @@ WORKER_RUNTIME_RELEASE_BUCKET=$(jq -r '.bucket' "$RELEASE_CONFIG")
 WORKER_RUNTIME_RELEASE_KEY=$(jq -r '.key' "$RELEASE_CONFIG")
 
 if [[ "$WORKER_RUNTIME_RELEASE_BUCKET" == "null" || -z "$WORKER_RUNTIME_RELEASE_BUCKET" || "$WORKER_RUNTIME_RELEASE_KEY" == "null" || -z "$WORKER_RUNTIME_RELEASE_KEY" ]]; then
+  system_event_log "launch-worker.sh" "error" "invalid_release_metadata"
   echo 'worker runtime release metadata is invalid' >&2
   exit 1
 fi
@@ -126,6 +144,7 @@ emit_event() {
 REQUESTED_AT_MS=$(($(date +%s) * 1000))
 TEMP_USER_DATA=$(mktemp)
 trap 'rm -f "$TEMP_USER_DATA"' EXIT
+system_event_log "launch-worker.sh" "start" "instance_type=${INSTANCE_TYPE:-unset} subnet_id=${SUBNET_ID:-unset}"
 
 sed \
   -e "s/__MANAGER_PRIVATE_IP__/$MANAGER_PRIVATE_IP/g" \
@@ -181,6 +200,7 @@ RUN_INSTANCES_OUTPUT=$(aws ec2 run-instances \
 
 INSTANCE_ID=$(printf '%s' "$RUN_INSTANCES_OUTPUT" | jq -r '.Instances[0].InstanceId')
 PRIVATE_IP=$(printf '%s' "$RUN_INSTANCES_OUTPUT" | jq -r '.Instances[0].PrivateIpAddress // ""')
+system_event_log "launch-worker.sh" "exit" "instance_id=${INSTANCE_ID} private_ip=${PRIVATE_IP} image_id=${IMAGE_ID}"
 LAUNCH_REQUESTED_DETAILS=$(jq -cn \
   --arg instanceType "$INSTANCE_TYPE" \
   --arg subnetId "$SUBNET_ID" \
@@ -207,6 +227,7 @@ emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch_requested "$LAUNCH_REQUESTED_DETA
 emit_event "$INSTANCE_ID" "$PRIVATE_IP" create "$CREATE_DETAILS"
 
 (
+  system_event_log "launch-worker.sh" "start" "wait_for_instance_running instance_id=${INSTANCE_ID}"
   aws ec2 wait instance-running --region "$REGION" --instance-ids "$INSTANCE_ID"
   RUNNING_AT_MS=$(($(date +%s) * 1000))
   RUNNING_ELAPSED_SECONDS=$(((RUNNING_AT_MS - REQUESTED_AT_MS) / 1000))
@@ -218,6 +239,7 @@ emit_event "$INSTANCE_ID" "$PRIVATE_IP" create "$CREATE_DETAILS"
     '{runningElapsedSeconds:$runningElapsedSeconds}')
   emit_event "$INSTANCE_ID" "$PRIVATE_IP" ec2_running "$EC2_RUNNING_DETAILS"
   emit_event "$INSTANCE_ID" "$PRIVATE_IP" launch "$LAUNCH_DETAILS"
+  system_event_log "launch-worker.sh" "exit" "instance_running instance_id=${INSTANCE_ID} elapsed_seconds=${RUNNING_ELAPSED_SECONDS}"
   if aws ec2 wait instance-status-ok --region "$REGION" --instance-ids "$INSTANCE_ID"; then
     STATUS_OK_AT_MS=$(($(date +%s) * 1000))
     STATUS_OK_ELAPSED_SECONDS=$(((STATUS_OK_AT_MS - REQUESTED_AT_MS) / 1000))
@@ -225,6 +247,7 @@ emit_event "$INSTANCE_ID" "$PRIVATE_IP" create "$CREATE_DETAILS"
       --argjson elapsedSeconds "$STATUS_OK_ELAPSED_SECONDS" \
       '{elapsedSeconds:$elapsedSeconds}')
     emit_event "$INSTANCE_ID" "$PRIVATE_IP" instance_status_ok "$INSTANCE_STATUS_OK_DETAILS"
+    system_event_log "launch-worker.sh" "exit" "instance_status_ok instance_id=${INSTANCE_ID} elapsed_seconds=${STATUS_OK_ELAPSED_SECONDS}"
   fi
 ) >/dev/null 2>&1 & disown
 
