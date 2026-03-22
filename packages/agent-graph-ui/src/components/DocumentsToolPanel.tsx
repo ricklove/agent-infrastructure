@@ -12,6 +12,64 @@ type DocumentsToolPanelProps = {
   };
 };
 
+function IconButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick(): void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-stone-700 text-stone-200 hover:bg-stone-800"
+    >
+      {children}
+    </button>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  );
+}
+
+function FolderIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function SaveIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+      <path d="M17 21v-8H7v8" />
+      <path d="M7 3v5h8" />
+    </svg>
+  );
+}
+
 export const DocumentsToolPanel = observer(function DocumentsToolPanel({
   store,
   actions,
@@ -76,35 +134,19 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
             <div className="mt-1 truncate text-[11px] text-stone-500">{workspace.board.label}</div>
           ) : null}
         </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => void actions.refreshBoards()}
-            className="rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-200 hover:bg-stone-800"
-          >
-            Refresh
-          </button>
-          <button
-            type="button"
-            onClick={() => openPicker("boards")}
-            className="rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-200 hover:bg-stone-800"
-          >
-            Open
-          </button>
-          <button
-            type="button"
-            onClick={() => openPicker("documents")}
-            className="rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-200 hover:bg-stone-800"
-          >
-            Add Doc
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSaveBoardAs()}
-            className="rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-200 hover:bg-stone-800"
-          >
-            Save As
-          </button>
+        <div className="flex flex-wrap justify-end gap-1.5">
+          <IconButton title="Refresh boards" onClick={() => void actions.refreshBoards()}>
+            <RefreshIcon />
+          </IconButton>
+          <IconButton title="Open board" onClick={() => openPicker("boards")}>
+            <FolderIcon />
+          </IconButton>
+          <IconButton title="Add document" onClick={() => openPicker("documents")}>
+            <PlusIcon />
+          </IconButton>
+          <IconButton title="Save board as" onClick={() => void handleSaveBoardAs()}>
+            <SaveIcon />
+          </IconButton>
         </div>
       </div>
 
@@ -121,29 +163,6 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
               <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-200">
                 Open
               </div>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => openPicker("boards")}
-                className="rounded-full bg-stone-100 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-950 hover:bg-white"
-              >
-                Open Board
-              </button>
-              <button
-                type="button"
-                onClick={() => openPicker("documents")}
-                className="rounded-full border border-stone-700 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
-              >
-                Add Document
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSaveBoardAs()}
-                className="rounded-full border border-stone-700 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-100 hover:bg-stone-800"
-              >
-                Save As
-              </button>
             </div>
           </div>
         ) : null}

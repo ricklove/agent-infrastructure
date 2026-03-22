@@ -11,6 +11,47 @@ type LayerWorkspacePanelProps = {
   };
 };
 
+function IconButton({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick(): void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-stone-700 text-stone-200 hover:bg-stone-800"
+    >
+      {children}
+    </button>
+  );
+}
+
+function DiffIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v18" />
+      <path d="M5 8l7-5 7 5" />
+      <path d="M19 16l-7 5-7-5" />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 function VisibilityIcon({ visible }: { visible: boolean }) {
   return (
     <svg
@@ -64,13 +105,9 @@ export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
             {hiddenCount > 0 ? <span>{hiddenCount} hidden</span> : null}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => actions.requestDiff()}
-          className="rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-200 hover:bg-stone-800"
-        >
-          Build diff
-        </button>
+        <IconButton title="Build diff" onClick={() => actions.requestDiff()}>
+          <DiffIcon />
+        </IconButton>
       </div>
 
       <div className="mt-3 min-h-0 flex-1 space-y-1.5 overflow-auto pr-1">
@@ -119,23 +156,13 @@ export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
                     <span className="rounded-full border border-stone-700 px-1.5 py-0.5">
                       {layer.nodeIds.length} nodes
                     </span>
-                    <span className="rounded-full border border-stone-700 px-1.5 py-0.5">
-                      {layer.visible ? "visible" : "hidden"}
-                    </span>
                   </div>
                 </button>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                <div className="hidden text-right text-[10px] text-stone-500 xl:block">
-                  <div>{Math.round(layer.x)}, {Math.round(layer.y)}</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => actions.cloneLayer(layer.id)}
-                  className="rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-200 hover:bg-stone-800"
-                >
-                  Clone
-                </button>
+                <IconButton title="Clone layer" onClick={() => actions.cloneLayer(layer.id)}>
+                  <CopyIcon />
+                </IconButton>
               </div>
             </div>
           </div>
