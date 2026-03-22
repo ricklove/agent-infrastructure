@@ -182,7 +182,6 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
     "connecting" | "ready" | "error" | "idle"
   >("idle")
   const [gatewayBackendVersion, setGatewayBackendVersion] = useState("--")
-  const [copiedStatus, setCopiedStatus] = useState(false)
 
   const activeFeature = useMemo(
     () =>
@@ -291,8 +290,6 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
     }
     parts.push(`WS: ${gatewayConnectionStatus}`)
     void navigator.clipboard.writeText(parts.join(" | "))
-    setCopiedStatus(true)
-    window.setTimeout(() => setCopiedStatus(false), 1200)
   }
 
   useEffect(() => {
@@ -396,7 +393,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
             type="button"
             onClick={copyStatusLabel}
             className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-400/10 text-[11px] font-semibold tracking-[0.24em] text-emerald-200 transition hover:bg-emerald-400/15"
-            title="Copy dashboard status"
+            title={`Version ${appVersion}`}
           >
             AI
           </button>
@@ -417,9 +414,6 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
               <div className="flex items-center justify-between gap-3">
                 <span className="text-stone-500">WS</span>
                 <span className={gatewayConnectionTone}>{gatewayConnectionStatus}</span>
-              </div>
-              <div className="border-t border-stone-800 pt-1.5 text-[10px] uppercase tracking-[0.18em] text-stone-500">
-                {copiedStatus ? "Copied" : "Click to copy"}
               </div>
             </div>
           </div>
