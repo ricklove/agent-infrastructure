@@ -104,6 +104,24 @@ function GraphIcon(props: { className?: string }) {
   )
 }
 
+function CopyIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <rect x="9" y="9" width="10" height="10" rx="2" />
+      <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+    </svg>
+  )
+}
+
 function readStoredSessionToken(): string {
   return window.sessionStorage.getItem(sessionStorageKey) ?? ""
 }
@@ -182,6 +200,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
     "connecting" | "ready" | "error" | "idle"
   >("idle")
   const [gatewayBackendVersion, setGatewayBackendVersion] = useState("--")
+  const [copiedStatus, setCopiedStatus] = useState(false)
 
   const activeFeature = useMemo(
     () =>
@@ -280,6 +299,14 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
         : gatewayConnectionStatus === "connecting"
           ? "text-amber-200"
           : "text-stone-400"
+  const aiButtonTone =
+    gatewayConnectionStatus === "ready"
+      ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-200 hover:bg-emerald-400/20"
+      : gatewayConnectionStatus === "error"
+        ? "border-rose-400/40 bg-rose-400/15 text-rose-200 hover:bg-rose-400/20"
+        : gatewayConnectionStatus === "connecting"
+          ? "border-amber-300/40 bg-amber-300/15 text-amber-100 hover:bg-amber-300/20"
+          : "border-stone-700/70 bg-stone-800/80 text-stone-300 hover:bg-stone-700/80"
   const backendVersionMismatch =
     gatewayBackendVersion !== "--" && gatewayBackendVersion !== appVersion
 
@@ -290,6 +317,8 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
     }
     parts.push(`WS: ${gatewayConnectionStatus}`)
     void navigator.clipboard.writeText(parts.join(" | "))
+    setCopiedStatus(true)
+    window.setTimeout(() => setCopiedStatus(false), 1200)
   }
 
   useEffect(() => {
@@ -391,13 +420,25 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
         <div className="group relative">
           <button
             type="button"
-            onClick={copyStatusLabel}
-            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-400/10 text-[11px] font-semibold tracking-[0.24em] text-emerald-200 transition hover:bg-emerald-400/15"
+            className={[
+              "pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border text-[11px] font-semibold tracking-[0.24em] transition",
+              aiButtonTone,
+            ].join(" ")}
             title={`Version ${appVersion}`}
           >
             AI
           </button>
-          <div className="pointer-events-none absolute left-[calc(100%+0.75rem)] top-0 z-50 hidden min-w-[17rem] rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur group-hover:block">
+          <div className="pointer-events-auto absolute left-[calc(100%+0.75rem)] top-0 z-50 hidden min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur group-hover:block">
+            <div className="mb-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={copyStatusLabel}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-stone-700 text-stone-300 transition hover:bg-stone-800 hover:text-stone-100"
+                title={copiedStatus ? "Copied" : "Copy status"}
+              >
+                <CopyIcon className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-stone-500">Version</span>
