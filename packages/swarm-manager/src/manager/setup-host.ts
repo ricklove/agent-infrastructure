@@ -6,6 +6,7 @@ import {
   DEFAULT_STATE_DIR,
   DEFAULT_WORKSPACE_DIR,
 } from "../paths.js";
+import { logSystemEvent } from "./system-event-log.js";
 
 type BootstrapContext = Record<string, unknown> & {
   managerMonitorPort?: number;
@@ -43,6 +44,12 @@ function runChecked(
   cwd?: string,
   extraEnv?: Record<string, string>,
 ): void {
+  const startedAt = Date.now();
+  logSystemEvent({
+    component: "setup-host",
+    event: "command.start",
+    details: { command, cwd, extraEnvKeys: Object.keys(extraEnv ?? {}) },
+  });
   const result = Bun.spawnSync(command, {
     cwd,
     env: {
@@ -54,11 +61,39 @@ function runChecked(
   });
 
   if (result.exitCode !== 0) {
+    logSystemEvent({
+      component: "setup-host",
+      event: "command.error",
+      level: "error",
+      details: {
+        command,
+        cwd,
+        exitCode: result.exitCode,
+        durationMs: Date.now() - startedAt,
+      },
+    });
     throw new Error(`command failed: ${command.join(" ")}`);
   }
+
+  logSystemEvent({
+    component: "setup-host",
+    event: "command.ok",
+    details: {
+      command,
+      cwd,
+      exitCode: result.exitCode,
+      durationMs: Date.now() - startedAt,
+    },
+  });
 }
 
 function commandOutput(command: string[]): string {
+  const startedAt = Date.now();
+  logSystemEvent({
+    component: "setup-host",
+    event: "command.capture.start",
+    details: { command },
+  });
   const result = Bun.spawnSync(command, {
     stdout: "pipe",
     stderr: "pipe",
@@ -66,11 +101,31 @@ function commandOutput(command: string[]): string {
   });
 
   if (result.exitCode !== 0) {
+    logSystemEvent({
+      component: "setup-host",
+      event: "command.capture.error",
+      level: "error",
+      details: {
+        command,
+        exitCode: result.exitCode,
+        durationMs: Date.now() - startedAt,
+        stderr: result.stderr.toString("utf8").trim(),
+      },
+    });
     throw new Error(
       result.stderr.toString("utf8").trim() || `command failed: ${command.join(" ")}`,
     );
   }
 
+  logSystemEvent({
+    component: "setup-host",
+    event: "command.capture.ok",
+    details: {
+      command,
+      durationMs: Date.now() - startedAt,
+      stdoutBytes: result.stdout.length,
+    },
+  });
   return result.stdout.toString("utf8").trim();
 }
 
@@ -144,6 +199,11 @@ WantedBy=multi-user.target
 
 async function main(): Promise<void> {
   const config = parseArgs(process.argv.slice(2));
+  logSystemEvent({
+    component: "setup-host",
+    event: "start",
+    details: config,
+  });
   mkdirSync(config.runtimeDir, { recursive: true });
   mkdirSync(config.stateDir, { recursive: true });
   mkdirSync(config.workspaceDir, { recursive: true });
@@ -210,10 +270,20 @@ async function main(): Promise<void> {
     "/etc/systemd/system/agent-swarm-monitor.service",
     managerServiceUnit(config.hostRoot),
   );
+  logSystemEvent({
+    component: "setup-host",
+    event: "systemd.unit.write",
+    details: { path: "/etc/systemd/system/agent-swarm-monitor.service" },
+  });
   writeFileSync(
     "/etc/systemd/system/agent-swarm-manager-node.service",
     managerNodeServiceUnit(config.hostRoot),
   );
+  logSystemEvent({
+    component: "setup-host",
+    event: "systemd.unit.write",
+    details: { path: "/etc/systemd/system/agent-swarm-manager-node.service" },
+  });
 
   writeFileSync(
     managerEnvPath,
@@ -290,6 +360,16 @@ GIT_TERMINAL_PROMPT=0
   runChecked(["systemctl", "daemon-reload"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-monitor.service"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-manager-node.service"]);
+  logSystemEvent({
+    component: "setup-host",
+    event: "complete",
+    details: {
+      runtimeDir: config.runtimeDir,
+      stateDir: config.stateDir,
+      workspaceDir: config.workspaceDir,
+      hostRoot: config.hostRoot,
+    },
+  });
 
   console.log(
     JSON.stringify({
@@ -302,4 +382,14 @@ GIT_TERMINAL_PROMPT=0
   );
 }
 
-await main();
+try {
+  await main();
+} catch (error) {
+  logSystemEvent({
+    component: "setup-host",
+    event: "failed",
+    level: "error",
+    details: { error },
+  });
+  throw error;
+}

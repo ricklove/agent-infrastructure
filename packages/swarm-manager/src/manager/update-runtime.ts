@@ -3,6 +3,7 @@ import {
   DEFAULT_BOOTSTRAP_CONTEXT_PATH,
   DEFAULT_RUNTIME_DIR,
 } from "../paths.js";
+import { logSystemEvent } from "./system-event-log.js";
 
 type BootstrapContext = {
   runtimeRepoUrl?: string;
@@ -86,6 +87,12 @@ function runChecked(
   cwd?: string,
   extraEnv?: Record<string, string>,
 ): void {
+  const startedAt = Date.now();
+  logSystemEvent({
+    component: "update-runtime",
+    event: "command.start",
+    details: { command, cwd, extraEnvKeys: Object.keys(extraEnv ?? {}) },
+  });
   const result = Bun.spawnSync(command, {
     cwd,
     env: {
@@ -97,8 +104,30 @@ function runChecked(
   });
 
   if (result.exitCode !== 0) {
+    logSystemEvent({
+      component: "update-runtime",
+      event: "command.error",
+      level: "error",
+      details: {
+        command,
+        cwd,
+        exitCode: result.exitCode,
+        durationMs: Date.now() - startedAt,
+      },
+    });
     throw new Error(`command failed: ${command.join(" ")}`);
   }
+
+  logSystemEvent({
+    component: "update-runtime",
+    event: "command.ok",
+    details: {
+      command,
+      cwd,
+      exitCode: result.exitCode,
+      durationMs: Date.now() - startedAt,
+    },
+  });
 }
 
 function ensureGitCheckout(config: UpdateRuntimeConfig): void {
@@ -121,18 +150,49 @@ function ensureGitCheckout(config: UpdateRuntimeConfig): void {
 }
 
 function maybeRestartService(name: string): void {
+  const startedAt = Date.now();
+  logSystemEvent({
+    component: "update-runtime",
+    event: "service.restart.start",
+    details: { name },
+  });
   const result = Bun.spawnSync(["systemctl", "restart", name], {
     stdout: "inherit",
     stderr: "inherit",
   });
 
   if (result.exitCode !== 0) {
+    logSystemEvent({
+      component: "update-runtime",
+      event: "service.restart.error",
+      level: "error",
+      details: {
+        name,
+        exitCode: result.exitCode,
+        durationMs: Date.now() - startedAt,
+      },
+    });
     throw new Error(`failed to restart ${name}`);
   }
+
+  logSystemEvent({
+    component: "update-runtime",
+    event: "service.restart.ok",
+    details: {
+      name,
+      exitCode: result.exitCode,
+      durationMs: Date.now() - startedAt,
+    },
+  });
 }
 
 async function main(): Promise<void> {
   const config = parseArgs(process.argv.slice(2));
+  logSystemEvent({
+    component: "update-runtime",
+    event: "start",
+    details: config,
+  });
 
   ensureGitCheckout(config);
   runChecked(["bun", "install", "--frozen-lockfile"], config.runtimeDir);
@@ -173,6 +233,12 @@ async function main(): Promise<void> {
     maybeRestartService("agent-swarm-manager-node.service");
   }
 
+  logSystemEvent({
+    component: "update-runtime",
+    event: "complete",
+    details: config,
+  });
+
   console.log(
     JSON.stringify({
       ok: true,
@@ -185,4 +251,14 @@ async function main(): Promise<void> {
   );
 }
 
-await main();
+try {
+  await main();
+} catch (error) {
+  logSystemEvent({
+    component: "update-runtime",
+    event: "failed",
+    level: "error",
+    details: { error },
+  });
+  throw error;
+}

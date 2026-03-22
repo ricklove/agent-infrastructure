@@ -47,6 +47,54 @@ async function main(): Promise<void> {
 export GIT_ASKPASS="${hostRoot}/git-askpass.sh"
 export GIT_TERMINAL_PROMPT=0`;
 
+  const systemEventLogHelper = `#!/usr/bin/env bash
+set -euo pipefail
+
+SYSTEM_EVENT_LOG_PATH="\${SYSTEM_EVENT_LOG_PATH:-/home/ec2-user/state/logs/system-events.jsonl}"
+
+system_event_log() {
+  local component="$1"
+  local event="$2"
+  local details="\${3:-}"
+  mkdir -p "$(dirname "$SYSTEM_EVENT_LOG_PATH")"
+  python3 - "$SYSTEM_EVENT_LOG_PATH" "$component" "$event" "$details" "$PWD" "$$" "$PPID" "$0" "$@" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+path, component, event, details, cwd, pid, ppid, script, *argv = sys.argv[1:]
+record = {
+    "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    "component": component,
+    "event": event,
+    "pid": int(pid),
+    "ppid": int(ppid),
+    "cwd": cwd,
+    "script": script,
+    "argv": argv,
+}
+if details:
+    record["details"] = details
+with open(path, "a", encoding="utf-8") as fh:
+    fh.write(json.dumps(record) + "\\n")
+PY
+}
+
+system_event_run() {
+  local component="$1"
+  shift
+  local details="$1"
+  shift
+  system_event_log "$component" "start" "$details" "$@"
+  set +e
+  "$@"
+  local exit_code=$?
+  set -e
+  system_event_log "$component" "exit" "exit_code=$exit_code" "$@"
+  return "$exit_code"
+}
+`;
+
   const launchWorkerWrapper = `#!/usr/bin/env bash
 set -euo pipefail
 ${authEnvPrelude}
@@ -56,16 +104,20 @@ exec bash ${runtimeDir}/packages/swarm-manager/scripts/launch-worker.sh "$@"
 
   const updateRuntimeWrapper = `#!/usr/bin/env bash
 set -euo pipefail
+. ${hostRoot}/system-event-log.sh
 ${authEnvPrelude}
 cd ${runtimeDir}
-exec bun ${runtimeDir}/packages/swarm-manager/src/manager/update-runtime.ts "$@"
+system_event_run "update-runtime.sh" "target=update-runtime.ts" \\
+  bun ${runtimeDir}/packages/swarm-manager/src/manager/update-runtime.ts "$@"
 `;
 
   const publishWorkerRuntimeWrapper = `#!/usr/bin/env bash
 set -euo pipefail
+. ${hostRoot}/system-event-log.sh
 ${authEnvPrelude}
 cd ${runtimeDir}
-exec bun ${runtimeDir}/packages/swarm-manager/src/manager/publish-worker-runtime-release.ts "$@"
+system_event_run "publish-worker-runtime-release.sh" "target=publish-worker-runtime-release.ts" \\
+  bun ${runtimeDir}/packages/swarm-manager/src/manager/publish-worker-runtime-release.ts "$@"
 `;
 
   const hibernateWorkersWrapper = `#!/usr/bin/env bash
@@ -98,7 +150,9 @@ exec bun ${runtimeDir}/packages/swarm-manager/src/manager/test-worker-image-life
 
   const issueDashboardSessionWrapper = `#!/usr/bin/env bash
 set -euo pipefail
+. ${hostRoot}/system-event-log.sh
 if [ "\${AGENT_RUN_AS_USER_DONE:-0}" != "1" ] && [ "\$(id -u)" = "0" ]; then
+  system_event_log "issue-dashboard-session.sh" "sudo.reexec" "user=ec2-user" "$@"
   exec sudo -H -u ec2-user env \\
     AGENT_RUN_AS_USER_DONE=1 \\
     AGENT_GITHUB_CONFIG_ROOT="${agentGithubConfigRoot}" \\
@@ -108,7 +162,8 @@ if [ "\${AGENT_RUN_AS_USER_DONE:-0}" != "1" ] && [ "\$(id -u)" = "0" ]; then
 fi
 ${authEnvPrelude}
 cd ${runtimeDir}
-exec bun ${runtimeDir}/packages/swarm-manager/src/manager/issue-dashboard-session.ts "$@"
+system_event_run "issue-dashboard-session.sh" "target=issue-dashboard-session.ts" \\
+  bun ${runtimeDir}/packages/swarm-manager/src/manager/issue-dashboard-session.ts "$@"
 `;
 
   const githubAppTokenWrapper = `#!/usr/bin/env bash
@@ -138,20 +193,24 @@ esac
 
   const runManagerWrapper = `#!/usr/bin/env bash
 set -euo pipefail
+. ${hostRoot}/system-event-log.sh
 set -a
 source ${DEFAULT_MANAGER_ENV_PATH}
 set +a
 cd ${runtimeDir}
-exec bun ${runtimeDir}/packages/swarm-manager/src/manager/server.ts "$@"
+system_event_run "run-manager.sh" "target=server.ts" \\
+  bun ${runtimeDir}/packages/swarm-manager/src/manager/server.ts "$@"
 `;
 
   const runManagerNodeWrapper = `#!/usr/bin/env bash
 set -euo pipefail
+. ${hostRoot}/system-event-log.sh
 set -a
 source ${DEFAULT_MANAGER_NODE_ENV_PATH}
 set +a
 cd ${runtimeDir}
-exec bun ${runtimeDir}/packages/swarm-manager/src/worker/agent.ts "$@"
+system_event_run "run-manager-node.sh" "target=worker/agent.ts" \\
+  bun ${runtimeDir}/packages/swarm-manager/src/worker/agent.ts "$@"
 `;
 
   const runWorkerMonitorWrapper = `#!/usr/bin/env bash
@@ -164,6 +223,7 @@ exec bun ${runtimeDir}/packages/swarm-manager/src/worker/agent.ts "$@"
 `;
 
   writeExecutable(resolve(hostRoot, "launch-worker.sh"), launchWorkerWrapper);
+  writeExecutable(resolve(hostRoot, "system-event-log.sh"), systemEventLogHelper);
   writeExecutable(resolve(hostRoot, "update-runtime.sh"), updateRuntimeWrapper);
   writeExecutable(
     resolve(hostRoot, "publish-worker-runtime-release.sh"),
