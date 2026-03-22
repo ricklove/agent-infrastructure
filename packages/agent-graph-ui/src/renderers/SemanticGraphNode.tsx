@@ -21,6 +21,72 @@ function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   );
 }
 
+function humanizeKind(kind: string): string {
+  return kind.replace(/[-_]+/g, " ");
+}
+
+function nodeTypeTheme(sourceKind?: string): {
+  accent: string;
+  tint: string;
+  label: string | null;
+} {
+  const normalized = sourceKind?.trim().toLowerCase() ?? "";
+
+  if (!normalized) {
+    return {
+      accent: "border-stone-600/80 text-stone-300",
+      tint: "from-stone-400/10 via-transparent to-transparent",
+      label: null,
+    };
+  }
+
+  if (/(actor|user|agent|operator|participant)/.test(normalized)) {
+    return {
+      accent: "border-cyan-500/60 text-cyan-200",
+      tint: "from-cyan-400/14 via-cyan-400/4 to-transparent",
+      label: humanizeKind(normalized),
+    };
+  }
+
+  if (/(system|runtime|service|server|adapter|provider)/.test(normalized)) {
+    return {
+      accent: "border-emerald-500/60 text-emerald-200",
+      tint: "from-emerald-400/14 via-emerald-400/4 to-transparent",
+      label: humanizeKind(normalized),
+    };
+  }
+
+  if (/(workspace|board|layer|plane|graph|session)/.test(normalized)) {
+    return {
+      accent: "border-violet-500/60 text-violet-200",
+      tint: "from-violet-400/14 via-violet-400/4 to-transparent",
+      label: humanizeKind(normalized),
+    };
+  }
+
+  if (/(document|artifact|file|blueprint|transcript|summary)/.test(normalized)) {
+    return {
+      accent: "border-amber-500/60 text-amber-200",
+      tint: "from-amber-400/14 via-amber-400/4 to-transparent",
+      label: humanizeKind(normalized),
+    };
+  }
+
+  if (/(concept|truth|policy|status|meaning|language)/.test(normalized)) {
+    return {
+      accent: "border-fuchsia-500/60 text-fuchsia-200",
+      tint: "from-fuchsia-400/14 via-fuchsia-400/4 to-transparent",
+      label: humanizeKind(normalized),
+    };
+  }
+
+  return {
+    accent: "border-sky-500/60 text-sky-200",
+    tint: "from-sky-400/14 via-sky-400/4 to-transparent",
+    label: humanizeKind(normalized),
+  };
+}
+
 export const SemanticGraphNode = memo(function SemanticGraphNode({
   data,
   selected,
@@ -29,6 +95,7 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
   sourceId: string;
   sourcePath?: string;
   kind?: string;
+  sourceKind?: string;
   summary?: string;
   isActiveLayer?: boolean;
   isPinned?: boolean;
@@ -46,6 +113,7 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
 }>) {
   const selectionCount = data.selectionToolbarNodeIds?.length ?? 0;
   const hiddenCount = data.selectionHiddenCount ?? 0;
+  const theme = nodeTypeTheme(data.sourceKind);
 
   return (
     <div
@@ -57,6 +125,7 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
             : "border border-stone-700/80 bg-zinc-950/95"
       }`}
     >
+      <div className={`pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-2xl bg-gradient-to-b ${theme.tint}`} />
       {data.showSelectionToolbar && data.selectionToolbarNodeIds?.length ? (
         <NodeToolbar
           nodeId={data.selectionToolbarNodeIds}
@@ -169,9 +238,16 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
           <div className="text-base font-medium leading-5 tracking-tight text-stone-50">
             {data.label}
           </div>
-          {data.kind ? (
+          {theme.label ? (
+            <div className="mt-1 flex items-center gap-2">
+              <span className={`inline-block h-2 w-2 rounded-full border ${theme.accent}`} />
+              <div className={`text-[10px] uppercase tracking-[0.16em] ${theme.accent}`}>
+                {theme.label}
+              </div>
+            </div>
+          ) : data.kind ? (
             <div className="mt-1 text-[10px] uppercase tracking-[0.16em] text-stone-500">
-              {data.kind}
+              {humanizeKind(data.kind)}
             </div>
           ) : null}
           {data.summary ? (

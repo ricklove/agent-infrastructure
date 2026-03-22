@@ -908,6 +908,7 @@ function mapSemanticNode(node: AgentGraphNode): Node {
       sourceId: node.sourceId,
       sourcePath: node.sourcePath,
       kind: node.kind,
+      sourceKind: node.sourceKind,
       layerId: node.parentLayerId,
     },
     position: sanitizePoint(node.position),

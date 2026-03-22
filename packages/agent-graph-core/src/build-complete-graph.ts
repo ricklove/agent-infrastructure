@@ -79,6 +79,7 @@ export function buildCompleteGraph(args: {
         label: sourceNode.label,
         sourcePath: sourceNode.sourcePath,
         kind: "semantic-node",
+        sourceKind: sourceNode.kind,
         position:
           workspaceState.nodePositions[id] ?? {
           x: LAYER_PADDING_X + col * NODE_COLUMN_GAP,

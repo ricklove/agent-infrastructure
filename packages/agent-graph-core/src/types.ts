@@ -99,6 +99,7 @@ export type GraphNode = {
   label: string;
   sourcePath?: string;
   kind: GraphNodeKind;
+  sourceKind?: SourceNodeKind;
   position: {
     x: number;
     y: number;
