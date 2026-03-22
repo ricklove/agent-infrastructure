@@ -2,7 +2,7 @@
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 system_event_log "git-askpass.sh" "start" "cwd=${PWD}"
-TOKEN="$(bash "${RUNTIME_ROOT}/scripts/github-app-token.sh" --repo-path "${PWD}" token)"
+TOKEN="$(bash "${RUNTIME_ROOT}/tools/github-app-token.sh" --repo-path "${PWD}" token)"
 
 case "${1:-}" in
   *Username*|*username*)

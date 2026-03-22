@@ -7,13 +7,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 for arg in "$@"; do
   case "$arg" in
     -h|--help)
-      exec bash "${ROOT_DIR}/scripts/connect-vscode.sh" --help
+      exec bash "${ROOT_DIR}/tools/connect-vscode.sh" --help
       ;;
   esac
 done
 
 host_alias="$(
-  bash "${ROOT_DIR}/scripts/connect-vscode.sh" --no-launch --print-host-alias "$@" | tail -n 1
+  bash "${ROOT_DIR}/tools/connect-vscode.sh" --no-launch --print-host-alias "$@" | tail -n 1
 )"
 
 [[ -n "$host_alias" ]] || {
