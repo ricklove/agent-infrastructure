@@ -1,3 +1,5 @@
+import { useEffect } from "react"
+
 export function AgentChatScreen() {
   useEffect(() => {
     if (typeof window === "undefined") {
