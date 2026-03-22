@@ -142,20 +142,15 @@ export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
                   className="min-w-0 flex-1 text-left"
                 >
                   <div className="flex items-center gap-2">
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        activeLayerId === layer.id ? "bg-emerald-400" : "bg-stone-600"
+                      }`}
+                    />
                     <h3 className="truncate text-sm font-medium text-stone-100">{layer.label}</h3>
-                    {activeLayerId === layer.id ? (
-                      <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.18em] text-emerald-200">
-                        Active
-                      </span>
-                    ) : null}
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] text-stone-400">
-                    <span className="rounded-full border border-stone-700 px-1.5 py-0.5">
-                      {layer.kind}
-                    </span>
-                    <span className="rounded-full border border-stone-700 px-1.5 py-0.5">
-                      {layer.nodeIds.length} nodes
-                    </span>
+                  <div className="mt-1 text-[11px] text-stone-400">
+                    {layer.nodeIds.length} nodes
                   </div>
                 </button>
               </div>

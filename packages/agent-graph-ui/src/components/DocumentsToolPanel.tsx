@@ -160,9 +160,7 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                 </div>
                 <div className="mt-1 truncate text-[11px] text-stone-500">{workspace.board.path}</div>
               </div>
-              <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-emerald-200">
-                Open
-              </div>
+              <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
             </div>
           </div>
         ) : null}
