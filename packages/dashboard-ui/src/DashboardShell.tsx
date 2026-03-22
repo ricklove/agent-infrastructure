@@ -391,8 +391,38 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
   return (
     <div className="flex min-h-screen bg-slate-950 text-slate-100">
       <aside className="flex w-14 shrink-0 flex-col items-center gap-3 border-r border-white/10 bg-[#0a0f17] px-1.5 py-2">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-400/10 text-[11px] font-semibold tracking-[0.24em] text-emerald-200">
-          AI
+        <div className="group relative">
+          <button
+            type="button"
+            onClick={copyStatusLabel}
+            className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-400/30 bg-emerald-400/10 text-[11px] font-semibold tracking-[0.24em] text-emerald-200 transition hover:bg-emerald-400/15"
+            title="Copy dashboard status"
+          >
+            AI
+          </button>
+          <div className="pointer-events-none absolute left-[calc(100%+0.75rem)] top-0 z-50 hidden min-w-[17rem] rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur group-hover:block">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-stone-500">Version</span>
+                <span className="font-medium text-stone-100">{appVersion}</span>
+              </div>
+              {backendVersionMismatch ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-stone-500">Backend</span>
+                  <span className="font-medium text-rose-300">
+                    {gatewayBackendVersion}
+                  </span>
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-stone-500">WS</span>
+                <span className={gatewayConnectionTone}>{gatewayConnectionStatus}</span>
+              </div>
+              <div className="border-t border-stone-800 pt-1.5 text-[10px] uppercase tracking-[0.18em] text-stone-500">
+                {copiedStatus ? "Copied" : "Click to copy"}
+              </div>
+            </div>
+          </div>
         </div>
         <nav className="mt-1 flex w-full flex-1 flex-col items-center gap-1.5">
           {featureDefinitions.map((feature) => {
@@ -455,27 +485,6 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
           </Suspense>
         </main>
         <div className="pointer-events-none absolute right-4 top-4 z-50 flex max-w-[32rem] flex-col items-end gap-2">
-          <div className="rounded-2xl border border-stone-800/90 bg-stone-950/88 px-3 py-2 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-            <div className="flex items-center justify-end gap-3 whitespace-nowrap">
-              <span>Version: {appVersion}</span>
-              {backendVersionMismatch ? (
-                <span className="text-rose-300">
-                  Backend: {gatewayBackendVersion}
-                </span>
-              ) : null}
-              <span className={gatewayConnectionTone}>
-                WS: {gatewayConnectionStatus}
-              </span>
-              <button
-                type="button"
-                onClick={copyStatusLabel}
-                className="pointer-events-auto rounded-full border border-stone-700 px-2 py-0.5 text-[10px] text-stone-200 hover:bg-stone-800"
-                title="Copy status"
-              >
-                {copiedStatus ? "Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
           {initializing ? (
             <div className="rounded-xl border border-white/10 bg-[#0d131c]/90 px-3 py-2 text-xs text-slate-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
               Initializing dashboard shell...
