@@ -2,6 +2,7 @@ import {
   CfnOutput,
   Duration,
   RemovalPolicy,
+  SecretValue,
   Stack,
   StackProps,
   Tags,
@@ -12,19 +13,16 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
-import { randomBytes } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sourceDir = dirname(fileURLToPath(import.meta.url));
 
-function writeFileCommand(targetPath: string, content: string): string {
-  return `cat > ${targetPath} <<'EOF'\n${content}\nEOF`;
-}
-
 export interface AwsSetupStackProps extends StackProps {
   agentHome: string;
+  dashboardEnrollmentSecret: string;
   managerInstanceType: string;
   workerInstanceType: string;
   swarmMaxSize: number;
@@ -44,7 +42,15 @@ export class AwsSetupStack extends Stack {
     const swarmTagKey = "AgentSwarm";
     const swarmTagValue = `${this.stackName}-workers`;
     const managerMonitorPort = 8787;
-    const dashboardEnrollmentSecret = randomBytes(32).toString("hex");
+    const dashboardEnrollmentSecretSecret = new secretsmanager.Secret(
+      this,
+      "DashboardEnrollmentSecret",
+      {
+        secretStringValue: SecretValue.unsafePlainText(
+          props.dashboardEnrollmentSecret,
+        ),
+      },
+    );
     const runtimeRepoUrl = "https://github.com/ricklove/agent-infrastructure.git";
     const runtimeRepoRef = "development";
     const runtimeRoot = `${props.agentHome}/runtime`;
@@ -324,7 +330,7 @@ export class AwsSetupStack extends Stack {
         environment: {
           DASHBOARD_PASSKEY_TABLE_NAME: dashboardPasskeyTable.tableName,
           DASHBOARD_ACCESS_STATE_TABLE_NAME: dashboardAccessStateTable.tableName,
-          DASHBOARD_ENROLLMENT_SECRET: dashboardEnrollmentSecret,
+          DASHBOARD_ENROLLMENT_SECRET: props.dashboardEnrollmentSecret,
           MANAGER_SWARM_TAG_VALUE: swarmTagValue,
           AGENT_HOME: props.agentHome,
           DASHBOARD_SESSION_TTL_SECONDS: "900",
@@ -362,7 +368,7 @@ export class AwsSetupStack extends Stack {
       managerMonitorPort,
       swarmMaxSize: props.swarmMaxSize,
       dashboardAccessApiBaseUrl: dashboardAccessUrl.url.replace(/\/$/, ""),
-      dashboardEnrollmentSecret,
+      dashboardEnrollmentSecret: props.dashboardEnrollmentSecret,
     };
 
     managerInstance.userData.addCommands(
@@ -412,6 +418,9 @@ export class AwsSetupStack extends Stack {
     });
     new CfnOutput(this, "WorkerRuntimeReleaseBucketName", {
       value: workerRuntimeReleaseBucket.bucketName,
+    });
+    new CfnOutput(this, "DashboardEnrollmentSecretArn", {
+      value: dashboardEnrollmentSecretSecret.secretArn,
     });
   }
 }
