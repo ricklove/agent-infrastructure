@@ -134,11 +134,28 @@ export async function createHttpServer(repository: DocumentRepository) {
     },
     websocket: {
       async message(ws, message) {
-        const responses = await handleWsMessage(String(message));
-        for (const response of responses) {
-          for (const socket of sockets) {
-            socket.send(JSON.stringify(response));
+        try {
+          const responses = await handleWsMessage(String(message));
+          for (const response of responses) {
+            for (const socket of sockets) {
+              socket.send(JSON.stringify(response));
+            }
           }
+        } catch (error) {
+          console.error("agent-graph websocket message failed", error);
+          ws.send(
+            JSON.stringify({
+              type: "server/conflict",
+              conflict: {
+                revision: repository.getWorkspaceState().revision,
+                localRevision: repository.getWorkspaceState().revision,
+                reason:
+                  error instanceof Error
+                    ? error.message
+                    : "Graph workspace persistence failed.",
+              },
+            }),
+          );
         }
       },
       open(ws) {

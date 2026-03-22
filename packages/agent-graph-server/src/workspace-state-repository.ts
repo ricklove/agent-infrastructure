@@ -7,7 +7,7 @@ export async function saveBoardFile(
   boardFile: BoardFile,
 ): Promise<void> {
   await mkdir(dirname(boardPath), { recursive: true });
-  const tempPath = `${boardPath}.tmp`;
+  const tempPath = `${boardPath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
   await writeFile(tempPath, JSON.stringify(boardFile, null, 2), "utf8");
   await rename(tempPath, boardPath);
 }
