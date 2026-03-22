@@ -1,18 +1,10 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from "react"
-
-const AgentSwarmScreen = lazy(() =>
-  import("@agent-infrastructure/agent-swarm-ui").then((module) => ({
-    default: function LazyAgentSwarmScreen() {
-      return <module.AgentSwarmScreen apiRootUrl="/api/agent-swarm" />
-    },
-  })),
-)
-
-const AgentChatScreen = lazy(() =>
-  import("@agent-infrastructure/agent-chat-ui").then((module) => ({
-    default: module.AgentChatScreen,
-  })),
-)
+import { Suspense, lazy, useEffect, useMemo, useState, type ComponentType } from "react"
+import type {
+  DashboardFeatureIcon,
+  DashboardFeatureId,
+  DashboardFeatureUiPlugin,
+} from "@agent-infrastructure/dashboard-plugin"
+import { dashboardFeaturePlugins } from "./feature-plugins"
 
 type DashboardConfig = {
   ok: boolean
@@ -33,15 +25,11 @@ type DashboardGatewayStatusMessage = {
   timestamp: string
 }
 
-type FeatureId = "swarm" | "chat" | "graph"
+type FeatureId = DashboardFeatureId
 
-type FeatureDefinition = {
-  id: FeatureId
-  label: string
-  href: string
-  description: string
+type FeatureDefinition = DashboardFeatureUiPlugin & {
   component: React.LazyExoticComponent<() => JSX.Element>
-  icon: (props: { className?: string }) => JSX.Element
+  iconComponent: (props: { className?: string }) => JSX.Element
 }
 
 type FeatureStatusItem = {
@@ -138,63 +126,40 @@ function readStoredSessionToken(): string {
 }
 
 function featureIdFromPath(pathname: string): FeatureId {
-  if (pathname === "/chat") {
-    return "chat"
-  }
+  return dashboardFeaturePlugins.find((plugin) => plugin.route === pathname)?.id ?? "swarm"
+}
 
-  if (pathname === "/graph") {
-    return "graph"
-  }
-
-  return "swarm"
+const featureIconMap: Record<
+  DashboardFeatureIcon,
+  (props: { className?: string }) => JSX.Element
+> = {
+  swarm: SwarmIcon,
+  chat: ChatIcon,
+  graph: GraphIcon,
 }
 
 export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersion?: string }) {
-  const AgentGraphFeatureScreen = useMemo(
-    () =>
-      lazy(() =>
-        import("@agent-infrastructure/agent-graph-ui").then((module) => ({
-          default: function DashboardAgentGraphScreen() {
-            return (
-              <module.AgentGraphScreen
-                appVersion={appVersion}
-                apiRootUrl={`${window.location.origin}/api/agent-graph`}
-                wsRootUrl={`${window.location.origin.replace(/^http/, "ws")}/ws/agent-graph`}
-              />
-            )
-          },
-        })),
-      ),
-    [appVersion],
-  )
   const featureDefinitions: FeatureDefinition[] = useMemo(
-    () => [
-      {
-        id: "swarm",
-        label: "Agent Swarm",
-        href: "/swarm",
-        description: "Manager, fleet, registry, and access operations.",
-        component: AgentSwarmScreen,
-        icon: SwarmIcon,
-      },
-      {
-        id: "chat",
-        label: "Agent Chat",
-        href: "/chat",
-        description: "Multi-session chat will live here.",
-        component: AgentChatScreen,
-        icon: ChatIcon,
-      },
-      {
-        id: "graph",
-        label: "Agent Graph",
-        href: "/graph",
-        description: "Graph exploration and editing.",
-        component: AgentGraphFeatureScreen,
-        icon: GraphIcon,
-      },
-    ],
-    [AgentGraphFeatureScreen],
+    () =>
+      dashboardFeaturePlugins.map((plugin) => ({
+        ...plugin,
+        component: lazy(() =>
+          plugin.loadScreen().then((module) => ({
+            default: function DashboardFeaturePluginScreen() {
+              const screenProps = plugin.screen?.getProps
+                ? plugin.screen.getProps({
+                    windowOrigin: window.location.origin,
+                    windowWsOrigin: window.location.origin.replace(/^http/, "ws"),
+                  })
+                : plugin.screen?.props ?? {}
+              const Screen = module.default as ComponentType<Record<string, unknown>>
+              return <Screen appVersion={appVersion} {...screenProps} />
+            },
+          })),
+        ),
+        iconComponent: featureIconMap[plugin.icon],
+      })),
+    [appVersion],
   )
   const [activeFeatureId, setActiveFeatureId] = useState<FeatureId>(() =>
     featureIdFromPath(window.location.pathname),
@@ -458,8 +423,8 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
       featureDefinitions.find((feature) => feature.id === featureId) ??
       featureDefinitions[0]
 
-    if (window.location.pathname !== nextFeature.href) {
-      window.history.pushState({}, "", nextFeature.href)
+    if (window.location.pathname !== nextFeature.route) {
+      window.history.pushState({}, "", nextFeature.route)
     }
 
     setActiveFeatureId(nextFeature.id)
@@ -536,7 +501,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
         <nav className="mt-1 flex w-full flex-1 flex-col items-center gap-1.5">
           {featureDefinitions.map((feature) => {
             const isActive = feature.id === activeFeatureId
-            const Icon = feature.icon
+            const Icon = feature.iconComponent
 
             return (
               <button

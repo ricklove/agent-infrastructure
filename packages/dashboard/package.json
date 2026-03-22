@@ -7,6 +7,12 @@
     "check": "tsc --project tsconfig.json --noEmit",
     "start": "bun run src/server.ts"
   },
+  "dependencies": {
+    "@agent-infrastructure/agent-chat-ui": "workspace:*",
+    "@agent-infrastructure/agent-graph-ui": "workspace:*",
+    "@agent-infrastructure/agent-swarm-ui": "workspace:*",
+    "@agent-infrastructure/dashboard-plugin": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^20.11.30",
     "bun-types": "^1.3.10",

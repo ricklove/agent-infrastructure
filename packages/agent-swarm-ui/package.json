@@ -3,13 +3,16 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./plugin": "./src/dashboard-plugin.ts",
+    "./ui-plugin": "./src/dashboard-ui-plugin.ts"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json --noEmit",
     "check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@agent-infrastructure/dashboard-plugin": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

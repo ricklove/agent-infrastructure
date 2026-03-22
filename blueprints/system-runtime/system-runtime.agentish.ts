@@ -75,6 +75,7 @@ const Policy = {
   runtimeNoEdits: define.concept("NoDirectRuntimeEdits"),
   scriptBoundary: define.concept("ScriptBoundaryRule"),
   logging: define.concept("SystemLoggingRule"),
+  fullUpdateWorkflow: define.concept("FullManagerUpdateWorkflow"),
 };
 
 const Eventing = {
@@ -101,6 +102,7 @@ SystemRuntime.enforces(`
 - Feature backends behind the dashboard gateway are lazy by default.
 - The dashboard gateway may start a backend only when a feature path is actually used.
 - The dashboard gateway should prefer declared backend definitions over ad hoc one-off launch logic.
+- Manager updates should follow one full development process from source edit through post-deploy verification.
 `);
 
 SystemRuntime.defines(`
@@ -113,6 +115,7 @@ SystemRuntime.defines(`
 - ScriptBoundaryRule means shell exists only at real system edges.
 - SystemLoggingRule means important system events emit short timestamped comments to a fixed log file.
 - GatewayBackendDefinition means one declared lazy backend contract with base URL, health probe, and optional start command.
+- FullManagerUpdateWorkflow means source change, local verification, commit, push, runtime rollout, and post-deploy checks.
 `);
 
 Host.manager.contains(
@@ -181,6 +184,16 @@ Policy.logging.means(`
 - optimize for operator readability over logging cleverness
 `);
 
+Policy.fullUpdateWorkflow.means(`
+- edit source only
+- verify locally before rollout
+- commit source
+- push source
+- update runtime by checkout to the pushed revision
+- restart or reissue affected runtime processes
+- run post-deploy health and behavior checks
+`);
+
 Gateway.lazyStart.means(`
 - feature backend processes are started only on first use
 - gateway proxy traffic is the trigger point
@@ -229,6 +242,12 @@ when(Gateway.dashboard.detects("an unhealthy feature backend"))
   .and(Host.logFile.records(Eventing.error))
   .and(SystemRuntime.treats("gateway-triggered backend recovery as a system-level event"));
 
+when(Operator.requests("the full manager development process"))
+  .then(SystemRuntime.requires(Policy.fullUpdateWorkflow))
+  .and(SystemRuntime.requires(Policy.sourceOfTruth))
+  .and(SystemRuntime.requires(Policy.runtimeCheckoutOnly))
+  .and(SystemRuntime.requires("post-deploy checks before declaring success"));
+
 when(RuntimeCode.workerPower.isUsedBy("a manager test or manager workflow"))
   .then(SystemRuntime.prefers("direct TS invocation"))
   .and(SystemRuntime.reduces("TS to shell to TS indirection"));
@@ -251,4 +270,5 @@ SystemRuntime.prescribes(`
 - worker user data may remain package-local when it is an internal bootstrap asset rather than an operator entrypoint
 - the dashboard gateway owns lazy feature backend startup
 - each lazy backend should be described once through a backend definition rather than hardcoded repeatedly
+- the default manager update process is source edit, local verification, commit, push, runtime checkout, restart, and post-deploy verification
 `);

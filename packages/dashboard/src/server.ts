@@ -11,6 +11,8 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { DashboardFeatureBackendDefinition } from "@agent-infrastructure/dashboard-plugin";
+import { dashboardFeaturePlugins } from "./feature-plugins.js";
 
 type ManagerHealthResponse = {
   ok: boolean;
@@ -124,6 +126,7 @@ type DashboardSessionStore = {
 
 type ProxyWsData = {
   kind: "graph-proxy";
+  backendId: string;
   upstream: WebSocket | null;
   queue: string[];
 };
@@ -137,6 +140,8 @@ type DashboardWsData = ProxyWsData | DashboardStatusWsData;
 
 type GatewayBackendDefinition = {
   id: string;
+  apiBasePath?: string;
+  wsBasePath?: string;
   baseUrl: string;
   wsUrl?: string;
   healthPath: string;
@@ -147,15 +152,11 @@ type GatewayBackendDefinition = {
 const sourceDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(sourceDir, "../../..");
 const dashboardDistDir = resolve(repoRoot, "apps/dashboard-app/dist");
-const agentGraphServerEntry = resolve(repoRoot, "packages/agent-graph-server/src/index.ts");
 const managerBaseUrl =
   process.env.MANAGER_INTERNAL_URL?.trim() || "http://127.0.0.1:8787";
-const agentGraphBaseUrl =
-  process.env.AGENT_GRAPH_SERVER_URL?.trim() || "http://127.0.0.1:8788";
 const stateRoot = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state";
 const systemEventLogPath =
   process.env.SYSTEM_EVENT_LOG_PATH?.trim() || `${stateRoot}/logs/system-events.log`;
-const agentGraphLogPath = `${stateRoot}/logs/agent-graph-server.log`;
 const accessApiBaseUrl = process.env.DASHBOARD_ACCESS_API_BASE_URL?.trim() || "";
 const enrollmentSecret = process.env.DASHBOARD_ENROLLMENT_SECRET?.trim() || "";
 const sessionStorePath =
@@ -236,16 +237,41 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
-const gatewayBackends = {
-  agentGraph: {
-    id: "agent-graph",
-    baseUrl: agentGraphBaseUrl,
-    wsUrl: `${wsBaseUrlFromHttpOrigin(agentGraphBaseUrl)}/api/agent-graph/ws`,
-    healthPath: "/api/agent-graph/workspace",
-    startCommand: ["bun", agentGraphServerEntry],
-    logPath: agentGraphLogPath,
-  },
-} satisfies Record<string, GatewayBackendDefinition>;
+function resolveBackendBaseUrl(definition: DashboardFeatureBackendDefinition): string {
+  const envValue = definition.upstreamBaseUrlEnv
+    ? process.env[definition.upstreamBaseUrlEnv]?.trim() ?? ""
+    : "";
+  return envValue || definition.defaultBaseUrl || "";
+}
+
+function createGatewayBackend(
+  definition: DashboardFeatureBackendDefinition,
+): GatewayBackendDefinition {
+  const baseUrl = resolveBackendBaseUrl(definition);
+  const logPath = definition.startup?.logFileName
+    ? `${stateRoot}/logs/${definition.startup.logFileName}`
+    : undefined;
+
+  return {
+    id: definition.id,
+    apiBasePath: definition.apiBasePath,
+    wsBasePath: definition.wsBasePath,
+    baseUrl,
+    wsUrl:
+      baseUrl && definition.upstreamWsPath
+        ? `${wsBaseUrlFromHttpOrigin(baseUrl)}${definition.upstreamWsPath}`
+        : undefined,
+    healthPath: definition.healthPath,
+    startCommand:
+      definition.startup?.kind === "bun-entry"
+        ? ["bun", resolve(repoRoot, definition.startup.entry)]
+        : undefined,
+    logPath,
+  };
+}
+
+const gatewayBackends = dashboardFeaturePlugins
+  .flatMap((plugin) => (plugin.backend ? [createGatewayBackend(plugin.backend)] : []));
 
 function dashboardStatusPayload() {
   return {
@@ -546,6 +572,24 @@ async function ensureBackend(backend: GatewayBackendDefinition): Promise<void> {
   await backendEnsurePromises.get(backend.id);
 }
 
+function findApiBackend(pathname: string): GatewayBackendDefinition | undefined {
+  return gatewayBackends.find((backend) => {
+    if (!backend.apiBasePath) {
+      return false;
+    }
+    return pathname === backend.apiBasePath || pathname.startsWith(`${backend.apiBasePath}/`);
+  });
+}
+
+function findWsBackend(pathname: string): GatewayBackendDefinition | undefined {
+  return gatewayBackends.find((backend) => {
+    if (!backend.wsBasePath || !backend.wsUrl) {
+      return false;
+    }
+    return pathname === backend.wsBasePath || pathname === `${backend.wsBasePath}/`;
+  });
+}
+
 async function handleApi(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const swarmApiAliases = {
@@ -750,10 +794,11 @@ async function handleApi(request: Request): Promise<Response> {
     }
   }
 
-  if (url.pathname.startsWith("/api/agent-graph/")) {
+  const featureBackend = findApiBackend(url.pathname);
+  if (featureBackend) {
     try {
-      await ensureBackend(gatewayBackends.agentGraph);
-      const response = await fetch(`${agentGraphBaseUrl}${url.pathname}${url.search}`, {
+      await ensureBackend(featureBackend);
+      const response = await fetch(`${featureBackend.baseUrl}${url.pathname}${url.search}`, {
         method: request.method,
         headers: {
           accept: "application/json",
@@ -784,7 +829,7 @@ async function handleApi(request: Request): Promise<Response> {
           error:
             error instanceof Error
               ? error.message
-              : "failed to proxy agent graph request",
+              : `failed to proxy ${featureBackend.id} request`,
         },
         502,
       );
@@ -851,18 +896,16 @@ const server = Bun.serve<DashboardWsData>({
   idleTimeout: 30,
   async fetch(request) {
     const url = new URL(request.url);
+    const wsBackend = findWsBackend(url.pathname);
 
-    if (
-      url.pathname === "/ws/agent-graph" ||
-      url.pathname === "/ws/agent-graph/"
-    ) {
+    if (wsBackend) {
       const unauthorized = requireDashboardSession(request);
       if (unauthorized) {
         return unauthorized;
       }
 
       try {
-        await ensureBackend(gatewayBackends.agentGraph);
+        await ensureBackend(wsBackend);
       } catch (error) {
         return jsonResponse(
           {
@@ -878,7 +921,12 @@ const server = Bun.serve<DashboardWsData>({
 
       if (
         server.upgrade(request, {
-          data: { kind: "graph-proxy", upstream: null, queue: [] },
+          data: {
+            kind: "graph-proxy",
+            backendId: wsBackend.id,
+            upstream: null,
+            queue: [],
+          },
         })
       ) {
         return undefined;
@@ -926,7 +974,16 @@ const server = Bun.serve<DashboardWsData>({
       }
 
       const proxyData = ws.data;
-      const upstream = new WebSocket(gatewayBackends.agentGraph.wsUrl!);
+      const backend = gatewayBackends.find(
+        (candidate) => candidate.id === proxyData.backendId,
+      );
+      if (!backend?.wsUrl) {
+        try {
+          ws.close();
+        } catch {}
+        return;
+      }
+      const upstream = new WebSocket(backend.wsUrl);
       proxyData.upstream = upstream;
 
       upstream.addEventListener("open", () => {
