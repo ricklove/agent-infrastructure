@@ -70,6 +70,14 @@ function SaveIcon() {
   );
 }
 
+function CheckIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m5 12 5 5L20 7" />
+    </svg>
+  );
+}
+
 export const DocumentsToolPanel = observer(function DocumentsToolPanel({
   store,
   actions,
@@ -200,13 +208,13 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
           onClick={closePicker}
         >
           <div
-            className="w-full max-w-4xl rounded-[2rem] border border-stone-700 bg-[linear-gradient(180deg,rgba(28,25,23,0.98),rgba(12,10,9,0.98))] shadow-[0_24px_100px_rgba(0,0,0,0.55)]"
+            className="flex max-h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-stone-700 bg-[linear-gradient(180deg,rgba(28,25,23,0.98),rgba(12,10,9,0.98))] shadow-[0_24px_100px_rgba(0,0,0,0.55)]"
             role="dialog"
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4 border-b border-stone-800 px-5 py-4">
-              <div>
+              <div className="min-w-0">
                 <h3 className="font-['Space_Grotesk'] text-lg font-medium text-stone-50">
                   {picker === "boards" ? "Open Board" : "Add Document"}
                 </h3>
@@ -215,20 +223,20 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                     ? "Pick a workspace board to open."
                     : "Pick an Agentish document to include in the current board."}
                 </p>
-                <div className="mt-2 inline-flex rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-300">
+                <div className="mt-2 inline-flex rounded-full border border-stone-700 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-400">
                   {picker === "boards" ? `${boards.length} boards` : `${documents.length} documents`}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={closePicker}
-                className="rounded-full border border-stone-700 px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-stone-200 hover:bg-stone-800"
+                className="rounded-full border border-stone-700 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-300 hover:bg-stone-800"
               >
                 Close
               </button>
             </div>
 
-            <div className="px-5 py-4">
+            <div className="border-b border-stone-800 px-5 py-4">
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -237,7 +245,7 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
               />
             </div>
 
-            <div className="max-h-[60vh] space-y-3 overflow-auto px-5 pb-5">
+            <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
               {picker === "boards"
                 ? filteredBoards.map((board) => {
                     const isCurrent = board.path === workspace?.board.path;
@@ -250,25 +258,23 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                           void actions.openBoard(board.path);
                           closePicker();
                         }}
-                        className={`block w-full rounded-[1.5rem] border p-4 text-left transition ${
+                        className={`block w-full rounded-2xl border px-4 py-3 text-left transition ${
                           isCurrent
-                            ? "border-amber-500/40 bg-amber-500/10"
-                            : "border-stone-800 bg-stone-900/90 hover:border-stone-500 hover:bg-stone-900"
+                            ? "border-emerald-500/35 bg-emerald-500/10"
+                            : "border-stone-800 bg-stone-900/70 hover:border-stone-600 hover:bg-stone-900"
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-base font-medium text-stone-100">{board.label}</div>
-                          <div
-                            className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] ${
-                              isCurrent
-                                ? "border-amber-500/40 text-amber-200"
-                                : "border-stone-700 text-stone-300"
-                            }`}
-                          >
-                            {isCurrent ? "Current" : "Open"}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium text-stone-100">{board.label}</div>
+                            <div className="mt-1 break-all text-[11px] leading-5 text-stone-500">
+                              {board.path}
+                            </div>
+                          </div>
+                          <div className="mt-0.5 shrink-0 text-emerald-300">
+                            {isCurrent ? <CheckIcon /> : <FolderIcon />}
                           </div>
                         </div>
-                        <div className="mt-2 text-xs text-stone-500">{board.path}</div>
                       </button>
                     );
                   })
@@ -285,27 +291,21 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                           void actions.addBoardDocument(document.path);
                           closePicker();
                         }}
-                        className={`block w-full rounded-[1.5rem] border p-4 text-left transition ${
+                        className={`block w-full rounded-2xl border px-4 py-3 text-left transition ${
                           alreadyIncluded
-                            ? "border-stone-800 bg-stone-900/60"
-                            : "border-stone-800 bg-stone-900/90 hover:border-stone-500 hover:bg-stone-900"
+                            ? "border-stone-800 bg-stone-900/55"
+                            : "border-stone-800 bg-stone-900/70 hover:border-stone-600 hover:bg-stone-900"
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="truncate text-base font-medium text-stone-100">
+                            <div className="truncate text-sm font-medium text-stone-100">
                               {document.label}
                             </div>
-                            <div className="mt-2 text-xs text-stone-500">{document.path}</div>
+                            <div className="mt-1 break-all text-[11px] leading-5 text-stone-500">{document.path}</div>
                           </div>
-                          <div
-                            className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] ${
-                              alreadyIncluded
-                                ? "border-stone-700 text-stone-500"
-                                : "border-stone-700 text-stone-300"
-                            }`}
-                          >
-                            {alreadyIncluded ? "Added" : "Add"}
+                          <div className={`mt-0.5 shrink-0 ${alreadyIncluded ? "text-stone-500" : "text-stone-300"}`}>
+                            {alreadyIncluded ? <CheckIcon /> : <PlusIcon />}
                           </div>
                         </div>
                       </button>

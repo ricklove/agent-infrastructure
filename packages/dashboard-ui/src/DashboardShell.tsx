@@ -44,6 +44,17 @@ type FeatureDefinition = {
   icon: (props: { className?: string }) => JSX.Element
 }
 
+type FeatureStatusItem = {
+  label: string
+  value: string
+  tone?: "neutral" | "good" | "warn" | "bad"
+}
+
+type FeatureStatusDetail = {
+  featureId: FeatureId
+  items: FeatureStatusItem[]
+}
+
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
 
 function SwarmIcon(props: { className?: string }) {
@@ -201,6 +212,9 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
   >("idle")
   const [gatewayBackendVersion, setGatewayBackendVersion] = useState("--")
   const [copiedStatus, setCopiedStatus] = useState(false)
+  const [featureStatuses, setFeatureStatuses] = useState<
+    Partial<Record<FeatureId, FeatureStatusItem[]>>
+  >({})
 
   const activeFeature = useMemo(
     () =>
@@ -224,6 +238,28 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
     window.addEventListener("popstate", handlePopState)
     return () => {
       window.removeEventListener("popstate", handlePopState)
+    }
+  }, [])
+
+  useEffect(() => {
+    function handleFeatureStatus(event: Event) {
+      const detail = (event as CustomEvent<FeatureStatusDetail>).detail
+      if (!detail?.featureId) {
+        return
+      }
+
+      setFeatureStatuses((current) => ({
+        ...current,
+        [detail.featureId]: detail.items,
+      }))
+    }
+
+    window.addEventListener("dashboard-feature-status", handleFeatureStatus as EventListener)
+    return () => {
+      window.removeEventListener(
+        "dashboard-feature-status",
+        handleFeatureStatus as EventListener,
+      )
     }
   }, [])
 
@@ -309,6 +345,22 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
           : "border-stone-700/70 bg-stone-800/80 text-stone-300 hover:bg-stone-700/80"
   const backendVersionMismatch =
     gatewayBackendVersion !== "--" && gatewayBackendVersion !== appVersion
+  const activeFeatureStatusItems = featureStatuses[activeFeatureId] ?? []
+
+  function toneClassForFeatureStatus(
+    tone: FeatureStatusItem["tone"],
+  ): string {
+    if (tone === "good") {
+      return "text-emerald-300"
+    }
+    if (tone === "warn") {
+      return "text-amber-200"
+    }
+    if (tone === "bad") {
+      return "text-rose-300"
+    }
+    return "text-stone-200"
+  }
 
   function copyStatusLabel() {
     const parts = [`Version: ${appVersion}`]
@@ -316,6 +368,9 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
       parts.push(`Backend: ${gatewayBackendVersion}`)
     }
     parts.push(`WS: ${gatewayConnectionStatus}`)
+    for (const item of activeFeatureStatusItems) {
+      parts.push(`${activeFeature.label} ${item.label}: ${item.value}`)
+    }
     void navigator.clipboard.writeText(parts.join(" | "))
     setCopiedStatus(true)
     window.setTimeout(() => setCopiedStatus(false), 1200)
@@ -455,6 +510,26 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
                 <span className="text-stone-500">WS</span>
                 <span className={gatewayConnectionTone}>{gatewayConnectionStatus}</span>
               </div>
+              {activeFeatureStatusItems.length > 0 ? (
+                <div className="border-t border-stone-800 pt-1.5">
+                  <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-stone-500">
+                    {activeFeature.label}
+                  </div>
+                  <div className="space-y-1.5">
+                    {activeFeatureStatusItems.map((item) => (
+                      <div
+                        key={`${activeFeature.id}:${item.label}`}
+                        className="flex items-center justify-between gap-3"
+                      >
+                        <span className="text-stone-500">{item.label}</span>
+                        <span className={toneClassForFeatureStatus(item.tone)}>
+                          {item.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

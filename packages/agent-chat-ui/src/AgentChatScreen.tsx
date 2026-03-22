@@ -1,4 +1,25 @@
 export function AgentChatScreen() {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("dashboard-feature-status", {
+        detail: {
+          featureId: "chat",
+          items: [
+            {
+              label: "API",
+              value: "placeholder",
+              tone: "warn",
+            },
+          ],
+        },
+      }),
+    )
+  }, [])
+
   return (
     <div className="flex h-full flex-col bg-slate-950 text-slate-100">
       <div className="border-b border-white/10 px-8 py-6">

@@ -179,6 +179,37 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("dashboard-feature-status", {
+        detail: {
+          featureId: "graph",
+          items: [
+            {
+              label: "API",
+              value: workspace ? "ready" : connection.status === "error" ? "error" : "loading",
+              tone: workspace ? "good" : connection.status === "error" ? "bad" : "warn",
+            },
+            {
+              label: "Graph WS",
+              value: connection.status,
+              tone:
+                connection.status === "ready"
+                  ? "good"
+                  : connection.status === "error"
+                    ? "bad"
+                    : "warn",
+            },
+          ],
+        },
+      }),
+    );
+  }, [connection.status, workspace]);
+
   function beginResize(
     columnRef: RefObject<HTMLDivElement | null>,
     panelHeights: number[],

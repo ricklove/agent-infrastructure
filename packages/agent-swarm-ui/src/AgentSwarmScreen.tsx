@@ -171,6 +171,28 @@ export function AgentSwarmScreen({
     }
   }, [apiRootUrl])
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    const apiReady = Boolean(health) && !error
+    window.dispatchEvent(
+      new CustomEvent("dashboard-feature-status", {
+        detail: {
+          featureId: "swarm",
+          items: [
+            {
+              label: "API",
+              value: apiReady ? "ready" : error ? "error" : "loading",
+              tone: apiReady ? "good" : error ? "bad" : "warn",
+            },
+          ],
+        },
+      }),
+    )
+  }, [error, health])
+
   const summary = useMemo(() => {
     const connectedWorkers = workers.filter(
       (worker) => worker.status === "connected",
