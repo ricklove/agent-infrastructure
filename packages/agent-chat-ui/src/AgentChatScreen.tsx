@@ -1794,11 +1794,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         key={image.id}
                         className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70"
                       >
-                        <img
-                          src={image.dataUrl}
-                          alt="Pasted attachment"
-                          className="h-28 w-28 object-cover"
-                        />
+                        <div className="flex min-h-28 min-w-28 items-center justify-center bg-slate-950/80 p-3">
+                          <img
+                            src={image.dataUrl}
+                            alt="Pasted attachment"
+                            className="max-h-28 max-w-28 object-contain"
+                          />
+                        </div>
                         <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
                           <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
                             image
