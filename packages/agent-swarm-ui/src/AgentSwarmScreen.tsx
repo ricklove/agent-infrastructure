@@ -533,23 +533,28 @@ const PROCESS_HUE_SLOTS = [
   194, 210, 226, 242, 258, 274, 290, 306, 322, 338, 352,
 ]
 
-function colorForSeries(key: string): string {
-  // Use FNV-1a hash (same as agent-graph-ui)
+function hashString(value: string): number {
   let hash = 2166136261
-  for (let index = 0; index < key.length; index += 1) {
-    hash ^= key.charCodeAt(index)
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
     hash = Math.imul(hash, 16777619)
   }
-  hash = hash >>> 0
+  return hash >>> 0
+}
+
+function colorForSeries(key: string): string {
+  const hash = hashString(key)
 
   // Pick from preset hue slots with offset (prevents color collisions)
   const slot = hash % PROCESS_HUE_SLOTS.length
   const offset = ((hash >>> 8) % 9) - 4
   const hue = PROCESS_HUE_SLOTS[slot] + offset
 
-  // Vary saturation and lightness for additional distinction
-  const saturation = 66 + ((hash >>> 16) % 13)
-  const lightness = 56 + ((hash >>> 24) % 10)
+  // Vary saturation and lightness using salted hashes for more variation
+  const satHash = hashString(`${key}:s`)
+  const lightHash = hashString(`${key}:l`)
+  const saturation = 66 + (satHash % 13)
+  const lightness = 56 + (lightHash % 10)
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`
 }
