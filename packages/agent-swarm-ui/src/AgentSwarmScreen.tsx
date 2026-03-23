@@ -850,7 +850,7 @@ export function AgentSwarmScreen({
         const nextLabel = formatProcessSeriesLabel(sample)
         const existing = seriesMap.get(key) ?? {
           label: nextLabel,
-          color: colorForSeries(`${ranking}:${nextLabel}`),
+          color: colorForSeries(`${ranking}:${sample.pid}`),
           points: [],
           maxValue: 0,
         }
