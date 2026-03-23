@@ -18,6 +18,8 @@ export type StoredSession = {
   providerKind: AgentChatProviderKind;
   modelRef: string;
   cwd: string;
+  pendingSystemInstruction: string | null;
+  pendingSystemInstructionMessageId: string | null;
   authProfile: string | null;
   imageModelRef: string | null;
   providerThreadId: string | null;
@@ -32,6 +34,9 @@ export type StoredMessage = {
   id: string;
   sessionId: string;
   role: "user" | "assistant" | "system";
+  kind: "chat" | "directoryInstruction";
+  replyToMessageId: string | null;
+  providerSeenAtMs: number | null;
   content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
   createdAtMs: number;
 };
@@ -68,10 +73,7 @@ function summarizePreview(messages: StoredMessage[]): string | null {
   return null;
 }
 
-function sessionSummary(
-  metadata: SessionMetadata,
-  messages: StoredMessage[],
-): StoredSession {
+function sessionSummary(metadata: SessionMetadata, messages: StoredMessage[]): StoredSession {
   return {
     ...metadata,
     preview: summarizePreview(messages),
@@ -80,14 +82,12 @@ function sessionSummary(
 }
 
 export class AgentChatStore {
-  private readonly dataDir: string;
   private readonly sessionsDir: string;
   private readonly sessionCache = new Map<string, StoredSession>();
   private readonly messageCache = new Map<string, StoredMessage[]>();
 
   constructor(options: AgentChatStoreOptions) {
-    this.dataDir = options.dataDir;
-    this.sessionsDir = join(this.dataDir, "sessions");
+    this.sessionsDir = join(options.dataDir, "sessions");
     mkdirSync(this.sessionsDir, { recursive: true });
     this.importLegacySqliteIfNeeded(options.legacySqlitePath ?? null);
     this.loadCache();
@@ -115,6 +115,8 @@ export class AgentChatStore {
       providerKind: input.providerKind,
       modelRef: input.modelRef,
       cwd: input.cwd,
+      pendingSystemInstruction: null,
+      pendingSystemInstructionMessageId: null,
       authProfile: input.authProfile ?? null,
       imageModelRef: input.imageModelRef ?? null,
       providerThreadId: null,
@@ -135,21 +137,48 @@ export class AgentChatStore {
     return [...(this.messageCache.get(sessionId) ?? [])];
   }
 
+  listQueuedMessages(sessionId: string): StoredMessage[] {
+    return this.listMessages(sessionId).filter(
+      (message) =>
+        message.providerSeenAtMs === null &&
+        (message.role === "user" || message.kind === "directoryInstruction"),
+    );
+  }
+
+  getNextQueuedUserMessage(sessionId: string): StoredMessage | null {
+    return (
+      this.listMessages(sessionId).find(
+        (message) => message.role === "user" && message.providerSeenAtMs === null,
+      ) ?? null
+    );
+  }
+
   appendMessage(
     sessionId: string,
-    input: { role: StoredMessage["role"]; content: StoredMessage["content"] },
+    input: {
+      role: StoredMessage["role"];
+      content: StoredMessage["content"];
+      kind?: StoredMessage["kind"];
+      replyToMessageId?: string | null;
+      providerSeenAtMs?: number | null;
+    },
   ): StoredMessage {
     const session = this.sessionCache.get(sessionId);
     if (!session) {
       throw new Error(`Unknown session ${sessionId}`);
     }
 
+    const createdAtMs = Date.now();
     const message: StoredMessage = {
       id: randomUUID(),
       sessionId,
       role: input.role,
+      kind: input.kind ?? "chat",
+      replyToMessageId: input.replyToMessageId ?? null,
+      providerSeenAtMs:
+        input.providerSeenAtMs === undefined ? createdAtMs : input.providerSeenAtMs,
       content: input.content,
-      createdAtMs: Date.now(),
+      createdAtMs,
     };
 
     const nextMessages = [...(this.messageCache.get(sessionId) ?? []), message];
@@ -157,7 +186,7 @@ export class AgentChatStore {
 
     const nextSession: StoredSession = {
       ...session,
-      updatedAtMs: message.createdAtMs,
+      updatedAtMs: createdAtMs,
       preview: summarizePreview(nextMessages),
       messageCount: nextMessages.length,
     };
@@ -222,6 +251,88 @@ export class AgentChatStore {
     return nextSession;
   }
 
+  queuePendingSystemInstruction(
+    sessionId: string,
+    instruction: string,
+    messageId: string,
+  ): StoredSession | null {
+    const current = this.sessionCache.get(sessionId);
+    if (!current) {
+      return null;
+    }
+
+    const nextSession: StoredSession = {
+      ...current,
+      pendingSystemInstruction: instruction,
+      pendingSystemInstructionMessageId: messageId,
+      updatedAtMs: Date.now(),
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
+    return nextSession;
+  }
+
+  consumePendingSystemInstruction(sessionId: string): string | null {
+    const current = this.sessionCache.get(sessionId);
+    if (!current || !current.pendingSystemInstruction) {
+      return null;
+    }
+
+    const instruction = current.pendingSystemInstruction;
+    const messageId = current.pendingSystemInstructionMessageId;
+    const nextSession: StoredSession = {
+      ...current,
+      pendingSystemInstruction: null,
+      pendingSystemInstructionMessageId: null,
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
+    if (messageId) {
+      this.markMessagesSeen(sessionId, [messageId]);
+    }
+    return instruction;
+  }
+
+  markQueuedDirectoryInstructionsSeen(sessionId: string, seenAtMs = Date.now()) {
+    const messageIds = this.listQueuedMessages(sessionId)
+      .filter((message) => message.kind === "directoryInstruction")
+      .map((message) => message.id);
+    this.markMessagesSeen(sessionId, messageIds, seenAtMs);
+  }
+
+  markMessagesSeen(sessionId: string, messageIds: string[], seenAtMs = Date.now()) {
+    if (messageIds.length === 0) {
+      return;
+    }
+
+    const currentMessages = this.messageCache.get(sessionId);
+    if (!currentMessages?.length) {
+      return;
+    }
+
+    const targets = new Set(messageIds);
+    let changed = false;
+    const nextMessages = currentMessages.map((message) => {
+      if (!targets.has(message.id) || message.providerSeenAtMs !== null) {
+        return message;
+      }
+      changed = true;
+      return {
+        ...message,
+        providerSeenAtMs: seenAtMs,
+      };
+    });
+
+    if (!changed) {
+      return;
+    }
+
+    this.messageCache.set(sessionId, nextMessages);
+    this.writeMessagesFile(sessionId, nextMessages);
+    const metadata = this.readSessionMetadata(sessionId);
+    this.sessionCache.set(sessionId, sessionSummary(metadata, nextMessages));
+  }
+
   private loadCache() {
     this.sessionCache.clear();
     this.messageCache.clear();
@@ -266,8 +377,13 @@ export class AgentChatStore {
     mkdirSync(dirname(this.sessionMetadataPath(metadata.id)), { recursive: true });
     mkdirSync(dirname(this.messagesPath(metadata.id)), { recursive: true });
     writeFileSync(this.sessionMetadataPath(metadata.id), `${JSON.stringify(metadata, null, 2)}\n`);
+    this.writeMessagesFile(metadata.id, messages);
+  }
+
+  private writeMessagesFile(sessionId: string, messages: StoredMessage[]) {
+    mkdirSync(dirname(this.messagesPath(sessionId)), { recursive: true });
     const lines = messages.map((message) => JSON.stringify(message)).join("\n");
-    writeFileSync(this.messagesPath(metadata.id), lines ? `${lines}\n` : "");
+    writeFileSync(this.messagesPath(sessionId), lines ? `${lines}\n` : "");
   }
 
   private writeSessionMetadata(session: StoredSession) {
@@ -277,6 +393,8 @@ export class AgentChatStore {
       providerKind: session.providerKind,
       modelRef: session.modelRef,
       cwd: session.cwd,
+      pendingSystemInstruction: session.pendingSystemInstruction,
+      pendingSystemInstructionMessageId: session.pendingSystemInstructionMessageId,
       authProfile: session.authProfile,
       imageModelRef: session.imageModelRef,
       providerThreadId: session.providerThreadId,
@@ -290,7 +408,28 @@ export class AgentChatStore {
   }
 
   private readSessionMetadata(sessionId: string): SessionMetadata {
-    return safeJsonParse<SessionMetadata>(readFileSync(this.sessionMetadataPath(sessionId), "utf8"));
+    const parsed = safeJsonParse<Partial<SessionMetadata>>(
+      readFileSync(this.sessionMetadataPath(sessionId), "utf8"),
+    );
+    return {
+      id: String(parsed.id),
+      title: String(parsed.title),
+      providerKind: parsed.providerKind as AgentChatProviderKind,
+      modelRef: String(parsed.modelRef),
+      cwd: String(parsed.cwd || "/home/ec2-user/workspace"),
+      pendingSystemInstruction: parsed.pendingSystemInstruction
+        ? String(parsed.pendingSystemInstruction)
+        : null,
+      pendingSystemInstructionMessageId: parsed.pendingSystemInstructionMessageId
+        ? String(parsed.pendingSystemInstructionMessageId)
+        : null,
+      authProfile: parsed.authProfile ? String(parsed.authProfile) : null,
+      imageModelRef: parsed.imageModelRef ? String(parsed.imageModelRef) : null,
+      providerThreadId: parsed.providerThreadId ? String(parsed.providerThreadId) : null,
+      providerThreadPath: parsed.providerThreadPath ? String(parsed.providerThreadPath) : null,
+      createdAtMs: Number(parsed.createdAtMs),
+      updatedAtMs: Number(parsed.updatedAtMs),
+    };
   }
 
   private readMessages(sessionId: string): StoredMessage[] {
@@ -304,7 +443,22 @@ export class AgentChatStore {
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
-      .map((line) => safeJsonParse<StoredMessage>(line))
+      .map((line) => {
+        const parsed = safeJsonParse<Partial<StoredMessage>>(line);
+        return {
+          id: String(parsed.id),
+          sessionId: String(parsed.sessionId),
+          role: parsed.role as StoredMessage["role"],
+          kind: parsed.kind === "directoryInstruction" ? "directoryInstruction" : "chat",
+          replyToMessageId: parsed.replyToMessageId ? String(parsed.replyToMessageId) : null,
+          providerSeenAtMs:
+            parsed.providerSeenAtMs === null || parsed.providerSeenAtMs === undefined
+              ? null
+              : Number(parsed.providerSeenAtMs),
+          content: (parsed.content ?? []) as StoredMessage["content"],
+          createdAtMs: Number(parsed.createdAtMs),
+        } satisfies StoredMessage;
+      })
       .sort((left, right) => {
         if (left.createdAtMs !== right.createdAtMs) {
           return left.createdAtMs - right.createdAtMs;
@@ -342,6 +496,13 @@ export class AgentChatStore {
           }>
         ).map((row) => row.name),
       );
+      const messageColumns = new Set(
+        (
+          legacyDb.query(`PRAGMA table_info(messages)`).all() as Array<{
+            name: string;
+          }>
+        ).map((row) => row.name),
+      );
       const legacyHasCwd = sessionColumns.has("cwd");
 
       const sessionRows = legacyDb.query(`
@@ -351,6 +512,8 @@ export class AgentChatStore {
           provider_kind,
           model_ref,
           ${legacyHasCwd ? "cwd," : "'/home/ec2-user/workspace' AS cwd,"}
+          ${sessionColumns.has("pending_system_instruction") ? "pending_system_instruction," : "NULL AS pending_system_instruction,"}
+          ${sessionColumns.has("pending_system_instruction_message_id") ? "pending_system_instruction_message_id," : "NULL AS pending_system_instruction_message_id,"}
           auth_profile,
           image_model_ref,
           provider_thread_id,
@@ -362,7 +525,15 @@ export class AgentChatStore {
       `).all() as Array<Record<string, unknown>>;
 
       const messageQuery = legacyDb.query(`
-        SELECT id, session_id, role, content_json, created_at_ms
+        SELECT
+          id,
+          session_id,
+          role,
+          ${messageColumns.has("kind") ? "kind," : "'chat' AS kind,"}
+          ${messageColumns.has("reply_to_message_id") ? "reply_to_message_id," : "NULL AS reply_to_message_id,"}
+          ${messageColumns.has("provider_seen_at_ms") ? "provider_seen_at_ms," : "NULL AS provider_seen_at_ms,"}
+          content_json,
+          created_at_ms
         FROM messages
         WHERE session_id = ?
         ORDER BY created_at_ms ASC, id ASC
@@ -375,6 +546,12 @@ export class AgentChatStore {
           providerKind: row.provider_kind as AgentChatProviderKind,
           modelRef: String(row.model_ref),
           cwd: row.cwd ? String(row.cwd) : "/home/ec2-user/workspace",
+          pendingSystemInstruction: row.pending_system_instruction
+            ? String(row.pending_system_instruction)
+            : null,
+          pendingSystemInstructionMessageId: row.pending_system_instruction_message_id
+            ? String(row.pending_system_instruction_message_id)
+            : null,
           authProfile: row.auth_profile ? String(row.auth_profile) : null,
           imageModelRef: row.image_model_ref ? String(row.image_model_ref) : null,
           providerThreadId: row.provider_thread_id ? String(row.provider_thread_id) : null,
@@ -389,6 +566,16 @@ export class AgentChatStore {
             id: String(rowObject.id),
             sessionId: String(rowObject.session_id),
             role: rowObject.role as StoredMessage["role"],
+            kind:
+              rowObject.kind === "directoryInstruction" ? "directoryInstruction" : "chat",
+            replyToMessageId: rowObject.reply_to_message_id
+              ? String(rowObject.reply_to_message_id)
+              : null,
+            providerSeenAtMs:
+              rowObject.provider_seen_at_ms === null ||
+              rowObject.provider_seen_at_ms === undefined
+                ? null
+                : Number(rowObject.provider_seen_at_ms),
             content: safeJsonParse<StoredMessage["content"]>(String(rowObject.content_json)),
             createdAtMs: Number(rowObject.created_at_ms),
           } satisfies StoredMessage;

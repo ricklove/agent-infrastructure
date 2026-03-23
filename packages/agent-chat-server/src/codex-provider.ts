@@ -15,6 +15,15 @@ type JsonRpcResponse = {
 
 type CodexRunCallbacks = {
   onRunStarted?: (payload: { threadId: string; turnId: string }) => void;
+  onThreadStatusChanged?: (payload: {
+    threadId: string;
+    flags: string[];
+  }) => void;
+  onBackgroundProcessCountChanged?: (payload: {
+    threadId: string;
+    turnId: string;
+    backgroundProcessCount: number;
+  }) => void;
   onAssistantDelta?: (payload: {
     threadId: string;
     turnId: string;
@@ -100,6 +109,7 @@ export async function ensureCodexAppServer(log: (message: string) => void) {
 export async function runCodexTurn(
   session: StoredSession,
   inputText: string,
+  pendingSystemInstruction: string | null,
   callbacks: CodexRunCallbacks,
 ): Promise<CodexRunResult> {
   const ws = new WebSocket(codexWsUrl);
@@ -117,6 +127,7 @@ export async function runCodexTurn(
   let currentTurnId = "";
   let assistantText = "";
   let completed = false;
+  const activeCommandIds = new Set<string>();
 
   function closeSocket() {
     try {
@@ -166,6 +177,35 @@ export async function runCodexTurn(
         return;
       }
 
+      if (message.method === "thread/status/changed") {
+        const params = message.params ?? {};
+        const status = params.status as
+          | { type?: string; activeFlags?: unknown[] }
+          | undefined;
+        callbacks.onThreadStatusChanged?.({
+          threadId: String(params.threadId ?? currentThreadId ?? ""),
+          flags:
+            status?.type === "active" && Array.isArray(status.activeFlags)
+              ? status.activeFlags.map((flag) => String(flag))
+              : [],
+        });
+        return;
+      }
+
+      if (message.method === "item/started") {
+        const params = message.params ?? {};
+        const item = params.item as Record<string, unknown> | undefined;
+        if (item?.type === "commandExecution") {
+          activeCommandIds.add(String(item.id ?? ""));
+          callbacks.onBackgroundProcessCountChanged?.({
+            threadId: String(params.threadId ?? currentThreadId ?? ""),
+            turnId: String(params.turnId ?? currentTurnId),
+            backgroundProcessCount: activeCommandIds.size,
+          });
+        }
+        return;
+      }
+
       if (message.method === "item/agentMessage/delta") {
         const params = message.params ?? {};
         const delta = String(params.delta ?? "");
@@ -184,6 +224,14 @@ export async function runCodexTurn(
         const item = params.item as Record<string, unknown> | undefined;
         if (item?.type === "agentMessage") {
           assistantText = String(item.text ?? assistantText);
+        }
+        if (item?.type === "commandExecution") {
+          activeCommandIds.delete(String(item.id ?? ""));
+          callbacks.onBackgroundProcessCountChanged?.({
+            threadId: String(params.threadId ?? currentThreadId ?? ""),
+            turnId: String(params.turnId ?? currentTurnId),
+            backgroundProcessCount: activeCommandIds.size,
+          });
         }
         return;
       }
@@ -260,15 +308,25 @@ export async function runCodexTurn(
       currentThreadPath = thread?.path ? String(thread.path) : null;
     }
 
+    const input = [];
+
+    if (pendingSystemInstruction?.trim()) {
+      input.push({
+        type: "text",
+        text: pendingSystemInstruction.trim(),
+        text_elements: [],
+      });
+    }
+
+    input.push({
+      type: "text",
+      text: inputText,
+      text_elements: [],
+    });
+
     await request("turn/start", {
       threadId: currentThreadId,
-      input: [
-        {
-          type: "text",
-          text: inputText,
-          text_elements: [],
-        },
-      ],
+      input,
     });
 
     await completionPromise;
@@ -282,6 +340,80 @@ export async function runCodexTurn(
     closeSocket();
     for (const pendingRequest of pending.values()) {
       pendingRequest.reject(new Error("Codex app-server turn aborted"));
+    }
+    pending.clear();
+  }
+}
+
+export async function interruptCodexTurn(
+  session: StoredSession,
+  threadId: string,
+  turnId: string,
+) {
+  const ws = new WebSocket(codexWsUrl);
+  let nextId = 1;
+  const pending = new Map<
+    number,
+    {
+      resolve: (value: Record<string, unknown>) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+
+  function closeSocket() {
+    try {
+      ws.close();
+    } catch {}
+  }
+
+  function request(method: string, params: Record<string, unknown>) {
+    return new Promise<Record<string, unknown>>((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, { resolve, reject });
+      ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+    });
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    ws.addEventListener("open", () => resolve(), { once: true });
+    ws.addEventListener("error", () => reject(new Error("Failed to connect to Codex app-server")), {
+      once: true,
+    });
+  });
+
+  ws.addEventListener("message", (event) => {
+    const message = JSON.parse(String(event.data)) as JsonRpcResponse;
+    if (typeof message.id !== "number") {
+      return;
+    }
+    const pendingRequest = pending.get(message.id);
+    if (!pendingRequest) {
+      return;
+    }
+    pending.delete(message.id);
+    if (message.error) {
+      pendingRequest.reject(new Error(message.error.message));
+    } else {
+      pendingRequest.resolve(message.result ?? {});
+    }
+  });
+
+  try {
+    await request("initialize", {
+      clientInfo: {
+        name: "agent-chat-server",
+        version: "0.1.0",
+      },
+    });
+
+    await request("turn/interrupt", {
+      threadId: threadId || session.providerThreadId,
+      turnId,
+    });
+  } finally {
+    closeSocket();
+    for (const pendingRequest of pending.values()) {
+      pendingRequest.reject(new Error("Codex interrupt request aborted"));
     }
     pending.clear();
   }

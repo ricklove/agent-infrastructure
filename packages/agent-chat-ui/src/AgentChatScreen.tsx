@@ -1,8 +1,7 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
-  useCallback,
-  useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
@@ -27,24 +26,42 @@ type ProviderCatalogEntry = {
   transport: string
 }
 
+type SessionActivity = {
+  status: "idle" | "queued" | "running" | "interrupted" | "error"
+  startedAtMs: number | null
+  threadId: string | null
+  turnId: string | null
+  backgroundProcessCount: number
+  waitingFlags: string[]
+  lastError: string | null
+  currentMessageId: string | null
+  canInterrupt: boolean
+}
+
 type SessionSummary = {
   id: string
   title: string
   providerKind: ProviderKind
   modelRef: string
   cwd: string
+  pendingSystemInstruction: string | null
   authProfile: string | null
   imageModelRef: string | null
   createdAtMs: number
   updatedAtMs: number
   preview: string | null
   messageCount: number
+  activity: SessionActivity
+  queuedMessageCount: number
 }
 
 type SessionMessage = {
   id: string
   sessionId: string
   role: "user" | "assistant" | "system"
+  kind: "chat" | "directoryInstruction"
+  replyToMessageId: string | null
+  providerSeenAtMs: number | null
   content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>
   createdAtMs: number
 }
@@ -53,11 +70,8 @@ type SessionSnapshotResponse = {
   ok: boolean
   session: SessionSummary
   messages: SessionMessage[]
-}
-
-type SessionResponse = {
-  ok: boolean
-  session: SessionSummary
+  queuedMessages: SessionMessage[]
+  activity: SessionActivity
 }
 
 type SessionsResponse = {
@@ -70,21 +84,34 @@ type ProvidersResponse = {
   providers: ProviderCatalogEntry[]
 }
 
+type SessionSnapshotEvent = {
+  type: "session.snapshot"
+  session: SessionSummary
+  messages: SessionMessage[]
+  queuedMessages: SessionMessage[]
+  activity: SessionActivity
+}
+
 type SessionUpdatedEvent = {
   type: "session.updated"
   session: SessionSummary | null
   messages: SessionMessage[]
+  queuedMessages: SessionMessage[]
+  activity: SessionActivity
 }
 
 type RunStartedEvent = {
   type: "run.started"
   sessionId: string
   providerKind: ProviderKind
+  activity: SessionActivity
 }
 
 type RunDeltaEvent = {
   type: "run.delta"
   sessionId: string
+  threadId: string
+  turnId: string
   itemId: string
   delta: string
 }
@@ -92,18 +119,27 @@ type RunDeltaEvent = {
 type RunCompletedEvent = {
   type: "run.completed"
   sessionId: string
+  activity: SessionActivity
 }
 
 type RunFailedEvent = {
   type: "run.failed"
   sessionId: string
   error: string
+  activity: SessionActivity
 }
 
-type SessionSnapshotEvent = {
-  type: "session.snapshot"
-  session: SessionSummary
-  messages: SessionMessage[]
+type RunInterruptedEvent = {
+  type: "run.interrupted"
+  sessionId: string
+  activity: SessionActivity
+}
+
+type RunActivityEvent = {
+  type: "run.activity"
+  sessionId: string
+  activity: SessionActivity
+  queuedMessages: SessionMessage[]
 }
 
 export type AgentChatScreenProps = {
@@ -112,7 +148,7 @@ export type AgentChatScreenProps = {
 }
 
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
-const defaultSessionCwd = "/home/ec2-user/workspace"
+const defaultSessionDirectory = "/home/ec2-user/workspace"
 
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
@@ -121,6 +157,24 @@ function formatTime(timestampMs: number) {
     hour: "numeric",
     minute: "2-digit",
   })
+}
+
+function formatElapsed(startedAtMs: number | null, nowMs: number) {
+  if (!startedAtMs) {
+    return null
+  }
+  const totalSeconds = Math.max(0, Math.floor((nowMs - startedAtMs) / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
+}
+
+function clipText(text: string, maxLength = 88) {
+  const normalized = text.replace(/\s+/g, " ").trim()
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+  return `${normalized.slice(0, maxLength - 3)}...`
 }
 
 function readStoredSessionToken(): string {
@@ -141,26 +195,72 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   })
 }
 
+function activityLabel(activity: SessionActivity) {
+  switch (activity.status) {
+    case "queued":
+      return "Queued"
+    case "running":
+      return "Working"
+    case "interrupted":
+      return "Interrupted"
+    case "error":
+      return "Error"
+    default:
+      return "Idle"
+  }
+}
+
+function activityTone(activity: SessionActivity) {
+  switch (activity.status) {
+    case "running":
+      return "text-emerald-200 border-emerald-400/30 bg-emerald-400/10"
+    case "queued":
+      return "text-amber-100 border-amber-400/30 bg-amber-400/10"
+    case "interrupted":
+      return "text-cyan-100 border-cyan-400/30 bg-cyan-400/10"
+    case "error":
+      return "text-rose-100 border-rose-400/30 bg-rose-400/10"
+    default:
+      return "text-slate-300 border-white/10 bg-white/5"
+  }
+}
+
 export function AgentChatScreen(props: AgentChatScreenProps) {
   const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
-  const [activeSessionId, setActiveSessionId] = useState<string>("")
+  const [activeSessionId, setActiveSessionId] = useState("")
   const [messages, setMessages] = useState<SessionMessage[]>([])
+  const [queuedMessages, setQueuedMessages] = useState<SessionMessage[]>([])
+  const [activity, setActivity] = useState<SessionActivity>({
+    status: "idle",
+    startedAtMs: null,
+    threadId: null,
+    turnId: null,
+    backgroundProcessCount: 0,
+    waitingFlags: [],
+    lastError: null,
+    currentMessageId: null,
+    canInterrupt: false,
+  })
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [sending, setSending] = useState(false)
+  const [interrupting, setInterrupting] = useState(false)
   const [error, setError] = useState("")
-  const [runStatus, setRunStatus] = useState("idle")
   const [streamingAssistantText, setStreamingAssistantText] = useState("")
   const [composerText, setComposerText] = useState("")
   const [providerKind, setProviderKind] = useState<ProviderKind>("codex-app-server")
   const [modelRef, setModelRef] = useState("")
-  const [cwd, setCwd] = useState(defaultSessionCwd)
+  const [directory, setDirectory] = useState(defaultSessionDirectory)
   const [authProfile, setAuthProfile] = useState("")
   const [imageModelRef, setImageModelRef] = useState("")
-  const [activeSessionCwd, setActiveSessionCwd] = useState("")
-  const [updatingSessionCwd, setUpdatingSessionCwd] = useState(false)
-  const socketRef = useRef<WebSocket | null>(null)
+  const [activeSessionDirectory, setActiveSessionDirectory] = useState("")
+  const [updatingDirectory, setUpdatingDirectory] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false)
+  const [wsStatus, setWsStatus] = useState<"idle" | "connecting" | "ready" | "error">("idle")
+  const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null)
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   const activeProvider = useMemo(
     () => providers.find((entry) => entry.kind === providerKind) ?? null,
@@ -172,6 +272,41 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     [activeSessionId, sessions],
   )
 
+  const activeReplyTarget = useMemo(
+    () => messages.find((message) => message.id === replyTargetMessageId) ?? null,
+    [messages, replyTargetMessageId],
+  )
+
+  const messageMap = useMemo(
+    () => new Map(messages.map((message) => [message.id, message])),
+    [messages],
+  )
+
+  const queuedUserMessages = useMemo(
+    () => queuedMessages.filter((message) => message.role === "user" || message.kind === "directoryInstruction"),
+    [queuedMessages],
+  )
+
+  const updateActiveSessionRuntime = useCallback(
+    (nextActivity: SessionActivity, queuedCount: number) => {
+      if (!activeSessionId) {
+        return
+      }
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === activeSessionId
+            ? {
+                ...session,
+                activity: nextActivity,
+                queuedMessageCount: queuedCount,
+              }
+            : session,
+        ),
+      )
+    },
+    [activeSessionId],
+  )
+
   useEffect(() => {
     if (!activeProvider) {
       return
@@ -181,8 +316,21 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [activeProvider])
 
   useEffect(() => {
-    setActiveSessionCwd(activeSession?.cwd ?? "")
+    setActiveSessionDirectory(activeSession?.cwd ?? "")
+    setReplyTargetMessageId(null)
   }, [activeSession])
+
+  useEffect(() => {
+    if (activity.status !== "running") {
+      return
+    }
+    const handle = window.setInterval(() => {
+      setNowMs(Date.now())
+    }, 1000)
+    return () => {
+      window.clearInterval(handle)
+    }
+  }, [activity.status])
 
   useEffect(() => {
     let cancelled = false
@@ -239,6 +387,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   useEffect(() => {
     if (!activeSessionId) {
       setMessages([])
+      setQueuedMessages([])
+      setActivity({
+        status: "idle",
+        startedAtMs: null,
+        threadId: null,
+        turnId: null,
+        backgroundProcessCount: 0,
+        waitingFlags: [],
+        lastError: null,
+        currentMessageId: null,
+        canInterrupt: false,
+      })
       return
     }
 
@@ -253,6 +413,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         }
         if (!cancelled) {
           setMessages(payload.messages)
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+          setSessions((current) =>
+            current.map((session) =>
+              session.id === payload.session.id ? payload.session : session,
+            ),
+          )
         }
       } catch (nextError) {
         if (!cancelled) {
@@ -269,10 +436,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [activeSessionId, props.apiRootUrl])
 
   useEffect(() => {
-    socketRef.current?.close()
-    socketRef.current = null
-
     if (!activeSessionId) {
+      setWsStatus("idle")
       return
     }
 
@@ -282,8 +447,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     if (sessionToken) {
       socketUrl.searchParams.set("sessionToken", sessionToken)
     }
+
+    setWsStatus("connecting")
     const socket = new WebSocket(socketUrl.toString())
-    socketRef.current = socket
+
+    socket.addEventListener("open", () => {
+      setWsStatus("ready")
+    })
 
     socket.addEventListener("message", (event) => {
       const payload = JSON.parse(String(event.data)) as
@@ -293,11 +463,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         | RunDeltaEvent
         | RunCompletedEvent
         | RunFailedEvent
+        | RunInterruptedEvent
+        | RunActivityEvent
 
       if (payload.type === "session.snapshot") {
         setMessages(payload.messages)
+        setQueuedMessages(payload.queuedMessages)
+        setActivity(payload.activity)
+        updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
         setStreamingAssistantText("")
-        setRunStatus("idle")
         setSessions((current) =>
           current.map((session) =>
             session.id === payload.session.id ? payload.session : session,
@@ -307,11 +481,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       }
 
       if (payload.type === "session.updated") {
-        setMessages((current) => [...current, ...payload.messages])
-        if (payload.messages.some((message) => message.role === "assistant")) {
-          setStreamingAssistantText("")
-          setRunStatus("idle")
-        }
         if (payload.session) {
           setSessions((current) =>
             current.map((session) =>
@@ -319,44 +488,73 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             ),
           )
         }
+        setMessages((current) => [...current, ...payload.messages])
+        setQueuedMessages(payload.queuedMessages)
+        setActivity(payload.activity)
+        updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
+        if (payload.messages.some((message) => message.role === "assistant")) {
+          setStreamingAssistantText("")
+        }
         return
       }
 
       if (payload.type === "run.started") {
-        setRunStatus("running")
+        setActivity(payload.activity)
+        updateActiveSessionRuntime(payload.activity, queuedMessages.length)
         setStreamingAssistantText("")
         return
       }
 
+      if (payload.type === "run.activity") {
+        setActivity(payload.activity)
+        setQueuedMessages(payload.queuedMessages)
+        updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
+        return
+      }
+
       if (payload.type === "run.delta") {
-        setRunStatus("running")
+        setActivity((current) => ({
+          ...current,
+          status: "running",
+        }))
         setStreamingAssistantText((current) => current + payload.delta)
         return
       }
 
       if (payload.type === "run.completed") {
-        setRunStatus("idle")
+        setActivity(payload.activity)
+        updateActiveSessionRuntime(payload.activity, queuedMessages.length)
+        return
+      }
+
+      if (payload.type === "run.interrupted") {
+        setActivity(payload.activity)
+        updateActiveSessionRuntime(payload.activity, queuedMessages.length)
+        setStreamingAssistantText("")
         return
       }
 
       if (payload.type === "run.failed") {
-        setRunStatus("error")
+        setActivity(payload.activity)
+        updateActiveSessionRuntime(payload.activity, queuedMessages.length)
         setStreamingAssistantText("")
         setError(payload.error)
       }
     })
 
     socket.addEventListener("error", () => {
+      setWsStatus("error")
       setError("Agent Chat WebSocket disconnected.")
+    })
+
+    socket.addEventListener("close", () => {
+      setWsStatus((current) => (current === "error" ? current : "idle"))
     })
 
     return () => {
       socket.close()
-      if (socketRef.current === socket) {
-        socketRef.current = null
-      }
     }
-  }, [activeSessionId, props.wsRootUrl])
+  }, [activeSessionId, props.wsRootUrl, queuedMessages.length, updateActiveSessionRuntime])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -368,6 +566,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         detail: {
           featureId: "chat",
           items: [
+            {
+              label: "WS",
+              value: wsStatus,
+              tone:
+                wsStatus === "ready"
+                  ? "good"
+                  : wsStatus === "connecting"
+                    ? "warn"
+                    : wsStatus === "error"
+                      ? "bad"
+                      : "neutral",
+            },
             {
               label: "API",
               value: loading ? "loading" : error ? "error" : "ready",
@@ -387,7 +597,19 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         },
       }),
     )
-  }, [activeSession, error, loading, providerKind, sessions.length])
+  }, [activeSession, error, loading, providerKind, sessions.length, wsStatus])
+
+  const mergeSession = useCallback((session: SessionSummary | null) => {
+    if (!session) {
+      return
+    }
+    setSessions((current) => {
+      const next = current.some((entry) => entry.id === session.id)
+        ? current.map((entry) => (entry.id === session.id ? session : entry))
+        : [session, ...current]
+      return [...next].sort((left, right) => right.updatedAtMs - left.updatedAtMs)
+    })
+  }, [])
 
   async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -403,20 +625,24 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         body: JSON.stringify({
           providerKind,
           modelRef,
-          cwd,
+          cwd: directory,
           authProfile: authProfile || null,
           imageModelRef: imageModelRef || null,
         }),
       })
-      if (!response.ok) {
-        const payload = (await response.json()) as { error?: string }
+      const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
+      if (!response.ok || !payload.ok) {
         throw new Error(payload.error ?? "Session creation failed.")
       }
-      const payload = (await response.json()) as SessionSnapshotResponse
-      setSessions((current) => [payload.session, ...current.filter((entry) => entry.id !== payload.session.id)])
+      mergeSession(payload.session)
       setActiveSessionId(payload.session.id)
       setMessages(payload.messages)
+      setQueuedMessages(payload.queuedMessages)
+      setActivity(payload.activity)
       setComposerText("")
+      setReplyTargetMessageId(null)
+      setSettingsOpen(false)
+      setMobileSessionsOpen(false)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Session creation failed.")
     } finally {
@@ -424,13 +650,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
   }
 
-  async function updateSessionCwd(event: FormEvent<HTMLFormElement>) {
+  async function updateDirectory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!activeSessionId || !activeSessionCwd.trim()) {
+    if (!activeSessionId || !activeSessionDirectory.trim()) {
       return
     }
 
-    setUpdatingSessionCwd(true)
+    setUpdatingDirectory(true)
     setError("")
 
     try {
@@ -440,22 +666,21 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          cwd: activeSessionCwd,
+          cwd: activeSessionDirectory,
         }),
       })
-      const payload = (await response.json()) as (SessionResponse & { error?: string })
+      const payload = (await response.json()) as (SessionSnapshotResponse & { error?: string })
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? "Session update failed.")
+        throw new Error(payload.error ?? "Directory update failed.")
       }
-      setSessions((current) =>
-        current.map((session) =>
-          session.id === payload.session.id ? payload.session : session,
-        ),
-      )
+      mergeSession(payload.session)
+      setMessages(payload.messages)
+      setQueuedMessages(payload.queuedMessages)
+      setActivity(payload.activity)
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Session update failed.")
+      setError(nextError instanceof Error ? nextError.message : "Directory update failed.")
     } finally {
-      setUpdatingSessionCwd(false)
+      setUpdatingDirectory(false)
     }
   }
 
@@ -474,20 +699,44 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          role: "user",
           text: composerText,
+          replyToMessageId: replyTargetMessageId,
         }),
       })
+      const payload = (await response.json()) as { error?: string }
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string }
         throw new Error(payload.error ?? "Message send failed.")
       }
       setComposerText("")
-      setRunStatus("queued")
+      setReplyTargetMessageId(null)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Message send failed.")
     } finally {
       setSending(false)
+    }
+  }
+
+  async function interruptRun() {
+    if (!activeSessionId || !activity.canInterrupt || !activity.turnId) {
+      return
+    }
+
+    setInterrupting(true)
+    setError("")
+
+    try {
+      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}/interrupt`, {
+        method: "POST",
+      })
+      const payload = (await response.json()) as { ok?: boolean; error?: string; activity?: SessionActivity }
+      if (!response.ok || !payload.ok || !payload.activity) {
+        throw new Error(payload.error ?? "Interrupt failed.")
+      }
+      setActivity(payload.activity)
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Interrupt failed.")
+    } finally {
+      setInterrupting(false)
     }
   }
 
@@ -504,186 +753,129 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           return
         }
         void sendMessage()
+        return
+      }
+
+      if (
+        event.key === "Escape" &&
+        activity.canInterrupt &&
+        activity.status === "running" &&
+        !interrupting
+      ) {
+        event.preventDefault()
+        void interruptRun()
       }
     },
-    [activeSession, composerText, sending],
+    [activeSession, activity.canInterrupt, activity.status, composerText, interrupting, sending],
   )
 
+  useEffect(() => {
+    if (!activeSessionId) {
+      return
+    }
+
+    function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
+      if (
+        event.key === "Escape" &&
+        activity.canInterrupt &&
+        activity.status === "running" &&
+        !interrupting
+      ) {
+        event.preventDefault()
+        void interruptRun()
+      }
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown)
+    return () => {
+      window.removeEventListener("keydown", handleWindowKeyDown)
+    }
+  }, [activeSessionId, activity.canInterrupt, activity.status, interrupting])
+
+  const elapsedLabel = formatElapsed(activity.startedAtMs, nowMs)
+
   return (
-    <div className="flex h-full flex-col bg-slate-950 text-slate-100">
-      <div className="border-b border-white/10 px-8 py-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-fuchsia-300">
-          Agent Chat
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-          Provider-aware session workspace
-        </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-          This first slice makes the chat tab real: provider catalog, lazy backend,
-          canonical file-backed transcript storage, session creation, and a live session
-          surface through the dashboard gateway.
-        </p>
-        {error ? (
-          <div className="mt-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-            {error}
+    <div className="flex h-full min-h-0 bg-slate-950 text-slate-100">
+      <aside
+        className={`${
+          mobileSessionsOpen ? "translate-x-0" : "-translate-x-full"
+        } fixed inset-y-0 left-0 z-20 w-[86vw] max-w-sm border-r border-white/10 bg-slate-950/95 p-4 backdrop-blur transition md:static md:w-80 md:max-w-none md:translate-x-0 md:border-r md:p-5`}
+      >
+        <div className="flex h-full min-h-0 flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-fuchsia-300">
+                Agent Chat
+              </p>
+              <p className="mt-2 text-sm text-slate-400">
+                Current thread first. Everything else stays compact.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileSessionsOpen(false)}
+              className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 md:hidden"
+            >
+              Close
+            </button>
           </div>
-        ) : null}
-      </div>
 
-      <div className="grid flex-1 gap-6 p-8 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <section className="flex min-h-0 flex-col gap-6">
-          <form
-            onSubmit={createSession}
-            className="rounded-3xl border border-white/10 bg-white/5 p-6"
-          >
-            <h2 className="text-lg font-medium text-white">Create Session</h2>
-            <div className="mt-4 space-y-4">
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Provider
-                </span>
-                <select
-                  value={providerKind}
-                  onChange={(event) => setProviderKind(event.target.value as ProviderKind)}
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                >
-                  {providers.map((provider) => (
-                    <option key={provider.kind} value={provider.kind}>
-                      {provider.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((current) => !current)}
+              className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-100"
+            >
+              {settingsOpen ? "Hide Settings" : "New Chat / Settings"}
+            </button>
+          </div>
 
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Model
-                </span>
-                <input
-                  value={modelRef}
-                  onChange={(event) => setModelRef(event.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Working Directory
-                </span>
-                <input
-                  value={cwd}
-                  onChange={(event) => setCwd(event.target.value)}
-                  placeholder={defaultSessionCwd}
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Auth Profile
-                </span>
-                <input
-                  value={authProfile}
-                  onChange={(event) => setAuthProfile(event.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                />
-              </label>
-
-              <label className="block">
-                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                  Image Model Override
-                </span>
-                <input
-                  value={imageModelRef}
-                  onChange={(event) => setImageModelRef(event.target.value)}
-                  placeholder="optional provider/model"
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                />
-              </label>
-
-              {activeProvider ? (
-                <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4 text-sm text-slate-300">
-                  <p className="font-medium text-white">{activeProvider.label}</p>
-                  <p className="mt-2 leading-6 text-slate-400">
-                    {activeProvider.description}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                    <span className="rounded-full border border-white/10 px-3 py-1 text-slate-300">
-                      transport {activeProvider.transport}
-                    </span>
-                    <span className="rounded-full border border-white/10 px-3 py-1 text-slate-300">
-                      images {activeProvider.supportsImageInput ? "yes" : "no"}
-                    </span>
-                    <span className="rounded-full border border-white/10 px-3 py-1 text-slate-300">
-                      cache {activeProvider.supportsCachedContext ? "yes" : "no"}
-                    </span>
-                    <span className="rounded-full border border-white/10 px-3 py-1 text-slate-300">
-                      approvals {activeProvider.supportsInteractiveApprovals ? "yes" : "no"}
-                    </span>
-                    <span className="rounded-full border border-white/10 px-3 py-1 text-slate-300">
-                      status {activeProvider.status}
-                    </span>
-                  </div>
-                </div>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={creating || !modelRef.trim() || activeProvider?.status !== "ready"}
-                className="w-full rounded-2xl bg-fuchsia-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-fuchsia-400/40"
-              >
-                {creating ? "Creating..." : activeProvider?.status === "ready" ? "Create Session" : "Provider Pending"}
-              </button>
-            </div>
-          </form>
-
-          <section className="min-h-0 flex-1 rounded-3xl border border-white/10 bg-white/5 p-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-medium text-white">Sessions</h2>
-              <span className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                {sessions.length}
-              </span>
-            </div>
-            <div className="mt-4 space-y-3 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="space-y-3">
               {loading ? (
-                <div className="rounded-2xl border border-dashed border-white/15 bg-slate-950/60 p-4 text-sm text-slate-400">
+                <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-4 text-sm text-slate-400">
                   Loading sessions...
                 </div>
               ) : sessions.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/15 bg-slate-950/60 p-4 text-sm text-slate-400">
-                  No sessions yet. Create one with a provider and model.
+                <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-4 text-sm text-slate-400">
+                  No chats yet. Use the settings menu to start one.
                 </div>
               ) : (
                 sessions.map((session) => (
                   <button
                     key={session.id}
                     type="button"
-                    onClick={() => setActiveSessionId(session.id)}
+                    onClick={() => {
+                      setActiveSessionId(session.id)
+                      setMobileSessionsOpen(false)
+                    }}
                     className={`block w-full rounded-2xl border px-4 py-4 text-left transition ${
                       session.id === activeSessionId
-                        ? "border-fuchsia-300/50 bg-fuchsia-300/10"
-                        : "border-white/10 bg-slate-950/40 hover:border-white/20"
+                        ? "border-fuchsia-300/40 bg-fuchsia-300/10"
+                        : "border-white/10 bg-slate-900/70 hover:border-white/20"
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-white">
                           {session.title}
                         </p>
-                        <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">
-                          {session.providerKind}
+                        <p className="mt-1 truncate text-xs text-slate-500">
+                          {session.providerKind} · {session.modelRef}
                         </p>
                       </div>
-                      <span className="text-xs text-slate-500">
-                        {session.messageCount}
-                      </span>
+                      <span className="text-xs text-slate-500">{session.messageCount}</span>
                     </div>
-                    <p className="mt-3 truncate text-sm text-slate-400">
-                      {session.preview ?? session.modelRef}
+                    <p className="mt-3 truncate text-sm text-slate-300">
+                      {session.preview ?? "No messages yet"}
                     </p>
-                    <p className="mt-2 text-xs text-slate-500">
-                      {session.modelRef} · {formatTime(session.updatedAtMs)}
-                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                      <span>{activityLabel(session.activity)}</span>
+                      {session.queuedMessageCount > 0 ? <span>queued {session.queuedMessageCount}</span> : null}
+                      {session.activity.backgroundProcessCount > 0 ? (
+                        <span>bg {session.activity.backgroundProcessCount}</span>
+                      ) : null}
+                    </div>
                     <p className="mt-2 truncate text-xs text-slate-500">
                       {session.cwd}
                     </p>
@@ -691,133 +883,384 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 ))
               )}
             </div>
-          </section>
-        </section>
+          </div>
+        </div>
+      </aside>
 
-        <section className="flex min-h-0 flex-col rounded-3xl border border-white/10 bg-white/5 p-6">
-          <div className="border-b border-white/10 pb-4">
-            <h2 className="text-lg font-medium text-white">
-              {activeSession?.title ?? "Conversation Surface"}
-            </h2>
-            <p className="mt-2 text-sm text-slate-400">
+      <main className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 md:px-6">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">
+              {activeSession?.title ?? "Agent Chat"}
+            </p>
+            <p className="truncate text-xs text-slate-500">
               {activeSession
                 ? `${activeSession.providerKind} · ${activeSession.modelRef}`
-                : "Select a session to view its canonical transcript."}
-            </p>
-            {activeSession ? (
-              <form onSubmit={updateSessionCwd} className="mt-4 flex gap-3">
-                <input
-                  value={activeSessionCwd}
-                  onChange={(event) => setActiveSessionCwd(event.target.value)}
-                  placeholder={defaultSessionCwd}
-                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                />
-                <button
-                  type="submit"
-                  disabled={
-                    updatingSessionCwd ||
-                    !activeSessionCwd.trim() ||
-                    activeSessionCwd.trim() === activeSession.cwd
-                  }
-                  className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
-                >
-                  {updatingSessionCwd ? "Saving..." : "Set CWD"}
-                </button>
-              </form>
-            ) : null}
-            <p className="mt-2 text-xs uppercase tracking-[0.2em] text-slate-500">
-              run {runStatus}
+                : "Select a session or start a new one."}
             </p>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMobileSessionsOpen(true)}
+              className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 md:hidden"
+            >
+              Sessions
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((current) => !current)}
+              className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300"
+            >
+              {settingsOpen ? "Hide Menu" : "Menu"}
+            </button>
+          </div>
+        </div>
 
-          <div className="mt-4 flex-1 space-y-4 overflow-y-auto rounded-2xl bg-slate-950/50 p-4">
+        {error ? (
+          <div className="border-b border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200 md:px-6">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
             {!activeSession ? (
-              <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                No active session selected.
+              <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
+                Start or select a chat to see the thread.
               </div>
             ) : messages.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                This session has no messages yet.
+              <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
+                This chat has no messages yet.
               </div>
             ) : (
-              messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={`rounded-2xl border p-4 ${
-                    message.role === "user"
-                      ? "ml-auto max-w-[80%] border-fuchsia-300/20 bg-fuchsia-300/10"
-                      : message.role === "system"
-                        ? "border-cyan-300/15 bg-cyan-300/5"
-                        : "max-w-[80%] border-white/10 bg-white/5"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                      {message.role}
-                    </p>
-                    <p className="text-xs text-slate-500">{formatTime(message.createdAtMs)}</p>
-                  </div>
-                  <div className="mt-3 space-y-3 text-sm leading-6 text-slate-200">
-                    {message.content.map((block, index) =>
-                      block.type === "text" ? (
-                        <p key={`${message.id}-${index}`}>{block.text}</p>
-                      ) : (
-                        <div
-                          key={`${message.id}-${index}`}
-                          className="rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-slate-300"
-                        >
-                          image {block.url}
+              <div className="mx-auto flex max-w-4xl flex-col gap-4">
+                {messages.map((message) => {
+                  const replyTarget = message.replyToMessageId
+                    ? messageMap.get(message.replyToMessageId) ?? null
+                    : null
+
+                  return (
+                    <article
+                      key={message.id}
+                      className={`rounded-3xl border p-4 md:p-5 ${
+                        message.role === "user"
+                          ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]"
+                          : message.role === "system"
+                            ? "w-full border-cyan-300/15 bg-cyan-300/5"
+                            : "w-full border-white/10 bg-white/5 md:max-w-[88%]"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                            {message.role}
+                          </p>
+                          {message.kind === "directoryInstruction" ? (
+                            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                              directory
+                            </span>
+                          ) : null}
                         </div>
-                      ),
-                    )}
-                  </div>
-                </article>
-              ))
+                        <p className="text-xs text-slate-500">{formatTime(message.createdAtMs)}</p>
+                      </div>
+
+                      {replyTarget ? (
+                        <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
+                          Replying to {replyTarget.role} ·{" "}
+                          {clipText(
+                            replyTarget.content.find((block) => block.type === "text")?.text ?? "",
+                            72,
+                          )}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 space-y-3 text-sm leading-6 text-slate-100">
+                        {message.content.map((block, index) =>
+                          block.type === "text" ? (
+                            <p key={`${message.id}-${index}`} className="whitespace-pre-wrap">
+                              {block.text}
+                            </p>
+                          ) : (
+                            <div
+                              key={`${message.id}-${index}`}
+                              className="rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-slate-300"
+                            >
+                              image {block.url}
+                            </div>
+                          ),
+                        )}
+                      </div>
+
+                      {message.role === "assistant" ? (
+                        <div className="mt-4 flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setReplyTargetMessageId(message.id)}
+                            className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:border-white/20"
+                          >
+                            Reply to this
+                          </button>
+                        </div>
+                      ) : null}
+                    </article>
+                  )
+                })}
+
+                {streamingAssistantText ? (
+                  <article className="w-full max-w-[88%] rounded-3xl border border-cyan-300/20 bg-cyan-400/5 p-4 md:p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                        assistant
+                      </p>
+                      <p className="text-xs text-cyan-100/70">streaming...</p>
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-100">
+                      {streamingAssistantText}
+                    </p>
+                  </article>
+                ) : null}
+              </div>
             )}
-            {streamingAssistantText ? (
-              <article className="max-w-[80%] rounded-2xl border border-cyan-300/20 bg-cyan-400/5 p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">
-                    assistant
-                  </p>
-                  <p className="text-xs text-cyan-200/70">streaming...</p>
-                </div>
-                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-100">
-                  {streamingAssistantText}
-                </p>
-              </article>
-            ) : null}
           </div>
 
-          <form onSubmit={submitMessage} className="mt-4 border-t border-white/10 pt-4">
-            <textarea
-              value={composerText}
-              onChange={(event) => setComposerText(event.target.value)}
-              onKeyDown={handleComposerKeyDown}
-              rows={4}
-              placeholder={
-                activeSession
-                  ? "Add a message to the canonical transcript..."
-                  : "Select or create a session first."
-              }
-              disabled={!activeSession || sending}
-              className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
-            />
-            <div className="mt-3 flex items-center justify-between">
-              <p className="text-xs text-slate-500">
-                Ctrl+Enter sends. Codex is wired through app-server now. The other provider adapters are still pending.
-              </p>
-              <button
-                type="submit"
-                disabled={!activeSession || sending || !composerText.trim()}
-                className="rounded-2xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-cyan-300/40"
-              >
-                {sending ? "Sending..." : "Send Message"}
-              </button>
+          <div className="border-t border-white/10 bg-slate-950/95 px-4 py-4 md:px-6">
+            <div className="mx-auto flex max-w-4xl flex-col gap-3">
+              {activeSession ? (
+                <div className={`rounded-2xl border px-4 py-3 text-sm ${activityTone(activity)}`}>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span className="font-semibold">{activityLabel(activity)}</span>
+                    {elapsedLabel ? <span>time {elapsedLabel}</span> : null}
+                    {activity.backgroundProcessCount > 0 ? (
+                      <span>background {activity.backgroundProcessCount}</span>
+                    ) : null}
+                    {activity.waitingFlags.length > 0 ? (
+                      <span>{activity.waitingFlags.join(", ")}</span>
+                    ) : null}
+                    {activity.canInterrupt && activity.status === "running" ? (
+                      <span>Esc to interrupt</span>
+                    ) : null}
+                    {interrupting ? <span>interrupting...</span> : null}
+                  </div>
+                  {activity.lastError ? (
+                    <p className="mt-2 text-xs text-rose-100">{activity.lastError}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {queuedUserMessages.length > 0 ? (
+                <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
+                    Waiting for Agent
+                  </p>
+                  <div className="mt-3 space-y-2 text-sm text-amber-50">
+                    {queuedUserMessages.map((message) => (
+                      <div
+                        key={message.id}
+                        className="rounded-2xl border border-amber-300/15 bg-black/10 px-3 py-2"
+                      >
+                        {message.kind === "directoryInstruction" ? (
+                          <p>{clipText(message.content[0]?.type === "text" ? message.content[0].text : "", 120)}</p>
+                        ) : (
+                          <p>
+                            {message.replyToMessageId ? "reply queued · " : ""}
+                            {clipText(message.content[0]?.type === "text" ? message.content[0].text : "", 120)}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {activeReplyTarget ? (
+                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
+                  <div className="flex items-center justify-between gap-3">
+                    <p>
+                      Replying to {activeReplyTarget.role} ·{" "}
+                      {clipText(
+                        activeReplyTarget.content.find((block) => block.type === "text")?.text ?? "",
+                        108,
+                      )}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setReplyTargetMessageId(null)}
+                      className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-100"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {settingsOpen ? (
+                <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                    <form onSubmit={createSession} className="space-y-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          New Chat
+                        </p>
+                        <p className="mt-2 text-sm text-slate-400">
+                          Start another chat without leaving the current thread.
+                        </p>
+                      </div>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Provider
+                        </span>
+                        <select
+                          value={providerKind}
+                          onChange={(event) => setProviderKind(event.target.value as ProviderKind)}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                        >
+                          {providers.map((provider) => (
+                            <option key={provider.kind} value={provider.kind}>
+                              {provider.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Model
+                        </span>
+                        <input
+                          value={modelRef}
+                          onChange={(event) => setModelRef(event.target.value)}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Directory
+                        </span>
+                        <input
+                          value={directory}
+                          onChange={(event) => setDirectory(event.target.value)}
+                          placeholder={defaultSessionDirectory}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Auth Profile
+                        </span>
+                        <input
+                          value={authProfile}
+                          onChange={(event) => setAuthProfile(event.target.value)}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Image Model Override
+                        </span>
+                        <input
+                          value={imageModelRef}
+                          onChange={(event) => setImageModelRef(event.target.value)}
+                          placeholder="optional provider/model"
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={creating || !modelRef.trim() || activeProvider?.status !== "ready"}
+                        className="rounded-2xl bg-fuchsia-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-fuchsia-400/40"
+                      >
+                        {creating
+                          ? "Creating..."
+                          : activeProvider?.status === "ready"
+                            ? "Create Chat"
+                            : "Provider Pending"}
+                      </button>
+                    </form>
+
+                    <form onSubmit={updateDirectory} className="space-y-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Current Chat
+                        </p>
+                        <p className="mt-2 text-sm text-slate-400">
+                          Keep the current thread focused here. Use directory changes when the next turn should work elsewhere.
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
+                        <p>{activeSession ? `${activeSession.providerKind} · ${activeSession.modelRef}` : "No active chat selected."}</p>
+                      </div>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Directory
+                        </span>
+                        <input
+                          value={activeSessionDirectory}
+                          onChange={(event) => setActiveSessionDirectory(event.target.value)}
+                          placeholder={defaultSessionDirectory}
+                          disabled={!activeSession}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={
+                          !activeSession ||
+                          updatingDirectory ||
+                          !activeSessionDirectory.trim() ||
+                          activeSessionDirectory.trim() === activeSession.cwd
+                        }
+                        className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                      >
+                        {updatingDirectory ? "Saving..." : "Queue Directory Change"}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              ) : null}
+
+              <form onSubmit={submitMessage} className="space-y-3">
+                <textarea
+                  value={composerText}
+                  onChange={(event) => setComposerText(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                  rows={4}
+                  placeholder={
+                    activeSession
+                      ? "Write the next message..."
+                      : "Select or create a chat first."
+                  }
+                  disabled={!activeSession || sending}
+                  className="w-full rounded-3xl border border-white/10 bg-slate-900/90 px-4 py-4 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-slate-500">
+                    Ctrl+Enter sends. Esc interrupts when the provider supports it.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {activity.canInterrupt && activity.status === "running" ? (
+                      <button
+                        type="button"
+                        onClick={() => void interruptRun()}
+                        disabled={interrupting}
+                        className="rounded-2xl border border-white/10 px-4 py-2 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {interrupting ? "Interrupting..." : "Interrupt"}
+                      </button>
+                    ) : null}
+                    <button
+                      type="submit"
+                      disabled={!activeSession || sending || !composerText.trim()}
+                      className="rounded-2xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-cyan-300/40"
+                    >
+                      {sending ? "Sending..." : "Send"}
+                    </button>
+                  </div>
+                </div>
+              </form>
             </div>
-          </form>
-        </section>
-      </div>
+          </div>
+        </div>
+      </main>
     </div>
   )
 }
