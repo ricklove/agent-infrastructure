@@ -275,6 +275,8 @@ Ui.sessionList.means(`
 - the session list should show a condensed status summary such as running, queued, or background activity count when available
 - the main session list should stay visually compact so the active thread remains the primary focus
 - session-list controls may create a new chat because they operate on the chat collection rather than the active thread
+- session-list controls should allow renaming the selected chat without routing that action through the active-thread composer menu
+- renaming a chat should enqueue a lightweight agent-visible system note so the provider sees the new chat title before the next turn
 `);
 
 Capability.multimodal.means(`
