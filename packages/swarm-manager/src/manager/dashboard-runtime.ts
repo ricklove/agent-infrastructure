@@ -481,6 +481,10 @@ async function recoverDashboardRuntimeState(
           ? discoverPidByPattern(/cloudflared\s+tunnel\s+--url\s+http:\/\/127\.0\.0\.1:\d+/) ?? 0
           : discoverPidByPattern(/ssh .*nokey@localhost\.run/) ?? 0;
 
+      if (tunnelPid <= 0) {
+        continue;
+      }
+
       return {
         dashboardPid,
         dashboardLogPath,
@@ -717,7 +721,7 @@ async function startLocalhostRun(port: number): Promise<{ pid: number; url: stri
     localhostRunLogPath,
     "localhost_run",
     25_000,
-    /https:\/\/[a-z0-9.-]+/i,
+    /(?<=tunneled with tls termination,\s)https:\/\/[a-z0-9.-]+/i,
   );
 
   return {
