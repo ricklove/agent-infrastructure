@@ -61,6 +61,7 @@ const runtimeStatePath = resolve(runtimeDir, "runtime-state.json");
 const dashboardLogPath = resolve(runtimeDir, "dashboard.log");
 const cloudflaredLogPath = resolve(runtimeDir, "cloudflared.log");
 const localhostRunLogPath = resolve(runtimeDir, "localhost-run.log");
+const localhostRunPublicUrlPattern = /https:\/\/[a-z0-9-]+\.lhr\.life/gi;
 const bootstrapContextPath =
   process.env.SWARM_BOOTSTRAP_CONTEXT_PATH?.trim() || DEFAULT_BOOTSTRAP_CONTEXT_PATH;
 const sessionStorePath =
@@ -68,6 +69,10 @@ const sessionStorePath =
 const dashboardRecoveryMonitorEntry = resolve(
   repoRoot,
   "packages/swarm-manager/src/manager/monitor-dashboard-recovery.ts",
+);
+const localhostRunTunnelEntry = resolve(
+  repoRoot,
+  "packages/swarm-manager/src/manager/localhost-run-tunnel.ts",
 );
 const browserSessionIdleTimeoutMs =
   Math.max(
@@ -309,30 +314,12 @@ function listCloudflaredTunnelPids(): number[] {
 }
 
 function listLocalhostRunTunnelPids(): number[] {
-  const result = Bun.spawnSync(["pgrep", "-f", "nokey@localhost.run"], {
-    cwd: repoRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  if (result.exitCode !== 0) {
-    return [];
-  }
-
-  const output = result.stdout.toString().trim();
-  if (!output) {
-    return [];
-  }
-
-  const pids = new Set<number>();
-  for (const line of output.split("\n")) {
-    const pid = Number.parseInt(line.trim(), 10);
-    if (Number.isInteger(pid) && pid > 0 && isPidRunning(pid)) {
-      pids.add(pid);
-    }
-  }
-
-  return [...pids];
+  return [
+    ...new Set([
+      ...listPidsByPattern(/localhost-run-tunnel\.ts/),
+      ...listPidsByPattern(/ssh .*nokey@localhost\.run/),
+    ]),
+  ];
 }
 
 function listTunnelPids(): number[] {
@@ -355,7 +342,7 @@ function getRuntimeTunnelProvider(
 
 function getTunnelCommandPattern(provider?: string, port?: number): RegExp {
   if (provider === "localhost-run") {
-    return /ssh .*nokey@localhost\.run/;
+    return /localhost-run-tunnel\.ts/;
   }
 
   return new RegExp(`cloudflared\\s+tunnel\\s+--url\\s+http:\\/\\/127\\.0\\.0\\.1:${port ?? 3000}`);
@@ -468,7 +455,10 @@ async function recoverDashboardRuntimeState(
     let urls: string[] = [];
     try {
       const log = readFileSync(candidateLog.logPath, "utf8");
-      urls = [...new Set(log.match(/https:\/\/[a-z0-9.-]+/gi) ?? [])];
+      urls =
+        candidateLog.provider === "localhost-run"
+          ? [...new Set(log.match(localhostRunPublicUrlPattern) ?? [])]
+          : [...new Set(log.match(/https:\/\/[a-z0-9.-]+/gi) ?? [])];
     } catch {}
 
     for (const candidateUrl of urls.reverse()) {
@@ -479,7 +469,7 @@ async function recoverDashboardRuntimeState(
       const tunnelPid =
         candidateLog.provider === "cloudflared"
           ? discoverPidByPattern(/cloudflared\s+tunnel\s+--url\s+http:\/\/127\.0\.0\.1:\d+/) ?? 0
-          : discoverPidByPattern(/ssh .*nokey@localhost\.run/) ?? 0;
+          : discoverPidByPattern(/localhost-run-tunnel\.ts/) ?? 0;
 
       if (tunnelPid <= 0) {
         continue;
@@ -622,6 +612,53 @@ async function spawnDetached(
   return pid;
 }
 
+async function spawnDetachedSession(
+  command: string,
+  logPath: string,
+  env?: Record<string, string>,
+): Promise<number> {
+  logSystemStep("dashboard-runtime", `start detached=${command}`);
+  ensureParentDir(logPath);
+  writeFileSync(logPath, "");
+
+  const processHandle = Bun.spawn(
+    ["bash", "-lc", `setsid ${command} >> '${logPath}' 2>&1 < /dev/null & echo $!`],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ...env,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+
+  const stdout = await new Response(processHandle.stdout).text();
+  const stderr = await new Response(processHandle.stderr).text();
+  await processHandle.exited;
+
+  if (processHandle.exitCode !== 0) {
+    logSystemStep("dashboard-runtime", `error failed_launch=${command}`);
+    throw new Error(stderr.trim() || `failed to launch command: ${command}`);
+  }
+
+  if (stderr.trim().length > 0) {
+    logSystemStep("dashboard-runtime", `error launch_stderr=${stderr.trim()}`);
+    throw new Error(stderr.trim());
+  }
+
+  const pid = Number.parseInt(stdout.trim(), 10);
+  if (!Number.isInteger(pid) || pid <= 0) {
+    logSystemStep("dashboard-runtime", `error invalid_pid=${command}`);
+    throw new Error(`failed to capture pid for command: ${command}`);
+  }
+
+  logSystemStep("dashboard-runtime", `exit detached_pid=${pid} command=${command}`);
+
+  return pid;
+}
+
 async function ensureDashboardBuilt(forceRebuild = false): Promise<void> {
   if (!forceRebuild && existsSync(dashboardDistDir)) {
     logSystemStep("dashboard-runtime", "exit dashboard_build=reused");
@@ -699,31 +736,16 @@ async function startCloudflared(port: number): Promise<{ pid: number; url: strin
 }
 
 async function startLocalhostRun(port: number): Promise<{ pid: number; url: string }> {
-  const command = [
-    "ssh",
-    "-n",
-    "-T",
-    "-o",
-    "StrictHostKeyChecking=no",
-    "-o",
-    "UserKnownHostsFile=/dev/null",
-    "-o",
-    "ServerAliveInterval=30",
-    "-o",
-    "ExitOnForwardFailure=yes",
-    "-R",
-    `80:127.0.0.1:${port}`,
-    "nokey@localhost.run",
-  ]
+  const command = ["bun", localhostRunTunnelEntry, "--port", String(port)]
     .map(shellQuote)
     .join(" ");
+  const pid = await spawnDetachedSession(command, localhostRunLogPath);
 
-  const pid = await spawnDetached(command, localhostRunLogPath);
   const url = await waitForUrlInLog(
     localhostRunLogPath,
     "localhost_run",
     25_000,
-    /(?<=tunneled with tls termination,\s)https:\/\/[a-z0-9.-]+/i,
+    /https:\/\/[a-z0-9-]+\.lhr\.life/i,
   );
 
   return {
