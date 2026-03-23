@@ -24,6 +24,7 @@ const CurrentReality = {
   realtime: define.concept("RealtimeSessionUpdates"),
   directoryAndTitleQueueing: define.concept("QueuedDirectoryAndTitleInstructions"),
   codexAndClaudeExecution: define.concept("CodexAndClaudeProviderExecution"),
+  currentChatProviderSettings: define.concept("CurrentChatProviderSettingsMenu"),
   genericSessionActivity: define.concept("GenericSessionActivityOnly"),
   fixedTurnDeadline: define.concept("FixedCodexTurnDeadline"),
   noFolderOrganization: define.concept("NoCanonicalFolderOrganization"),
@@ -41,6 +42,7 @@ AgentChatBlueprintState.defines(`
 - KnownIssue means the provider catalog and UI still include planned providers that do not yet execute in the backend today.
 - KnownIssue also includes the current Agent Chat provider layer still being uneven, with Codex and Claude implemented while OpenRouter and Gemini remain planned.
 - KnownIssue also includes the current Codex adapter retaining an adapter-level timeout policy that remains separate from the newer Claude path.
+- KnownIssue also includes the current implementation now supporting in-session provider switching ahead of the older V1 cut language in the dashboard implementation blueprint, so that blueprint should no longer be read as excluding the shipped behavior.
 `);
 
 AgentChatBlueprintState.contains(
@@ -55,6 +57,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.realtime,
   CurrentReality.directoryAndTitleQueueing,
   CurrentReality.codexAndClaudeExecution,
+  CurrentReality.currentChatProviderSettings,
   CurrentReality.genericSessionActivity,
   CurrentReality.fixedTurnDeadline,
   CurrentReality.noFolderOrganization,
@@ -99,6 +102,13 @@ CurrentReality.codexAndClaudeExecution.means(`
 - Codex app-server and Claude Agent SDK both have working execution adapters in the current backend
 - active Codex and Claude turns may be interrupted while a run is active
 - provider thread ids remain metadata attached to the workspace-owned session rather than replacing canonical chat history
+`);
+
+CurrentReality.currentChatProviderSettings.means(`
+- the composer-area current-chat menu now exposes provider, model, auth-profile, directory, and image-model controls for an existing session
+- existing sessions may switch between currently ready providers without creating a new canonical chat session
+- changing provider settings clears provider-owned thread metadata and preserves canonical transcript history
+- provider switching is blocked while a run is active, but otherwise works as a normal session patch
 `);
 
 CurrentReality.genericSessionActivity.means(`
@@ -147,6 +157,9 @@ when(CurrentReality.plannedProviders.exists())
 
 when(CurrentReality.genericSessionActivity.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
+
+when(CurrentReality.currentChatProviderSettings.exists())
+  .then(AgentChatBlueprintState.records("current implementation now exceeds the older V1 cut by supporting in-session provider switching"));
 
 when(CurrentReality.fixedTurnDeadline.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap))
