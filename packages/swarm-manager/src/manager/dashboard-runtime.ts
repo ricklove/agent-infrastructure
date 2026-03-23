@@ -59,6 +59,10 @@ const bootstrapContextPath =
   process.env.SWARM_BOOTSTRAP_CONTEXT_PATH?.trim() || DEFAULT_BOOTSTRAP_CONTEXT_PATH;
 const sessionStorePath =
   process.env.DASHBOARD_SESSION_STORE_PATH?.trim() || DEFAULT_DASHBOARD_SESSION_STORE_PATH;
+const dashboardRecoveryMonitorEntry = resolve(
+  repoRoot,
+  "packages/swarm-manager/src/manager/monitor-dashboard-recovery.ts",
+);
 const browserSessionIdleTimeoutMs =
   Math.max(
     60,
@@ -84,6 +88,11 @@ const dashboardRecoveryIncidentDir = resolve(
 const dashboardHelpRequestDir = resolve(
   process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
   "dashboard-help-requests",
+);
+const dashboardRecoveryMonitorLogPath = resolve(runtimeDir, "dashboard-recovery-monitor.log");
+const dashboardRecoveryMonitorLockPath = resolve(
+  process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
+  "dashboard-recovery-monitor.lock",
 );
 
 function logSystemStep(source: string, message: string): void {
@@ -296,6 +305,20 @@ function writeDashboardHelpIncident(detail: Record<string, unknown>): string {
   );
   writeFileSync(path, `${JSON.stringify(detail, null, 2)}\n`);
   return path;
+}
+
+function readDashboardRecoveryMonitorLockPid(): number | null {
+  if (!existsSync(dashboardRecoveryMonitorLockPath)) {
+    return null;
+  }
+
+  try {
+    const value = readFileSync(dashboardRecoveryMonitorLockPath, "utf8").trim();
+    const pid = Number.parseInt(value, 10);
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
 }
 
 async function recoverDashboardRuntimeState(
@@ -827,6 +850,127 @@ export function requestDashboardHelp(input: {
     `requested reason=${payload.reason} dashboard_url=${payload.dashboardUrl || "unknown"} incident=${incidentPath}`,
   );
   return incidentPath;
+}
+
+export async function startDashboardRecoveryMonitor(input: {
+  port?: number;
+  managerUrl?: string;
+  publicUrl: string;
+}): Promise<number> {
+  const existingPid = readDashboardRecoveryMonitorLockPid();
+  if (existingPid && isPidRunning(existingPid)) {
+    logSystemStep("dashboard-recovery-monitor", `exit existing_pid=${existingPid}`);
+    return existingPid;
+  }
+
+  const command = [
+    "bun",
+    dashboardRecoveryMonitorEntry,
+    "--port",
+    String(input.port ?? 3000),
+    "--manager-url",
+    input.managerUrl ?? "http://127.0.0.1:8787",
+    "--public-url",
+    input.publicUrl,
+  ]
+    .map(shellQuote)
+    .join(" ");
+
+  logSystemStep("dashboard-recovery-monitor", `start public_url=${input.publicUrl}`);
+  return spawnDetached(command, dashboardRecoveryMonitorLogPath, {
+    AGENT_STATE_DIR: process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
+    SYSTEM_EVENT_LOG_PATH,
+  });
+}
+
+export async function runDashboardRecoveryMonitor(input: {
+  port?: number;
+  managerUrl?: string;
+  publicUrl: string;
+}): Promise<void> {
+  const port = input.port ?? 3000;
+  const managerUrl = input.managerUrl ?? "http://127.0.0.1:8787";
+  const expectedPublicUrl = input.publicUrl.trim();
+  const pid = process.pid;
+  const lockPid = readDashboardRecoveryMonitorLockPid();
+
+  if (lockPid && lockPid !== pid && isPidRunning(lockPid)) {
+    logSystemStep("dashboard-recovery-monitor", `exit lock_held_by=${lockPid}`);
+    return;
+  }
+
+  ensureParentDir(dashboardRecoveryMonitorLockPath);
+  writeFileSync(dashboardRecoveryMonitorLockPath, `${pid}\n`);
+
+  try {
+    logSystemStep(
+      "dashboard-recovery-monitor",
+      `start pid=${pid} public_url=${expectedPublicUrl} port=${port}`,
+    );
+
+    try {
+      await waitForPublicDashboardReady(expectedPublicUrl, 45, 1000);
+      logSystemStep("dashboard-recovery-monitor", `exit ready public_url=${expectedPublicUrl}`);
+      return;
+    } catch {}
+
+    const currentState = readRuntimeState();
+    if (currentState?.publicUrl?.trim() !== expectedPublicUrl) {
+      logSystemStep(
+        "dashboard-recovery-monitor",
+        `exit stale_public_url expected=${expectedPublicUrl} current=${currentState?.publicUrl ?? "missing"}`,
+      );
+      return;
+    }
+
+    const dashboardHealthy = await isDashboardHealthy(port);
+    if (!dashboardHealthy) {
+      await terminatePids(
+        currentState?.dashboardPid ? [currentState.dashboardPid] : [],
+        "dashboard-recovery-monitor",
+      );
+      const dashboardPid = await startDashboardServer({
+        port,
+        managerUrl,
+        useCloudflared: true,
+      });
+      await waitForHealth(port);
+      writeRuntimeState({
+        dashboardPid,
+        dashboardLogPath,
+        localUrl: `http://127.0.0.1:${port}`,
+        cloudflaredPid: currentState?.cloudflaredPid,
+        cloudflaredLogPath: currentState?.cloudflaredLogPath ?? cloudflaredLogPath,
+        publicUrl: expectedPublicUrl,
+      });
+      logSystemStep(
+        "dashboard-recovery-monitor",
+        `restart dashboard_pid=${dashboardPid} public_url=${expectedPublicUrl}`,
+      );
+    }
+
+    await waitForPublicDashboardReady(expectedPublicUrl, 45, 1000);
+    logSystemStep("dashboard-recovery-monitor", `exit recovered public_url=${expectedPublicUrl}`);
+  } catch (error) {
+    requestDashboardHelp({
+      reason: "dashboard-monitor-recovery-failed",
+      dashboardUrl: expectedPublicUrl,
+      detail:
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "dashboard monitor recovery failed",
+    });
+    logSystemStep(
+      "dashboard-recovery-monitor",
+      `error public_url=${expectedPublicUrl} detail=${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw error;
+  } finally {
+    const currentLockPid = readDashboardRecoveryMonitorLockPid();
+    if (currentLockPid === pid) {
+      rmSync(dashboardRecoveryMonitorLockPath, { force: true });
+    }
+  }
 }
 
 export async function recoverDashboardSession(input?: {

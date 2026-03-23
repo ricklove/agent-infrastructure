@@ -18,6 +18,7 @@ const Manager = {
   host: define.system("ManagerHost"),
   runtime: define.system("DashboardRuntime"),
   sessionIssue: define.entity("DashboardSessionIssue"),
+  monitor: define.entity("DashboardRecoveryMonitor"),
   readinessFailure: define.event("DashboardReadinessFailure"),
   recovery: define.entity("DashboardRecoveryAttempt"),
   helpRequest: define.entity("DashboardHelpRequest"),
@@ -35,7 +36,7 @@ const Policy = {
 DashboardRecovery.enforces(`
 - Dashboard repair should be triggered by an active user connection attempt plus dashboard unreachability.
 - The recovery path must not depend on the dashboard UI being reachable first.
-- Automatic repair should happen before escalation.
+- Automatic repair should start immediately when the manager receives a real connection attempt.
 - One canonical dashboard tunnel should exist after recovery, not a pile of stale tunnels.
 - If automatic repair still fails, the system should create an explicit ask-help incident for agent follow-up.
 `);
@@ -46,7 +47,9 @@ Policy.activeAttemptRequired.means(`
 `);
 
 Policy.repairFirst.means(`
-- on dashboard session issuance success but public readiness failure, attempt repair automatically
+- on dashboard session issuance success, start a background recovery monitor immediately
+- let Lambda keep polling readiness while the manager-side monitor repairs in parallel
+- if the monitor observes public readiness failure, attempt repair automatically
 - prune stale dashboard and tunnel processes
 - restart the dashboard path and reissue a fresh session URL
 `);
@@ -64,8 +67,13 @@ Policy.escalateAfterFailedRepair.means(`
 when(Access.lambda.invokes(Manager.sessionIssue).andObserves(Access.attempt))
   .then(DashboardRecovery.requires(Policy.activeAttemptRequired))
   .and(DashboardRecovery.requires(Policy.repairFirst))
-  .and(Manager.sessionIssue.detects(Manager.readinessFailure))
+  .and(Manager.sessionIssue.starts(Manager.monitor))
+  .and(Manager.monitor.detects(Manager.readinessFailure))
   .and(Manager.recovery.repairs(Manager.runtime))
+  .and(Manager.recovery.reissues(Manager.sessionIssue));
+
+when(Manager.monitor.detects(Manager.readinessFailure))
+  .then(Manager.recovery.repairs(Manager.runtime))
   .and(Manager.recovery.reissues(Manager.sessionIssue));
 
 when(Manager.recovery.repairs(Manager.runtime))
