@@ -34,6 +34,7 @@ const Session = {
   turn: define.entity("ChatTurn"),
   participant: define.entity("SessionParticipant"),
   folder: define.entity("SessionFolder"),
+  archive: define.concept("ArchivedSessionState"),
   title: define.concept("SessionTitle"),
   summary: define.concept("SessionSummary"),
   import: define.entity("ImportedConversation"),
@@ -122,6 +123,7 @@ Session.conversation.contains(
   Session.turn,
   Session.participant,
   Session.folder,
+  Session.archive,
   Session.title,
   Session.summary,
   Session.reference,
@@ -157,6 +159,7 @@ AgentChat.defines(`
 - A provider binding is an execution attachment between one participant and one provider runtime.
 - A workspace reference is a durable pointer between a session and any workspace entity such as a board, layer, document, project, artifact, or run.
 - A session folder is a workspace-owned grouping container used to organize sessions without changing their identity.
+- Archived session state is a workspace-owned visibility flag that removes a session from the default list without deleting its identity or transcript.
 - A hydration context packet is the explicit context AgentChat chooses to provide to a provider binding at run time.
 - An active context artifact is the retained context currently shaping future runs.
 - A context revision identifies which retained artifact a provider binding was last hydrated from.
@@ -180,6 +183,13 @@ Session.folder.means(`
 - stable folder identity that may contain many sessions
 - organization metadata owned by AgentChat rather than inferred from cwd, title, or provider
 - intended for browsing, collapsing, and moving sessions without rewriting transcript history
+`);
+
+Session.archive.means(`
+- workspace-owned archive status for a session
+- archived sessions are removed from the default main session list
+- archived sessions remain canonical, resumable, and searchable
+- archive state does not delete transcript history, provider metadata, or session identity
 `);
 
 Observability.workerState.means(`
@@ -243,6 +253,12 @@ when(User.renames(Session.conversation))
   .then(AgentChat.updates(Session.title))
   .and(AgentChat.preserves(Provider.binding))
   .and(AgentChat.preserves(Session.transcript));
+
+when(User.archives(Session.conversation))
+  .then(AgentChat.updates(Session.archive))
+  .and(AgentChat.hides(Session.conversation).from("the default main session list"))
+  .and(AgentChat.preserves(Session.transcript))
+  .and(AgentChat.preserves(Provider.binding));
 
 when(User.imports(Session.import))
   .then(AgentChat.normalizes(Session.import).into(Session.message))

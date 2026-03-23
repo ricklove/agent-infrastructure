@@ -309,6 +309,10 @@ Ui.sessionList.means(`
 - the session list should show a condensed worker-state summary such as running, queued, waiting, interrupted, or background worker count when available
 - the main session list should stay visually compact so the active thread remains the primary focus
 - the session list should group sessions by optional folders before falling back to an ungrouped collection
+- the main list should exclude archived sessions by default
+- a compact session-list search field should filter sessions by title, preview, provider, model, and cwd without leaving the session surface
+- archived sessions should remain reachable through a hidden archived section opened from a menu instead of occupying the main list by default
+- archive and restore actions should be available from session-list controls rather than requiring transcript edits
 - the operator should be able to create folders and move sessions between folders from the session-list surface
 - folders are for organization only and must not change session identity, ordering rules within a folder, or canonical history
 - session-list controls may create a new chat because they operate on the chat collection rather than the active thread
@@ -400,6 +404,7 @@ Storage.fileCanonical.means(`
 - store canonical messages and run events in append-friendly JSONL files
 - store provider kind, provider model, provider thread handle, and provider configuration references in canonical session metadata
 - store provider auth-profile choice and optional image-model override in canonical session metadata
+- store archived session status in canonical session metadata
 - store session folder membership in canonical session metadata
 - store structured worker-state summary fields when they are durable enough to help session-list recovery after reconnect or restart
 - store canonical content blocks and cache hints instead of only flattened prompt strings
@@ -421,7 +426,7 @@ Storage.runtimeState.means(`
 `);
 
 Transport.http.means(`
-- HTTP handles session list, create session, load session, rename session, and append user message
+- HTTP handles session list, create session, load session, rename session, archive or restore session state, and append user message
 - appending a user message may also start a provider run
 `);
 
@@ -452,6 +457,7 @@ Decision.sessionIdentity.means(`
 - a new session is created explicitly from the UI
 - the session list is sorted by last activity
 - the session may optionally belong to a folder used for session-list organization
+- the session may also be marked archived while keeping its canonical identity
 - the new-session form should allow an explicit optional title at creation time
 - if the operator does not provide a title, the title is generated from the first user prompt
 - the title can be renamed later

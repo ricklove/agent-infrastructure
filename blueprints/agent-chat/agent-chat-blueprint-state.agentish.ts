@@ -29,6 +29,8 @@ const CurrentReality = {
   genericSessionActivity: define.concept("GenericSessionActivityOnly"),
   fixedTurnDeadline: define.concept("FixedCodexTurnDeadline"),
   noFolderOrganization: define.concept("NoCanonicalFolderOrganization"),
+  noArchivedSessionOrganization: define.concept("NoCanonicalArchivedSessionOrganization"),
+  noSessionListSearch: define.concept("NoSessionListSearch"),
   plannedProviders: define.concept("PlannedButUnimplementedProviders"),
   noWorkspaceRepoDurability: define.concept("NoManagerControlledWorkspaceRepoDurability"),
   deferredScope: define.concept("DeferredProductScope"),
@@ -46,6 +48,7 @@ AgentChatBlueprintState.defines(`
 - KnownIssue also includes the current Agent Chat provider layer still being uneven, with Codex and Claude implemented while OpenRouter and Gemini remain planned.
 - KnownIssue also includes the current Codex adapter retaining an adapter-level timeout policy that remains separate from the newer Claude path.
 - KnownIssue also includes the current implementation now supporting in-session provider switching ahead of the older V1 cut language in the dashboard implementation blueprint, so that blueprint should no longer be read as excluding the shipped behavior.
+- KnownIssue also includes the current session list still lacking built-in archive handling and built-in search, even though those are now required by the updated session-list blueprint.
 `);
 
 AgentChatBlueprintState.contains(
@@ -65,6 +68,8 @@ AgentChatBlueprintState.contains(
   CurrentReality.genericSessionActivity,
   CurrentReality.fixedTurnDeadline,
   CurrentReality.noFolderOrganization,
+  CurrentReality.noArchivedSessionOrganization,
+  CurrentReality.noSessionListSearch,
   CurrentReality.plannedProviders,
   CurrentReality.noWorkspaceRepoDurability,
   CurrentReality.deferredScope,
@@ -146,6 +151,18 @@ CurrentReality.noFolderOrganization.means(`
 - the current implementation therefore lacks workspace-owned session organization beyond title, provider, and cwd metadata
 `);
 
+CurrentReality.noArchivedSessionOrganization.means(`
+- sessions currently cannot be archived out of the default main list
+- there is no hidden archived section for later browsing or restore
+- canonical session metadata therefore does not yet track archive visibility state
+`);
+
+CurrentReality.noSessionListSearch.means(`
+- the current session list does not expose a search field
+- operators must visually scan the entire list to find a chat by title, preview, provider, model, or cwd
+- the current implementation therefore falls short of a compact searchable session-list workflow
+`);
+
 CurrentReality.noWorkspaceRepoDurability.means(`
 - Agent Chat currently writes canonical session files under durable app data
 - the current implementation does not yet notify a manager-side workspace persistence controller after canonical mutations
@@ -165,6 +182,8 @@ CurrentReality.deferredScope.means(`
 - import normalization is not implemented
 - native versus Agentish compaction is specified in blueprints but not yet exposed as a real editable session policy
 - session folders are not implemented
+- archived-session organization is not implemented
+- session-list search is not implemented
 - explicit worker-state summaries in the session list are not implemented
 - retained context inspection is still much thinner than the ideal blueprint describes
 `);
@@ -194,6 +213,14 @@ when(CurrentReality.fixedTurnDeadline.exists())
 
 when(CurrentReality.noFolderOrganization.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
+
+when(CurrentReality.noArchivedSessionOrganization.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap))
+  .and(AgentChatBlueprintState.records(Assessment.issue));
+
+when(CurrentReality.noSessionListSearch.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap))
+  .and(AgentChatBlueprintState.records(Assessment.issue));
 
 when(CurrentReality.noWorkspaceRepoDurability.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap))
