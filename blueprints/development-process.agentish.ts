@@ -62,6 +62,7 @@ DevelopmentProcess.enforces(`
 - Durable app data must live outside state/.
 - Provider-backed agents used for implementation must inherit this same workflow.
 - Runtime rollout should follow the deploy-manager-runtime blueprint as the standard deploy path.
+- Runtime rollout should call `bun run deploy-manager-runtime` from the shared source repository unless a more specific documented operator entrypoint supersedes it.
 - UI-facing changes require real browser verification, screenshots, and deployed frontend-backend version matching.
 - Responsive UI changes must be verified at small, medium, and wide viewport sizes.
 - A rollout is not complete until post-deploy behavior has been verified on the live system.
@@ -79,6 +80,7 @@ DevelopmentProcess.defines(`
 - VersionMatchVerification means the served frontend version and running backend version must match exactly after rollout.
 - TicketSystemOwnsImplementationPlan means active work sequencing, task breakdown, and unfinished implementation routing belong in tickets rather than in long-lived blueprint companion files.
 - StandardRuntimeDeployBlueprint means runtime rollout should use the repository's canonical deploy-manager-runtime path rather than improvised runtime or tunnel-control actions.
+- `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path.
 `);
 
 DevelopmentProcess.contains(
@@ -164,7 +166,8 @@ when(Actor.operator.starts("substantial unfinished implementation work"))
 when(Actor.operator.rollsOut("a committed revision to runtime"))
   .then(DevelopmentProcess.requires(Rule.standardRuntimeDeploy))
   .and(DevelopmentProcess.requires(Rule.deployByCheckout))
-  .and(DevelopmentProcess.treats("deploy-manager-runtime as the canonical rollout blueprint"));
+  .and(DevelopmentProcess.treats("deploy-manager-runtime as the canonical rollout blueprint"))
+  .and(DevelopmentProcess.expects("bun run deploy-manager-runtime to be the normal rollout command"));
 
 when(Artifact.temporaryState.contains("durable app content"))
   .then(DevelopmentProcess.violates(Rule.stateTemporaryOnly));
