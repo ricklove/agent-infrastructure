@@ -194,6 +194,9 @@ Policy.fullUpdateWorkflow.means(`
 - run post-deploy health and behavior checks
 - use the browser tool on the real UI for post-deploy verification
 - capture screenshots as evidence of post-deploy UI state
+- verify the served frontend version matches the deployed revision
+- verify the running backend version matches the deployed revision
+- treat frontend-backend version mismatch as a failed rollout state
 `);
 
 Gateway.lazyStart.means(`
