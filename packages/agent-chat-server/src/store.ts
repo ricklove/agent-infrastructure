@@ -270,6 +270,35 @@ export class AgentChatStore {
     return nextSession;
   }
 
+  replacePendingSystemInstructionByPrefix(
+    sessionId: string,
+    prefix: string,
+    instruction: string,
+  ): StoredSession | null {
+    const current = this.sessionCache.get(sessionId);
+    if (!current) {
+      return null;
+    }
+
+    const existingLines = current.pendingSystemInstruction
+      ? current.pendingSystemInstruction
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .filter((line) => !line.startsWith(prefix))
+      : [];
+    existingLines.push(instruction);
+
+    const nextSession: StoredSession = {
+      ...current,
+      pendingSystemInstruction: existingLines.join("\n"),
+      updatedAtMs: Date.now(),
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
+    return nextSession;
+  }
+
   consumePendingSystemInstruction(sessionId: string): string | null {
     const current = this.sessionCache.get(sessionId);
     if (!current || !current.pendingSystemInstruction) {
@@ -297,6 +326,23 @@ export class AgentChatStore {
   markQueuedSystemMessagesSeen(sessionId: string, seenAtMs = Date.now()) {
     const messageIds = this.listQueuedMessages(sessionId)
       .filter((message) => message.role === "system")
+      .map((message) => message.id);
+    this.markMessagesSeen(sessionId, messageIds, seenAtMs);
+  }
+
+  markQueuedSystemMessagesSeenByPrefix(
+    sessionId: string,
+    prefix: string,
+    seenAtMs = Date.now(),
+  ) {
+    const messageIds = this.listQueuedMessages(sessionId)
+      .filter((message) => {
+        if (message.role !== "system") {
+          return false;
+        }
+        const firstText = message.content.find((block) => block.type === "text");
+        return firstText?.type === "text" && firstText.text.startsWith(prefix);
+      })
       .map((message) => message.id);
     this.markMessagesSeen(sessionId, messageIds, seenAtMs);
   }

@@ -23,6 +23,10 @@ const legacyDbPath =
 const port = Number.parseInt(process.env.AGENT_CHAT_PORT ?? "8789", 10);
 const defaultSessionDirectory =
   process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
+const DIRECTORY_QUEUE_PREFIX = "Directory will switch to ";
+const TITLE_QUEUE_PREFIX = "Chat title will change to ";
+const DIRECTORY_INSTRUCTION_PREFIX = "Working directory changed to ";
+const TITLE_INSTRUCTION_PREFIX = "Chat title changed to ";
 
 type ChatSocketData = {
   socketId: string;
@@ -540,7 +544,7 @@ const server = Bun.serve<ChatSocketData>({
         const queuedMessages: StoredMessage[] = [];
 
         if (nextDirectory && session && nextDirectory !== session.cwd) {
-          store.markQueuedSystemMessagesSeen(sessionId);
+          store.markQueuedSystemMessagesSeenByPrefix(sessionId, DIRECTORY_QUEUE_PREFIX);
           session = store.updateSessionCwd(sessionId, nextDirectory);
           const directoryMessage = store.appendMessage(sessionId, {
             role: "system",
@@ -549,18 +553,20 @@ const server = Bun.serve<ChatSocketData>({
             content: [
               {
                 type: "text",
-                text: `Directory will switch to ${nextDirectory} for the next agent turn.`,
+                text: `${DIRECTORY_QUEUE_PREFIX}${nextDirectory} for the next agent turn.`,
               },
             ],
           });
           queuedMessages.push(directoryMessage);
-          session = store.queuePendingSystemInstruction(
+          session = store.replacePendingSystemInstructionByPrefix(
             sessionId,
-            `Working directory changed to ${nextDirectory}. Use this directory for subsequent work unless the user says otherwise.`,
+            DIRECTORY_INSTRUCTION_PREFIX,
+            `${DIRECTORY_INSTRUCTION_PREFIX}${nextDirectory}. Use this directory for subsequent work unless the user says otherwise.`,
           );
         }
 
         if (nextTitle && session && nextTitle !== session.title) {
+          store.markQueuedSystemMessagesSeenByPrefix(sessionId, TITLE_QUEUE_PREFIX);
           session = store.updateSessionTitle(sessionId, nextTitle);
           const titleMessage = store.appendMessage(sessionId, {
             role: "system",
@@ -568,14 +574,15 @@ const server = Bun.serve<ChatSocketData>({
             content: [
               {
                 type: "text",
-                text: `Chat title will change to ${nextTitle} for the next agent turn.`,
+                text: `${TITLE_QUEUE_PREFIX}${nextTitle} for the next agent turn.`,
               },
             ],
           });
           queuedMessages.push(titleMessage);
-          session = store.queuePendingSystemInstruction(
+          session = store.replacePendingSystemInstructionByPrefix(
             sessionId,
-            `Chat title changed to ${nextTitle}. Use this title when referring to this chat unless the user says otherwise.`,
+            TITLE_INSTRUCTION_PREFIX,
+            `${TITLE_INSTRUCTION_PREFIX}${nextTitle}. Use this title when referring to this chat unless the user says otherwise.`,
           );
         }
 
