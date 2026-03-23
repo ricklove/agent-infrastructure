@@ -733,17 +733,21 @@ async function getDashboardRuntimeStatus(
   },
 ): Promise<DashboardRuntimeStatus> {
   const dashboardHealthy = await isDashboardHealthy(port);
-  const dashboardRunning = await isExpectedProcess(
-    state?.dashboardPid,
-    /packages\/dashboard\/src\/server\.ts/,
-  );
-  const tunnelPid = getRuntimeTunnelPid(state);
+  const dashboardPid =
+    (await isExpectedProcess(state?.dashboardPid, /packages\/dashboard\/src\/server\.ts/))
+      ? state?.dashboardPid
+      : discoverPidByPattern(/packages\/dashboard\/src\/server\.ts/);
+  const dashboardRunning = Boolean(dashboardPid);
+  const tunnelPid =
+    (await isExpectedProcess(
+      getRuntimeTunnelPid(state),
+      getTunnelCommandPattern(getRuntimeTunnelProvider(state), port),
+    ))
+      ? getRuntimeTunnelPid(state)
+      : discoverPidByPattern(getTunnelCommandPattern(getRuntimeTunnelProvider(state), port));
   const tunnelRunning =
     Boolean(state?.publicUrl) &&
-    (await isExpectedProcess(
-      tunnelPid,
-      getTunnelCommandPattern(getRuntimeTunnelProvider(state), port),
-    ));
+    Boolean(tunnelPid);
   const publicReady =
     Boolean(state?.publicUrl) &&
     options?.checkPublic === true &&
@@ -1014,10 +1018,14 @@ export async function ensureDashboardRuntime(
     dashboardRunning
       ? (currentState?.dashboardPid ?? 0)
       : discoverPidByPattern(/packages\/dashboard\/src\/server\.ts/) ?? 0;
-  const cloudflaredRunning = await isExpectedProcess(
-    getRuntimeTunnelPid(currentState),
-    getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), config.port),
-  );
+  const tunnelPid =
+    (await isExpectedProcess(
+      getRuntimeTunnelPid(currentState),
+      getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), config.port),
+    ))
+      ? getRuntimeTunnelPid(currentState)
+      : discoverPidByPattern(getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), config.port));
+  const cloudflaredRunning = Boolean(tunnelPid);
   const dashboardHealthy = await isDashboardHealthy(config.port);
   const publicDashboardReady =
     config.useCloudflared && typeof currentState?.publicUrl === "string"
@@ -1034,8 +1042,17 @@ export async function ensureDashboardRuntime(
 
   if (canReuseDashboard) {
     logSystemStep("dashboard-runtime", "exit runtime=reused-current-state");
-    writeRuntimeState(currentState);
-    return currentState;
+    const normalizedState: DashboardRuntimeState =
+      tunnelPid && tunnelPid !== getRuntimeTunnelPid(currentState)
+        ? {
+            ...currentState,
+            tunnelPid,
+            cloudflaredPid:
+              getRuntimeTunnelProvider(currentState) === "cloudflared" ? tunnelPid : undefined,
+          }
+        : currentState;
+    writeRuntimeState(normalizedState);
+    return normalizedState;
   }
 
   const recoveredState = await recoverDashboardRuntimeState(config);
@@ -1276,19 +1293,33 @@ export async function waitForDashboardLifecycleReady(input?: {
 
   while (Date.now() < deadline) {
     const state = readRuntimeState();
-    const tunnelPid = getRuntimeTunnelPid(state);
+    const tunnelPid =
+      (await isExpectedProcess(
+        getRuntimeTunnelPid(state),
+        getTunnelCommandPattern(getRuntimeTunnelProvider(state), expectedPort),
+      ))
+        ? getRuntimeTunnelPid(state)
+        : discoverPidByPattern(getTunnelCommandPattern(getRuntimeTunnelProvider(state), expectedPort));
     if (
       state?.publicUrl &&
       tunnelPid &&
       getPortFromRuntimeState(state) === expectedPort &&
       (await isDashboardHealthy(expectedPort)) &&
-      (await isExpectedProcess(
-        tunnelPid,
-        getTunnelCommandPattern(getRuntimeTunnelProvider(state), expectedPort),
-      )) &&
       (await isPublicDashboardReady(state.publicUrl))
     ) {
-      return state;
+      const normalizedState: DashboardRuntimeState =
+        tunnelPid === getRuntimeTunnelPid(state)
+          ? state
+          : {
+              ...state,
+              tunnelPid,
+              cloudflaredPid:
+                getRuntimeTunnelProvider(state) === "cloudflared" ? tunnelPid : undefined,
+            };
+      if (normalizedState !== state) {
+        writeRuntimeState(normalizedState);
+      }
+      return normalizedState;
     }
 
     await Bun.sleep(1000);
