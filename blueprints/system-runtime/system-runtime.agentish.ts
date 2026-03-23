@@ -189,6 +189,8 @@ Policy.logging.means(`
 `);
 
 Policy.fullUpdateWorkflow.means(`
+- check the relevant blueprints before making implementation changes
+- treat blueprint review as mandatory, not optional
 - edit source only
 - verify locally before rollout
 - commit source
@@ -255,8 +257,13 @@ when(Operator.requests("the full manager development process"))
   .then(SystemRuntime.requires(Policy.fullUpdateWorkflow))
   .and(SystemRuntime.requires(Policy.sourceOfTruth))
   .and(SystemRuntime.requires(Policy.runtimeCheckoutOnly))
+  .and(SystemRuntime.requires("blueprint review before implementation changes"))
   .and(SystemRuntime.requires("post-deploy checks before declaring success"))
   .and(SystemRuntime.requires("browser-tool verification with screenshots for UI-facing changes"));
+
+when(Operator.changes("manager or dashboard behavior"))
+  .then(SystemRuntime.requires("checking the relevant blueprints first"))
+  .and(SystemRuntime.forbids("implementation-first changes that ignore existing blueprint rules"));
 
 when(RuntimeCode.workerPower.isUsedBy("a manager test or manager workflow"))
   .then(SystemRuntime.prefers("direct TS invocation"))
