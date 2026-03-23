@@ -967,7 +967,7 @@ export function AgentSwarmScreen({
         </div>
       </div>
 
-      <div className="space-y-4 p-5">
+      <div className="flex-1 space-y-4 overflow-y-auto p-5">
         {health?.error ? (
           <div className="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-xs text-rose-100">
             {health.error}
