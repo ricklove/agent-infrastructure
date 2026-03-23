@@ -27,12 +27,20 @@ function hsl(hue: number, saturation: number, lightness: number): string {
 
 type GraphColorDomain = "node-type" | "node-avatar" | "edge";
 
-function domainHue(seed: string, domain: GraphColorDomain): number {
-  const base = stableHue(seed);
+const NODE_TYPE_HUES = [
+  4, 18, 32, 46, 60, 74, 88, 104, 122, 140, 158, 176,
+  194, 210, 226, 242, 258, 274, 290, 306, 322, 338, 352,
+];
 
+function domainHue(seed: string, domain: GraphColorDomain): number {
   if (domain === "node-type") {
-    return Number(((base * 0.82 + 18) % 360).toFixed(1));
+    const hash = hashString(`${seed}:${domain}:hue`);
+    const slot = hash % NODE_TYPE_HUES.length;
+    const offset = ((hash >>> 8) % 9) - 4;
+    return Number((NODE_TYPE_HUES[slot] + offset).toFixed(1));
   }
+
+  const base = stableHue(seed);
 
   if (domain === "node-avatar") {
     return Number(((base * 0.88 + 142) % 360).toFixed(1));
