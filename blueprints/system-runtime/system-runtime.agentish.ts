@@ -303,6 +303,11 @@ when(Operator.changes("manager or dashboard behavior"))
   .then(SystemRuntime.requires("checking the relevant blueprints first"))
   .and(SystemRuntime.forbids("implementation-first changes that ignore existing blueprint rules"));
 
+when(Operator.implements("a provider-specific integration"))
+  .then(SystemRuntime.requires("re-checking the current provider docs before implementation"))
+  .and(SystemRuntime.requires("re-checking relevant open-source reference implementations before implementation"))
+  .and(SystemRuntime.forbids("implementing provider adapters from stale memory alone"));
+
 when(RuntimeCode.workerPower.isUsedBy("a manager test or manager workflow"))
   .then(SystemRuntime.prefers("direct TS invocation"))
   .and(SystemRuntime.reduces("TS to shell to TS indirection"));

@@ -55,6 +55,9 @@ const Provider = {
   approval: define.entity("ProviderApproval"),
   thread: define.entity("ProviderThread"),
   codex: define.system("CodexAppServer"),
+  openrouter: define.system("OpenRouterApi"),
+  claudeAgentSdk: define.system("ClaudeAgentSdk"),
+  gemini: define.system("GeminiApi"),
   future: define.system("FutureProvider"),
 };
 
@@ -238,6 +241,21 @@ when(User.switches("provider").for(Participant.agent))
 when(Provider.binding.targets(Provider.codex))
   .then(Provider.binding.mayReuse(Provider.thread))
   .and(AgentChat.treats(Provider.thread).as("provider-owned black-box state"))
+  .and(AgentChat.tracks(Context.revision));
+
+when(Provider.binding.targets(Provider.openrouter))
+  .then(AgentChat.treats(Provider.thread).as("optional provider-side metadata rather than canonical session ownership"))
+  .and(AgentChat.dependsOn("canonical app-owned history for hydration and resume"))
+  .and(AgentChat.tracks(Context.revision));
+
+when(Provider.binding.targets(Provider.claudeAgentSdk))
+  .then(Provider.binding.mayReuse(Provider.thread))
+  .and(AgentChat.treats(Provider.thread).as("provider-owned execution state"))
+  .and(AgentChat.tracks(Context.revision));
+
+when(Provider.binding.targets(Provider.gemini))
+  .then(AgentChat.treats(Provider.thread).as("optional provider-side metadata rather than canonical session ownership"))
+  .and(AgentChat.dependsOn("canonical app-owned history for hydration and resume"))
   .and(AgentChat.tracks(Context.revision));
 
 when(Provider.binding.targets(Provider.future))
