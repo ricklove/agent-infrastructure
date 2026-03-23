@@ -260,6 +260,7 @@ when(AWS.lambda.invokes(Entrypoint.issueDashboardSession))
   .and(Integration.dashboardLifecycleController.classifies("origin failure separately from tunnel failure"))
   .and(Integration.dashboardLifecycleController.keeps("the current quick tunnel while cloudflared is still alive"))
   .and(Integration.dashboardLifecycleController.replaces("a quick tunnel only on strong evidence and after cooldown"))
+  .and(Integration.dashboardLifecycleController.avoids("full runtime re-ensure churn while dashboard and tunnel are already healthy"))
   .and(Integration.dashboardLifecycleController.fallsBack("to a backup temporary tunnel provider when the primary provider cannot issue a URL"))
   .and(Entrypoint.issueDashboardSession.records("a durable help-request incident on unrecoverable failure"));
 

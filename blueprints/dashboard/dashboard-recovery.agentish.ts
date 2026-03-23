@@ -101,6 +101,7 @@ Policy.thinAlwaysOnController.means(`
 - keep one tiny always-on controller process under systemd
 - the controller is the single owner of dashboard lifecycle and dashboard recovery policy
 - the controller owns lifecycle policy, not the heavy dashboard server itself
+- the controller should poll cheaply and should not recreate dashboard runtime or tunnels on every loop when the current runtime is already healthy
 - while active browser or bootstrap sessions exist, keep the dashboard server and tunnel available
 - when no active dashboard sessions remain for an idle window, stop the dashboard server and tunnel
 - the tunnel may survive dashboard server restarts during active use when the tunnel itself is healthy

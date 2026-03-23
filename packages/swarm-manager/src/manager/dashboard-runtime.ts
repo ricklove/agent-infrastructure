@@ -66,10 +66,6 @@ const bootstrapContextPath =
   process.env.SWARM_BOOTSTRAP_CONTEXT_PATH?.trim() || DEFAULT_BOOTSTRAP_CONTEXT_PATH;
 const sessionStorePath =
   process.env.DASHBOARD_SESSION_STORE_PATH?.trim() || DEFAULT_DASHBOARD_SESSION_STORE_PATH;
-const dashboardRecoveryMonitorEntry = resolve(
-  repoRoot,
-  "packages/swarm-manager/src/manager/monitor-dashboard-recovery.ts",
-);
 const dashboardLifecycleControllerEntry = resolve(
   repoRoot,
   "packages/swarm-manager/src/manager/dashboard-controller.ts",
@@ -104,11 +100,6 @@ const dashboardHelpRequestDir = resolve(
   process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
   "dashboard-help-requests",
 );
-const dashboardRecoveryMonitorLogPath = resolve(runtimeDir, "dashboard-recovery-monitor.log");
-const dashboardRecoveryMonitorLockPath = resolve(
-  process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
-  "dashboard-recovery-monitor.lock",
-);
 const dashboardLifecycleControllerLogPath = resolve(runtimeDir, "dashboard-lifecycle-controller.log");
 const dashboardLifecycleControllerLockPath = resolve(
   process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
@@ -140,6 +131,11 @@ const dashboardLifecyclePollMs =
     1,
     Number.parseInt(process.env.DASHBOARD_LIFECYCLE_POLL_SECONDS ?? "2", 10) || 2,
   ) * 1000;
+const dashboardLifecycleHealthyRecheckMs =
+  Math.max(
+    5,
+    Number.parseInt(process.env.DASHBOARD_LIFECYCLE_HEALTHY_RECHECK_SECONDS ?? "15", 10) || 15,
+  ) * 1000;
 
 type DashboardLifecycleRequest = {
   port: number;
@@ -147,6 +143,17 @@ type DashboardLifecycleRequest = {
   requestedAtMs: number;
   keepAliveUntilMs: number;
 };
+
+type DashboardRuntimeStatus = {
+  dashboardHealthy: boolean;
+  dashboardRunning: boolean;
+  tunnelRunning: boolean;
+  publicReady: boolean;
+};
+
+function getLastTunnelReplacementAttemptAtMs(state: DashboardRuntimeState | null): number {
+  return state?.lastTunnelReplaceAtMs ?? state?.tunnelCreatedAtMs ?? 0;
+}
 
 function logSystemStep(source: string, message: string): void {
   const line = `[${new Date().toISOString()}:${source}] ${message}`;
@@ -231,18 +238,6 @@ function getPortFromRuntimeState(state: DashboardRuntimeState | null): number {
   } catch {
     return 3000;
   }
-}
-
-function getLastTunnelReplacementAttemptAtMs(state: DashboardRuntimeState | null): number {
-  return (
-    state?.lastTunnelReplaceAtMs ??
-    state?.tunnelCreatedAtMs ??
-    0
-  );
-}
-
-function canAttemptQuickTunnelReplacement(state: DashboardRuntimeState | null, now: number): boolean {
-  return now - getLastTunnelReplacementAttemptAtMs(state) >= quickTunnelReplacementCooldownMs;
 }
 
 function extractQuickTunnelUrls(): string[] {
@@ -448,20 +443,6 @@ function writeDashboardHelpIncident(detail: Record<string, unknown>): string {
   );
   writeFileSync(path, `${JSON.stringify(detail, null, 2)}\n`);
   return path;
-}
-
-function readDashboardRecoveryMonitorLockPid(): number | null {
-  if (!existsSync(dashboardRecoveryMonitorLockPath)) {
-    return null;
-  }
-
-  try {
-    const value = readFileSync(dashboardRecoveryMonitorLockPath, "utf8").trim();
-    const pid = Number.parseInt(value, 10);
-    return Number.isInteger(pid) && pid > 0 ? pid : null;
-  } catch {
-    return null;
-  }
 }
 
 function readDashboardLifecycleControllerLockPid(): number | null {
@@ -742,6 +723,38 @@ async function isExpectedProcess(pid: number | undefined, pattern: RegExp): Prom
   } catch {
     return false;
   }
+}
+
+async function getDashboardRuntimeStatus(
+  port: number,
+  state: DashboardRuntimeState | null,
+  options?: {
+    checkPublic?: boolean;
+  },
+): Promise<DashboardRuntimeStatus> {
+  const dashboardHealthy = await isDashboardHealthy(port);
+  const dashboardRunning = await isExpectedProcess(
+    state?.dashboardPid,
+    /packages\/dashboard\/src\/server\.ts/,
+  );
+  const tunnelPid = getRuntimeTunnelPid(state);
+  const tunnelRunning =
+    Boolean(state?.publicUrl) &&
+    (await isExpectedProcess(
+      tunnelPid,
+      getTunnelCommandPattern(getRuntimeTunnelProvider(state), port),
+    ));
+  const publicReady =
+    Boolean(state?.publicUrl) &&
+    options?.checkPublic === true &&
+    (await isPublicDashboardReady(state!.publicUrl!));
+
+  return {
+    dashboardHealthy,
+    dashboardRunning,
+    tunnelRunning,
+    publicReady,
+  };
 }
 
 async function spawnDetached(
@@ -1402,6 +1415,8 @@ export async function runDashboardLifecycleController(input?: {
   writeFileSync(dashboardLifecycleControllerLockPath, `${pid}\n`);
 
   let lastHelpAtMs = 0;
+  let publicFailureSinceMs: number | null = null;
+  let lastPublicCheckAtMs = 0;
   try {
     logSystemStep(
       "dashboard-lifecycle-controller",
@@ -1419,12 +1434,48 @@ export async function runDashboardLifecycleController(input?: {
       const active = hasDemand || activeSessionCount > 0;
 
       if (active) {
+        const state = readRuntimeState();
+        const shouldCheckPublic =
+          now - lastPublicCheckAtMs >= dashboardLifecycleHealthyRecheckMs ||
+          publicFailureSinceMs !== null;
+        const status = await getDashboardRuntimeStatus(port, state, {
+          checkPublic: shouldCheckPublic,
+        });
+
+        if (shouldCheckPublic) {
+          lastPublicCheckAtMs = now;
+          if (status.publicReady) {
+            publicFailureSinceMs = null;
+          } else if (state?.publicUrl && status.dashboardHealthy && status.tunnelRunning) {
+            publicFailureSinceMs ??= now;
+          } else {
+            publicFailureSinceMs = null;
+          }
+        }
+
+        const runtimeMissing =
+          !status.dashboardHealthy ||
+          !state?.publicUrl ||
+          !status.tunnelRunning;
+        const sustainedPublicFailure =
+          publicFailureSinceMs !== null &&
+          now - publicFailureSinceMs >= sustainedPublicFailureReplacementMs;
+        const tunnelReplacementCooldownSatisfied =
+          now - getLastTunnelReplacementAttemptAtMs(state) >= quickTunnelReplacementCooldownMs;
+
+        if (!runtimeMissing && (!sustainedPublicFailure || !tunnelReplacementCooldownSatisfied)) {
+          await Bun.sleep(dashboardLifecyclePollMs);
+          continue;
+        }
+
         try {
           await ensureDashboardRuntime({
             port,
             managerUrl,
             useCloudflared: true,
           });
+          publicFailureSinceMs = null;
+          lastPublicCheckAtMs = Date.now();
         } catch (error) {
           const message =
             error instanceof Error && error.message.trim().length > 0
@@ -1444,6 +1495,7 @@ export async function runDashboardLifecycleController(input?: {
           }
         }
       } else {
+        publicFailureSinceMs = null;
         if (request && request.keepAliveUntilMs <= now) {
           clearDashboardLifecycleRequest();
         }
@@ -1460,212 +1512,6 @@ export async function runDashboardLifecycleController(input?: {
     const currentLockPid = readDashboardLifecycleControllerLockPid();
     if (currentLockPid === pid) {
       rmSync(dashboardLifecycleControllerLockPath, { force: true });
-    }
-  }
-}
-
-export async function startDashboardRecoveryMonitor(input: {
-  port?: number;
-  managerUrl?: string;
-  publicUrl: string;
-}): Promise<number> {
-  const existingPid = readDashboardRecoveryMonitorLockPid();
-  if (existingPid && isPidRunning(existingPid)) {
-    logSystemStep("dashboard-recovery-monitor", `exit existing_pid=${existingPid}`);
-    return existingPid;
-  }
-
-  const command = [
-    "bun",
-    dashboardRecoveryMonitorEntry,
-    "--port",
-    String(input.port ?? 3000),
-    "--manager-url",
-    input.managerUrl ?? "http://127.0.0.1:8787",
-    "--public-url",
-    input.publicUrl,
-  ]
-    .map(shellQuote)
-    .join(" ");
-
-  logSystemStep("dashboard-recovery-monitor", `start public_url=${input.publicUrl}`);
-  return spawnDetached(command, dashboardRecoveryMonitorLogPath, {
-    AGENT_STATE_DIR: process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
-    SYSTEM_EVENT_LOG_PATH,
-  });
-}
-
-export async function runDashboardRecoveryMonitor(input: {
-  port?: number;
-  managerUrl?: string;
-  publicUrl: string;
-}): Promise<void> {
-  const port = input.port ?? 3000;
-  const managerUrl = input.managerUrl ?? "http://127.0.0.1:8787";
-  let expectedPublicUrl = input.publicUrl.trim();
-  const pid = process.pid;
-  const lockPid = readDashboardRecoveryMonitorLockPid();
-
-  if (lockPid && lockPid !== pid && isPidRunning(lockPid)) {
-    logSystemStep("dashboard-recovery-monitor", `exit lock_held_by=${lockPid}`);
-    return;
-  }
-
-  ensureParentDir(dashboardRecoveryMonitorLockPath);
-  writeFileSync(dashboardRecoveryMonitorLockPath, `${pid}\n`);
-
-  try {
-    logSystemStep(
-      "dashboard-recovery-monitor",
-      `start pid=${pid} public_url=${expectedPublicUrl} port=${port}`,
-    );
-    const monitorDeadline = Date.now() + 90_000;
-    let publicFailureSinceMs: number | null = null;
-    while (Date.now() < monitorDeadline) {
-      const currentState = readRuntimeState();
-      if (currentState?.publicUrl?.trim() !== expectedPublicUrl) {
-        logSystemStep(
-          "dashboard-recovery-monitor",
-          `exit stale_public_url expected=${expectedPublicUrl} current=${currentState?.publicUrl ?? "missing"}`,
-        );
-        return;
-      }
-
-      const dashboardHealthy = await isDashboardHealthy(port);
-      const publicReady = await isPublicDashboardReady(expectedPublicUrl);
-      const cloudflaredRunning = await isExpectedProcess(
-        getRuntimeTunnelPid(currentState),
-        getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), port),
-      );
-      const now = Date.now();
-
-      if (!dashboardHealthy) {
-        await terminatePids(
-          currentState?.dashboardPid ? [currentState.dashboardPid] : [],
-          "dashboard-recovery-monitor",
-        );
-        const dashboardPid = await startDashboardServer({
-          port,
-          managerUrl,
-          useCloudflared: true,
-        });
-        await waitForHealth(port);
-        writeRuntimeState({
-          dashboardPid,
-          dashboardLogPath,
-          localUrl: `http://127.0.0.1:${port}`,
-          tunnelPid: getRuntimeTunnelPid(currentState),
-          tunnelLogPath: getRuntimeTunnelLogPath(currentState),
-          tunnelProvider: getRuntimeTunnelProvider(currentState),
-          cloudflaredPid:
-            getRuntimeTunnelProvider(currentState) === "cloudflared"
-              ? getRuntimeTunnelPid(currentState)
-              : undefined,
-          cloudflaredLogPath:
-            getRuntimeTunnelProvider(currentState) === "cloudflared"
-              ? cloudflaredLogPath
-              : undefined,
-          publicUrl: expectedPublicUrl,
-          tunnelCreatedAtMs: currentState?.tunnelCreatedAtMs,
-          lastTunnelReplaceAtMs: currentState?.lastTunnelReplaceAtMs,
-        });
-        logSystemStep(
-          "dashboard-recovery-monitor",
-          `restart dashboard_pid=${dashboardPid} public_url=${expectedPublicUrl}`,
-        );
-        publicFailureSinceMs = null;
-        await Bun.sleep(1000);
-        continue;
-      }
-
-      if (publicReady) {
-        publicFailureSinceMs = null;
-      } else {
-        publicFailureSinceMs ??= now;
-        const publicFailureDurationMs = now - publicFailureSinceMs;
-        const cooldownReady = canAttemptQuickTunnelReplacement(currentState, now);
-        const shouldReplaceTunnel =
-          !cloudflaredRunning ||
-          publicFailureDurationMs >= sustainedPublicFailureReplacementMs;
-
-        if (cloudflaredRunning) {
-          logSystemStep(
-            "dashboard-recovery-monitor",
-            `warn public_not_ready_keep_existing public_url=${expectedPublicUrl} duration_ms=${publicFailureDurationMs}`,
-          );
-        } else {
-          logSystemStep(
-            "dashboard-recovery-monitor",
-            `warn tunnel_process_missing public_url=${expectedPublicUrl} duration_ms=${publicFailureDurationMs}`,
-          );
-        }
-
-        if (shouldReplaceTunnel && cooldownReady) {
-          const tunnelPids = listTunnelPids();
-          await terminatePids(tunnelPids, "dashboard-recovery-monitor");
-          const tunnel = await startTemporaryTunnel(port);
-          expectedPublicUrl = tunnel.url;
-          const replacementAtMs = Date.now();
-          writeRuntimeState({
-            dashboardPid: currentState?.dashboardPid ?? 0,
-            dashboardLogPath,
-            localUrl: `http://127.0.0.1:${port}`,
-            tunnelPid: tunnel.pid,
-            tunnelLogPath: tunnel.logPath,
-            tunnelProvider: tunnel.provider,
-            cloudflaredPid: tunnel.provider === "cloudflared" ? tunnel.pid : undefined,
-            cloudflaredLogPath: tunnel.provider === "cloudflared" ? cloudflaredLogPath : undefined,
-            publicUrl: tunnel.url,
-            tunnelCreatedAtMs: replacementAtMs,
-            lastTunnelReplaceAtMs: replacementAtMs,
-          });
-          logSystemStep(
-            "dashboard-recovery-monitor",
-            `replace_tunnel old_public_url=${currentState?.publicUrl ?? "missing"} new_public_url=${tunnel.url} tunnel_provider=${tunnel.provider} tunnel_pid=${tunnel.pid}`,
-          );
-          publicFailureSinceMs = null;
-          await Bun.sleep(1000);
-          continue;
-        }
-
-        if (shouldReplaceTunnel && !cooldownReady) {
-          const cooldownRemainingMs =
-            quickTunnelReplacementCooldownMs -
-            (now - getLastTunnelReplacementAttemptAtMs(currentState));
-          logSystemStep(
-            "dashboard-recovery-monitor",
-            `warn tunnel_replacement_cooldown public_url=${expectedPublicUrl} remaining_ms=${Math.max(0, cooldownRemainingMs)}`,
-          );
-          await Bun.sleep(1000);
-          continue;
-        }
-      }
-
-      await Bun.sleep(2000);
-    }
-
-    logSystemStep(
-      "dashboard-recovery-monitor",
-      `exit watch_window_complete public_url=${expectedPublicUrl}`,
-    );
-  } catch (error) {
-    requestDashboardHelp({
-      reason: "dashboard-monitor-recovery-failed",
-      dashboardUrl: expectedPublicUrl,
-      detail:
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : "dashboard monitor recovery failed",
-    });
-    logSystemStep(
-      "dashboard-recovery-monitor",
-      `error public_url=${expectedPublicUrl} detail=${error instanceof Error ? error.message : String(error)}`,
-    );
-    throw error;
-  } finally {
-    const currentLockPid = readDashboardRecoveryMonitorLockPid();
-    if (currentLockPid === pid) {
-      rmSync(dashboardRecoveryMonitorLockPath, { force: true });
     }
   }
 }
