@@ -25,6 +25,7 @@ const Artifact = {
 
 const Rule = {
   blueprintFirst: define.concept("BlueprintFirstChange"),
+  blueprintCommitFirst: define.concept("BlueprintCommitBeforeImplementation"),
   sourceOnly: define.concept("SourceOnlyEdits"),
   runtimeReadonly: define.concept("RuntimeReadonlyCheckout"),
   stateTemporaryOnly: define.concept("TemporaryStateOnly"),
@@ -36,17 +37,21 @@ const Rule = {
 
 DevelopmentProcess.enforces(`
 - Relevant blueprints must be reviewed and updated before implementation changes.
+- Blueprint changes that alter architecture, workflow, or product requirements must be committed before dependent implementation work begins.
+- Implementation must not continue past blueprint edits until those blueprint edits are committed.
 - Source is the only editing surface for intended behavior changes.
 - Runtime is a deployed checkout and not an editing surface.
 - state/ is only for temporary runtime state and recoverable operational artifacts.
 - Durable app data must live outside state/.
 - Provider-backed agents used for implementation must inherit this same workflow.
 - UI-facing changes require real browser verification, screenshots, and deployed frontend-backend version matching.
+- Responsive UI changes must be verified at small, medium, and wide viewport sizes.
 - A rollout is not complete until post-deploy behavior has been verified on the live system.
 `);
 
 DevelopmentProcess.defines(`
 - BlueprintFirstChange means architecture and policy are corrected in blueprints before code is changed.
+- BlueprintCommitBeforeImplementation means blueprint edits are turned into a committed source revision before dependent implementation work starts.
 - TemporaryStateOnly means logs, pids, sockets, caches, and controller metadata may live under state/, but durable user or app content may not.
 - DeployByRuntimeCheckout means runtime is updated by checking out a committed source revision rather than editing deployed files directly.
 - VersionMatchVerification means the served frontend version and running backend version must match exactly after rollout.
@@ -60,6 +65,7 @@ DevelopmentProcess.contains(
   Artifact.blueprint,
   Artifact.screenshot,
   Rule.blueprintFirst,
+  Rule.blueprintCommitFirst,
   Rule.sourceOnly,
   Rule.runtimeReadonly,
   Rule.stateTemporaryOnly,
@@ -71,6 +77,7 @@ DevelopmentProcess.contains(
 
 when(Actor.operator.implements("a feature or fix"))
   .then(DevelopmentProcess.requires(Rule.blueprintFirst))
+  .and(DevelopmentProcess.requires(Rule.blueprintCommitFirst))
   .and(DevelopmentProcess.requires(Rule.sourceOnly))
   .and(DevelopmentProcess.requires(Rule.verifyLocally))
   .and(DevelopmentProcess.requires(Rule.deployByCheckout))
@@ -78,6 +85,7 @@ when(Actor.operator.implements("a feature or fix"))
 
 when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
   .then(DevelopmentProcess.requires(Rule.blueprintFirst))
+  .and(DevelopmentProcess.requires(Rule.blueprintCommitFirst))
   .and(DevelopmentProcess.requires("the same relevant blueprints the operator would check"))
   .and(DevelopmentProcess.requires("the same rollout and verification rules the operator would follow"));
 
@@ -86,4 +94,3 @@ when(Artifact.temporaryState.contains("durable app content"))
 
 when(Artifact.runtimeCheckout.receives("manual code edits"))
   .then(DevelopmentProcess.violates(Rule.runtimeReadonly));
-

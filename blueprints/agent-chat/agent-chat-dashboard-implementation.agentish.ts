@@ -103,6 +103,10 @@ const Ui = {
   sessionList: define.entity("SessionListPanel"),
   transcript: define.entity("TranscriptPanel"),
   composer: define.entity("ComposerPanel"),
+  composerSettingsMenu: define.entity("ComposerSettingsMenu"),
+  activityStatus: define.entity("AgentActivityStatus"),
+  queuedMessageList: define.entity("QueuedMessageList"),
+  replyTargetReminder: define.entity("ReplyTargetReminder"),
   providerPicker: define.entity("ProviderPicker"),
   workspacePicker: define.entity("WorkspacePicker"),
   runStatus: define.entity("RunStatusRail"),
@@ -131,6 +135,13 @@ AgentChatDashboardImplementation.enforces(`
 - Each provider adapter must be re-researched against current provider docs and relevant open-source reference implementations immediately before implementing that adapter.
 - Agent Chat sessions must inherit the development-process blueprint so provider-backed agents use the same blueprint-first workflow rules.
 - The browser should own session list, transcript rendering, composer state, reconnect logic, and streaming UI.
+- The main chat surface should prioritize the active thread and keep secondary controls behind menus or drawers.
+- Session/provider/model/directory controls should live with the composer area rather than occupying the main thread surface.
+- Directory changes must enqueue a system instruction that the provider sees before the next user turn.
+- Agent activity should be shown near the composer with explicit working state, elapsed time, and provider-backed background activity count when available.
+- Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
+- The composer should support a lightweight reply-target reminder so the operator can indicate that the in-progress human message responds to a specific earlier agent message.
+- Keyboard interrupt should be exposed as Esc when the selected provider supports a real interrupt action.
 - The gateway should proxy Agent Chat traffic and lazy-start the chat backend on first use.
 - V1 should ship only the behaviors needed for real day-to-day chat use and defer broader ambitions that are not required yet.
 `);
@@ -183,6 +194,10 @@ Dashboard.screen.contains(
   Ui.sessionList,
   Ui.transcript,
   Ui.composer,
+  Ui.composerSettingsMenu,
+  Ui.activityStatus,
+  Ui.queuedMessageList,
+  Ui.replyTargetReminder,
   Ui.providerPicker,
   Ui.workspacePicker,
   Ui.runStatus,
@@ -223,6 +238,32 @@ Scope.sessionWorkspaceSelection.means(`
 - each session records an explicit workspace root selection
 - the chat UI lets the operator inspect and change that workspace root during a chat
 - provider runs use the session-selected workspace root rather than a backend-global hard-coded cwd
+- when the workspace root changes, Agent Chat queues a system instruction so the next provider turn is explicitly aware of the new working directory
+`);
+
+Ui.replyTargetReminder.means(`
+- the operator may mark an in-progress human message as a reply to a specific earlier agent message
+- this reminder is for UI and operator context first, not a strong provider-side thread edit primitive
+- the reminder should be lightweight, easy to clear, and visible near the composer while typing
+- the selected reply target does not need to be the latest agent message
+`);
+
+Ui.activityStatus.means(`
+- the activity surface should sit directly above the composer rather than in a distant header
+- it should show idle, queued, running, interrupted, or failed state
+- when a run is active, it should show elapsed time and any honest provider-backed activity details the backend can supply
+- provider-backed activity details must not be fabricated; absent data should stay absent rather than guessed
+`);
+
+Ui.queuedMessageList.means(`
+- queued user messages are messages already accepted into canonical history but not yet seen by the provider
+- queued messages render below activity status and above the composer
+- directory-change system instructions should appear in the queued region until the provider consumes them
+`);
+
+Ui.sessionList.means(`
+- the session list should show a condensed status summary such as running, queued, or background activity count when available
+- the main session list should stay visually compact so the active thread remains the primary focus
 `);
 
 Capability.multimodal.means(`
@@ -256,6 +297,9 @@ Scope.browserOwnsUi.means(`
 - session list, transcript rendering, composer state, pending message state, reconnect state, and optimistic UI live in the browser feature
 - the browser should not scrape terminal output
 - the browser should consume structured chat events from the backend
+- the active transcript is the visual priority on mobile, tablet, and desktop layouts
+- create-session and session-settings controls should be collapsed behind bottom-of-composer menus when not actively being edited
+- activity and queued-message state should stay anchored immediately above the composer so the operator can understand what the agent is doing before sending the next message
 `);
 
 Scope.dashboardAuth.means(`
@@ -411,6 +455,25 @@ when(Ui.sessionList.opens(Chat.session))
   .then(Dashboard.screen.requires(Scope.browserOwnsUi))
   .and(Dashboard.screen.requires(Decision.sessionIdentity))
   .and(Dashboard.screen.requires(Decision.v1Cut));
+
+when(Ui.composer.opens(Ui.composerSettingsMenu))
+  .then(Ui.composerSettingsMenu.contains(Ui.providerPicker))
+  .and(Ui.composerSettingsMenu.contains(Ui.workspacePicker))
+  .and(Ui.composerSettingsMenu.contains("model and auth-profile controls"))
+  .and(Dashboard.screen.keeps("the transcript as the dominant visual surface"));
+
+when(Chat.run.is("active"))
+  .then(Ui.activityStatus.shows("working state"))
+  .and(Ui.activityStatus.shows("elapsed time"))
+  .and(Ui.activityStatus.shows("background process count when the provider can report it"))
+  .and(Ui.sessionList.shows("a condensed agent activity summary for each active session"));
+
+when(Chat.session.has("queued messages not yet seen by the provider"))
+  .then(Ui.queuedMessageList.shows("those queued messages"))
+  .and(Ui.queuedMessageList.renders("between the activity status and the composer"));
+
+when(Provider.codexAdapter.supports("real interrupt"))
+  .then(Ui.composer.supports("Esc to interrupt the active run"));
 
 when(Ui.composer.submits(Chat.message))
   .then(Chat.api.uses(Api.appendMessage))
