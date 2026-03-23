@@ -50,31 +50,37 @@ function parseArgs(argv: string[]): {
 const config = parseArgs(process.argv.slice(2));
 try {
   let result = await issueDashboardSession(config);
+  let lastError: unknown = null;
 
-  try {
-    await waitForPublicDashboardReady(result.publicUrl);
-  } catch (error) {
-    result = await recoverDashboardSession({
-      ...config,
-      reason: "public-readiness-failed",
-    });
-
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
     try {
-      await waitForPublicDashboardReady(result.publicUrl);
-    } catch (recoveryError) {
-      requestDashboardHelp({
-        reason: "dashboard-recovery-failed",
-        dashboardUrl: result.publicUrl,
-        detail:
-          recoveryError instanceof Error && recoveryError.message.trim().length > 0
-            ? recoveryError.message
-            : "dashboard recovery failed",
+      await waitForPublicDashboardReady(result.publicUrl, 45, 1000);
+      console.log(JSON.stringify({ ok: true, ...result }));
+      process.exit(0);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= 4) {
+        break;
+      }
+
+      result = await recoverDashboardSession({
+        ...config,
+        reason: `public-readiness-failed-attempt-${attempt}`,
       });
-      throw recoveryError;
     }
   }
 
-  console.log(JSON.stringify({ ok: true, ...result }));
+  requestDashboardHelp({
+    reason: "dashboard-recovery-failed",
+    dashboardUrl: result.publicUrl,
+    detail:
+      lastError instanceof Error && lastError.message.trim().length > 0
+        ? lastError.message
+        : "dashboard recovery failed",
+  });
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("dashboard recovery failed");
 } catch (error) {
   console.log(
     JSON.stringify({
