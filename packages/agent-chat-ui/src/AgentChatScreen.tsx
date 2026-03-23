@@ -217,6 +217,15 @@ function StopIcon() {
   )
 }
 
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  )
+}
+
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
     month: "short",
@@ -347,6 +356,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [updatingDirectory, setUpdatingDirectory] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false)
+  const [newChatOpen, setNewChatOpen] = useState(false)
   const [wsStatus, setWsStatus] = useState<"idle" | "connecting" | "ready" | "error">("idle")
   const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -746,6 +756,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setComposerText("")
       setReplyTargetMessageId(null)
       setSettingsOpen(false)
+      setNewChatOpen(false)
       setMobileSessionsOpen(false)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Session creation failed.")
@@ -923,6 +934,98 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
               Close
             </button>
           </div>
+
+          <div className="flex items-center gap-2">
+            <IconButton
+              label={newChatOpen ? "Hide new chat form" : "Show new chat form"}
+              title={newChatOpen ? "Hide New Chat" : "New Chat"}
+              onClick={() => setNewChatOpen((current) => !current)}
+            >
+              <PlusIcon />
+            </IconButton>
+          </div>
+
+          {newChatOpen ? (
+            <form onSubmit={createSession} className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  New Chat
+                </p>
+                <p className="mt-2 text-sm text-slate-400">
+                  Start another chat from the sessions side.
+                </p>
+              </div>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Provider
+                </span>
+                <select
+                  value={providerKind}
+                  onChange={(event) => setProviderKind(event.target.value as ProviderKind)}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                >
+                  {providers.map((provider) => (
+                    <option key={provider.kind} value={provider.kind}>
+                      {provider.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Model
+                </span>
+                <input
+                  value={modelRef}
+                  onChange={(event) => setModelRef(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Directory
+                </span>
+                <input
+                  value={directory}
+                  onChange={(event) => setDirectory(event.target.value)}
+                  placeholder={defaultSessionDirectory}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Auth Profile
+                </span>
+                <input
+                  value={authProfile}
+                  onChange={(event) => setAuthProfile(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Image Model Override
+                </span>
+                <input
+                  value={imageModelRef}
+                  onChange={(event) => setImageModelRef(event.target.value)}
+                  placeholder="optional provider/model"
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={creating || !modelRef.trim() || activeProvider?.status !== "ready"}
+                className="w-full rounded-2xl bg-fuchsia-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-fuchsia-400/40"
+              >
+                {creating
+                  ? "Creating..."
+                  : activeProvider?.status === "ready"
+                    ? "Create Chat"
+                    : "Provider Pending"}
+              </button>
+            </form>
+          ) : null}
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="space-y-3">
@@ -1185,88 +1288,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
               {settingsOpen ? (
                 <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                    <form onSubmit={createSession} className="space-y-4">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                          New Chat
-                        </p>
-                        <p className="mt-2 text-sm text-slate-400">
-                          Start another chat without leaving the current thread.
-                        </p>
-                      </div>
-                      <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                          Provider
-                        </span>
-                        <select
-                          value={providerKind}
-                          onChange={(event) => setProviderKind(event.target.value as ProviderKind)}
-                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                        >
-                          {providers.map((provider) => (
-                            <option key={provider.kind} value={provider.kind}>
-                              {provider.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                          Model
-                        </span>
-                        <input
-                          value={modelRef}
-                          onChange={(event) => setModelRef(event.target.value)}
-                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                          Directory
-                        </span>
-                        <input
-                          value={directory}
-                          onChange={(event) => setDirectory(event.target.value)}
-                          placeholder={defaultSessionDirectory}
-                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                          Auth Profile
-                        </span>
-                        <input
-                          value={authProfile}
-                          onChange={(event) => setAuthProfile(event.target.value)}
-                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                        />
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                          Image Model Override
-                        </span>
-                        <input
-                          value={imageModelRef}
-                          onChange={(event) => setImageModelRef(event.target.value)}
-                          placeholder="optional provider/model"
-                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                        />
-                      </label>
-                      <button
-                        type="submit"
-                        disabled={creating || !modelRef.trim() || activeProvider?.status !== "ready"}
-                        className="rounded-2xl bg-fuchsia-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-fuchsia-400/40"
-                      >
-                        {creating
-                          ? "Creating..."
-                          : activeProvider?.status === "ready"
-                            ? "Create Chat"
-                            : "Provider Pending"}
-                      </button>
-                    </form>
-
-                    <form onSubmit={updateDirectory} className="space-y-4">
+                  <form onSubmit={updateDirectory} className="space-y-4">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                           Current Chat
@@ -1302,8 +1324,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       >
                         {updatingDirectory ? "Saving..." : "Queue Directory Change"}
                       </button>
-                    </form>
-                  </div>
+                  </form>
                 </div>
               ) : null}
 

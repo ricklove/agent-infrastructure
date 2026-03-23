@@ -137,6 +137,7 @@ AgentChatDashboardImplementation.enforces(`
 - The browser should own session list, transcript rendering, composer state, reconnect logic, and streaming UI.
 - The main chat surface should prioritize the active thread and keep secondary controls behind menus or drawers.
 - Session/provider/model/directory controls should live with the composer area rather than occupying the main thread surface.
+- The composer-area menu is scoped to the current chat only; new-chat creation belongs to the session-list area rather than the active-thread controls.
 - Directory changes must enqueue a system instruction that the provider sees before the next user turn.
 - Agent activity should be shown near the composer with explicit working state, elapsed time, and provider-backed background activity count when available.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
@@ -273,6 +274,7 @@ Ui.composer.means(`
 Ui.sessionList.means(`
 - the session list should show a condensed status summary such as running, queued, or background activity count when available
 - the main session list should stay visually compact so the active thread remains the primary focus
+- session-list controls may create a new chat because they operate on the chat collection rather than the active thread
 `);
 
 Capability.multimodal.means(`
