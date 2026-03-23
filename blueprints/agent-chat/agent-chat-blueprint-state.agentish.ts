@@ -30,6 +30,7 @@ const CurrentReality = {
   fixedTurnDeadline: define.concept("FixedCodexTurnDeadline"),
   noFolderOrganization: define.concept("NoCanonicalFolderOrganization"),
   plannedProviders: define.concept("PlannedButUnimplementedProviders"),
+  noWorkspaceRepoDurability: define.concept("NoManagerControlledWorkspaceRepoDurability"),
   deferredScope: define.concept("DeferredProductScope"),
   workflowAlignment: define.concept("DevelopmentProcessAlignment"),
 };
@@ -40,6 +41,7 @@ AgentChatBlueprintState.defines(`
 - ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive live-browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-gap-fix/ including live-small-092de11.png, live-medium-092de11.png, and live-wide-092de11.png.
 - This blueprint-state compares current implementation reality against the ideal Agent Chat product blueprint in agent-chat.agentish.ts, the implementation-resolved dashboard blueprint in agent-chat-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
 - ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
+- ImplementationGap also includes chat durability still stopping at canonical file persistence rather than extending into manager-controlled workspace git commit and push.
 - KnownIssue means the provider catalog and UI still include planned providers that do not yet execute in the backend today.
 - KnownIssue also includes the current Agent Chat provider layer still being uneven, with Codex and Claude implemented while OpenRouter and Gemini remain planned.
 - KnownIssue also includes the current Codex adapter retaining an adapter-level timeout policy that remains separate from the newer Claude path.
@@ -64,6 +66,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.fixedTurnDeadline,
   CurrentReality.noFolderOrganization,
   CurrentReality.plannedProviders,
+  CurrentReality.noWorkspaceRepoDurability,
   CurrentReality.deferredScope,
   CurrentReality.workflowAlignment,
 );
@@ -143,6 +146,13 @@ CurrentReality.noFolderOrganization.means(`
 - the current implementation therefore lacks workspace-owned session organization beyond title, provider, and cwd metadata
 `);
 
+CurrentReality.noWorkspaceRepoDurability.means(`
+- Agent Chat currently writes canonical session files under durable app data
+- the current implementation does not yet notify a manager-side workspace persistence controller after canonical mutations
+- workspace git commit and push therefore remain an operator concern rather than a built-in part of chat durability
+- manager-instance failure can still lose recent canonical chat history that has not yet been pushed from the workspace repository
+`);
+
 CurrentReality.plannedProviders.means(`
 - OpenRouter and Gemini still appear in the provider catalog as planned entries
 - new sessions cannot be created with those planned providers because the backend rejects non-ready provider selections
@@ -184,6 +194,10 @@ when(CurrentReality.fixedTurnDeadline.exists())
 
 when(CurrentReality.noFolderOrganization.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
+
+when(CurrentReality.noWorkspaceRepoDurability.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap))
+  .and(AgentChatBlueprintState.records(Assessment.issue));
 
 when(CurrentReality.codexAndClaudeExecution.exists())
   .then(AgentChatBlueprintState.treats("Agent Chat as a useful but partial vertical slice rather than a blueprint-complete system"));

@@ -17,7 +17,8 @@ const Access = {
 const Manager = {
   host: define.system("ManagerHost"),
   runtime: define.system("DashboardRuntime"),
-  controller: define.entity("DashboardLifecycleController"),
+  controller: define.entity("ManagerController"),
+  dashboardControl: define.entity("DashboardRecoveryController"),
   sessionIssue: define.entity("DashboardSessionIssue"),
   readinessFailure: define.event("DashboardReadinessFailure"),
   recovery: define.entity("DashboardRecoveryAttempt"),
@@ -42,9 +43,9 @@ DashboardRecovery.enforces(`
 - Dashboard repair should be triggered by an active user connection attempt plus dashboard unreachability.
 - The recovery path must not depend on the dashboard UI being reachable first.
 - Automatic repair should start immediately when the manager receives a real connection attempt.
-- One thin always-on controller should own both lifecycle policy and recovery policy for the dashboard path.
+- One thin always-on manager controller should own dashboard lifecycle and recovery policy through a dedicated dashboard-recovery domain.
 - One canonical dashboard tunnel should exist after recovery, not a pile of stale tunnels.
-- A thin always-on controller may supervise dashboard lifecycle without making the dashboard itself always-on.
+- A thin always-on manager controller may supervise dashboard lifecycle without making the dashboard itself always-on.
 - Temporary ingress may use a backup tunnel provider when the primary quick tunnel provider cannot issue a URL.
 - If automatic repair still fails, the system should create an explicit ask-help incident for agent follow-up.
 `);
@@ -55,11 +56,11 @@ Policy.activeAttemptRequired.means(`
 `);
 
 Policy.repairFirst.means(`
-- on dashboard session issuance success, notify the dashboard lifecycle controller immediately
+- on dashboard session issuance success, notify the manager controller's dashboard-recovery domain immediately
 - let Lambda keep polling readiness while the manager-side controller repairs in parallel
-- keep one always-on controller as the single lifecycle and recovery owner
-- if the controller observes a dead local origin during an active connection window, attempt repair automatically
-- if the controller observes that the current public URL fails while the local origin is still healthy during an active connection window, attempt tunnel repair immediately
+- keep one always-on manager controller as the single lifecycle and recovery owner for the dashboard path
+- if the dashboard-recovery domain observes a dead local origin during an active connection window, attempt repair automatically
+- if the dashboard-recovery domain observes that the current public URL fails while the local origin is still healthy during an active connection window, attempt tunnel repair immediately
 - prune stale dashboard and tunnel processes
 - restart the dashboard path when the local origin is dead
 - persist the newest public URL as the canonical runtime state
@@ -80,7 +81,7 @@ Policy.tunnelCooldown.means(`
 
 Policy.classifyFailuresSeparately.means(`
 - local dashboard origin failure and public tunnel failure are different failure classes
-- the controller must prove which class failed by testing both the local origin and the current public URL
+- the dashboard-recovery domain must prove which class failed by testing both the local origin and the current public URL
 - when the local origin is dead, restart the dashboard server first without touching the tunnel
 - when the local origin is healthy, treat public-unready as a tunnel-side problem
 - a working public tunnel with a dead local server means "repair server, keep tunnel"
@@ -103,9 +104,9 @@ Policy.escalateAfterFailedRepair.means(`
 
 Policy.thinAlwaysOnController.means(`
 - keep one tiny always-on controller process under systemd
-- the controller is the single owner of dashboard lifecycle and dashboard recovery policy
-- the controller owns lifecycle policy, not the heavy dashboard server itself
-- the controller should poll cheaply and should not recreate dashboard runtime or tunnels on every loop when the current runtime is already healthy
+- the manager controller owns dashboard lifecycle and dashboard recovery policy through a dedicated dashboard-recovery domain
+- the manager controller owns lifecycle policy, not the heavy dashboard server itself
+- the manager controller should poll cheaply and should not recreate dashboard runtime or tunnels on every loop when the current runtime is already healthy
 - while active browser or bootstrap sessions exist, keep the dashboard server and tunnel available
 - when no active dashboard sessions remain for an idle window, stop the dashboard server and tunnel
 - the tunnel may survive dashboard server restarts during active use when the tunnel itself is healthy
@@ -119,35 +120,36 @@ when(Access.lambda.invokes(Manager.sessionIssue).andObserves(Access.attempt))
   .and(DashboardRecovery.requires(Policy.thinAlwaysOnController))
   .and(DashboardRecovery.requires(Policy.backupTunnelFallback))
   .and(Manager.sessionIssue.notifies(Manager.controller))
-  .and(Manager.controller.detects(Manager.readinessFailure))
-  .and(Manager.controller.repairs(Manager.runtime))
-  .and(Manager.controller.reissues(Manager.sessionIssue));
+  .and(Manager.controller.routes("dashboard recovery work").to(Manager.dashboardControl))
+  .and(Manager.dashboardControl.detects(Manager.readinessFailure))
+  .and(Manager.dashboardControl.repairs(Manager.runtime))
+  .and(Manager.dashboardControl.reissues(Manager.sessionIssue));
 
-when(Manager.controller.detects(Manager.readinessFailure))
-  .then(Manager.controller.repairs(Manager.runtime))
-  .and(Manager.controller.reissues(Manager.sessionIssue));
+when(Manager.dashboardControl.detects(Manager.readinessFailure))
+  .then(Manager.dashboardControl.repairs(Manager.runtime))
+  .and(Manager.dashboardControl.reissues(Manager.sessionIssue));
 
-when(Manager.controller.repairs(Manager.runtime))
+when(Manager.dashboardControl.repairs(Manager.runtime))
   .then(DashboardRecovery.requires(Policy.oneCanonicalTunnel))
   .and(DashboardRecovery.requires(Policy.classifyFailuresSeparately))
   .and(DashboardRecovery.requires(Policy.tunnelCooldown))
   .and(DashboardRecovery.requires(Policy.backupTunnelFallback))
-  .and(Manager.controller.terminates(Manager.tunnel))
-  .and(Manager.controller.mayReplace(Manager.backupTunnel))
-  .and(Manager.controller.restarts(Manager.gateway))
-  .and(Manager.controller.mayReplace(Manager.tunnel));
+  .and(Manager.dashboardControl.terminates(Manager.tunnel))
+  .and(Manager.dashboardControl.mayReplace(Manager.backupTunnel))
+  .and(Manager.dashboardControl.restarts(Manager.gateway))
+  .and(Manager.dashboardControl.mayReplace(Manager.tunnel));
 
-when(Manager.controller.fails())
+when(Manager.dashboardControl.fails())
   .then(DashboardRecovery.requires(Policy.escalateAfterFailedRepair))
   .and(Manager.helpRequest.records("a durable incident"))
   .and(Manager.helpRequest.requests("agent help"));
 
-when(Manager.controller.observes("active dashboard sessions"))
+when(Manager.dashboardControl.observes("active dashboard sessions"))
   .then(DashboardRecovery.requires(Policy.thinAlwaysOnController))
-  .and(Manager.controller.keeps(Manager.gateway))
-  .and(Manager.controller.keeps(Manager.tunnel));
+  .and(Manager.dashboardControl.keeps(Manager.gateway))
+  .and(Manager.dashboardControl.keeps(Manager.tunnel));
 
-when(Manager.controller.observes("dashboard idle timeout"))
+when(Manager.dashboardControl.observes("dashboard idle timeout"))
   .then(DashboardRecovery.requires(Policy.thinAlwaysOnController))
-  .and(Manager.controller.stops(Manager.gateway))
-  .and(Manager.controller.stops(Manager.tunnel));
+  .and(Manager.dashboardControl.stops(Manager.gateway))
+  .and(Manager.dashboardControl.stops(Manager.tunnel));

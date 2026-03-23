@@ -23,6 +23,7 @@ const Chat = {
   ws: define.entity("AgentChatRealtimeChannel"),
   stateStore: define.document("AgentChatStateStore"),
   log: define.document("AgentChatServerLog"),
+  persistenceSignal: define.entity("WorkspacePersistenceSignal"),
   session: define.entity("AgentChatSession"),
   message: define.entity("AgentChatMessage"),
   contentBlock: define.entity("AgentChatContentBlock"),
@@ -67,6 +68,7 @@ const Scope = {
 
 const Storage = {
   fileCanonical: define.concept("FileCanonicalPersistence"),
+  workspaceRepoDurability: define.concept("WorkspaceRepoDurability"),
   inMemoryCache: define.concept("InMemoryDerivedCache"),
   appData: define.concept("AppDataPersistence"),
   runtimeState: define.concept("TemporaryRuntimeStateOnly"),
@@ -89,6 +91,11 @@ const Capability = {
   cachedContext: define.concept("ProviderNativeContextCaching"),
   threadReuse: define.concept("ProviderNativeThreadReuse"),
   modelCatalog: define.concept("ProviderQualifiedModelCatalog"),
+};
+
+const Manager = {
+  controller: define.system("ManagerController"),
+  workspacePersistence: define.entity("WorkspacePersistenceController"),
 };
 
 const Api = {
@@ -157,6 +164,8 @@ AgentChatDashboardImplementation.enforces(`
 - Provider adapters must not fail an otherwise active turn on a short fixed wall-clock deadline while the provider is still streaming output or reporting honest activity.
 - Provider timeout policy should be configurable and should treat lost activity or broken transport as failure conditions more strongly than ordinary long-running work.
 - The gateway should proxy Agent Chat traffic and lazy-start the chat backend on first use.
+- Canonical Agent Chat mutations should signal workspace durability work to the manager controller rather than performing git commit or push inline on the request path.
+- Workspace git commit and push policy should be owned by a manager-side workspace-persistence controller because push is part of persistence for manager-host chat history.
 - V1 should ship only the behaviors needed for real day-to-day chat use and defer broader ambitions that are not required yet.
 `);
 
@@ -165,12 +174,14 @@ AgentChatDashboardImplementation.defines(`
 - CanonicalSessionOwnership means Agent Chat sessions and messages are the source of truth even if the provider also has thread state.
 - GatewayProxiedTransport means the browser talks only to dashboard-relative /api/agent-chat and /ws/agent-chat paths.
 - FileCanonicalPersistence means canonical sessions, messages, and provider metadata are stored as structured files under durable app data, not under temporary runtime state.
+- WorkspaceRepoDurability means canonical Agent Chat file persistence is extended into committed and pushed workspace-repo history by a manager-side controller.
 - InMemoryDerivedCache means the backend may keep a rebuildable in-memory index for fast list and session reads, but that cache is not canonical.
 - TemporaryRuntimeStateOnly means state/ is reserved for recoverable runtime artifacts such as logs, sockets, pid files, and controller metadata.
 - SessionProviderSelection means each session records one concrete provider choice and its provider-specific metadata.
 - AgentChatContentBlock means a canonical block such as text or image that is preserved before adapter mapping.
 - ProviderQualifiedModelRef means model identity is stored as a provider-qualified reference rather than an ambiguous bare model name.
 - Provider timeout policy means adapter-side failure thresholds are explicit, configurable, and aligned with long-running interactive agent work rather than a short hard stop.
+- WorkspacePersistenceSignal means the backend emits a post-write durability signal after canonical session mutations and lets the manager controller decide batching, commit, push, retry, and escalation behavior.
 `);
 
 Dashboard.plugin.contains(Dashboard.route, Dashboard.screen, Chat.backend);
@@ -194,8 +205,10 @@ Chat.stateStore.contains(
   Storage.providerConfig,
   Storage.cacheHint,
   Storage.fileCanonical,
+  Storage.workspaceRepoDurability,
   Storage.inMemoryCache,
 );
+Manager.controller.contains(Manager.workspacePersistence);
 Chat.api.contains(
   Api.listSessions,
   Api.listFolders,
@@ -337,6 +350,19 @@ Capability.modelCatalog.means(`
 - model refs should stay provider-qualified like provider/model rather than bare names
 - modality, tool, cache, and context-window metadata should come from cataloged model capabilities rather than hand-waved assumptions
 `);
+
+Storage.workspaceRepoDurability.means(`
+- canonical Agent Chat session files are not the last durability boundary
+- the manager-host workspace repository is the disaster-recovery boundary for chat history
+- the backend should hand off workspace durability work after canonical writes rather than executing git directly in the mutation handler
+`);
+
+when(Chat.backend.persists(Chat.session).or(Chat.backend.persists(Chat.message)))
+  .then(Chat.backend.emits(Chat.persistenceSignal))
+  .and(Manager.workspacePersistence.receives(Chat.persistenceSignal))
+  .and(Manager.workspacePersistence.serializes("workspace git operations"))
+  .and(Manager.workspacePersistence.batches("automatic persistence work"))
+  .and(Manager.workspacePersistence.allows("operator-triggered immediate flush"));
 
 Scope.lazyBackend.means(`
 - the chat backend is not a permanent systemd service

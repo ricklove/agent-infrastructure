@@ -122,7 +122,7 @@ Contract.dashboardIssuer.means(`
 - returns a dashboard access URL
 - may reuse an existing dashboard runtime
 - may reuse an existing quick tunnel
-- may notify a thin dashboard lifecycle controller to keep dashboard access alive during active use
+- may notify the manager controller dashboard-recovery domain to keep dashboard access alive during active use
 - does not require callers to know internal package paths or helper implementation details
 `);
 

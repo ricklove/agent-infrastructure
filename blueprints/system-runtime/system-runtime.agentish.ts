@@ -59,7 +59,7 @@ const Entrypoint = {
   setup: define.entity("SetupEntrypoint"),
   manager: define.entity("ManagerEntrypoint"),
   managerNode: define.entity("ManagerNodeEntrypoint"),
-  dashboardController: define.entity("DashboardControllerEntrypoint"),
+  managerController: define.entity("ManagerControllerEntrypoint"),
   workerMonitor: define.entity("WorkerMonitorEntrypoint"),
   issueDashboardSession: define.entity("IssueDashboardSessionEntrypoint"),
   launchWorker: define.entity("LaunchWorkerEntrypoint"),
@@ -70,7 +70,7 @@ const RuntimeCode = {
   setupHost: define.entity("SetupHostProgram"),
   updateRuntime: define.entity("UpdateRuntimeProgram"),
   dashboardRuntime: define.entity("DashboardRuntimeProgram"),
-  dashboardController: define.entity("DashboardLifecycleControllerProgram"),
+  managerController: define.entity("ManagerControllerProgram"),
   dashboardServer: define.entity("DashboardServerProgram"),
   workerPower: define.entity("WorkerPowerProgram"),
   managerServer: define.entity("ManagerServerProgram"),
@@ -82,7 +82,9 @@ const RuntimeCode = {
 
 const Integration = {
   githubAppTokenResolution: define.entity("GitHubAppTokenResolution"),
-  dashboardLifecycleController: define.entity("DashboardLifecycleController"),
+  managerController: define.entity("ManagerController"),
+  dashboardRecoveryController: define.entity("DashboardRecoveryController"),
+  workspacePersistenceController: define.entity("WorkspacePersistenceController"),
 };
 
 const Policy = {
@@ -122,11 +124,13 @@ SystemRuntime.enforces(`
 - state/ is only for temporary runtime state and recoverable operational artifacts, never durable app data.
 - Swarm monitor process visibility should use sparse continuous sampling rather than burst-only capture.
 - EC2 worker inventory refresh should default to slow zombie reconciliation rather than second-level live polling.
-- Dashboard session issuance during an active connect attempt should notify one thin always-on dashboard lifecycle controller.
+- One thin always-on manager controller should own manager-host policy loops under separate internal control domains rather than as unrelated systemd services.
+- Dashboard session issuance during an active connect attempt should notify the manager controller's dashboard-recovery domain.
 - Dashboard recovery should distinguish local origin failure from public tunnel failure.
 - Quick tunnel replacement should be conservative, cooldown-based, and never eager churn.
 - Temporary dashboard ingress should support a backup tunnel provider when the primary provider cannot issue a URL.
 - Dashboard session issuance should only return a public URL after the manager has verified that the returned URL serves the dashboard.
+- Workspace durability for canonical app data should be handled by the manager controller's workspace-persistence domain rather than by browser clients or ad hoc cron glue.
 `);
 
 SystemRuntime.defines(`
@@ -141,6 +145,7 @@ SystemRuntime.defines(`
 - GatewayBackendDefinition means one declared lazy backend contract with base URL, health probe, and optional start command.
 - FullManagerUpdateWorkflow means source change, local verification, commit, push, runtime rollout, and post-deploy checks.
 - SwarmMonitorProgram means the worker or manager telemetry path that captures cheap host metrics and sparse process context.
+- ManagerController means one thin always-on manager-host control plane with distinct internal domains for dashboard recovery and workspace persistence.
 `);
 
 Host.manager.contains(
@@ -158,7 +163,7 @@ Layout.scripts.contains(
   Entrypoint.setup,
   Entrypoint.manager,
   Entrypoint.managerNode,
-  Entrypoint.dashboardController,
+  Entrypoint.managerController,
   Entrypoint.workerMonitor,
   Entrypoint.issueDashboardSession,
   Entrypoint.launchWorker,
@@ -175,7 +180,7 @@ Layout.packageScripts.contains(Layout.bootstrapAsset);
 Entrypoint.setup.contains(RuntimeCode.setupHost, RuntimeCode.updateRuntime);
 Entrypoint.manager.contains(RuntimeCode.managerServer);
 Entrypoint.managerNode.contains(RuntimeCode.workerAgent);
-Entrypoint.dashboardController.contains(RuntimeCode.dashboardController);
+Entrypoint.managerController.contains(RuntimeCode.managerController);
 Entrypoint.workerMonitor.contains(RuntimeCode.workerAgent);
 Entrypoint.issueDashboardSession.contains(RuntimeCode.dashboardRuntime);
 Entrypoint.launchWorker.contains(Layout.bootstrapAsset);
@@ -238,6 +243,26 @@ Policy.fullUpdateWorkflow.means(`
 - treat durable app data under state/ as a failed architecture state
 `);
 
+Integration.managerController.means(`
+- one thin always-on systemd service on the manager host
+- owns manager-host policy loops but not the heavy serving runtimes themselves
+- contains the dashboard recovery controller and workspace persistence controller as separate internal domains
+- keeps code-level separation between control domains even when they share one Bun process
+`);
+
+Integration.dashboardRecoveryController.means(`
+- the dashboard lifecycle and recovery domain inside the manager controller
+- receives dashboard-session issuance and readiness-failure signals
+- supervises dashboard reachability without turning the dashboard server into an always-on monolith
+`);
+
+Integration.workspacePersistenceController.means(`
+- the workspace durability domain inside the manager controller
+- serializes workspace git staging, commit, push, retry, and escalation behavior
+- owns automatic and manual persistence triggers for the workspace repository
+- exists because git push is part of persistence for canonical workspace-backed app data
+`);
+
 Gateway.lazyStart.means(`
 - feature backend processes are started only on first use
 - gateway proxy traffic is the trigger point
@@ -254,20 +279,20 @@ when(AWS.lambda.invokes(Entrypoint.issueDashboardSession))
   .then(AWS.ssm.executes("a host command"))
   .and(Host.manager.runs(Entrypoint.issueDashboardSession))
   .and(SystemRuntime.treats("that script as a valid external boundary"))
-  .and(Entrypoint.issueDashboardSession.notifies("the dashboard lifecycle controller"))
+  .and(Entrypoint.issueDashboardSession.notifies("the manager controller dashboard-recovery domain"))
   .and(Entrypoint.issueDashboardSession.returns("the current session URL quickly"))
   .and(AWS.lambda.continues("dashboard readiness polling against that URL"))
-  .and(Integration.dashboardLifecycleController.detects("dashboard readiness failure during active use"))
-  .then(Integration.dashboardLifecycleController.repairs(RuntimeCode.dashboardRuntime))
-  .and(Integration.dashboardLifecycleController.classifies("origin failure separately from tunnel failure"))
-  .and(Integration.dashboardLifecycleController.requires("testing the local origin and the current public URL before deciding which side failed"))
-  .and(Integration.dashboardLifecycleController.repairs("the dashboard server independently when the tunnel is still working"))
-  .and(Integration.dashboardLifecycleController.repairs("the tunnel independently when the local dashboard server is still healthy"))
-  .and(Integration.dashboardLifecycleController.repairs("the tunnel immediately during an active connect attempt when the local server is healthy and the current public URL test fails"))
-  .and(Integration.dashboardLifecycleController.keeps("the current quick tunnel while cloudflared is still alive"))
-  .and(Integration.dashboardLifecycleController.replaces("a quick tunnel only on strong evidence and after cooldown"))
-  .and(Integration.dashboardLifecycleController.avoids("full runtime re-ensure churn while dashboard and tunnel are already healthy"))
-  .and(Integration.dashboardLifecycleController.fallsBack("to a backup temporary tunnel provider when the primary provider cannot issue a URL"))
+  .and(Integration.dashboardRecoveryController.detects("dashboard readiness failure during active use"))
+  .then(Integration.dashboardRecoveryController.repairs(RuntimeCode.dashboardRuntime))
+  .and(Integration.dashboardRecoveryController.classifies("origin failure separately from tunnel failure"))
+  .and(Integration.dashboardRecoveryController.requires("testing the local origin and the current public URL before deciding which side failed"))
+  .and(Integration.dashboardRecoveryController.repairs("the dashboard server independently when the tunnel is still working"))
+  .and(Integration.dashboardRecoveryController.repairs("the tunnel independently when the local dashboard server is still healthy"))
+  .and(Integration.dashboardRecoveryController.repairs("the tunnel immediately during an active connect attempt when the local server is healthy and the current public URL test fails"))
+  .and(Integration.dashboardRecoveryController.keeps("the current quick tunnel while cloudflared is still alive"))
+  .and(Integration.dashboardRecoveryController.replaces("a quick tunnel only on strong evidence and after cooldown"))
+  .and(Integration.dashboardRecoveryController.avoids("full runtime re-ensure churn while dashboard and tunnel are already healthy"))
+  .and(Integration.dashboardRecoveryController.fallsBack("to a backup temporary tunnel provider when the primary provider cannot issue a URL"))
   .and(Entrypoint.issueDashboardSession.records("a durable help-request incident on unrecoverable failure"));
 
 when(Host.manager.starts(Host.service))
@@ -275,7 +300,7 @@ when(Host.manager.starts(Host.service))
     Host.service
       .executes(Entrypoint.manager)
       .orExecutes(Entrypoint.managerNode)
-      .orExecutes(Entrypoint.dashboardController),
+      .orExecutes(Entrypoint.managerController),
   )
   .and(SystemRuntime.treats("those scripts as valid systemd boundaries"));
 
