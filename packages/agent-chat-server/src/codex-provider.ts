@@ -44,6 +44,10 @@ const codexReadyzUrl =
 const codexLogPath =
   process.env.AGENT_CHAT_CODEX_LOG_PATH?.trim() ||
   "/home/ec2-user/state/logs/codex-app-server.log";
+const codexTurnIdleTimeoutMs = parseTimeoutMs(
+  process.env.AGENT_CHAT_CODEX_TURN_IDLE_TIMEOUT_MS,
+  900_000,
+);
 
 let codexStartupPromise: Promise<void> | null = null;
 
@@ -55,6 +59,11 @@ function parseCodexModel(modelRef: string) {
 
   const parts = trimmed.split("/");
   return parts.at(-1) || trimmed;
+}
+
+function parseTimeoutMs(rawValue: string | undefined, fallbackMs: number) {
+  const parsed = Number.parseInt(rawValue?.trim() ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
 }
 
 async function codexReady() {
@@ -144,11 +153,31 @@ export async function runCodexTurn(
   }
 
   const completionPromise = new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Codex turn timed out"));
-    }, 120_000);
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    function clearCompletionTimeout() {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    }
+
+    function armCompletionTimeout() {
+      clearCompletionTimeout();
+      timeout = setTimeout(() => {
+        closeSocket();
+        reject(
+          new Error(
+            `Codex turn timed out after ${Math.floor(codexTurnIdleTimeoutMs / 1000)}s of inactivity`,
+          ),
+        );
+      }, codexTurnIdleTimeoutMs);
+    }
+
+    armCompletionTimeout();
 
     ws.addEventListener("message", (event) => {
+      armCompletionTimeout();
       const message = JSON.parse(String(event.data)) as JsonRpcResponse;
 
       if (typeof message.id === "number") {
@@ -238,19 +267,19 @@ export async function runCodexTurn(
 
       if (message.method === "turn/completed") {
         completed = true;
-        clearTimeout(timeout);
+        clearCompletionTimeout();
         resolve();
       }
     });
 
     ws.addEventListener("error", () => {
-      clearTimeout(timeout);
+      clearCompletionTimeout();
       reject(new Error("Codex app-server WebSocket error"));
     });
 
     ws.addEventListener("close", () => {
       if (!completed) {
-        clearTimeout(timeout);
+        clearCompletionTimeout();
         reject(new Error("Codex app-server WebSocket closed unexpectedly"));
       }
     });
