@@ -52,7 +52,9 @@ Policy.repairFirst.means(`
 - keep the monitor alive through the initial connection window rather than exiting after one healthy check
 - if the monitor observes public readiness failure or a dead local origin during that window, attempt repair automatically
 - prune stale dashboard and tunnel processes
-- restart the dashboard path and reissue a fresh session URL
+- restart the dashboard path when the local origin is dead
+- replace the quick tunnel when the public tunnel is not resolvable or reachable
+- persist the newest public URL as the canonical runtime state
 `);
 
 Policy.oneCanonicalTunnel.means(`
@@ -80,7 +82,8 @@ when(Manager.monitor.detects(Manager.readinessFailure))
 when(Manager.recovery.repairs(Manager.runtime))
   .then(DashboardRecovery.requires(Policy.oneCanonicalTunnel))
   .and(Manager.recovery.terminates(Manager.tunnel))
-  .and(Manager.recovery.restarts(Manager.gateway));
+  .and(Manager.recovery.restarts(Manager.gateway))
+  .and(Manager.recovery.mayReplace(Manager.tunnel));
 
 when(Manager.recovery.fails())
   .then(DashboardRecovery.requires(Policy.escalateAfterFailedRepair))

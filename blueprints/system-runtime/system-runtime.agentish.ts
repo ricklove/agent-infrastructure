@@ -250,6 +250,7 @@ when(AWS.lambda.invokes(Entrypoint.issueDashboardSession))
   .and(Integration.dashboardRecoveryMonitor.staysAlive("through the initial connect window"))
   .and(Integration.dashboardRecoveryMonitor.detects("dashboard readiness failure"))
   .then(Integration.dashboardRecoveryMonitor.repairs(RuntimeCode.dashboardRuntime))
+  .and(Integration.dashboardRecoveryMonitor.replaces("an unhealthy quick tunnel when needed"))
   .and(Entrypoint.issueDashboardSession.records("a durable help-request incident on unrecoverable failure"));
 
 when(Host.manager.starts(Host.service))

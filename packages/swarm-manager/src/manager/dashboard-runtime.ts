@@ -890,7 +890,7 @@ export async function runDashboardRecoveryMonitor(input: {
 }): Promise<void> {
   const port = input.port ?? 3000;
   const managerUrl = input.managerUrl ?? "http://127.0.0.1:8787";
-  const expectedPublicUrl = input.publicUrl.trim();
+  let expectedPublicUrl = input.publicUrl.trim();
   const pid = process.pid;
   const lockPid = readDashboardRecoveryMonitorLockPid();
 
@@ -908,6 +908,7 @@ export async function runDashboardRecoveryMonitor(input: {
       `start pid=${pid} public_url=${expectedPublicUrl} port=${port}`,
     );
     const monitorDeadline = Date.now() + 90_000;
+    let publicNotReadyCount = 0;
     while (Date.now() < monitorDeadline) {
       const currentState = readRuntimeState();
       if (currentState?.publicUrl?.trim() !== expectedPublicUrl) {
@@ -949,10 +950,37 @@ export async function runDashboardRecoveryMonitor(input: {
       }
 
       if (!publicReady) {
+        publicNotReadyCount += 1;
         logSystemStep(
           "dashboard-recovery-monitor",
           `warn public_not_ready public_url=${expectedPublicUrl}`,
         );
+
+        if (publicNotReadyCount >= 5) {
+          const cloudflaredPids = listPidsByPattern(
+            new RegExp(`cloudflared\\s+tunnel\\s+--url\\s+http:\\/\\/127\\.0\\.0\\.1:${port}`),
+          );
+          await terminatePids(cloudflaredPids, "dashboard-recovery-monitor");
+          const tunnel = await startCloudflared(port);
+          expectedPublicUrl = tunnel.url;
+          writeRuntimeState({
+            dashboardPid: currentState?.dashboardPid ?? 0,
+            dashboardLogPath,
+            localUrl: `http://127.0.0.1:${port}`,
+            cloudflaredPid: tunnel.pid,
+            cloudflaredLogPath,
+            publicUrl: tunnel.url,
+          });
+          logSystemStep(
+            "dashboard-recovery-monitor",
+            `replace_tunnel old_public_url=${currentState?.publicUrl ?? "missing"} new_public_url=${tunnel.url} cloudflared_pid=${tunnel.pid}`,
+          );
+          publicNotReadyCount = 0;
+          await Bun.sleep(1000);
+          continue;
+        }
+      } else {
+        publicNotReadyCount = 0;
       }
 
       await Bun.sleep(2000);
