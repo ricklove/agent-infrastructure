@@ -389,6 +389,16 @@ function activityTone(activity: SessionActivity) {
   }
 }
 
+function withDashboardSessionToken(path: string) {
+  const sessionToken = readStoredSessionToken().trim()
+  if (!sessionToken) {
+    return path
+  }
+
+  const separator = path.includes("?") ? "&" : "?"
+  return `${path}${separator}sessionToken=${encodeURIComponent(sessionToken)}`
+}
+
 export function AgentChatScreen(props: AgentChatScreenProps) {
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
   const pendingSessionOpenScrollRef = useRef<string | null>(null)
@@ -452,6 +462,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
     [activeSessionId, sessions],
+  )
+
+  const messageContentAssetUrl = useCallback(
+    (path: string) => withDashboardSessionToken(path),
+    [],
   )
 
   const activeReplyTarget = useMemo(
@@ -1513,13 +1528,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           ) : (
                             <a
                               key={`${message.id}-${index}`}
-                              href={block.url}
+                              href={messageContentAssetUrl(block.url)}
                               target="_blank"
                               rel="noreferrer"
                               className="block overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60"
                             >
                               <img
-                                src={block.url}
+                                src={messageContentAssetUrl(block.url)}
                                 alt="User supplied"
                                 className="max-h-[28rem] w-full bg-slate-950 object-contain"
                               />
