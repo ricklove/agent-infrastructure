@@ -542,6 +542,20 @@ function formatProcessSeriesLabel(sample: TimelineProcessSample): string {
   return `${sample.comm} (${sample.pid})`
 }
 
+function processLabelScore(label: string): number {
+  let score = label.length
+  if (label.includes(":")) {
+    score += 50
+  }
+  if (label.includes("/")) {
+    score += 10
+  }
+  if (label.startsWith("MainThread")) {
+    score -= 100
+  }
+  return score
+}
+
 export function AgentSwarmScreen({
   apiRootUrl = "/api/agent-swarm",
 }: AgentSwarmScreenProps) {
@@ -801,7 +815,7 @@ export function AgentSwarmScreen({
         (sample) => sample.ranking === ranking,
       )
       const seriesMap = new Map<
-        string,
+        number,
         {
           label: string
           color: string
@@ -811,12 +825,16 @@ export function AgentSwarmScreen({
       >()
 
       rankingSamples.forEach((sample) => {
-        const key = `${sample.comm}:${sample.pid}`
+        const key = sample.pid
+        const nextLabel = formatProcessSeriesLabel(sample)
         const existing = seriesMap.get(key) ?? {
           label: formatProcessSeriesLabel(sample),
-          color: colorForSeries(`${ranking}:${key}`),
+          color: colorForSeries(`${ranking}:${sample.pid}`),
           points: [],
           maxValue: 0,
+        }
+        if (processLabelScore(nextLabel) > processLabelScore(existing.label)) {
+          existing.label = nextLabel
         }
         const nextValue = valueSelector(sample)
         existing.points.push({
