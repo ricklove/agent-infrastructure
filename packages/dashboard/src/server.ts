@@ -595,6 +595,10 @@ async function handleApi(request: Request): Promise<Response> {
   const swarmApiAliases = {
     health: new Set(["/api/health", "/api/agent-swarm/health"]),
     workers: new Set(["/api/workers", "/api/agent-swarm/workers"]),
+    workerTimeline: new Set([
+      "/api/workers/timeline",
+      "/api/agent-swarm/workers/timeline",
+    ]),
     workerEvents: new Set([
       "/api/workers/events",
       "/api/agent-swarm/workers/events",
@@ -706,6 +710,37 @@ async function handleApi(request: Request): Promise<Response> {
           ok: false,
           error:
             error instanceof Error ? error.message : "failed to fetch workers",
+        },
+        502,
+      );
+    }
+  }
+
+  if (swarmApiAliases.workerTimeline.has(url.pathname)) {
+    try {
+      const search = new URLSearchParams();
+      const workerId = url.searchParams.get("workerId")?.trim() ?? "";
+      const rangeMinutes = url.searchParams.get("rangeMinutes")?.trim() ?? "";
+
+      if (workerId) {
+        search.set("workerId", workerId);
+      }
+
+      if (rangeMinutes) {
+        search.set("rangeMinutes", rangeMinutes);
+      }
+
+      const suffix = search.toString();
+      const timeline = await fetchManagerJson(
+        `/workers/timeline${suffix ? `?${suffix}` : ""}`,
+      );
+      return jsonResponse(timeline);
+    } catch (error) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            error instanceof Error ? error.message : "failed to fetch worker timeline",
         },
         502,
       );
