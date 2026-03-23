@@ -724,6 +724,7 @@ const server = Bun.serve<ChatSocketData>({
         const payload = body as {
           cwd?: string;
           title?: string;
+          archived?: boolean;
           providerKind?: AgentChatProviderKind;
           modelRef?: string;
           authProfile?: string | null;
@@ -736,6 +737,8 @@ const server = Bun.serve<ChatSocketData>({
 
         const nextDirectory = payload.cwd?.trim();
         const nextTitle = payload.title?.trim();
+        const nextArchived =
+          typeof payload.archived === "boolean" ? payload.archived : undefined;
         const nextProviderKind = payload.providerKind?.trim() as AgentChatProviderKind | undefined;
         const nextModelRef = payload.modelRef?.trim();
         const nextAuthProfile =
@@ -748,9 +751,9 @@ const server = Bun.serve<ChatSocketData>({
           payload.authProfile !== undefined ||
           payload.imageModelRef !== undefined;
 
-        if (!nextDirectory && !nextTitle && !hasProviderPatch) {
+        if (!nextDirectory && !nextTitle && nextArchived === undefined && !hasProviderPatch) {
           return jsonResponse(
-            { ok: false, error: "directory, title, or provider settings required" },
+            { ok: false, error: "directory, title, archive state, or provider settings required" },
             400,
           );
         }
@@ -815,6 +818,13 @@ const server = Bun.serve<ChatSocketData>({
           );
           if (instructionSession) {
             session = instructionSession;
+          }
+        }
+
+        if (nextArchived !== undefined && session && nextArchived !== session.archived) {
+          const updatedSession = store.updateSessionArchived(sessionId, nextArchived);
+          if (updatedSession) {
+            session = updatedSession;
           }
         }
 

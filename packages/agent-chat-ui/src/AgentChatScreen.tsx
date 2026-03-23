@@ -44,6 +44,7 @@ type SessionActivity = {
 type SessionSummary = {
   id: string
   title: string
+  archived: boolean
   providerKind: ProviderKind
   modelRef: string
   cwd: string
@@ -243,6 +244,35 @@ function EditIcon() {
   )
 }
 
+function ArchiveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <path d="M4.5 7.5h15" />
+      <rect x="3.5" y="5" width="17" height="4" rx="1.5" />
+      <path d="M6.5 9.5h11v9a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-9Z" />
+    </svg>
+  )
+}
+
+function RestoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <path d="M8 7H4v4" />
+      <path d="M4.5 10.5a7.5 7.5 0 1 0 2.1-5" />
+      <path d="M9.5 12h5" />
+    </svg>
+  )
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4 4" />
+    </svg>
+  )
+}
+
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
     month: "short",
@@ -268,6 +298,27 @@ function clipText(text: string, maxLength = 88) {
     return normalized
   }
   return `${normalized.slice(0, maxLength - 3)}...`
+}
+
+function normalizeSessionSearchValue(value: string | null | undefined) {
+  return value?.toLowerCase().trim() ?? ""
+}
+
+function sessionMatchesSearch(session: SessionSummary, query: string) {
+  const normalizedQuery = normalizeSessionSearchValue(query)
+  if (!normalizedQuery) {
+    return true
+  }
+
+  return [
+    session.title,
+    session.preview,
+    session.providerKind,
+    session.modelRef,
+    session.cwd,
+  ]
+    .map((value) => normalizeSessionSearchValue(value))
+    .some((value) => value.includes(normalizedQuery))
 }
 
 function summarizeMessageContent(
@@ -389,6 +440,37 @@ function activityTone(activity: SessionActivity) {
   }
 }
 
+function summarizeSessionWorkerState(
+  activity: SessionActivity,
+  queuedMessageCount: number,
+  nowMs: number,
+) {
+  const summary = [activityLabel(activity)]
+  const elapsed = formatElapsed(activity.startedAtMs, nowMs)
+
+  if (elapsed && activity.status === "running") {
+    summary.push(elapsed)
+  }
+
+  if (activity.waitingFlags.length > 0) {
+    summary.push(activity.waitingFlags.join(", "))
+  }
+
+  if (queuedMessageCount > 0) {
+    summary.push(`queued ${queuedMessageCount}`)
+  }
+
+  if (activity.backgroundProcessCount > 0) {
+    summary.push(`bg ${activity.backgroundProcessCount}`)
+  }
+
+  if (activity.status === "error" && activity.lastError) {
+    summary.push(clipText(activity.lastError, 48))
+  }
+
+  return summary
+}
+
 function withDashboardSessionToken(path: string) {
   const sessionToken = readStoredSessionToken().trim()
   if (!sessionToken) {
@@ -442,9 +524,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false)
   const [newChatOpen, setNewChatOpen] = useState(false)
+  const [sessionListMenuOpen, setSessionListMenuOpen] = useState(false)
+  const [showArchivedSessions, setShowArchivedSessions] = useState(false)
+  const [sessionSearchQuery, setSessionSearchQuery] = useState("")
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
   const [renameTitle, setRenameTitle] = useState("")
   const [renaming, setRenaming] = useState(false)
+  const [archivingSessionId, setArchivingSessionId] = useState<string | null>(null)
   const [wsStatus, setWsStatus] = useState<"idle" | "connecting" | "ready" | "error">("idle")
   const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null)
   const [composerImages, setComposerImages] = useState<ComposerImageAttachment[]>([])
@@ -464,10 +550,34 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     [activeSessionId, sessions],
   )
 
+  const visibleSessions = useMemo(
+    () => sessions.filter((session) => sessionMatchesSearch(session, sessionSearchQuery)),
+    [sessionSearchQuery, sessions],
+  )
+
+  const mainSessions = useMemo(
+    () => visibleSessions.filter((session) => !session.archived),
+    [visibleSessions],
+  )
+
+  const archivedSessions = useMemo(
+    () => visibleSessions.filter((session) => session.archived),
+    [visibleSessions],
+  )
+
   const messageContentAssetUrl = useCallback(
     (path: string) => withDashboardSessionToken(path),
     [],
   )
+
+  const loadSessions = useCallback(async () => {
+    const response = await apiFetch(`${props.apiRootUrl}/sessions`)
+    const payload = (await response.json()) as SessionsResponse & { error?: string }
+    if (!response.ok || !payload.ok || !Array.isArray(payload.sessions)) {
+      throw new Error(payload.error ?? "Agent Chat sessions failed to load.")
+    }
+    return payload.sessions
+  }, [props.apiRootUrl])
 
   const activeReplyTarget = useMemo(
     () => messages.find((message) => message.id === replyTargetMessageId) ?? null,
@@ -624,13 +734,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             }
             return payload
           }),
-          apiFetch(`${props.apiRootUrl}/sessions`).then(async (response) => {
-            const payload = (await response.json()) as SessionsResponse & { error?: string }
-            if (!response.ok || !payload.ok || !Array.isArray(payload.sessions)) {
-              throw new Error(payload.error ?? "Agent Chat sessions failed to load.")
-            }
-            return payload
-          }),
+          loadSessions().then((sessions) => ({ ok: true as const, sessions })),
         ])
 
         if (cancelled) {
@@ -639,8 +743,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
         setProviders(providersResponse.providers)
         setSessions(sessionsResponse.sessions)
-        if (sessionsResponse.sessions[0]) {
-          setActiveSessionId((current) => current || sessionsResponse.sessions[0]!.id)
+        const initialSession =
+          sessionsResponse.sessions.find((session) => !session.archived) ?? sessionsResponse.sessions[0]
+        if (initialSession) {
+          setActiveSessionId((current) => current || initialSession.id)
         }
       } catch (nextError) {
         if (!cancelled) {
@@ -658,7 +764,37 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     return () => {
       cancelled = true
     }
-  }, [props.apiRootUrl])
+  }, [loadSessions, props.apiRootUrl])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function refreshSessions() {
+      try {
+        const nextSessions = await loadSessions()
+        if (cancelled) {
+          return
+        }
+        setSessions(nextSessions)
+        if (!nextSessions.some((session) => session.id === activeSessionId)) {
+          const fallbackSession =
+            nextSessions.find((session) => !session.archived) ?? nextSessions[0] ?? null
+          setActiveSessionId(fallbackSession?.id ?? "")
+        }
+      } catch {
+        // Keep the current list when background refresh fails.
+      }
+    }
+
+    const intervalHandle = window.setInterval(() => {
+      void refreshSessions()
+    }, 4000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalHandle)
+    }
+  }, [activeSessionId, loadSessions])
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -886,6 +1022,47 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       return [...next].sort((left, right) => right.updatedAtMs - left.updatedAtMs)
     })
   }, [])
+
+  async function setSessionArchived(sessionId: string, archived: boolean) {
+    setArchivingSessionId(sessionId)
+    setError("")
+
+    try {
+      const response = await apiFetch(`${props.apiRootUrl}/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          archived,
+        }),
+      })
+      const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? (archived ? "Archive failed." : "Restore failed."))
+      }
+
+      mergeSession(payload.session)
+      if (payload.session.id === activeSessionId) {
+        setMessages(payload.messages)
+        setQueuedMessages(payload.queuedMessages)
+        setActivity(payload.activity)
+      }
+      if (!archived) {
+        setShowArchivedSessions(true)
+      }
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : archived
+            ? "Archive failed."
+            : "Restore failed.",
+      )
+    } finally {
+      setArchivingSessionId(null)
+    }
+  }
 
   async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -1238,7 +1415,44 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             >
               <PlusIcon />
             </IconButton>
+            <div className="relative">
+              <IconButton
+                label={sessionListMenuOpen ? "Hide session list menu" : "Show session list menu"}
+                title={sessionListMenuOpen ? "Hide Session List Menu" : "Session List Menu"}
+                onClick={() => setSessionListMenuOpen((current) => !current)}
+              >
+                <MenuIcon />
+              </IconButton>
+              {sessionListMenuOpen ? (
+                <div className="absolute left-0 top-12 z-10 w-56 rounded-2xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl backdrop-blur">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowArchivedSessions((current) => !current)
+                      setSessionListMenuOpen(false)
+                    }}
+                    className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5"
+                  >
+                    <span>{showArchivedSessions ? "Hide archived" : "Show archived"}</span>
+                    <span className="text-xs text-slate-500">{sessions.filter((session) => session.archived).length}</span>
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
+
+          <label className="block">
+            <span className="sr-only">Search sessions</span>
+            <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-slate-400">
+              <SearchIcon />
+              <input
+                value={sessionSearchQuery}
+                onChange={(event) => setSessionSearchQuery(event.target.value)}
+                placeholder="Search chats"
+                className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
+              />
+            </div>
+          </label>
 
           {newChatOpen ? (
             <form onSubmit={createSession} className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-4">
@@ -1353,83 +1567,174 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-4 text-sm text-slate-400">
                   Loading sessions...
                 </div>
-              ) : sessions.length === 0 ? (
+              ) : mainSessions.length === 0 && (!showArchivedSessions || archivedSessions.length === 0) ? (
                 <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-4 text-sm text-slate-400">
-                  No chats yet. Use the settings menu to start one.
+                  {sessionSearchQuery.trim()
+                    ? "No chats match this search."
+                    : "No chats yet. Use the settings menu to start one."}
                 </div>
               ) : (
-                sessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className={`rounded-2xl border px-4 py-4 transition ${
-                      session.id === activeSessionId
-                        ? "border-fuchsia-300/40 bg-fuchsia-300/10"
-                        : "border-white/10 bg-slate-900/70 hover:border-white/20"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveSessionId(session.id)
-                          setMobileSessionsOpen(false)
-                        }}
-                        className="min-w-0 flex-1 text-left"
-                      >
-                        <p className="truncate text-sm font-semibold text-white">
-                          {session.title}
+                <>
+                  {mainSessions.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between px-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          Chats
                         </p>
-                        <p className="mt-1 truncate text-xs text-slate-500">
-                          {session.providerKind} · {session.modelRef}
-                        </p>
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-500">{session.messageCount}</span>
-                        {session.id === activeSessionId ? (
-                          <IconButton
-                            label="Rename chat"
-                            title="Rename Chat"
-                            onClick={() => {
-                              setRenamingSessionId(session.id)
-                              setRenameTitle(session.title)
-                            }}
-                          >
-                            <EditIcon />
-                          </IconButton>
-                        ) : null}
+                        <p className="text-[11px] text-slate-600">{mainSessions.length}</p>
                       </div>
-                    </div>
-                    {renamingSessionId === session.id ? (
-                      <form onSubmit={renameSession} className="mt-3 flex gap-2">
-                        <input
-                          value={renameTitle}
-                          onChange={(event) => setRenameTitle(event.target.value)}
-                          className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
-                        />
-                        <button
-                          type="submit"
-                          disabled={renaming || !renameTitle.trim() || renameTitle.trim() === session.title}
-                          className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      {mainSessions.map((session) => (
+                        <div
+                          key={session.id}
+                          className={`rounded-2xl border px-4 py-4 transition ${
+                            session.id === activeSessionId
+                              ? "border-fuchsia-300/40 bg-fuchsia-300/10"
+                              : "border-white/10 bg-slate-900/70 hover:border-white/20"
+                          }`}
                         >
-                          {renaming ? "Saving..." : "Save"}
-                        </button>
-                      </form>
-                    ) : null}
-                    <p className="mt-3 truncate text-sm text-slate-300">
-                      {session.preview ?? "No messages yet"}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                      <span>{activityLabel(session.activity)}</span>
-                      {session.queuedMessageCount > 0 ? <span>queued {session.queuedMessageCount}</span> : null}
-                      {session.activity.backgroundProcessCount > 0 ? (
-                        <span>bg {session.activity.backgroundProcessCount}</span>
-                      ) : null}
+                          <div className="flex items-start justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveSessionId(session.id)
+                                setMobileSessionsOpen(false)
+                              }}
+                              className="min-w-0 flex-1 text-left"
+                            >
+                              <p className="truncate text-sm font-semibold text-white">
+                                {session.title}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-slate-500">
+                                {session.providerKind} · {session.modelRef}
+                              </p>
+                            </button>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-500">{session.messageCount}</span>
+                              <IconButton
+                                label="Rename chat"
+                                title="Rename Chat"
+                                onClick={() => {
+                                  setRenamingSessionId(session.id)
+                                  setRenameTitle(session.title)
+                                }}
+                              >
+                                <EditIcon />
+                              </IconButton>
+                              <IconButton
+                                label="Archive chat"
+                                title="Archive Chat"
+                                onClick={() => void setSessionArchived(session.id, true)}
+                                disabled={archivingSessionId === session.id}
+                              >
+                                <ArchiveIcon />
+                              </IconButton>
+                            </div>
+                          </div>
+                          {renamingSessionId === session.id ? (
+                            <form onSubmit={renameSession} className="mt-3 flex gap-2">
+                              <input
+                                value={renameTitle}
+                                onChange={(event) => setRenameTitle(event.target.value)}
+                                className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
+                              />
+                              <button
+                                type="submit"
+                                disabled={renaming || !renameTitle.trim() || renameTitle.trim() === session.title}
+                                className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {renaming ? "Saving..." : "Save"}
+                              </button>
+                            </form>
+                          ) : null}
+                          <p className="mt-3 truncate text-sm text-slate-300">
+                            {session.preview ?? "No messages yet"}
+                          </p>
+                          <p className="mt-3 text-xs text-slate-400">
+                            {summarizeSessionWorkerState(
+                              session.activity,
+                              session.queuedMessageCount,
+                              nowMs,
+                            ).join(" · ")}
+                          </p>
+                          <p className="mt-2 truncate text-xs text-slate-500">
+                            {session.cwd}
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                    <p className="mt-2 truncate text-xs text-slate-500">
-                      {session.cwd}
-                    </p>
-                  </div>
-                ))
+                  ) : null}
+
+                  {showArchivedSessions ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between px-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          Archived
+                        </p>
+                        <p className="text-[11px] text-slate-600">{archivedSessions.length}</p>
+                      </div>
+                      {archivedSessions.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-4 text-sm text-slate-400">
+                          {sessionSearchQuery.trim()
+                            ? "No archived chats match this search."
+                            : "No archived chats."}
+                        </div>
+                      ) : (
+                        archivedSessions.map((session) => (
+                          <div
+                            key={session.id}
+                            className={`rounded-2xl border px-4 py-4 transition ${
+                              session.id === activeSessionId
+                                ? "border-cyan-300/40 bg-cyan-300/10"
+                                : "border-white/10 bg-slate-900/70 hover:border-white/20"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveSessionId(session.id)
+                                  setMobileSessionsOpen(false)
+                                }}
+                                className="min-w-0 flex-1 text-left"
+                              >
+                                <p className="truncate text-sm font-semibold text-white">
+                                  {session.title}
+                                </p>
+                                <p className="mt-1 truncate text-xs text-slate-500">
+                                  {session.providerKind} · {session.modelRef}
+                                </p>
+                              </button>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-500">{session.messageCount}</span>
+                                <IconButton
+                                  label="Restore chat"
+                                  title="Restore Chat"
+                                  onClick={() => void setSessionArchived(session.id, false)}
+                                  disabled={archivingSessionId === session.id}
+                                >
+                                  <RestoreIcon />
+                                </IconButton>
+                              </div>
+                            </div>
+                            <p className="mt-3 truncate text-sm text-slate-300">
+                              {session.preview ?? "No messages yet"}
+                            </p>
+                            <p className="mt-3 text-xs text-slate-400">
+                              {summarizeSessionWorkerState(
+                                session.activity,
+                                session.queuedMessageCount,
+                                nowMs,
+                              ).join(" · ")}
+                            </p>
+                            <p className="mt-2 truncate text-xs text-slate-500">
+                              {session.cwd}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           </div>
@@ -1444,7 +1749,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             </p>
             <p className="truncate text-xs text-slate-500">
               {activeSession
-                ? `${activeSession.providerKind} · ${activeSession.modelRef}`
+                ? `${activeSession.providerKind} · ${activeSession.modelRef}${activeSession.archived ? " · archived" : ""}`
                 : "Select a session or start a new one."}
             </p>
           </div>
@@ -1661,6 +1966,34 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
                         <p>{activeSession ? `${activeSession.providerKind} · ${activeSession.modelRef}` : "No active chat selected."}</p>
                       </div>
+                      {activeSession ? (
+                        <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                              Visibility
+                            </p>
+                            <p className="mt-1 text-sm text-slate-300">
+                              {activeSession.archived
+                                ? "This chat is archived and hidden from the main list."
+                                : "This chat is visible in the main session list."}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void setSessionArchived(activeSession.id, !activeSession.archived)}
+                            disabled={archivingSessionId === activeSession.id}
+                            className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {archivingSessionId === activeSession.id
+                              ? activeSession.archived
+                                ? "Restoring..."
+                                : "Archiving..."
+                              : activeSession.archived
+                                ? "Restore"
+                                : "Archive"}
+                          </button>
+                        </div>
+                      ) : null}
                       <label className="block">
                         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                           Provider

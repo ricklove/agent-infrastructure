@@ -29,6 +29,7 @@ export type StoredAttachment = {
 export type StoredSession = {
   id: string;
   title: string;
+  archived: boolean;
   providerKind: AgentChatProviderKind;
   modelRef: string;
   cwd: string;
@@ -142,6 +143,7 @@ export class AgentChatStore {
     const metadata: SessionMetadata = {
       id: sessionId,
       title: input.title?.trim() || "New chat",
+      archived: false,
       providerKind: input.providerKind,
       modelRef: input.modelRef,
       cwd: input.cwd,
@@ -351,6 +353,22 @@ export class AgentChatStore {
       sessionId,
       reason: "session-metadata-updated",
     });
+    return nextSession;
+  }
+
+  updateSessionArchived(sessionId: string, archived: boolean): StoredSession | null {
+    const current = this.sessionCache.get(sessionId);
+    if (!current || current.archived === archived) {
+      return current ?? null;
+    }
+
+    const nextSession: StoredSession = {
+      ...current,
+      archived,
+      updatedAtMs: Date.now(),
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
     return nextSession;
   }
 
@@ -657,6 +675,7 @@ export class AgentChatStore {
     const metadata: SessionMetadata = {
       id: session.id,
       title: session.title,
+      archived: session.archived,
       providerKind: session.providerKind,
       modelRef: session.modelRef,
       cwd: session.cwd,
@@ -680,6 +699,7 @@ export class AgentChatStore {
     return {
       id: String(parsed.id),
       title: String(parsed.title),
+      archived: Boolean(parsed.archived),
       providerKind: parsed.providerKind as AgentChatProviderKind,
       modelRef: String(parsed.modelRef),
       cwd: String(parsed.cwd || "/home/ec2-user/workspace"),
@@ -805,6 +825,7 @@ export class AgentChatStore {
         const metadata: SessionMetadata = {
           id: String(row.id),
           title: String(row.title),
+          archived: false,
           providerKind: row.provider_kind as AgentChatProviderKind,
           modelRef: String(row.model_ref),
           cwd: row.cwd ? String(row.cwd) : "/home/ec2-user/workspace",
