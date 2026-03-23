@@ -52,12 +52,12 @@ DeployManagerRuntime.enforces(`
 `);
 
 DeployManagerRuntime.defines(`
-- CommittedSourceOnlyDeploy means rollout targets a committed source revision rather than runtime drift or uncommitted workspace state.
+- CommittedSourceOnlyDeploy means rollout targets a committed source revision.
 - ReleasePromotionFromMain means the release commit is promoted onto `main` before a runtime deploy is allowed.
-- ReleaseTagDeployTarget means runtime checkout targets an immutable release git tag rather than an integration branch ref.
-- RuntimeCheckoutDeploy means the deployed tree is advanced by git checkout of the release tag in the runtime checkout, not by manual file edits.
+- ReleaseTagDeployTarget means runtime checkout targets an immutable release git tag.
+- RuntimeCheckoutDeploy means the deployed tree is advanced by git checkout of the release tag in the runtime checkout.
 - FrontendBuildRequired means frontend assets are rebuilt from the runtime checkout after the target revision is selected.
-- BackendRestartOnly means deploy restarts local backend server processes and relies on normal supervision for recovery rather than ad hoc runtime mutation.
+- BackendRestartOnly means deploy restarts local backend server processes and relies on normal runtime supervision for recovery.
 - TunnelUntouchedByDeploy means deploy never kills, replaces, rotates, or otherwise manages the dashboard tunnel.
 - ControllerOwnsTunnelLifecycle means only the dashboard controller or its recovery policy decides tunnel repair or replacement.
 - ReturnToDevelopmentProcessVerification means rollout hands back to the normal post-deploy verification flow for version checks, health checks, browser verification, and screenshots.

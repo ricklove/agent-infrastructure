@@ -82,10 +82,10 @@ DevelopmentProcess.defines(`
 - ReleaseBranch means `main` is the canonical release branch for runtime deployment.
 - ReleaseGitTag means an immutable git tag created from the promoted release commit and used as the runtime deploy target.
 - TemporaryStateOnly means logs, pids, sockets, caches, and controller metadata may live under state/, but durable user or app content may not.
-- DeployByRuntimeCheckout means runtime is updated by checking out a release tag that points at a committed source revision rather than editing deployed files directly.
+- DeployByRuntimeCheckout means runtime is updated by checking out a release tag that points at a committed source revision.
 - VersionMatchVerification means the served frontend version and running backend version must match exactly after rollout.
 - TicketSystemOwnsImplementationPlan means active work sequencing, task breakdown, and unfinished implementation routing belong in tickets rather than in long-lived blueprint companion files.
-- StandardRuntimeDeployBlueprint means runtime rollout should use the repository's canonical deploy-manager-runtime path and should target a release tag rather than an integration branch ref.
+- StandardRuntimeDeployBlueprint means runtime rollout uses the repository's canonical deploy-manager-runtime path and targets a release tag.
 - `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path after release promotion and tag creation.
 `);
 
