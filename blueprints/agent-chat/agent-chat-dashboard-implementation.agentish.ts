@@ -139,6 +139,7 @@ AgentChatDashboardImplementation.enforces(`
 - The first implementation should minimize architectural risk by choosing one backend, one canonical persistence model, and one provider-agnostic adapter boundary.
 - Canonical chat history must be workspace-owned durable app data and must not live under state/.
 - Canonical chat content must stay structured enough to preserve text, images, and cache boundaries across providers.
+- The composer must accept image paste from the browser clipboard and preserve those pasted images as first-class canonical content blocks.
 - Each provider adapter must be re-researched against current provider docs and relevant open-source reference implementations immediately before implementing that adapter.
 - Agent Chat sessions must inherit the development-process blueprint so provider-backed agents use the same blueprint-first workflow rules.
 - The browser should own session list, transcript rendering, composer state, reconnect logic, and streaming UI.
@@ -286,6 +287,9 @@ Ui.composer.means(`
 - drafts should survive local page reloads and temporary dashboard or chat-server restarts while the operator is still typing
 - sending a message should clear that session's saved draft
 - local draft persistence must not write durable app data to the server or to state/
+- pasted clipboard images should appear as removable composer attachments before send
+- sending should preserve pasted images as canonical image blocks alongside any typed text blocks
+- composer paste support should handle normal text pastes without regressing textarea editing behavior
 `);
 
 Ui.sessionList.means(`
@@ -458,6 +462,7 @@ Decision.sessionStickiness.means(`
 Decision.contentModel.means(`
 - canonical messages are stored as ordered content blocks
 - V1 supports text and image input blocks
+- V1 supports pasted clipboard images by storing them durably and serving them back to the transcript UI
 - the browser and backend must not reduce image-capable providers to plain text-only prompts
 `);
 

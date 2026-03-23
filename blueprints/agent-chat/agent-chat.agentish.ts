@@ -95,6 +95,7 @@ AgentChat.enforces(`
 - Session identity survives provider switching.
 - Provider bindings may change without rewriting canonical session history.
 - Provider-backed chat sessions must inherit the shared development-process blueprint so implementation work inside a chat follows the same blueprint-first workflow.
+- Chat input must preserve first-class pasted image content rather than flattening clipboard images into text-only prompts.
 - Chat may reference workspace entities.
 - Workspace entities may reference chat.
 - Agents may explore referenced workspace entities when needed.
@@ -200,8 +201,14 @@ Context.packet.means(`
 - active retained context
 - relevant workspace references
 - current task framing
+- pasted image inputs preserved as canonical image content when present
 - explicit hydration chosen by AgentChat rather than guessed from provider storage
 `);
+
+when(User.sends("a pasted clipboard image").to(Session.conversation))
+  .then(AgentChat.records(Session.message))
+  .and(AgentChat.preserves("the image as canonical message content rather than a browser-only draft artifact"))
+  .and(AgentChat.provides("structured image input to the selected provider binding when that binding supports image input"));
 
 Compaction.native.means(`
 - provider-managed retention
