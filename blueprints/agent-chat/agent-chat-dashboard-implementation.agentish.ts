@@ -141,6 +141,7 @@ AgentChatDashboardImplementation.enforces(`
 - Agent activity should be shown near the composer with explicit working state, elapsed time, and provider-backed background activity count when available.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - The composer should support a lightweight reply-target reminder so the operator can indicate that the in-progress human message responds to a specific earlier agent message.
+- The browser should preserve unsent per-session message drafts in local storage so transient reloads do not discard typed input.
 - Keyboard interrupt should be exposed as Esc when the selected provider supports a real interrupt action.
 - The gateway should proxy Agent Chat traffic and lazy-start the chat backend on first use.
 - V1 should ship only the behaviors needed for real day-to-day chat use and defer broader ambitions that are not required yet.
@@ -259,6 +260,14 @@ Ui.queuedMessageList.means(`
 - queued user messages are messages already accepted into canonical history but not yet seen by the provider
 - queued messages render below activity status and above the composer
 - directory-change system instructions should appear in the queued region until the provider consumes them
+`);
+
+Ui.composer.means(`
+- unsent drafts are browser-local convenience state, not canonical chat history
+- drafts should be keyed by session id in browser local storage and restored when the operator returns to that session
+- drafts should survive local page reloads and temporary dashboard or chat-server restarts while the operator is still typing
+- sending a message should clear that session's saved draft
+- local draft persistence must not write durable app data to the server or to state/
 `);
 
 Ui.sessionList.means(`
