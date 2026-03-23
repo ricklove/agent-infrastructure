@@ -42,6 +42,14 @@
         "vite": "^5.4.2",
       },
     },
+    "packages/agent-chat-server": {
+      "name": "@agent-infrastructure/agent-chat-server",
+      "devDependencies": {
+        "@types/node": "^20.11.30",
+        "bun-types": "^1.3.10",
+        "typescript": "^5.4.5",
+      },
+    },
     "packages/agent-chat-ui": {
       "name": "@agent-infrastructure/agent-chat-ui",
       "dependencies": {
@@ -199,6 +207,8 @@
     },
   },
   "packages": {
+    "@agent-infrastructure/agent-chat-server": ["@agent-infrastructure/agent-chat-server@workspace:packages/agent-chat-server"],
+
     "@agent-infrastructure/agent-chat-ui": ["@agent-infrastructure/agent-chat-ui@workspace:packages/agent-chat-ui"],
 
     "@agent-infrastructure/agent-graph-core": ["@agent-infrastructure/agent-graph-core@workspace:packages/agent-graph-core"],

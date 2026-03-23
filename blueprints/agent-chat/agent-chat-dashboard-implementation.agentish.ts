@@ -110,6 +110,7 @@ const Decision = {
   sessionIdentity: define.entity("SessionIdentityDecision"),
   providerScope: define.entity("ProviderScopeDecision"),
   providerTransport: define.entity("ProviderTransportDecision"),
+  providerRuntime: define.entity("ProviderRuntimeDecision"),
   sessionStickiness: define.entity("ProviderSessionStickinessDecision"),
   contentModel: define.entity("ContentModelDecision"),
   cacheStrategy: define.entity("ProviderCacheStrategyDecision"),
@@ -296,6 +297,13 @@ Decision.providerTransport.means(`
 - Claude Agent SDK should be integrated through the official SDK client/query surfaces, not by parsing ad hoc terminal output
 - Gemini should use the official @google/genai SDK, including its streaming, files, and caches surfaces when useful
 - OpenRouter should use an OpenRouter-native SDK/provider surface so provider metadata and cache hints are preserved instead of flattened away
+`);
+
+Decision.providerRuntime.means(`
+- local provider runtimes such as Codex app-server are backend-managed support processes rather than browser-managed processes
+- the chat backend may health-check and lazy-start a local provider runtime when the selected provider requires one
+- provider runtime liveness is operational state, not canonical session state
+- provider thread handles and similar provider-owned resume identifiers should be persisted as provider metadata on the canonical session
 `);
 
 Decision.sessionStickiness.means(`
