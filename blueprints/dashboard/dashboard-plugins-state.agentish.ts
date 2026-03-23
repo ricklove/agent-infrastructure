@@ -37,11 +37,11 @@ properly defined, lazy-loaded, and integrated with both shell and gateway.
 
 ### Known Gaps
 - **Agent Swarm Process Color Collision (2026-03-23)**: The Top Process Memory and Top Process CPU
-  charts use a simple hash-based color function (colorForSeries) that only varies hue with fixed
-  saturation (72%) and lightness (60%). This causes many processes to have nearly identical colors,
-  making the charts hard to read. The agent-graph-ui package has a sophisticated stableGraphColor
-  system that varies hue, saturation, and lightness for better color distribution. The swarm UI
-  should use the same approach.
+  charts produce color collisions where different processes (different PIDs) get nearly identical
+  colors. Every unique process key should get a visually distinct color. The agent-graph-ui uses
+  preset hue slots (23 fixed hue positions) plus random offsets to ensure good color distribution.
+  The swarm UI should use the same preset hue slot approach to guarantee distinct colors for each
+  unique process.
 
 ### Verification Status
 - Agent Swarm UI scrolling fix: Awaiting browser verification and screenshot
