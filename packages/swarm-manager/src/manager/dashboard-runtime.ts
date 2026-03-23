@@ -1089,12 +1089,12 @@ export async function ensureDashboardRuntime(
   if (currentState?.publicUrl && publicDashboardReady) {
     nextState = {
       ...nextState,
-      tunnelPid: getRuntimeTunnelPid(currentState),
+      tunnelPid: tunnelPid ?? undefined,
       tunnelLogPath: getRuntimeTunnelLogPath(currentState) ?? cloudflaredLogPath,
       tunnelProvider: getRuntimeTunnelProvider(currentState),
       cloudflaredPid:
         getRuntimeTunnelProvider(currentState) === "cloudflared"
-          ? getRuntimeTunnelPid(currentState)
+          ? tunnelPid ?? undefined
           : undefined,
       cloudflaredLogPath:
         getRuntimeTunnelProvider(currentState) === "cloudflared"
@@ -1107,6 +1107,30 @@ export async function ensureDashboardRuntime(
     logSystemStep("dashboard-runtime", "exit cloudflared=reused");
     writeRuntimeState(nextState);
     return nextState;
+  }
+
+  if (currentState?.publicUrl && tunnelPid) {
+    try {
+      await waitForPublicDashboardReady(currentState.publicUrl, 10, 1000);
+      nextState = {
+        ...nextState,
+        tunnelPid,
+        tunnelLogPath: getRuntimeTunnelLogPath(currentState) ?? cloudflaredLogPath,
+        tunnelProvider: getRuntimeTunnelProvider(currentState),
+        cloudflaredPid:
+          getRuntimeTunnelProvider(currentState) === "cloudflared" ? tunnelPid : undefined,
+        cloudflaredLogPath:
+          getRuntimeTunnelProvider(currentState) === "cloudflared"
+            ? cloudflaredLogPath
+            : undefined,
+        publicUrl: currentState.publicUrl,
+        tunnelCreatedAtMs: currentState.tunnelCreatedAtMs,
+        lastTunnelReplaceAtMs: currentState.lastTunnelReplaceAtMs,
+      };
+      logSystemStep("dashboard-runtime", "exit tunnel=reused-after-local-restart");
+      writeRuntimeState(nextState);
+      return nextState;
+    } catch {}
   }
 
   const tunnel = await startTemporaryTunnel(config.port);
