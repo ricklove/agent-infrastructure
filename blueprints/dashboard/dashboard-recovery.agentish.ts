@@ -59,6 +59,7 @@ Policy.repairFirst.means(`
 - prune stale dashboard and tunnel processes
 - restart the dashboard path when the local origin is dead
 - persist the newest public URL as the canonical runtime state
+- only return a public dashboard URL after the manager has verified that the URL itself is serving the dashboard
 `);
 
 Policy.oneCanonicalTunnel.means(`
@@ -85,6 +86,7 @@ Policy.backupTunnelFallback.means(`
 - when the primary temporary tunnel provider cannot issue a usable URL, the manager may fall back to a backup temporary tunnel provider
 - the backup provider should preserve the temporary-URL model rather than forcing a permanent ingress change
 - recovery should still converge to one canonical active tunnel after fallback
+- a tunnel URL that exists in logs but does not serve the dashboard is not usable and must not be returned
 `);
 
 Policy.escalateAfterFailedRepair.means(`

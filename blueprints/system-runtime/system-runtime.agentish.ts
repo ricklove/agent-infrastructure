@@ -123,6 +123,7 @@ SystemRuntime.enforces(`
 - Dashboard recovery should distinguish local origin failure from public tunnel failure.
 - Quick tunnel replacement should be conservative, cooldown-based, and never eager churn.
 - Temporary dashboard ingress should support a backup tunnel provider when the primary provider cannot issue a URL.
+- Dashboard session issuance should only return a public URL after the manager has verified that the returned URL serves the dashboard.
 `);
 
 SystemRuntime.defines(`

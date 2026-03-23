@@ -729,6 +729,13 @@ async function startCloudflared(port: number): Promise<{ pid: number; url: strin
     /https:\/\/[a-z0-9-]+\.trycloudflare\.com/,
   );
 
+  try {
+    await waitForPublicDashboardReady(url, 10, 1000);
+  } catch {
+    await terminatePids([pid], "dashboard-runtime");
+    throw new Error(`cloudflared public URL did not become ready: ${url}`);
+  }
+
   return {
     pid,
     url,
@@ -747,6 +754,13 @@ async function startLocalhostRun(port: number): Promise<{ pid: number; url: stri
     25_000,
     /https:\/\/[a-z0-9-]+\.lhr\.life/i,
   );
+
+  try {
+    await waitForPublicDashboardReady(url, 10, 1000);
+  } catch {
+    await terminatePids([pid], "dashboard-runtime");
+    throw new Error(`localhost.run public URL did not become ready: ${url}`);
+  }
 
   return {
     pid,
@@ -820,7 +834,7 @@ export async function ensureDashboardRuntime(
     currentState &&
     (dashboardRunning || dashboardHealthy) &&
     (!config.useCloudflared ||
-      ((cloudflaredRunning || publicDashboardReady) &&
+      (publicDashboardReady &&
         typeof currentState.publicUrl === "string" &&
         currentState.publicUrl.trim().length > 0));
 
@@ -861,7 +875,7 @@ export async function ensureDashboardRuntime(
     return nextState;
   }
 
-  if (cloudflaredRunning && currentState?.publicUrl && publicDashboardReady) {
+  if (currentState?.publicUrl && publicDashboardReady) {
     nextState = {
       ...nextState,
       tunnelPid: getRuntimeTunnelPid(currentState),
