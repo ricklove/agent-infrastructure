@@ -45,6 +45,9 @@ const Provider = {
   thread: define.entity("ProviderThreadHandle"),
   capability: define.entity("ProviderCapability"),
   selection: define.entity("SessionProviderSelection"),
+  authProfile: define.entity("ProviderAuthProfile"),
+  modelRef: define.entity("ProviderQualifiedModelRef"),
+  imageModelRef: define.entity("ProviderImageModelRef"),
 };
 
 const Scope = {
@@ -79,6 +82,7 @@ const Capability = {
   imageInput: define.concept("ImageInputSupport"),
   cachedContext: define.concept("ProviderNativeContextCaching"),
   threadReuse: define.concept("ProviderNativeThreadReuse"),
+  modelCatalog: define.concept("ProviderQualifiedModelCatalog"),
 };
 
 const Api = {
@@ -105,6 +109,8 @@ const Decision = {
   port: define.entity("BackendPortDecision"),
   sessionIdentity: define.entity("SessionIdentityDecision"),
   providerScope: define.entity("ProviderScopeDecision"),
+  providerTransport: define.entity("ProviderTransportDecision"),
+  sessionStickiness: define.entity("ProviderSessionStickinessDecision"),
   contentModel: define.entity("ContentModelDecision"),
   cacheStrategy: define.entity("ProviderCacheStrategyDecision"),
   v1Cut: define.entity("FirstImplementationCut"),
@@ -129,6 +135,7 @@ AgentChatDashboardImplementation.defines(`
 - SqlitePersistence means sessions, messages, run events, and provider metadata are stored in one SQLite database under state/.
 - SessionProviderSelection means each session records one concrete provider choice and its provider-specific metadata.
 - AgentChatContentBlock means a canonical block such as text or image that is preserved before adapter mapping.
+- ProviderQualifiedModelRef means model identity is stored as a provider-qualified reference rather than an ambiguous bare model name.
 `);
 
 Dashboard.plugin.contains(Dashboard.route, Dashboard.screen, Chat.backend);
@@ -140,6 +147,9 @@ Chat.providerBinding.contains(
   Provider.geminiAdapter,
   Provider.thread,
   Provider.selection,
+  Provider.authProfile,
+  Provider.modelRef,
+  Provider.imageModelRef,
   Provider.capability,
 );
 Chat.stateStore.contains(Storage.transcript, Storage.sessionIndex, Storage.runEvent, Storage.providerConfig, Storage.cacheHint);
@@ -193,6 +203,12 @@ Capability.cachedContext.means(`
 - fallback hydration should still work from canonical app-owned history when provider-native caching is absent
 `);
 
+Capability.modelCatalog.means(`
+- provider and model identity should be resolved from a capability-aware catalog
+- model refs should stay provider-qualified like provider/model rather than bare names
+- modality, tool, cache, and context-window metadata should come from cataloged model capabilities rather than hand-waved assumptions
+`);
+
 Scope.lazyBackend.means(`
 - the chat backend is not a permanent systemd service
 - the dashboard gateway starts it on first chat API or WebSocket traffic
@@ -222,6 +238,7 @@ Storage.sqlite.means(`
 - use one SQLite database at /home/ec2-user/state/agent-chat/agent-chat.sqlite
 - store sessions, messages, provider bindings, run events, and approval records there
 - store provider kind, provider model, provider thread handle, and provider configuration references there
+- store provider auth-profile choice and optional image-model override there
 - store canonical content blocks and cache hints instead of only flattened prompt strings
 - avoid JSON-file transcript storage for the first implementation
 `);
@@ -274,6 +291,19 @@ Decision.providerScope.means(`
 - provider failures do not delete canonical session state
 `);
 
+Decision.providerTransport.means(`
+- Codex app-server should be integrated through its app-server JSON-RPC transport, not by scraping the TUI
+- Claude Agent SDK should be integrated through the official SDK client/query surfaces, not by parsing ad hoc terminal output
+- Gemini should use the official @google/genai SDK, including its streaming, files, and caches surfaces when useful
+- OpenRouter should use an OpenRouter-native SDK/provider surface so provider metadata and cache hints are preserved instead of flattened away
+`);
+
+Decision.sessionStickiness.means(`
+- each session should persist provider kind, qualified model ref, auth profile, and optional image-model override
+- session stickiness should preserve provider-native cache hits and reduce needless provider churn
+- image-capable fallback should be explicit when a chosen text model cannot accept images
+`);
+
 Decision.contentModel.means(`
 - canonical messages are stored as ordered content blocks
 - V1 supports text and image input blocks
@@ -315,6 +345,7 @@ when(Chat.backend.starts())
   .and(Chat.backend.requires(Capability.multimodal))
   .and(Chat.backend.requires(Capability.imageInput))
   .and(Chat.backend.requires(Capability.cachedContext))
+  .and(Chat.backend.requires(Capability.modelCatalog))
   .and(Chat.backend.bindsTo(Provider.codex))
   .and(Chat.backend.bindsTo(Provider.openrouter))
   .and(Chat.backend.bindsTo(Provider.claudeAgentSdk))
@@ -361,6 +392,18 @@ when(Decision.cacheStrategy.guides(AgentChatDashboardImplementation))
   .and(Chat.backend.prefers(Capability.cachedContext).for(Provider.gemini))
   .and(Chat.backend.prefers(Capability.multimodal).for(Provider.openrouter));
 
+when(Decision.providerTransport.guides(AgentChatDashboardImplementation))
+  .then(Chat.backend.integrates(Provider.codex).through("app-server JSON-RPC over a local transport"))
+  .and(Chat.backend.integrates(Provider.claudeAgentSdk).through("the official Claude Agent SDK client"))
+  .and(Chat.backend.integrates(Provider.gemini).through("the official @google/genai SDK"))
+  .and(Chat.backend.integrates(Provider.openrouter).through("an OpenRouter-native provider SDK"));
+
+when(Decision.sessionStickiness.guides(AgentChatDashboardImplementation))
+  .then(Chat.backend.persists(Provider.modelRef))
+  .and(Chat.backend.persists(Provider.authProfile))
+  .and(Chat.backend.mayPersist(Provider.imageModelRef))
+  .and(Chat.backend.avoids("switching providers or models implicitly mid-session"));
+
 when(Decision.v1Cut.guides(AgentChatDashboardImplementation))
   .then(AgentChatDashboardImplementation.defers(Scope.deferImports))
   .and(AgentChatDashboardImplementation.forbids("a placeholder-only dashboard chat tab after implementation starts"));
@@ -368,9 +411,11 @@ when(Decision.v1Cut.guides(AgentChatDashboardImplementation))
 AgentChatDashboardImplementation.prescribes(`
 - Step 1: create packages/agent-chat-server with SQLite-backed session and message persistence, dashboard-relative API and WebSocket endpoints, and one provider adapter interface implemented by Codex app-server, OpenRouter, Claude Agent SDK, and Gemini.
 - Step 2: before implementing any specific provider adapter, re-research that provider's current docs, transport model, multimodal path, caching path, and one or more relevant open-source reference implementations.
-- Step 3: implement a canonical multimodal content model with text and image blocks plus provider-specific cache-hint mapping.
-- Step 4: extend the chat dashboard plugin so the feature declares backend health, startup, API path, and WebSocket path.
-- Step 5: replace the placeholder AgentChatScreen with a real session list, provider picker, transcript, composer, image-aware input flow, and streaming run state.
-- Step 6: verify lazy backend start through the gateway, browser reconnect behavior, provider-specific streaming behavior, multimodal input behavior, cache strategy behavior, and real message persistence across refresh and backend restart.
-- Step 7: defer imports, multi-agent participation, in-session provider switching UI, and advanced context tooling until the vertical slice is working end to end.
+- Step 3: build a provider-qualified model catalog with modality, context-window, tool, and cache metadata.
+- Step 4: implement a canonical multimodal content model with text and image blocks plus provider-specific cache-hint mapping.
+- Step 5: persist per-session provider stickiness including provider kind, qualified model ref, auth profile, and optional image-model override.
+- Step 6: extend the chat dashboard plugin so the feature declares backend health, startup, API path, and WebSocket path.
+- Step 7: replace the placeholder AgentChatScreen with a real session list, provider picker, transcript, composer, image-aware input flow, and streaming run state.
+- Step 8: verify lazy backend start through the gateway, browser reconnect behavior, provider-specific streaming behavior, multimodal input behavior, cache strategy behavior, and real message persistence across refresh and backend restart.
+- Step 9: defer imports, multi-agent participation, in-session provider switching UI, and advanced context tooling until the vertical slice is working end to end.
 `);
