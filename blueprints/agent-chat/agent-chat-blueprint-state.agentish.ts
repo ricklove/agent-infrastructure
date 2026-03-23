@@ -25,6 +25,7 @@ const CurrentReality = {
   directoryAndTitleQueueing: define.concept("QueuedDirectoryAndTitleInstructions"),
   codexAndClaudeExecution: define.concept("CodexAndClaudeProviderExecution"),
   currentChatProviderSettings: define.concept("CurrentChatProviderSettingsMenu"),
+  clipboardImagePaste: define.concept("ClipboardImagePasteSupport"),
   genericSessionActivity: define.concept("GenericSessionActivityOnly"),
   fixedTurnDeadline: define.concept("FixedCodexTurnDeadline"),
   noFolderOrganization: define.concept("NoCanonicalFolderOrganization"),
@@ -34,9 +35,9 @@ const CurrentReality = {
 };
 
 AgentChatBlueprintState.defines(`
-- CurrentImplementationStatus means Agent Chat currently exists as a real dashboard feature with a working backend, working UI, canonical file-backed session persistence, realtime updates, and more than one implemented provider path.
-- AssessmentConfidence is medium because overall Agent Chat state is still based mostly on direct source inspection, but the thread/composer layout path now also has direct browser verification at small, medium, and wide viewport sizes.
-- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-gap-fix/.
+- CurrentImplementationStatus means Agent Chat currently exists as a real dashboard feature with a working backend, working UI, canonical file-backed session persistence, realtime updates, clipboard image paste support, and more than one implemented provider path.
+- AssessmentConfidence is medium-high because the current state now has both direct source inspection and direct live-browser verification against the deployed dashboard at matching frontend and backend revisions.
+- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive live-browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-gap-fix/ including live-small-092de11.png, live-medium-092de11.png, and live-wide-092de11.png.
 - This blueprint-state compares current implementation reality against the ideal Agent Chat product blueprint in agent-chat.agentish.ts, the implementation-resolved dashboard blueprint in agent-chat-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
 - ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
 - KnownIssue means the provider catalog and UI still include planned providers that do not yet execute in the backend today.
@@ -58,6 +59,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.directoryAndTitleQueueing,
   CurrentReality.codexAndClaudeExecution,
   CurrentReality.currentChatProviderSettings,
+  CurrentReality.clipboardImagePaste,
   CurrentReality.genericSessionActivity,
   CurrentReality.fixedTurnDeadline,
   CurrentReality.noFolderOrganization,
@@ -109,6 +111,18 @@ CurrentReality.currentChatProviderSettings.means(`
 - existing sessions may switch between currently ready providers without creating a new canonical chat session
 - changing provider settings clears provider-owned thread metadata and preserves canonical transcript history
 - provider switching is blocked while a run is active, but otherwise works as a normal session patch
+- live browser verification confirms the current-chat provider, model, and auth-profile controls render as comboboxes on the deployed dashboard
+`);
+
+CurrentReality.clipboardImagePaste.means(`
+- the composer accepts pasted clipboard image files and stages them as removable attachments before send
+- sending a message with pasted images stores those images durably under canonical app data rather than leaving them in browser-only blob state
+- transcript rendering now shows stored image blocks inline rather than reducing them to raw URL text
+- the current Codex and Claude provider adapters now receive structured image input derived from the canonical image blocks
+`);
+
+CurrentReality.verticalSlice.means(`
+- the deployed dashboard frontend and backend were verified at matching revision dashboard-092de11c11 during live browser validation
 `);
 
 CurrentReality.genericSessionActivity.means(`
@@ -160,6 +174,9 @@ when(CurrentReality.genericSessionActivity.exists())
 
 when(CurrentReality.currentChatProviderSettings.exists())
   .then(AgentChatBlueprintState.records("current implementation now exceeds the older V1 cut by supporting in-session provider switching"));
+
+when(CurrentReality.clipboardImagePaste.exists())
+  .then(AgentChatBlueprintState.treats("clipboard image paste as an implemented part of the current Agent Chat vertical slice"));
 
 when(CurrentReality.fixedTurnDeadline.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap))
