@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react"
 
 type ProviderKind =
@@ -150,6 +151,71 @@ export type AgentChatScreenProps = {
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
 const defaultSessionDirectory = "/home/ec2-user/workspace"
 const draftStorageKeyPrefix = "agent-infrastructure.agent-chat.draft."
+
+function IconButton(props: {
+  label: string
+  title?: string
+  disabled?: boolean
+  onClick?: () => void
+  children: ReactNode
+  tone?: "default" | "primary" | "danger"
+}) {
+  const toneClass =
+    props.tone === "primary"
+      ? "border-cyan-300/30 bg-cyan-300 text-slate-950"
+      : props.tone === "danger"
+        ? "border-white/10 bg-white/5 text-rose-100"
+        : "border-white/10 bg-white/5 text-slate-200"
+
+  return (
+    <button
+      type="button"
+      aria-label={props.label}
+      title={props.title ?? props.label}
+      onClick={props.onClick}
+      disabled={props.disabled}
+      className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border ${toneClass} disabled:cursor-not-allowed disabled:opacity-50`}
+    >
+      {props.children}
+    </button>
+  )
+}
+
+function SessionsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <rect x="3.5" y="4.5" width="17" height="5" rx="1.5" />
+      <rect x="3.5" y="14.5" width="17" height="5" rx="1.5" />
+    </svg>
+  )
+}
+
+function MenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
+    </svg>
+  )
+}
+
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <path d="M4 11.5 20 4l-4.5 16-3.5-6L4 11.5Z" />
+      <path d="M11.5 13.5 20 4" />
+    </svg>
+  )
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <rect x="6.5" y="6.5" width="11" height="11" rx="2" />
+    </svg>
+  )
+}
 
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
@@ -858,16 +924,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setSettingsOpen((current) => !current)}
-              className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-semibold text-cyan-100"
-            >
-              {settingsOpen ? "Hide Settings" : "New Chat / Settings"}
-            </button>
-          </div>
-
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="space-y-3">
               {loading ? (
@@ -938,20 +994,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMobileSessionsOpen(true)}
-              className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 md:hidden"
-            >
-              Sessions
-            </button>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen((current) => !current)}
-              className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300"
-            >
-              {settingsOpen ? "Hide Menu" : "Menu"}
-            </button>
+            <div className="md:hidden">
+              <IconButton
+                label="Open sessions"
+                title="Sessions"
+                onClick={() => setMobileSessionsOpen(true)}
+              >
+                <SessionsIcon />
+              </IconButton>
+            </div>
           </div>
         </div>
 
@@ -1275,22 +1326,32 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     Ctrl+Enter sends. Esc interrupts when the provider supports it.
                   </p>
                   <div className="flex items-center gap-2">
+                    <IconButton
+                      label={settingsOpen ? "Hide settings menu" : "Show settings menu"}
+                      title={settingsOpen ? "Hide Menu" : "Menu"}
+                      onClick={() => setSettingsOpen((current) => !current)}
+                    >
+                      <MenuIcon />
+                    </IconButton>
                     {activity.canInterrupt && activity.status === "running" ? (
-                      <button
-                        type="button"
+                      <IconButton
+                        label={interrupting ? "Interrupting run" : "Interrupt run"}
+                        title={interrupting ? "Interrupting..." : "Interrupt"}
                         onClick={() => void interruptRun()}
                         disabled={interrupting}
-                        className="rounded-2xl border border-white/10 px-4 py-2 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                        tone="danger"
                       >
-                        {interrupting ? "Interrupting..." : "Interrupt"}
-                      </button>
+                        <StopIcon />
+                      </IconButton>
                     ) : null}
                     <button
                       type="submit"
+                      aria-label={sending ? "Sending message" : "Send message"}
+                      title={sending ? "Sending..." : "Send"}
                       disabled={!activeSession || sending || !composerText.trim()}
-                      className="rounded-2xl bg-cyan-300 px-4 py-2 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-cyan-300/40"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300 text-slate-950 disabled:cursor-not-allowed disabled:border-cyan-300/20 disabled:bg-cyan-300/40"
                     >
-                      {sending ? "Sending..." : "Send"}
+                      <SendIcon />
                     </button>
                   </div>
                 </div>
