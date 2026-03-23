@@ -36,11 +36,12 @@ properly defined, lazy-loaded, and integrated with both shell and gateway.
   classes to enable proper vertical scrolling when content exceeds viewport height.
 
 ### Known Gaps
-- **Agent Swarm Process Color Keyed by PID Instead of Name (2026-03-23)**: The process charts
-  currently key colors by PID (e.g., "memory:692857") instead of process name (comm field like
-  "node:vite"). This causes different instances of the same process to have different colors when
-  they should have the same color for visual grouping. Colors should be keyed by process name so
-  all "node:vite" processes share one color, all "claude" processes share another, etc.
+- None currently identified
+
+### Recently Fixed Issues (Continued)
+- **Agent Swarm Process Color Distribution (2026-03-23)**: Colors are now keyed by PID with preset
+  hue slots (23 positions) to ensure each unique process instance gets a visually distinct color
+  without collisions.
 
 ### Verification Status
 - Agent Swarm UI scrolling fix: Awaiting browser verification and screenshot
