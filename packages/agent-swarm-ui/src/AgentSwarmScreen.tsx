@@ -230,7 +230,7 @@ function createChartLayout(width: number): ChartLayout {
   return {
     width,
     height: 180,
-    padLeft: 42,
+    padLeft: 64,
     padRight: 10,
     padTop: 10,
     padBottom: 22,
