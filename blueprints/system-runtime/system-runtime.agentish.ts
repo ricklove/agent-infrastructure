@@ -204,7 +204,8 @@ Policy.fullUpdateWorkflow.means(`
 - capture screenshots as evidence of post-deploy UI state
 - verify the served frontend version matches the deployed revision
 - verify the running backend version matches the deployed revision
-- treat frontend-backend version mismatch as a failed rollout state
+- require the deployed frontend version and deployed backend version to match exactly
+- treat any frontend-backend version mismatch as a failed rollout state
 `);
 
 Gateway.lazyStart.means(`
