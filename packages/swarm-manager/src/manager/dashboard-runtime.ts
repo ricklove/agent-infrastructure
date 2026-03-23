@@ -957,9 +957,7 @@ export async function runDashboardRecoveryMonitor(input: {
         );
 
         if (publicNotReadyCount >= 5) {
-          const cloudflaredPids = listPidsByPattern(
-            new RegExp(`cloudflared\\s+tunnel\\s+--url\\s+http:\\/\\/127\\.0\\.0\\.1:${port}`),
-          );
+          const cloudflaredPids = listPidsByPattern(/cloudflared\s+tunnel/);
           await terminatePids(cloudflaredPids, "dashboard-recovery-monitor");
           const tunnel = await startCloudflared(port);
           expectedPublicUrl = tunnel.url;
