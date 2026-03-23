@@ -47,6 +47,14 @@ const Layout = {
   unitFile: define.document("SystemdUnitFile"),
 };
 
+const Tooling = {
+  connectSsh: define.entity("ConnectSshTool"),
+  connectVscode: define.entity("ConnectVscodeTool"),
+  githubAppToken: define.entity("GithubAppTokenTool"),
+  localSwarmTest: define.entity("LocalSwarmTestTool"),
+  repoTool: define.entity("RepoTool"),
+};
+
 const Entrypoint = {
   setup: define.entity("SetupEntrypoint"),
   manager: define.entity("ManagerEntrypoint"),
@@ -68,6 +76,11 @@ const RuntimeCode = {
   graphServer: define.entity("GraphServerProgram"),
   accessHandler: define.entity("DashboardAccessHandler"),
   swarmMonitor: define.entity("SwarmMonitorProgram"),
+};
+
+const Integration = {
+  githubAppTokenResolution: define.entity("GitHubAppTokenResolution"),
+  dashboardRecoveryMonitor: define.entity("DashboardRecoveryMonitor"),
 };
 
 const Policy = {
@@ -143,7 +156,12 @@ Layout.scripts.contains(
   Entrypoint.launchWorker,
   Entrypoint.askpass,
 );
-Layout.tools.contains(define.entity("ConnectSshTool"), define.entity("ConnectVscodeTool"), define.entity("GithubAppTokenTool"), define.entity("LocalSwarmTestTool"));
+Layout.tools.contains(
+  Tooling.connectSsh,
+  Tooling.connectVscode,
+  Tooling.githubAppToken,
+  Tooling.localSwarmTest,
+);
 Layout.packageScripts.contains(Layout.bootstrapAsset);
 
 Entrypoint.setup.contains(RuntimeCode.setupHost, RuntimeCode.updateRuntime);
@@ -152,7 +170,7 @@ Entrypoint.managerNode.contains(RuntimeCode.workerAgent);
 Entrypoint.workerMonitor.contains(RuntimeCode.workerAgent);
 Entrypoint.issueDashboardSession.contains(RuntimeCode.dashboardRuntime);
 Entrypoint.launchWorker.contains(Layout.bootstrapAsset);
-Entrypoint.askpass.contains(define.entity("GitHubAppTokenResolution"));
+Entrypoint.askpass.contains(Integration.githubAppTokenResolution);
 Gateway.dashboard.contains(Gateway.backend, Gateway.definition, Gateway.health, Gateway.lazyStart);
 Gateway.backend.contains(RuntimeCode.graphServer);
 
@@ -229,8 +247,9 @@ when(AWS.lambda.invokes(Entrypoint.issueDashboardSession))
   .and(Entrypoint.issueDashboardSession.starts("a background dashboard recovery monitor"))
   .and(Entrypoint.issueDashboardSession.returns("the current session URL quickly"))
   .and(AWS.lambda.continues("dashboard readiness polling against that URL"))
-  .and(define.entity("DashboardRecoveryMonitor").detects("dashboard readiness failure"))
-  .then(define.entity("DashboardRecoveryMonitor").repairs(RuntimeCode.dashboardRuntime))
+  .and(Integration.dashboardRecoveryMonitor.staysAlive("through the initial connect window"))
+  .and(Integration.dashboardRecoveryMonitor.detects("dashboard readiness failure"))
+  .then(Integration.dashboardRecoveryMonitor.repairs(RuntimeCode.dashboardRuntime))
   .and(Entrypoint.issueDashboardSession.records("a durable help-request incident on unrecoverable failure"));
 
 when(Host.manager.starts(Host.service))
@@ -285,7 +304,7 @@ when(RuntimeCode.swarmMonitor.observes("host distress"))
   .and(SystemRuntime.forbids("starting expensive process scans only after the spike has already started"))
   .and(SystemRuntime.treats("process lead-up capture as a manager observability requirement"));
 
-when(Layout.tools.contains(define.entity("RepoTool")))
+when(Layout.tools.contains(Tooling.repoTool))
   .then(SystemRuntime.keeps("repository helpers out of the runtime script surface"))
   .and(SystemRuntime.preserves("top-level scripts as the host-facing contract"));
 

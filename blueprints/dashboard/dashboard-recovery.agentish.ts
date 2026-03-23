@@ -49,7 +49,8 @@ Policy.activeAttemptRequired.means(`
 Policy.repairFirst.means(`
 - on dashboard session issuance success, start a background recovery monitor immediately
 - let Lambda keep polling readiness while the manager-side monitor repairs in parallel
-- if the monitor observes public readiness failure, attempt repair automatically
+- keep the monitor alive through the initial connection window rather than exiting after one healthy check
+- if the monitor observes public readiness failure or a dead local origin during that window, attempt repair automatically
 - prune stale dashboard and tunnel processes
 - restart the dashboard path and reissue a fresh session URL
 `);

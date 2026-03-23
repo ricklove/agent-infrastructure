@@ -907,50 +907,61 @@ export async function runDashboardRecoveryMonitor(input: {
       "dashboard-recovery-monitor",
       `start pid=${pid} public_url=${expectedPublicUrl} port=${port}`,
     );
+    const monitorDeadline = Date.now() + 90_000;
+    while (Date.now() < monitorDeadline) {
+      const currentState = readRuntimeState();
+      if (currentState?.publicUrl?.trim() !== expectedPublicUrl) {
+        logSystemStep(
+          "dashboard-recovery-monitor",
+          `exit stale_public_url expected=${expectedPublicUrl} current=${currentState?.publicUrl ?? "missing"}`,
+        );
+        return;
+      }
 
-    try {
-      await waitForPublicDashboardReady(expectedPublicUrl, 45, 1000);
-      logSystemStep("dashboard-recovery-monitor", `exit ready public_url=${expectedPublicUrl}`);
-      return;
-    } catch {}
+      const dashboardHealthy = await isDashboardHealthy(port);
+      const publicReady = await isPublicDashboardReady(expectedPublicUrl);
 
-    const currentState = readRuntimeState();
-    if (currentState?.publicUrl?.trim() !== expectedPublicUrl) {
-      logSystemStep(
-        "dashboard-recovery-monitor",
-        `exit stale_public_url expected=${expectedPublicUrl} current=${currentState?.publicUrl ?? "missing"}`,
-      );
-      return;
+      if (!dashboardHealthy) {
+        await terminatePids(
+          currentState?.dashboardPid ? [currentState.dashboardPid] : [],
+          "dashboard-recovery-monitor",
+        );
+        const dashboardPid = await startDashboardServer({
+          port,
+          managerUrl,
+          useCloudflared: true,
+        });
+        await waitForHealth(port);
+        writeRuntimeState({
+          dashboardPid,
+          dashboardLogPath,
+          localUrl: `http://127.0.0.1:${port}`,
+          cloudflaredPid: currentState?.cloudflaredPid,
+          cloudflaredLogPath: currentState?.cloudflaredLogPath ?? cloudflaredLogPath,
+          publicUrl: expectedPublicUrl,
+        });
+        logSystemStep(
+          "dashboard-recovery-monitor",
+          `restart dashboard_pid=${dashboardPid} public_url=${expectedPublicUrl}`,
+        );
+        await Bun.sleep(1000);
+        continue;
+      }
+
+      if (!publicReady) {
+        logSystemStep(
+          "dashboard-recovery-monitor",
+          `warn public_not_ready public_url=${expectedPublicUrl}`,
+        );
+      }
+
+      await Bun.sleep(2000);
     }
 
-    const dashboardHealthy = await isDashboardHealthy(port);
-    if (!dashboardHealthy) {
-      await terminatePids(
-        currentState?.dashboardPid ? [currentState.dashboardPid] : [],
-        "dashboard-recovery-monitor",
-      );
-      const dashboardPid = await startDashboardServer({
-        port,
-        managerUrl,
-        useCloudflared: true,
-      });
-      await waitForHealth(port);
-      writeRuntimeState({
-        dashboardPid,
-        dashboardLogPath,
-        localUrl: `http://127.0.0.1:${port}`,
-        cloudflaredPid: currentState?.cloudflaredPid,
-        cloudflaredLogPath: currentState?.cloudflaredLogPath ?? cloudflaredLogPath,
-        publicUrl: expectedPublicUrl,
-      });
-      logSystemStep(
-        "dashboard-recovery-monitor",
-        `restart dashboard_pid=${dashboardPid} public_url=${expectedPublicUrl}`,
-      );
-    }
-
-    await waitForPublicDashboardReady(expectedPublicUrl, 45, 1000);
-    logSystemStep("dashboard-recovery-monitor", `exit recovered public_url=${expectedPublicUrl}`);
+    logSystemStep(
+      "dashboard-recovery-monitor",
+      `exit watch_window_complete public_url=${expectedPublicUrl}`,
+    );
   } catch (error) {
     requestDashboardHelp({
       reason: "dashboard-monitor-recovery-failed",
