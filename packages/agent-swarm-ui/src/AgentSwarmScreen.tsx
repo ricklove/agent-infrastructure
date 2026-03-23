@@ -1369,7 +1369,7 @@ export function AgentSwarmScreen({
                         d={path}
                         fill="none"
                         opacity="1"
-                        stroke="#e0f2fe"
+                        stroke="#7dd3fc"
                         strokeWidth="3"
                       />
                     ))}
@@ -1405,7 +1405,7 @@ export function AgentSwarmScreen({
                     CPU
                   </span>
                   <span className="flex items-center gap-2">
-                    <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-sky-300" />
                     RAM
                   </span>
                 </div>
