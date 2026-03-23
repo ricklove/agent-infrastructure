@@ -26,11 +26,11 @@ const CurrentReality = {
   codexAndClaudeExecution: define.concept("CodexAndClaudeProviderExecution"),
   currentChatProviderSettings: define.concept("CurrentChatProviderSettingsMenu"),
   clipboardImagePaste: define.concept("ClipboardImagePasteSupport"),
+  archivedSessionOrganization: define.concept("ArchivedSessionOrganization"),
+  sessionListSearch: define.concept("SessionListSearch"),
   genericSessionActivity: define.concept("GenericSessionActivityOnly"),
   fixedTurnDeadline: define.concept("FixedCodexTurnDeadline"),
   noFolderOrganization: define.concept("NoCanonicalFolderOrganization"),
-  noArchivedSessionOrganization: define.concept("NoCanonicalArchivedSessionOrganization"),
-  noSessionListSearch: define.concept("NoSessionListSearch"),
   plannedProviders: define.concept("PlannedButUnimplementedProviders"),
   noWorkspaceRepoDurability: define.concept("NoManagerControlledWorkspaceRepoDurability"),
   deferredScope: define.concept("DeferredProductScope"),
@@ -48,7 +48,6 @@ AgentChatBlueprintState.defines(`
 - KnownIssue also includes the current Agent Chat provider layer still being uneven, with Codex and Claude implemented while OpenRouter and Gemini remain planned.
 - KnownIssue also includes the current Codex adapter retaining an adapter-level timeout policy that remains separate from the newer Claude path.
 - KnownIssue also includes the current implementation now supporting in-session provider switching ahead of the older V1 cut language in the dashboard implementation blueprint, so that blueprint should no longer be read as excluding the shipped behavior.
-- KnownIssue also includes the current session list still lacking built-in archive handling and built-in search, even though those are now required by the updated session-list blueprint.
 `);
 
 AgentChatBlueprintState.contains(
@@ -65,11 +64,11 @@ AgentChatBlueprintState.contains(
   CurrentReality.codexAndClaudeExecution,
   CurrentReality.currentChatProviderSettings,
   CurrentReality.clipboardImagePaste,
+  CurrentReality.archivedSessionOrganization,
+  CurrentReality.sessionListSearch,
   CurrentReality.genericSessionActivity,
   CurrentReality.fixedTurnDeadline,
   CurrentReality.noFolderOrganization,
-  CurrentReality.noArchivedSessionOrganization,
-  CurrentReality.noSessionListSearch,
   CurrentReality.plannedProviders,
   CurrentReality.noWorkspaceRepoDurability,
   CurrentReality.deferredScope,
@@ -129,14 +128,27 @@ CurrentReality.clipboardImagePaste.means(`
 - the current Codex and Claude provider adapters now receive structured image input derived from the canonical image blocks
 `);
 
+CurrentReality.archivedSessionOrganization.means(`
+- canonical session metadata now tracks whether a chat is archived
+- archived chats are removed from the default main list without deleting transcript or provider metadata
+- the session-list menu now reveals a hidden archived section where archived chats can be browsed and restored
+- the current-chat menu also exposes archive or restore visibility controls for the active session
+`);
+
+CurrentReality.sessionListSearch.means(`
+- the session list now exposes an inline search field
+- search filters sessions by title, preview, provider, model, and cwd without leaving the session surface
+- the same filter applies to both the main chat list and the archived section when that section is opened
+`);
+
 CurrentReality.verticalSlice.means(`
 - the deployed dashboard frontend and backend were verified at matching revision dashboard-092de11c11 during live browser validation
 `);
 
 CurrentReality.genericSessionActivity.means(`
 - the session list currently receives a generic activity object with status, timing, background-process count, and waiting flags
-- the current implementation does not model worker state as an explicit first-class session-list concept
-- worker details therefore remain thinner and less legible in the session list than the blueprint should require
+- the browser now renders that activity into a clearer worker-status summary on each session item, including running, queued, elapsed, waiting, background, and error detail when available
+- the current implementation still does not model worker state as a richer explicit backend contract beyond that generic activity object
 `);
 
 CurrentReality.fixedTurnDeadline.means(`
@@ -149,18 +161,6 @@ CurrentReality.noFolderOrganization.means(`
 - sessions are currently listed as one flat collection sorted by last activity
 - sessions do not currently belong to canonical folders
 - the current implementation therefore lacks workspace-owned session organization beyond title, provider, and cwd metadata
-`);
-
-CurrentReality.noArchivedSessionOrganization.means(`
-- sessions currently cannot be archived out of the default main list
-- there is no hidden archived section for later browsing or restore
-- canonical session metadata therefore does not yet track archive visibility state
-`);
-
-CurrentReality.noSessionListSearch.means(`
-- the current session list does not expose a search field
-- operators must visually scan the entire list to find a chat by title, preview, provider, model, or cwd
-- the current implementation therefore falls short of a compact searchable session-list workflow
 `);
 
 CurrentReality.noWorkspaceRepoDurability.means(`
@@ -182,9 +182,7 @@ CurrentReality.deferredScope.means(`
 - import normalization is not implemented
 - native versus Agentish compaction is specified in blueprints but not yet exposed as a real editable session policy
 - session folders are not implemented
-- archived-session organization is not implemented
-- session-list search is not implemented
-- explicit worker-state summaries in the session list are not implemented
+- explicit worker-state summaries in the backend contract are not implemented beyond the generic activity payload
 - retained context inspection is still much thinner than the ideal blueprint describes
 `);
 
@@ -213,14 +211,6 @@ when(CurrentReality.fixedTurnDeadline.exists())
 
 when(CurrentReality.noFolderOrganization.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
-
-when(CurrentReality.noArchivedSessionOrganization.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap))
-  .and(AgentChatBlueprintState.records(Assessment.issue));
-
-when(CurrentReality.noSessionListSearch.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap))
-  .and(AgentChatBlueprintState.records(Assessment.issue));
 
 when(CurrentReality.noWorkspaceRepoDurability.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap))
