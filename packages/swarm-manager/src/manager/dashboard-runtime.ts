@@ -252,6 +252,33 @@ function listPidsByPattern(pattern: RegExp): number[] {
   return [...pids];
 }
 
+function listCloudflaredTunnelPids(): number[] {
+  const result = Bun.spawnSync(["pgrep", "-f", "cloudflared tunnel"], {
+    cwd: repoRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  if (result.exitCode !== 0) {
+    return [];
+  }
+
+  const output = result.stdout.toString().trim();
+  if (!output) {
+    return [];
+  }
+
+  const pids = new Set<number>();
+  for (const line of output.split("\n")) {
+    const pid = Number.parseInt(line.trim(), 10);
+    if (Number.isInteger(pid) && pid > 0 && isPidRunning(pid)) {
+      pids.add(pid);
+    }
+  }
+
+  return [...pids];
+}
+
 async function terminatePids(pids: number[], source: string): Promise<void> {
   const unique = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
   if (unique.length === 0) {
@@ -957,7 +984,7 @@ export async function runDashboardRecoveryMonitor(input: {
         );
 
         if (publicNotReadyCount >= 5) {
-          const cloudflaredPids = listPidsByPattern(/cloudflared\s+tunnel/);
+          const cloudflaredPids = listCloudflaredTunnelPids();
           await terminatePids(cloudflaredPids, "dashboard-recovery-monitor");
           const tunnel = await startCloudflared(port);
           expectedPublicUrl = tunnel.url;
