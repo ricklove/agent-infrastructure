@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 type DashboardHealth = {
   ok: boolean
@@ -162,14 +162,18 @@ type ChartLayout = {
   padBottom: number
 }
 
-const chartLayout: ChartLayout = {
-  width: 820,
-  height: 180,
-  padLeft: 42,
-  padRight: 10,
-  padTop: 10,
-  padBottom: 22,
+function createChartLayout(width: number): ChartLayout {
+  return {
+    width,
+    height: 180,
+    padLeft: 42,
+    padRight: 10,
+    padTop: 10,
+    padBottom: 22,
+  }
 }
+
+const defaultChartLayout = createChartLayout(820)
 
 function chartInnerWidth(layout: ChartLayout): number {
   return layout.width - layout.padLeft - layout.padRight
@@ -237,6 +241,38 @@ function chartGuideValues(maxValue: number): [number, number, number] {
   return [maxValue, maxValue / 2, 0]
 }
 
+function formatTimeAxisLabel(timestamp: number, rangeMinutes: number): string {
+  const date = new Date(timestamp)
+
+  if (rangeMinutes <= 6 * 60) {
+    return date.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    })
+  }
+
+  if (rangeMinutes <= 24 * 60) {
+    return date.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })
+  }
+
+  if (rangeMinutes <= 90 * 24 * 60) {
+    return date.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+    })
+  }
+
+  return date.toLocaleDateString([], {
+    month: "short",
+    year: "numeric",
+  })
+}
+
 const timelineRangeOptions = [
   15,
   30,
@@ -277,6 +313,8 @@ export function AgentSwarmScreen({
   const [timeline, setTimeline] = useState<WorkerTimelineResponse | null>(null)
   const [error, setError] = useState("")
   const [authMessage, setAuthMessage] = useState("")
+  const [chartWidth, setChartWidth] = useState(defaultChartLayout.width)
+  const chartMeasureRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -432,6 +470,29 @@ export function AgentSwarmScreen({
     }
   }, [apiRootUrl, selectedWorkerId, timelineRangeMinutes])
 
+  useEffect(() => {
+    const container = chartMeasureRef.current
+    if (!container || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = Math.max(
+        Math.floor(entries[0]?.contentRect.width ?? defaultChartLayout.width),
+        320,
+      )
+      setChartWidth((currentWidth) =>
+        currentWidth === nextWidth ? currentWidth : nextWidth,
+      )
+    })
+
+    observer.observe(container)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
   const summary = useMemo(() => {
     const connectedWorkers = workers.filter(
       (worker) => worker.status === "connected",
@@ -455,6 +516,8 @@ export function AgentSwarmScreen({
   const dashboardPortLabel = health?.dashboard?.port
     ? String(health.dashboard.port)
     : "--"
+
+  const chartLayout = useMemo(() => createChartLayout(chartWidth), [chartWidth])
 
   const timelineCharts = useMemo(() => {
     const hostSamples = timeline?.hostSamples ?? []
@@ -553,7 +616,27 @@ export function AgentSwarmScreen({
       memoryProcesses,
       lastHostSample: hostSamples[hostSamples.length - 1] ?? null,
     }
-  }, [timeline])
+  }, [chartLayout, timeline])
+
+  const timelineAxisLabels = useMemo(() => {
+    const startTsMs = timeline?.sinceTsMs ?? Date.now() - timelineRangeMinutes * 60 * 1000
+    const endTsMs = startTsMs + timelineRangeMinutes * 60 * 1000
+    const middleTsMs = startTsMs + (endTsMs - startTsMs) / 2
+
+    return [
+      { label: formatTimeAxisLabel(startTsMs, timelineRangeMinutes), x: chartLayout.padLeft, anchor: "start" as const },
+      {
+        label: formatTimeAxisLabel(middleTsMs, timelineRangeMinutes),
+        x: chartLayout.padLeft + chartInnerWidth(chartLayout) / 2,
+        anchor: "middle" as const,
+      },
+      {
+        label: formatTimeAxisLabel(endTsMs, timelineRangeMinutes),
+        x: chartLayout.width - chartLayout.padRight,
+        anchor: "end" as const,
+      },
+    ]
+  }, [chartLayout, timeline?.sinceTsMs, timelineRangeMinutes])
 
   return (
     <div className="flex h-full flex-col bg-slate-950 text-slate-100">
@@ -865,10 +948,9 @@ export function AgentSwarmScreen({
                     </div>
                   </div>
                 </div>
-                <div className="mt-4 overflow-x-auto">
+                <div ref={chartMeasureRef} className="mt-4">
                   <svg
                     className="h-[180px] w-full"
-                    preserveAspectRatio="none"
                     viewBox={`0 0 ${timelineCharts.layout.width} ${timelineCharts.layout.height}`}
                   >
                     <rect
@@ -919,6 +1001,18 @@ export function AgentSwarmScreen({
                       stroke="#34d399"
                       strokeWidth="2.5"
                     />
+                    {timelineAxisLabels.map((item) => (
+                      <text
+                        key={`host-axis-${item.anchor}-${item.label}`}
+                        fill="rgba(148, 163, 184, 0.9)"
+                        fontSize="11"
+                        textAnchor={item.anchor}
+                        x={item.x}
+                        y={timelineCharts.layout.height - 4}
+                      >
+                        {item.label}
+                      </text>
+                    ))}
                   </svg>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-400">
@@ -953,10 +1047,9 @@ export function AgentSwarmScreen({
                 >
                   <h3 className="text-sm font-semibold text-white">{chart.title}</h3>
                   <p className="mt-1 text-xs text-slate-500">{chart.subtitle}</p>
-                <div className="mt-4 overflow-x-auto">
+                  <div className="mt-4 overflow-x-auto">
                     <svg
                       className="h-[180px] w-full"
-                      preserveAspectRatio="none"
                       viewBox={`0 0 ${timelineCharts.layout.width} ${timelineCharts.layout.height}`}
                     >
                       <rect
@@ -1029,6 +1122,18 @@ export function AgentSwarmScreen({
                           stroke={line.color}
                           strokeWidth="2.25"
                         />
+                      ))}
+                      {timelineAxisLabels.map((item) => (
+                        <text
+                          key={`${chart.title}-axis-${item.anchor}-${item.label}`}
+                          fill="rgba(148, 163, 184, 0.9)"
+                          fontSize="11"
+                          textAnchor={item.anchor}
+                          x={item.x}
+                          y={timelineCharts.layout.height - 4}
+                        >
+                          {item.label}
+                        </text>
                       ))}
                     </svg>
                   </div>
