@@ -30,6 +30,8 @@ const Policy = {
   activeAttemptRequired: define.concept("ActiveAttemptRequired"),
   repairFirst: define.concept("RepairFirst"),
   oneCanonicalTunnel: define.concept("OneCanonicalTunnel"),
+  tunnelCooldown: define.concept("QuickTunnelReplacementCooldown"),
+  classifyFailuresSeparately: define.concept("SeparateOriginAndTunnelFailures"),
   escalateAfterFailedRepair: define.concept("EscalateAfterFailedRepair"),
 };
 
@@ -50,16 +52,29 @@ Policy.repairFirst.means(`
 - on dashboard session issuance success, start a background recovery monitor immediately
 - let Lambda keep polling readiness while the manager-side monitor repairs in parallel
 - keep the monitor alive through the initial connection window rather than exiting after one healthy check
-- if the monitor observes public readiness failure or a dead local origin during that window, attempt repair automatically
+- if the monitor observes a dead local origin during that window, attempt repair automatically
 - prune stale dashboard and tunnel processes
 - restart the dashboard path when the local origin is dead
-- replace the quick tunnel when the public tunnel is not resolvable or reachable
 - persist the newest public URL as the canonical runtime state
 `);
 
 Policy.oneCanonicalTunnel.means(`
 - dashboard recovery should converge to one live cloudflared process for the active dashboard port
 - stale tunnel processes should be terminated during recovery
+`);
+
+Policy.tunnelCooldown.means(`
+- quick tunnel replacement is rare, not eager
+- repeated public-not-ready checks alone are not enough reason to churn the tunnel
+- replace a quick tunnel only on strong evidence such as a dead cloudflared process or a long sustained tunnel-side failure
+- enforce a replacement cooldown so recovery cannot create many quick tunnels in a short window
+`);
+
+Policy.classifyFailuresSeparately.means(`
+- local dashboard origin failure and public tunnel failure are different failure classes
+- when the local origin is dead, restart the dashboard server first without touching the tunnel
+- when the local origin is healthy, treat public-unready as a tunnel-side problem
+- keep the current quick tunnel when cloudflared is still alive unless strong evidence and cooldown permit replacement
 `);
 
 Policy.escalateAfterFailedRepair.means(`
@@ -70,6 +85,8 @@ Policy.escalateAfterFailedRepair.means(`
 when(Access.lambda.invokes(Manager.sessionIssue).andObserves(Access.attempt))
   .then(DashboardRecovery.requires(Policy.activeAttemptRequired))
   .and(DashboardRecovery.requires(Policy.repairFirst))
+  .and(DashboardRecovery.requires(Policy.classifyFailuresSeparately))
+  .and(DashboardRecovery.requires(Policy.tunnelCooldown))
   .and(Manager.sessionIssue.starts(Manager.monitor))
   .and(Manager.monitor.detects(Manager.readinessFailure))
   .and(Manager.recovery.repairs(Manager.runtime))
@@ -81,6 +98,8 @@ when(Manager.monitor.detects(Manager.readinessFailure))
 
 when(Manager.recovery.repairs(Manager.runtime))
   .then(DashboardRecovery.requires(Policy.oneCanonicalTunnel))
+  .and(DashboardRecovery.requires(Policy.classifyFailuresSeparately))
+  .and(DashboardRecovery.requires(Policy.tunnelCooldown))
   .and(Manager.recovery.terminates(Manager.tunnel))
   .and(Manager.recovery.restarts(Manager.gateway))
   .and(Manager.recovery.mayReplace(Manager.tunnel));

@@ -120,6 +120,8 @@ SystemRuntime.enforces(`
 - Swarm monitor process visibility should use sparse continuous sampling rather than burst-only capture.
 - EC2 worker inventory refresh should default to slow zombie reconciliation rather than second-level live polling.
 - Dashboard session issuance during an active connect attempt should start manager-side recovery monitoring before escalation.
+- Dashboard recovery should distinguish local origin failure from public tunnel failure.
+- Quick tunnel replacement should be conservative, cooldown-based, and never eager churn.
 `);
 
 SystemRuntime.defines(`
@@ -250,7 +252,9 @@ when(AWS.lambda.invokes(Entrypoint.issueDashboardSession))
   .and(Integration.dashboardRecoveryMonitor.staysAlive("through the initial connect window"))
   .and(Integration.dashboardRecoveryMonitor.detects("dashboard readiness failure"))
   .then(Integration.dashboardRecoveryMonitor.repairs(RuntimeCode.dashboardRuntime))
-  .and(Integration.dashboardRecoveryMonitor.replaces("an unhealthy quick tunnel when needed"))
+  .and(Integration.dashboardRecoveryMonitor.classifies("origin failure separately from tunnel failure"))
+  .and(Integration.dashboardRecoveryMonitor.keeps("the current quick tunnel while cloudflared is still alive"))
+  .and(Integration.dashboardRecoveryMonitor.replaces("a quick tunnel only on strong evidence and after cooldown"))
   .and(Entrypoint.issueDashboardSession.records("a durable help-request incident on unrecoverable failure"));
 
 when(Host.manager.starts(Host.service))

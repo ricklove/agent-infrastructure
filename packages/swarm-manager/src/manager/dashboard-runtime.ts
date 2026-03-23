@@ -31,6 +31,8 @@ type DashboardRuntimeState = {
   cloudflaredPid?: number;
   cloudflaredLogPath?: string;
   publicUrl?: string;
+  tunnelCreatedAtMs?: number;
+  lastTunnelReplaceAtMs?: number;
 };
 
 type DashboardSessionRecord = {
@@ -94,6 +96,17 @@ const dashboardRecoveryMonitorLockPath = resolve(
   process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
   "dashboard-recovery-monitor.lock",
 );
+const quickTunnelReplacementCooldownMs =
+  Math.max(
+    300,
+    Number.parseInt(process.env.DASHBOARD_TUNNEL_REPLACEMENT_COOLDOWN_SECONDS ?? "1800", 10) ||
+      1800,
+  ) * 1000;
+const sustainedPublicFailureReplacementMs =
+  Math.max(
+    30,
+    Number.parseInt(process.env.DASHBOARD_TUNNEL_SUSTAINED_FAILURE_SECONDS ?? "120", 10) || 120,
+  ) * 1000;
 
 function logSystemStep(source: string, message: string): void {
   const line = `[${new Date().toISOString()}:${source}] ${message}`;
@@ -164,6 +177,18 @@ function clearRuntimeState(): void {
   try {
     rmSync(runtimeStatePath, { force: true });
   } catch {}
+}
+
+function getLastTunnelReplacementAttemptAtMs(state: DashboardRuntimeState | null): number {
+  return (
+    state?.lastTunnelReplaceAtMs ??
+    state?.tunnelCreatedAtMs ??
+    0
+  );
+}
+
+function canAttemptQuickTunnelReplacement(state: DashboardRuntimeState | null, now: number): boolean {
+  return now - getLastTunnelReplacementAttemptAtMs(state) >= quickTunnelReplacementCooldownMs;
 }
 
 function extractQuickTunnelUrls(): string[] {
@@ -603,11 +628,9 @@ export async function ensureDashboardRuntime(
     currentState &&
     (dashboardRunning || dashboardHealthy) &&
     (!config.useCloudflared ||
-      ((cloudflaredRunning ||
-        Boolean(currentState.cloudflaredPid) ||
-        publicDashboardReady) &&
+      ((cloudflaredRunning || publicDashboardReady) &&
         typeof currentState.publicUrl === "string" &&
-        publicDashboardReady));
+        currentState.publicUrl.trim().length > 0));
 
   if (canReuseDashboard) {
     logSystemStep("dashboard-runtime", "exit runtime=reused-current-state");
@@ -659,11 +682,14 @@ export async function ensureDashboardRuntime(
   }
 
   const tunnel = await startCloudflared(config.port);
+  const tunnelCreatedAtMs = Date.now();
   nextState = {
     ...nextState,
     cloudflaredPid: tunnel.pid,
     cloudflaredLogPath,
     publicUrl: tunnel.url,
+    tunnelCreatedAtMs,
+    lastTunnelReplaceAtMs: tunnelCreatedAtMs,
   };
   logSystemStep("dashboard-runtime", `setup.complete public_url=${tunnel.url}`);
   writeRuntimeState(nextState);
@@ -935,7 +961,7 @@ export async function runDashboardRecoveryMonitor(input: {
       `start pid=${pid} public_url=${expectedPublicUrl} port=${port}`,
     );
     const monitorDeadline = Date.now() + 90_000;
-    let publicNotReadyCount = 0;
+    let publicFailureSinceMs: number | null = null;
     while (Date.now() < monitorDeadline) {
       const currentState = readRuntimeState();
       if (currentState?.publicUrl?.trim() !== expectedPublicUrl) {
@@ -948,6 +974,11 @@ export async function runDashboardRecoveryMonitor(input: {
 
       const dashboardHealthy = await isDashboardHealthy(port);
       const publicReady = await isPublicDashboardReady(expectedPublicUrl);
+      const cloudflaredRunning = await isExpectedProcess(
+        currentState?.cloudflaredPid,
+        /cloudflared\s+tunnel/,
+      );
+      const now = Date.now();
 
       if (!dashboardHealthy) {
         await terminatePids(
@@ -967,27 +998,46 @@ export async function runDashboardRecoveryMonitor(input: {
           cloudflaredPid: currentState?.cloudflaredPid,
           cloudflaredLogPath: currentState?.cloudflaredLogPath ?? cloudflaredLogPath,
           publicUrl: expectedPublicUrl,
+          tunnelCreatedAtMs: currentState?.tunnelCreatedAtMs,
+          lastTunnelReplaceAtMs: currentState?.lastTunnelReplaceAtMs,
         });
         logSystemStep(
           "dashboard-recovery-monitor",
           `restart dashboard_pid=${dashboardPid} public_url=${expectedPublicUrl}`,
         );
+        publicFailureSinceMs = null;
         await Bun.sleep(1000);
         continue;
       }
 
-      if (!publicReady) {
-        publicNotReadyCount += 1;
-        logSystemStep(
-          "dashboard-recovery-monitor",
-          `warn public_not_ready public_url=${expectedPublicUrl}`,
-        );
+      if (publicReady) {
+        publicFailureSinceMs = null;
+      } else {
+        publicFailureSinceMs ??= now;
+        const publicFailureDurationMs = now - publicFailureSinceMs;
+        const cooldownReady = canAttemptQuickTunnelReplacement(currentState, now);
+        const shouldReplaceTunnel =
+          !cloudflaredRunning ||
+          publicFailureDurationMs >= sustainedPublicFailureReplacementMs;
 
-        if (publicNotReadyCount >= 5) {
+        if (cloudflaredRunning) {
+          logSystemStep(
+            "dashboard-recovery-monitor",
+            `warn public_not_ready_keep_existing public_url=${expectedPublicUrl} duration_ms=${publicFailureDurationMs}`,
+          );
+        } else {
+          logSystemStep(
+            "dashboard-recovery-monitor",
+            `warn tunnel_process_missing public_url=${expectedPublicUrl} duration_ms=${publicFailureDurationMs}`,
+          );
+        }
+
+        if (shouldReplaceTunnel && cooldownReady) {
           const cloudflaredPids = listCloudflaredTunnelPids();
           await terminatePids(cloudflaredPids, "dashboard-recovery-monitor");
           const tunnel = await startCloudflared(port);
           expectedPublicUrl = tunnel.url;
+          const replacementAtMs = Date.now();
           writeRuntimeState({
             dashboardPid: currentState?.dashboardPid ?? 0,
             dashboardLogPath,
@@ -995,17 +1045,29 @@ export async function runDashboardRecoveryMonitor(input: {
             cloudflaredPid: tunnel.pid,
             cloudflaredLogPath,
             publicUrl: tunnel.url,
+            tunnelCreatedAtMs: replacementAtMs,
+            lastTunnelReplaceAtMs: replacementAtMs,
           });
           logSystemStep(
             "dashboard-recovery-monitor",
             `replace_tunnel old_public_url=${currentState?.publicUrl ?? "missing"} new_public_url=${tunnel.url} cloudflared_pid=${tunnel.pid}`,
           );
-          publicNotReadyCount = 0;
+          publicFailureSinceMs = null;
           await Bun.sleep(1000);
           continue;
         }
-      } else {
-        publicNotReadyCount = 0;
+
+        if (shouldReplaceTunnel && !cooldownReady) {
+          const cooldownRemainingMs =
+            quickTunnelReplacementCooldownMs -
+            (now - getLastTunnelReplacementAttemptAtMs(currentState));
+          logSystemStep(
+            "dashboard-recovery-monitor",
+            `warn tunnel_replacement_cooldown public_url=${expectedPublicUrl} remaining_ms=${Math.max(0, cooldownRemainingMs)}`,
+          );
+          await Bun.sleep(1000);
+          continue;
+        }
       }
 
       await Bun.sleep(2000);
