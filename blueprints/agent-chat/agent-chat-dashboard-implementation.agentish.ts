@@ -384,7 +384,9 @@ Decision.port.means(`
 Decision.sessionIdentity.means(`
 - a new session is created explicitly from the UI
 - the session list is sorted by last activity
-- the title is generated from the first user prompt and can be renamed later
+- the new-session form should allow an explicit optional title at creation time
+- if the operator does not provide a title, the title is generated from the first user prompt
+- the title can be renamed later
 `);
 
 Decision.providerScope.means(`
