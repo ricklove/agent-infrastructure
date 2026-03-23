@@ -1929,7 +1929,7 @@ const server = Bun.serve<SocketData>({
         : untilTsMs -
           Math.min(
             365 * 24 * 60,
-            Math.max(5, Number.isInteger(rangeMinutesRaw) ? rangeMinutesRaw : 30),
+            Math.max(1, Number.isInteger(rangeMinutesRaw) ? rangeMinutesRaw : 30),
           ) *
             60 *
             1000;
