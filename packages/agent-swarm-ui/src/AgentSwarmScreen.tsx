@@ -1353,24 +1353,24 @@ export function AgentSwarmScreen({
                         </text>
                       </g>
                     ))}
-                    {timelineCharts.memoryPaths.map((path, index) => (
-                      <path
-                        key={`memory-path-${index}`}
-                        d={path}
-                        fill="none"
-                        opacity="0.95"
-                        stroke="#38bdf8"
-                        strokeWidth="2.5"
-                      />
-                    ))}
                     {timelineCharts.cpuPaths.map((path, index) => (
                       <path
                         key={`cpu-path-${index}`}
                         d={path}
                         fill="none"
-                        opacity="0.95"
+                        opacity="0.9"
                         stroke="#34d399"
                         strokeWidth="2.5"
+                      />
+                    ))}
+                    {timelineCharts.memoryPaths.map((path, index) => (
+                      <path
+                        key={`memory-path-${index}`}
+                        d={path}
+                        fill="none"
+                        opacity="1"
+                        stroke="#e0f2fe"
+                        strokeWidth="3"
                       />
                     ))}
                     {hostAxisLabels.map((item) => (
