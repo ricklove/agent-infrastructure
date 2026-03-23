@@ -175,6 +175,7 @@ async function main(): Promise<void> {
   if (config.restartServices) {
     maybeRestartService("agent-swarm-monitor.service");
     maybeRestartService("agent-swarm-manager-node.service");
+    maybeRestartService("agent-dashboard-controller.service");
   }
 
   logStep("setup.complete");

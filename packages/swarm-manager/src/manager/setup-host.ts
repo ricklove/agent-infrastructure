@@ -155,6 +155,24 @@ WantedBy=multi-user.target
 `;
 }
 
+function dashboardControllerServiceUnit(hostRoot: string): string {
+  return `[Unit]
+Description=Dashboard lifecycle controller
+After=network-online.target agent-swarm-monitor.service
+Wants=network-online.target agent-swarm-monitor.service
+
+[Service]
+Type=simple
+User=ec2-user
+ExecStart=/usr/bin/env bash ${hostRoot}/scripts/run-dashboard-controller.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+`;
+}
+
 async function main(): Promise<void> {
   const config = parseArgs(process.argv.slice(2));
   logStep(`setup.start runtimeDir=${config.runtimeDir} stateDir=${config.stateDir}`);
@@ -212,6 +230,11 @@ async function main(): Promise<void> {
     managerNodeServiceUnit(config.hostRoot),
   );
   logStep("wrote /etc/systemd/system/agent-swarm-manager-node.service");
+  writeFileSync(
+    "/etc/systemd/system/agent-dashboard-controller.service",
+    dashboardControllerServiceUnit(config.hostRoot),
+  );
+  logStep("wrote /etc/systemd/system/agent-dashboard-controller.service");
 
   writeFileSync(
     managerEnvPath,
@@ -288,6 +311,7 @@ GIT_TERMINAL_PROMPT=0
   runChecked(["systemctl", "daemon-reload"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-monitor.service"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-manager-node.service"]);
+  runChecked(["systemctl", "enable", "--now", "agent-dashboard-controller.service"]);
   logStep("setup.complete");
 
   console.log(

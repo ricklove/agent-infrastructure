@@ -17,8 +17,8 @@ const Access = {
 const Manager = {
   host: define.system("ManagerHost"),
   runtime: define.system("DashboardRuntime"),
+  controller: define.entity("DashboardLifecycleController"),
   sessionIssue: define.entity("DashboardSessionIssue"),
-  monitor: define.entity("DashboardRecoveryMonitor"),
   readinessFailure: define.event("DashboardReadinessFailure"),
   recovery: define.entity("DashboardRecoveryAttempt"),
   helpRequest: define.entity("DashboardHelpRequest"),
@@ -35,13 +35,16 @@ const Policy = {
   classifyFailuresSeparately: define.concept("SeparateOriginAndTunnelFailures"),
   backupTunnelFallback: define.concept("BackupTemporaryTunnelFallback"),
   escalateAfterFailedRepair: define.concept("EscalateAfterFailedRepair"),
+  thinAlwaysOnController: define.concept("ThinAlwaysOnController"),
 };
 
 DashboardRecovery.enforces(`
 - Dashboard repair should be triggered by an active user connection attempt plus dashboard unreachability.
 - The recovery path must not depend on the dashboard UI being reachable first.
 - Automatic repair should start immediately when the manager receives a real connection attempt.
+- One thin always-on controller should own both lifecycle policy and recovery policy for the dashboard path.
 - One canonical dashboard tunnel should exist after recovery, not a pile of stale tunnels.
+- A thin always-on controller may supervise dashboard lifecycle without making the dashboard itself always-on.
 - Temporary ingress may use a backup tunnel provider when the primary quick tunnel provider cannot issue a URL.
 - If automatic repair still fails, the system should create an explicit ask-help incident for agent follow-up.
 `);
@@ -52,10 +55,10 @@ Policy.activeAttemptRequired.means(`
 `);
 
 Policy.repairFirst.means(`
-- on dashboard session issuance success, start a background recovery monitor immediately
-- let Lambda keep polling readiness while the manager-side monitor repairs in parallel
-- keep the monitor alive through the initial connection window rather than exiting after one healthy check
-- if the monitor observes a dead local origin during that window, attempt repair automatically
+- on dashboard session issuance success, notify the dashboard lifecycle controller immediately
+- let Lambda keep polling readiness while the manager-side controller repairs in parallel
+- keep one always-on controller as the single lifecycle and recovery owner
+- if the controller observes a dead local origin during an active connection window, attempt repair automatically
 - prune stale dashboard and tunnel processes
 - restart the dashboard path when the local origin is dead
 - persist the newest public URL as the canonical runtime state
@@ -94,32 +97,52 @@ Policy.escalateAfterFailedRepair.means(`
 - help escalation is a real recovery artifact, not just a transient log line
 `);
 
+Policy.thinAlwaysOnController.means(`
+- keep one tiny always-on controller process under systemd
+- the controller is the single owner of dashboard lifecycle and dashboard recovery policy
+- the controller owns lifecycle policy, not the heavy dashboard server itself
+- while active browser or bootstrap sessions exist, keep the dashboard server and tunnel available
+- when no active dashboard sessions remain for an idle window, stop the dashboard server and tunnel
+- the tunnel may survive dashboard server restarts during active use when the tunnel itself is healthy
+`);
+
 when(Access.lambda.invokes(Manager.sessionIssue).andObserves(Access.attempt))
   .then(DashboardRecovery.requires(Policy.activeAttemptRequired))
   .and(DashboardRecovery.requires(Policy.repairFirst))
   .and(DashboardRecovery.requires(Policy.classifyFailuresSeparately))
   .and(DashboardRecovery.requires(Policy.tunnelCooldown))
+  .and(DashboardRecovery.requires(Policy.thinAlwaysOnController))
   .and(DashboardRecovery.requires(Policy.backupTunnelFallback))
-  .and(Manager.sessionIssue.starts(Manager.monitor))
-  .and(Manager.monitor.detects(Manager.readinessFailure))
-  .and(Manager.recovery.repairs(Manager.runtime))
-  .and(Manager.recovery.reissues(Manager.sessionIssue));
+  .and(Manager.sessionIssue.notifies(Manager.controller))
+  .and(Manager.controller.detects(Manager.readinessFailure))
+  .and(Manager.controller.repairs(Manager.runtime))
+  .and(Manager.controller.reissues(Manager.sessionIssue));
 
-when(Manager.monitor.detects(Manager.readinessFailure))
-  .then(Manager.recovery.repairs(Manager.runtime))
-  .and(Manager.recovery.reissues(Manager.sessionIssue));
+when(Manager.controller.detects(Manager.readinessFailure))
+  .then(Manager.controller.repairs(Manager.runtime))
+  .and(Manager.controller.reissues(Manager.sessionIssue));
 
-when(Manager.recovery.repairs(Manager.runtime))
+when(Manager.controller.repairs(Manager.runtime))
   .then(DashboardRecovery.requires(Policy.oneCanonicalTunnel))
   .and(DashboardRecovery.requires(Policy.classifyFailuresSeparately))
   .and(DashboardRecovery.requires(Policy.tunnelCooldown))
   .and(DashboardRecovery.requires(Policy.backupTunnelFallback))
-  .and(Manager.recovery.terminates(Manager.tunnel))
-  .and(Manager.recovery.mayReplace(Manager.backupTunnel))
-  .and(Manager.recovery.restarts(Manager.gateway))
-  .and(Manager.recovery.mayReplace(Manager.tunnel));
+  .and(Manager.controller.terminates(Manager.tunnel))
+  .and(Manager.controller.mayReplace(Manager.backupTunnel))
+  .and(Manager.controller.restarts(Manager.gateway))
+  .and(Manager.controller.mayReplace(Manager.tunnel));
 
-when(Manager.recovery.fails())
+when(Manager.controller.fails())
   .then(DashboardRecovery.requires(Policy.escalateAfterFailedRepair))
   .and(Manager.helpRequest.records("a durable incident"))
   .and(Manager.helpRequest.requests("agent help"));
+
+when(Manager.controller.observes("active dashboard sessions"))
+  .then(DashboardRecovery.requires(Policy.thinAlwaysOnController))
+  .and(Manager.controller.keeps(Manager.gateway))
+  .and(Manager.controller.keeps(Manager.tunnel));
+
+when(Manager.controller.observes("dashboard idle timeout"))
+  .then(DashboardRecovery.requires(Policy.thinAlwaysOnController))
+  .and(Manager.controller.stops(Manager.gateway))
+  .and(Manager.controller.stops(Manager.tunnel));

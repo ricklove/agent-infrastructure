@@ -1,7 +1,4 @@
-import {
-  issueDashboardSession,
-  startDashboardRecoveryMonitor,
-} from "./dashboard-runtime.js";
+import { issueDashboardSession } from "./dashboard-runtime.js";
 
 function parseArgs(argv: string[]): {
   ttlSeconds: number;
@@ -48,11 +45,6 @@ function parseArgs(argv: string[]): {
 const config = parseArgs(process.argv.slice(2));
 try {
   const result = await issueDashboardSession(config);
-  void startDashboardRecoveryMonitor({
-    port: config.port,
-    managerUrl: config.managerUrl,
-    publicUrl: result.publicUrl,
-  });
   console.log(JSON.stringify({ ok: true, ...result }));
 } catch (error) {
   console.log(

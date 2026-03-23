@@ -70,6 +70,10 @@ const dashboardRecoveryMonitorEntry = resolve(
   repoRoot,
   "packages/swarm-manager/src/manager/monitor-dashboard-recovery.ts",
 );
+const dashboardLifecycleControllerEntry = resolve(
+  repoRoot,
+  "packages/swarm-manager/src/manager/dashboard-controller.ts",
+);
 const localhostRunTunnelEntry = resolve(
   repoRoot,
   "packages/swarm-manager/src/manager/localhost-run-tunnel.ts",
@@ -105,6 +109,15 @@ const dashboardRecoveryMonitorLockPath = resolve(
   process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
   "dashboard-recovery-monitor.lock",
 );
+const dashboardLifecycleControllerLogPath = resolve(runtimeDir, "dashboard-lifecycle-controller.log");
+const dashboardLifecycleControllerLockPath = resolve(
+  process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
+  "dashboard-lifecycle-controller.lock",
+);
+const dashboardLifecycleRequestPath = resolve(
+  process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
+  "dashboard-lifecycle-request.json",
+);
 const quickTunnelHostnamePattern = /^[a-z0-9-]+\.trycloudflare\.com$/i;
 const quickTunnelReplacementCooldownMs =
   Math.max(
@@ -117,6 +130,23 @@ const sustainedPublicFailureReplacementMs =
     30,
     Number.parseInt(process.env.DASHBOARD_TUNNEL_SUSTAINED_FAILURE_SECONDS ?? "120", 10) || 120,
   ) * 1000;
+const dashboardLifecycleDemandSeconds =
+  Math.max(
+    30,
+    Number.parseInt(process.env.DASHBOARD_LIFECYCLE_DEMAND_SECONDS ?? "120", 10) || 120,
+  ) * 1000;
+const dashboardLifecyclePollMs =
+  Math.max(
+    1,
+    Number.parseInt(process.env.DASHBOARD_LIFECYCLE_POLL_SECONDS ?? "2", 10) || 2,
+  ) * 1000;
+
+type DashboardLifecycleRequest = {
+  port: number;
+  managerUrl: string;
+  requestedAtMs: number;
+  keepAliveUntilMs: number;
+};
 
 function logSystemStep(source: string, message: string): void {
   const line = `[${new Date().toISOString()}:${source}] ${message}`;
@@ -187,6 +217,20 @@ function clearRuntimeState(): void {
   try {
     rmSync(runtimeStatePath, { force: true });
   } catch {}
+}
+
+function getPortFromRuntimeState(state: DashboardRuntimeState | null): number {
+  if (!state?.localUrl) {
+    return 3000;
+  }
+
+  try {
+    const parsed = new URL(state.localUrl);
+    const port = Number.parseInt(parsed.port || "3000", 10);
+    return Number.isInteger(port) && port > 0 ? port : 3000;
+  } catch {
+    return 3000;
+  }
 }
 
 function getLastTunnelReplacementAttemptAtMs(state: DashboardRuntimeState | null): number {
@@ -418,6 +462,66 @@ function readDashboardRecoveryMonitorLockPid(): number | null {
   } catch {
     return null;
   }
+}
+
+function readDashboardLifecycleControllerLockPid(): number | null {
+  if (!existsSync(dashboardLifecycleControllerLockPath)) {
+    return null;
+  }
+
+  try {
+    const value = readFileSync(dashboardLifecycleControllerLockPath, "utf8").trim();
+    const pid = Number.parseInt(value, 10);
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+function readDashboardLifecycleRequest(): DashboardLifecycleRequest | null {
+  if (!existsSync(dashboardLifecycleRequestPath)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(readFileSync(dashboardLifecycleRequestPath, "utf8")) as Partial<
+      DashboardLifecycleRequest
+    >;
+    const port = Number(payload.port);
+    const requestedAtMs = Number(payload.requestedAtMs);
+    const keepAliveUntilMs = Number(payload.keepAliveUntilMs);
+    const managerUrl =
+      typeof payload.managerUrl === "string" && payload.managerUrl.trim().length > 0
+        ? payload.managerUrl.trim()
+        : "http://127.0.0.1:8787";
+
+    if (
+      !Number.isInteger(port) ||
+      port <= 0 ||
+      !Number.isFinite(requestedAtMs) ||
+      !Number.isFinite(keepAliveUntilMs)
+    ) {
+      return null;
+    }
+
+    return {
+      port,
+      managerUrl,
+      requestedAtMs,
+      keepAliveUntilMs,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeDashboardLifecycleRequest(request: DashboardLifecycleRequest): void {
+  ensureParentDir(dashboardLifecycleRequestPath);
+  writeFileSync(dashboardLifecycleRequestPath, `${JSON.stringify(request, null, 2)}\n`);
+}
+
+function clearDashboardLifecycleRequest(): void {
+  rmSync(dashboardLifecycleRequestPath, { force: true });
 }
 
 async function recoverDashboardRuntimeState(
@@ -1011,6 +1115,14 @@ function writeSessionStore(store: DashboardSessionStore): void {
   writeFileSync(sessionStorePath, JSON.stringify(store, null, 2));
 }
 
+export function countActiveDashboardSessions(now = Date.now()): number {
+  return readSessionStore().sessions.filter((session) => session.expiresAtMs > now).length;
+}
+
+export function hasActiveDashboardSessions(now = Date.now()): boolean {
+  return countActiveDashboardSessions(now) > 0;
+}
+
 function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -1115,6 +1227,71 @@ export function exchangeDashboardSessionKey(sessionKey: string): {
   };
 }
 
+export function notifyDashboardLifecycleController(input?: {
+  port?: number;
+  managerUrl?: string;
+  demandSeconds?: number;
+}): void {
+  const currentTime = Date.now();
+  const existing = readDashboardLifecycleRequest();
+  const request: DashboardLifecycleRequest = {
+    port: input?.port ?? existing?.port ?? 3000,
+    managerUrl: input?.managerUrl ?? existing?.managerUrl ?? "http://127.0.0.1:8787",
+    requestedAtMs: currentTime,
+    keepAliveUntilMs:
+      currentTime + Math.max(30_000, input?.demandSeconds ?? dashboardLifecycleDemandSeconds),
+  };
+
+  if (existing) {
+    request.keepAliveUntilMs = Math.max(request.keepAliveUntilMs, existing.keepAliveUntilMs);
+  }
+
+  writeDashboardLifecycleRequest(request);
+  logSystemStep(
+    "dashboard-lifecycle-controller",
+    `notify port=${request.port} keep_alive_until_ms=${request.keepAliveUntilMs}`,
+  );
+}
+
+export async function waitForDashboardLifecycleReady(input?: {
+  port?: number;
+  timeoutMs?: number;
+}): Promise<DashboardRuntimeState> {
+  const expectedPort = input?.port ?? 3000;
+  const timeoutMs = Math.max(5_000, input?.timeoutMs ?? 45_000);
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const state = readRuntimeState();
+    const tunnelPid = getRuntimeTunnelPid(state);
+    if (
+      state?.publicUrl &&
+      tunnelPid &&
+      getPortFromRuntimeState(state) === expectedPort &&
+      (await isDashboardHealthy(expectedPort)) &&
+      (await isExpectedProcess(
+        tunnelPid,
+        getTunnelCommandPattern(getRuntimeTunnelProvider(state), expectedPort),
+      )) &&
+      (await isPublicDashboardReady(state.publicUrl))
+    ) {
+      return state;
+    }
+
+    await Bun.sleep(1000);
+  }
+
+  throw new Error("dashboard lifecycle controller did not make the dashboard ready in time");
+}
+
+export async function stopDashboardRuntime(port?: number): Promise<void> {
+  const currentState = readRuntimeState();
+  const effectivePort = port ?? getPortFromRuntimeState(currentState);
+  await terminateDashboardRuntimeProcesses(effectivePort);
+  clearRuntimeState();
+  logSystemStep("dashboard-runtime", `exit stopped port=${effectivePort}`);
+}
+
 export async function issueDashboardSession(input?: {
   port?: number;
   managerUrl?: string;
@@ -1129,10 +1306,14 @@ export async function issueDashboardSession(input?: {
   cloudflaredPid: number;
 }> {
   logSystemStep("dashboard-runtime", "start issue_dashboard_session");
-  const runtime = await ensureDashboardRuntime({
-    port: input?.port ?? 3000,
+  const port = input?.port ?? 3000;
+  notifyDashboardLifecycleController({
+    port,
     managerUrl: input?.managerUrl ?? "http://127.0.0.1:8787",
-    useCloudflared: true,
+  });
+  const runtime = await waitForDashboardLifecycleReady({
+    port,
+    timeoutMs: 45_000,
   });
 
   const tunnelPid = runtime.tunnelPid ?? runtime.cloudflaredPid;
@@ -1201,6 +1382,86 @@ export function requestDashboardHelp(input: {
     `requested reason=${payload.reason} dashboard_url=${payload.dashboardUrl || "unknown"} incident=${incidentPath}`,
   );
   return incidentPath;
+}
+
+export async function runDashboardLifecycleController(input?: {
+  port?: number;
+  managerUrl?: string;
+}): Promise<void> {
+  const defaultPort = input?.port ?? 3000;
+  const defaultManagerUrl = input?.managerUrl ?? "http://127.0.0.1:8787";
+  const pid = process.pid;
+  const lockPid = readDashboardLifecycleControllerLockPid();
+
+  if (lockPid && lockPid !== pid && isPidRunning(lockPid)) {
+    logSystemStep("dashboard-lifecycle-controller", `exit lock_held_by=${lockPid}`);
+    return;
+  }
+
+  ensureParentDir(dashboardLifecycleControllerLockPath);
+  writeFileSync(dashboardLifecycleControllerLockPath, `${pid}\n`);
+
+  let lastHelpAtMs = 0;
+  try {
+    logSystemStep(
+      "dashboard-lifecycle-controller",
+      `start pid=${pid} port=${defaultPort} manager_url=${defaultManagerUrl}`,
+    );
+
+    while (true) {
+      const now = Date.now();
+      const request = readDashboardLifecycleRequest();
+      const currentState = readRuntimeState();
+      const port = request?.port ?? getPortFromRuntimeState(currentState) ?? defaultPort;
+      const managerUrl = request?.managerUrl ?? defaultManagerUrl;
+      const hasDemand = Boolean(request && request.keepAliveUntilMs > now);
+      const activeSessionCount = countActiveDashboardSessions(now);
+      const active = hasDemand || activeSessionCount > 0;
+
+      if (active) {
+        try {
+          await ensureDashboardRuntime({
+            port,
+            managerUrl,
+            useCloudflared: true,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error && error.message.trim().length > 0
+              ? error.message
+              : String(error);
+          logSystemStep(
+            "dashboard-lifecycle-controller",
+            `error ensure_failed detail=${message}`,
+          );
+          if (now - lastHelpAtMs >= 60_000) {
+            requestDashboardHelp({
+              reason: "dashboard-lifecycle-controller-ensure-failed",
+              dashboardUrl: currentState?.publicUrl,
+              detail: message,
+            });
+            lastHelpAtMs = now;
+          }
+        }
+      } else {
+        if (request && request.keepAliveUntilMs <= now) {
+          clearDashboardLifecycleRequest();
+        }
+
+        if (currentState || listTunnelPids().length > 0 || discoverPidByPattern(/packages\/dashboard\/src\/server\.ts/)) {
+          await stopDashboardRuntime(port);
+          logSystemStep("dashboard-lifecycle-controller", `exit idle_stop port=${port}`);
+        }
+      }
+
+      await Bun.sleep(dashboardLifecyclePollMs);
+    }
+  } finally {
+    const currentLockPid = readDashboardLifecycleControllerLockPid();
+    if (currentLockPid === pid) {
+      rmSync(dashboardLifecycleControllerLockPath, { force: true });
+    }
+  }
 }
 
 export async function startDashboardRecoveryMonitor(input: {
