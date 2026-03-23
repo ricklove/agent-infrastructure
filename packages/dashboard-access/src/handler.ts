@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import {
   DescribeInstancesCommand,
   EC2Client,
+  RebootInstancesCommand,
 } from "@aws-sdk/client-ec2";
 import {
   DynamoDBClient,
@@ -251,6 +252,29 @@ async function getAuthStatus(flowId: string): Promise<StateRecord | null> {
   }
 
   return record;
+}
+
+function canUseRecoveryAction(status: StateRecord | null): boolean {
+  if (!status || status.kind !== "authentication-status" || status.expiresAtMs <= nowMs()) {
+    return false;
+  }
+
+  const allowedSteps = new Set([
+    "auth.finish.verified",
+    "auth.finish.credential.update.started",
+    "auth.finish.credential.update.completed",
+    "auth.finish.state.delete.started",
+    "auth.finish.state.delete.completed",
+    "auth.finish.dashboard-session.started",
+    "auth.finish.dashboard-session.url.received",
+    "auth.finish.dashboard-session.readiness.started",
+    "auth.finish.completed",
+    "auth.finish.error",
+    "admin.reboot.requested",
+    "admin.reboot.completed",
+  ]);
+
+  return allowedSteps.has(status.progressStep ?? "");
 }
 
 async function isEnrollmentTicketValid(ticket: string): Promise<boolean> {
@@ -504,6 +528,49 @@ async function resolveManagerInstanceId(): Promise<string> {
 
 async function issueDashboardAccess(): Promise<string> {
   return runDashboardSessionCommand("issue-dashboard-session.sh", "auth.finish.dashboard-session.issue");
+}
+
+async function rebootManager(
+  body: JsonBody,
+): Promise<APIGatewayProxyStructuredResultV2> {
+  const flowId = typeof body?.flowId === "string" ? body.flowId.trim() : "";
+  if (!flowId) {
+    return jsonResponse({ ok: false, error: "flowId is required" }, 400);
+  }
+
+  const status = await getAuthStatus(flowId);
+  if (!canUseRecoveryAction(status)) {
+    logAuthStep("admin.reboot.rejected", { reason: "recovery-not-authorized", flowId });
+    return jsonResponse({ ok: false, error: "recovery action is not authorized" }, 403);
+  }
+
+  const managerInstanceId = await resolveManagerInstanceId();
+  logAuthStep("admin.reboot.requested", { flowId, managerInstanceId });
+  await putAuthStatus(flowId, {
+    progressStep: "admin.reboot.requested",
+    progressMessage: "Reboot requested for the manager instance.",
+    progressDetail: { flowId, managerInstanceId },
+    error: undefined,
+  });
+
+  await ec2.send(
+    new RebootInstancesCommand({
+      InstanceIds: [managerInstanceId],
+    }),
+  );
+
+  logAuthStep("admin.reboot.completed", { flowId, managerInstanceId });
+  await putAuthStatus(flowId, {
+    progressStep: "admin.reboot.completed",
+    progressMessage: "Manager reboot requested. Wait for recovery, then try again.",
+    progressDetail: { flowId, managerInstanceId },
+  });
+
+  return jsonResponse({
+    ok: true,
+    managerInstanceId,
+    message: "Manager reboot requested.",
+  });
 }
 
 function shellToken(value: string): string {
@@ -1003,6 +1070,7 @@ function renderPage(
       }</button>
       <div class="actions">
         <button id="copyHistoryButton" type="button" class="secondary">Copy History</button>
+        <button id="rebootManagerButton" type="button" class="secondary" hidden>Reboot Manager</button>
       </div>
       <div id="message" class="message"></div>
       <section class="steps">
@@ -1015,9 +1083,11 @@ function renderPage(
       const registrationTicket = ${JSON.stringify(registrationTicket)};
       const button = document.getElementById("actionButton");
       const copyHistoryButton = document.getElementById("copyHistoryButton");
+      const rebootManagerButton = document.getElementById("rebootManagerButton");
       const message = document.getElementById("message");
       const stepLog = document.getElementById("stepLog");
       const uiHistory = [];
+      let latestFlowId = "";
 
       if (mode === "register" && window.location.search) {
         window.history.replaceState({}, "", "/register");
@@ -1055,6 +1125,41 @@ function renderPage(
         } catch {
           setMessage("Failed to copy auth history to clipboard.");
         }
+      }
+
+      function showRebootButton() {
+        rebootManagerButton.hidden = false;
+      }
+
+      function hideRebootButton() {
+        rebootManagerButton.hidden = true;
+      }
+
+      async function rebootManager() {
+        if (!latestFlowId) {
+          setMessage("No authenticated recovery flow is available yet.");
+          return;
+        }
+
+        if (!window.confirm("Reboot the manager instance now?")) {
+          return;
+        }
+
+        pushStep("admin.reboot.requested", { flowId: latestFlowId });
+        setMessage("Requesting manager reboot...");
+        const response = await fetch("/api/admin/reboot-manager", {
+          method: "POST",
+          headers: { "content-type": "application/json; charset=utf-8" },
+          body: JSON.stringify({ flowId: latestFlowId }),
+        });
+        const payload = await readJsonSafely(response);
+        pushStep("admin.reboot.response", { status: response.status, payload });
+        if (!response.ok) {
+          setMessage(formatErrorMessage(payload, "Failed to request manager reboot."));
+          return;
+        }
+
+        setMessage(payload?.message || "Manager reboot requested. Wait for recovery, then try again.");
       }
 
       function formatErrorMessage(payload, fallback) {
@@ -1220,6 +1325,7 @@ function renderPage(
 
       async function authenticate() {
         pushStep("auth.begin.requested");
+        hideRebootButton();
         setMessage("Waiting for your passkey...");
         const beginResponse = await fetch("/api/passkeys/auth/begin", {
           method: "POST",
@@ -1232,6 +1338,7 @@ function renderPage(
           setMessage(beginPayload.error || "Failed to start authentication.");
           return;
         }
+        latestFlowId = beginPayload.flowId || "";
 
         let credential;
         try {
@@ -1307,6 +1414,13 @@ function renderPage(
             error: finishPayload?.error ?? null,
             failureStep: finishPayload?.failureStep ?? null,
           });
+          if (
+            finishResponse.status >= 500 ||
+            finishPayload?.failureStep === "dashboard.session.issue" ||
+            finishPayload?.failureStep === "dashboard.session.readiness"
+          ) {
+            showRebootButton();
+          }
           setMessage(errorMessage);
           return;
         }
@@ -1326,6 +1440,9 @@ function renderPage(
       });
       copyHistoryButton.addEventListener("click", () => {
         void copyHistory();
+      });
+      rebootManagerButton.addEventListener("click", () => {
+        void rebootManager();
       });
     </script>
   </body>
@@ -1353,6 +1470,10 @@ export async function handler(
 
   if (method === "POST" && path === "/api/admin/enrollment-ticket") {
     return createEnrollmentTicket(event);
+  }
+
+  if (method === "POST" && path === "/api/admin/reboot-manager") {
+    return rebootManager(await parseJsonBody(event));
   }
 
   if (method === "POST" && path === "/api/passkeys/register/begin") {

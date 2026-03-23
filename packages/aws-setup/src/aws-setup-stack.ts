@@ -345,6 +345,7 @@ export class AwsSetupStack extends Stack {
     dashboardAccessFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: [
+          "ec2:RebootInstances",
           "ec2:DescribeInstances",
           "ssm:GetCommandInvocation",
           "ssm:SendCommand",
