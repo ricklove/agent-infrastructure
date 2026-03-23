@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 type CpuSnapshot = {
   idle: number;
@@ -11,6 +11,21 @@ type WorkerMetrics = {
   memoryTotalBytes: number;
   memoryPercent: number;
   containerCount: number;
+};
+
+type ProcessSample = {
+  pid: number;
+  comm: string;
+  state: string;
+  cpuPercent: number;
+  rssBytes: number;
+};
+
+type ProcessWindow = {
+  sampledAt: number;
+  intervalMs: number;
+  topCpu: ProcessSample[];
+  topMemory: ProcessSample[];
 };
 
 type ContainerMetrics = {
@@ -32,6 +47,14 @@ type HeartbeatPayload = {
   timestamp: number;
   worker: WorkerMetrics;
   containers: ContainerMetrics[];
+  processWindow?: ProcessWindow;
+};
+
+type ProcessSnapshot = {
+  totalCpuTicks: number;
+  rssBytes: number;
+  state: string;
+  comm: string;
 };
 
 type LifecycleEventType =
@@ -48,6 +71,8 @@ const config: {
   instanceIdOverride: string;
   privateIpOverride: string;
   nodeRole: "manager" | "worker";
+  processSampleIntervalMs: number;
+  processTopCount: number;
 } = {
   managerUrl: process.env.MONITOR_MANAGER_URL ?? "",
   sharedToken: process.env.MONITOR_SHARED_TOKEN ?? "",
@@ -56,6 +81,10 @@ const config: {
   instanceIdOverride: process.env.MONITOR_INSTANCE_ID ?? "",
   privateIpOverride: process.env.MONITOR_PRIVATE_IP ?? "",
   nodeRole: process.env.MONITOR_NODE_ROLE === "manager" ? "manager" : "worker",
+  processSampleIntervalMs: Number(
+    process.env.MONITOR_PROCESS_SAMPLE_INTERVAL_MS ?? "10000",
+  ),
+  processTopCount: Number(process.env.MONITOR_PROCESS_TOP_COUNT ?? "5"),
 };
 
 if (!config.managerUrl || !config.sharedToken) {
@@ -64,6 +93,9 @@ if (!config.managerUrl || !config.sharedToken) {
 
 let currentSocket: WebSocket | null = null;
 let previousCpuSnapshot: CpuSnapshot | null = null;
+let previousProcessCpuSnapshot: CpuSnapshot | null = null;
+let previousProcessSampleAt = 0;
+let previousProcessByPid = new Map<number, ProcessSnapshot>();
 let workerId = "";
 let instanceId = "";
 let privateIp = "";
@@ -218,9 +250,124 @@ function readContainerMetrics(): ContainerMetrics[] {
     .filter((container) => container.containerId.length > 0);
 }
 
+function parseProcessSnapshot(pid: number): ProcessSnapshot | null {
+  try {
+    const statText = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const commStart = statText.indexOf("(");
+    const commEnd = statText.lastIndexOf(")");
+    if (commStart < 0 || commEnd <= commStart) {
+      return null;
+    }
+
+    const comm = statText.slice(commStart + 1, commEnd);
+    const rest = statText.slice(commEnd + 2).trim().split(/\s+/);
+    const state = rest[0] ?? "?";
+    const utime = Number(rest[11] ?? "0");
+    const stime = Number(rest[12] ?? "0");
+
+    const statusText = readFileSync(`/proc/${pid}/status`, "utf8");
+    const rssMatch = statusText.match(/^VmRSS:\s+(\d+)\s+kB$/m);
+    const rssBytes = Number(rssMatch?.[1] ?? "0") * 1024;
+
+    return {
+      totalCpuTicks: utime + stime,
+      rssBytes,
+      state,
+      comm,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function rankProcesses(
+  currentCpuSnapshot: CpuSnapshot,
+  sampledAt: number,
+): ProcessWindow | undefined {
+  const intervalMs = previousProcessSampleAt
+    ? sampledAt - previousProcessSampleAt
+    : 0;
+  previousProcessSampleAt = sampledAt;
+
+  const pids = readdirSync("/proc", { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name))
+    .map((entry) => Number(entry.name))
+    .filter((pid) => Number.isInteger(pid));
+
+  const nextProcessByPid = new Map<number, ProcessSnapshot>();
+  const processSamples: ProcessSample[] = [];
+
+  const totalCpuDelta = previousProcessCpuSnapshot
+    ? currentCpuSnapshot.total - previousProcessCpuSnapshot.total
+    : 0;
+  previousProcessCpuSnapshot = currentCpuSnapshot;
+
+  for (const pid of pids) {
+    const snapshot = parseProcessSnapshot(pid);
+    if (!snapshot) {
+      continue;
+    }
+
+    nextProcessByPid.set(pid, snapshot);
+    const previous = previousProcessByPid.get(pid);
+    const cpuDelta = previous ? snapshot.totalCpuTicks - previous.totalCpuTicks : 0;
+    const cpuPercent =
+      totalCpuDelta > 0 && cpuDelta > 0
+        ? Number(((cpuDelta / totalCpuDelta) * 100).toFixed(2))
+        : 0;
+
+    processSamples.push({
+      pid,
+      comm: snapshot.comm,
+      state: snapshot.state,
+      cpuPercent,
+      rssBytes: snapshot.rssBytes,
+    });
+  }
+
+  previousProcessByPid = nextProcessByPid;
+
+  if (intervalMs <= 0) {
+    return undefined;
+  }
+
+  const topCount = Math.max(1, config.processTopCount);
+  const topCpu = [...processSamples]
+    .sort((left, right) => {
+      if (right.cpuPercent !== left.cpuPercent) {
+        return right.cpuPercent - left.cpuPercent;
+      }
+      return right.rssBytes - left.rssBytes;
+    })
+    .slice(0, topCount);
+  const topMemory = [...processSamples]
+    .sort((left, right) => {
+      if (right.rssBytes !== left.rssBytes) {
+        return right.rssBytes - left.rssBytes;
+      }
+      return right.cpuPercent - left.cpuPercent;
+    })
+    .slice(0, topCount);
+
+  return {
+    sampledAt,
+    intervalMs,
+    topCpu,
+    topMemory,
+  };
+}
+
 function buildHeartbeat(): HeartbeatPayload {
+  const sampledAt = Date.now();
   const memory = readMemoryMetrics();
   const containers = readContainerMetrics();
+  const currentCpuSnapshot = parseCpuSnapshot();
+  const processWindow =
+    config.processSampleIntervalMs > 0 &&
+    (previousProcessSampleAt === 0 ||
+      sampledAt - previousProcessSampleAt >= config.processSampleIntervalMs)
+      ? rankProcesses(currentCpuSnapshot, sampledAt)
+      : undefined;
 
   return {
     type: "heartbeat",
@@ -228,7 +375,7 @@ function buildHeartbeat(): HeartbeatPayload {
     instanceId,
     privateIp,
     nodeRole: config.nodeRole,
-    timestamp: Date.now(),
+    timestamp: sampledAt,
     worker: {
       cpuPercent: readCpuPercent(),
       memoryUsedBytes: memory.memoryUsedBytes,
@@ -237,6 +384,7 @@ function buildHeartbeat(): HeartbeatPayload {
       containerCount: containers.length,
     },
     containers,
+    processWindow,
   };
 }
 

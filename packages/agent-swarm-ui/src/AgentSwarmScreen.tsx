@@ -33,6 +33,34 @@ type WorkersResponse = {
   workers: Worker[]
 }
 
+type TimelineHostSample = {
+  tsMs: number
+  cpuPercent: number
+  memoryPercent: number
+  memoryUsedBytes: number
+  memoryTotalBytes: number
+  containerCount: number
+}
+
+type TimelineProcessSample = {
+  tsMs: number
+  ranking: "cpu" | "memory"
+  rank: number
+  pid: number
+  comm: string
+  state: string
+  cpuPercent: number
+  rssBytes: number
+}
+
+type WorkerTimelineResponse = {
+  ok: boolean
+  workerId: string
+  sinceTsMs: number
+  hostSamples: TimelineHostSample[]
+  processSamples: TimelineProcessSample[]
+}
+
 type Service = {
   namespace: string
   serviceName: string
@@ -99,12 +127,63 @@ function formatTimestamp(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString()
 }
 
+function formatRelativeMinutes(minutes: number): string {
+  return `${minutes}m`
+}
+
+function linePath(points: Array<{ x: number; y: number }>): string {
+  if (points.length === 0) {
+    return ""
+  }
+
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ")
+}
+
+function buildSeriesPath(
+  values: number[],
+  width: number,
+  height: number,
+  maxValue: number,
+): string {
+  if (values.length === 0 || maxValue <= 0) {
+    return ""
+  }
+
+  const lastIndex = Math.max(values.length - 1, 1)
+  const points = values.map((value, index) => ({
+    x: (index / lastIndex) * width,
+    y: height - (Math.max(value, 0) / maxValue) * height,
+  }))
+
+  return linePath(points)
+}
+
+function colorForSeries(key: string): string {
+  let hash = 2166136261
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  const hue = Math.abs(hash) % 360
+  return `hsl(${hue}, 72%, 60%)`
+}
+
+function formatProcessSeriesLabel(sample: TimelineProcessSample): string {
+  return `${sample.comm} (${sample.pid})`
+}
+
 export function AgentSwarmScreen({
   apiRootUrl = "/api/agent-swarm",
 }: AgentSwarmScreenProps) {
   const [health, setHealth] = useState<DashboardHealth | null>(null)
   const [workers, setWorkers] = useState<Worker[]>([])
   const [services, setServices] = useState<Service[]>([])
+  const [selectedWorkerId, setSelectedWorkerId] = useState("")
+  const [timelineRangeMinutes, setTimelineRangeMinutes] = useState(30)
+  const [timeline, setTimeline] = useState<WorkerTimelineResponse | null>(null)
   const [error, setError] = useState("")
   const [authMessage, setAuthMessage] = useState("")
 
@@ -193,6 +272,75 @@ export function AgentSwarmScreen({
     )
   }, [error, health])
 
+  useEffect(() => {
+    if (!selectedWorkerId && workers.length > 0) {
+      setSelectedWorkerId(workers[0]?.workerId ?? "")
+      return
+    }
+
+    if (
+      selectedWorkerId &&
+      !workers.some((worker) => worker.workerId === selectedWorkerId)
+    ) {
+      setSelectedWorkerId(workers[0]?.workerId ?? "")
+    }
+  }, [selectedWorkerId, workers])
+
+  useEffect(() => {
+    if (!selectedWorkerId) {
+      setTimeline(null)
+      return
+    }
+
+    let cancelled = false
+
+    async function refreshTimeline() {
+      try {
+        const response = await apiFetch(
+          featurePath(
+            apiRootUrl,
+            `workers/timeline?workerId=${encodeURIComponent(selectedWorkerId)}&rangeMinutes=${timelineRangeMinutes}`,
+          ),
+        )
+
+        if (response.status === 401) {
+          window.sessionStorage.removeItem(sessionStorageKey)
+          setAuthMessage(
+            "Dashboard access expired. Refresh from the auth portal to continue.",
+          )
+          return
+        }
+
+        if (!response.ok) {
+          throw new Error("failed to load worker timeline")
+        }
+
+        const nextTimeline = (await response.json()) as WorkerTimelineResponse
+        if (!cancelled) {
+          setTimeline(nextTimeline)
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "failed to load worker timeline",
+          )
+        }
+      }
+    }
+
+    void refreshTimeline()
+    const interval = window.setInterval(() => {
+      void refreshTimeline()
+    }, 10000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [apiRootUrl, selectedWorkerId, timelineRangeMinutes])
+
   const summary = useMemo(() => {
     const connectedWorkers = workers.filter(
       (worker) => worker.status === "connected",
@@ -216,6 +364,110 @@ export function AgentSwarmScreen({
   const dashboardPortLabel = health?.dashboard?.port
     ? String(health.dashboard.port)
     : "--"
+
+  const timelineCharts = useMemo(() => {
+    const width = 820
+    const height = 180
+    const hostSamples = timeline?.hostSamples ?? []
+    const processSamples = timeline?.processSamples ?? []
+
+    const cpuPath = buildSeriesPath(
+      hostSamples.map((sample) => sample.cpuPercent),
+      width,
+      height,
+      100,
+    )
+    const memoryPath = buildSeriesPath(
+      hostSamples.map((sample) => sample.memoryPercent),
+      width,
+      height,
+      100,
+    )
+
+    function buildProcessRankingSeries(
+      ranking: "cpu" | "memory",
+      valueSelector: (sample: TimelineProcessSample) => number,
+    ) {
+      const rankingSamples = processSamples.filter(
+        (sample) => sample.ranking === ranking,
+      )
+      const timestamps = Array.from(
+        new Set(rankingSamples.map((sample) => sample.tsMs)),
+      ).sort((left, right) => left - right)
+      const seriesMap = new Map<
+        string,
+        {
+          label: string
+          color: string
+          values: number[]
+          maxValue: number
+        }
+      >()
+
+      rankingSamples.forEach((sample) => {
+        const key = `${sample.comm}:${sample.pid}`
+        const timestampIndex = timestamps.indexOf(sample.tsMs)
+        if (timestampIndex < 0) {
+          return
+        }
+
+        const existing = seriesMap.get(key) ?? {
+          label: formatProcessSeriesLabel(sample),
+          color: colorForSeries(`${ranking}:${key}`),
+          values: new Array(timestamps.length).fill(0),
+          maxValue: 0,
+        }
+        const nextValue = valueSelector(sample)
+        existing.values[timestampIndex] = nextValue
+        existing.maxValue = Math.max(existing.maxValue, nextValue)
+        seriesMap.set(key, existing)
+      })
+
+      const topSeries = Array.from(seriesMap.values())
+        .sort((left, right) => right.maxValue - left.maxValue)
+        .slice(0, 6)
+
+      const maxValue =
+        ranking === "cpu"
+          ? Math.max(
+              100,
+              ...topSeries.flatMap((series) => series.values),
+            )
+          : Math.max(
+              1,
+              ...topSeries.flatMap((series) => series.values),
+            )
+
+      return {
+        maxValue,
+        lines: topSeries.map((series) => ({
+          label: series.label,
+          color: series.color,
+          path: buildSeriesPath(series.values, width, height, maxValue),
+          maxValue: series.maxValue,
+        })),
+      }
+    }
+
+    const cpuProcesses = buildProcessRankingSeries(
+      "cpu",
+      (sample) => sample.cpuPercent,
+    )
+    const memoryProcesses = buildProcessRankingSeries(
+      "memory",
+      (sample) => sample.rssBytes / (1024 * 1024),
+    )
+
+    return {
+      width,
+      height,
+      cpuPath,
+      memoryPath,
+      cpuProcesses,
+      memoryProcesses,
+      lastHostSample: hostSamples[hostSamples.length - 1] ?? null,
+    }
+  }, [timeline])
 
   return (
     <div className="flex h-full flex-col bg-slate-950 text-slate-100">
@@ -457,26 +709,176 @@ export function AgentSwarmScreen({
           </section>
         </div>
 
-        <section className="grid gap-3 xl:grid-cols-[0.95fr_1.05fr]">
-          <article className="rounded-2xl border border-white/10 bg-[#111826] px-4 py-3">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-300">
-              Current Contract
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">
-              The swarm view is still reading the legacy dashboard endpoints for
-              health, worker inventory, and service registry.
-            </p>
-          </article>
-          <article className="rounded-2xl border border-emerald-400/20 bg-emerald-400/5 px-4 py-3">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-100">
-              Next Move
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-emerald-50/80">
-              Move the swarm feature to `/api/agent-swarm/*` behind the shared
-              Bun gateway so frontend routing stays stable even when the backend
-              placement changes.
-            </p>
-          </article>
+        <section className="rounded-2xl border border-white/10 bg-[#0f1724]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-300">
+                Machine Timeline
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Host CPU and RAM with sparse top-process sampling.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+                onChange={(event) => setSelectedWorkerId(event.target.value)}
+                value={selectedWorkerId}
+              >
+                {workers.map((worker) => (
+                  <option key={worker.workerId} value={worker.workerId}>
+                    {worker.workerId}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+                onChange={(event) =>
+                  setTimelineRangeMinutes(Number(event.target.value))
+                }
+                value={timelineRangeMinutes}
+              >
+                {[15, 30, 60, 180].map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {formatRelativeMinutes(minutes)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {!selectedWorkerId ? (
+            <div className="px-4 py-8 text-sm text-slate-400">
+              No worker selected.
+            </div>
+          ) : !timeline ? (
+            <div className="px-4 py-8 text-sm text-slate-400">
+              Loading timeline…
+            </div>
+          ) : (
+            <div className="space-y-4 p-4">
+              <article className="rounded-2xl border border-white/10 bg-[#111826] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">
+                      Host Utilization
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      CPU and memory percent for {timeline.workerId}
+                    </p>
+                  </div>
+                  <div className="text-right text-xs text-slate-400">
+                    <div>
+                      CPU {timelineCharts.lastHostSample?.cpuPercent.toFixed(1) ?? "--"}%
+                    </div>
+                    <div>
+                      RAM{" "}
+                      {timelineCharts.lastHostSample?.memoryPercent.toFixed(1) ??
+                        "--"}
+                      %
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 overflow-x-auto">
+                  <svg
+                    className="h-[180px] w-full min-w-[820px]"
+                    viewBox={`0 0 ${timelineCharts.width} ${timelineCharts.height}`}
+                  >
+                    <path
+                      d={timelineCharts.memoryPath}
+                      fill="none"
+                      opacity="0.95"
+                      stroke="#38bdf8"
+                      strokeWidth="2.5"
+                    />
+                    <path
+                      d={timelineCharts.cpuPath}
+                      fill="none"
+                      opacity="0.95"
+                      stroke="#34d399"
+                      strokeWidth="2.5"
+                    />
+                  </svg>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-400">
+                  <span className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                    CPU
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+                    RAM
+                  </span>
+                </div>
+              </article>
+
+              {[
+                {
+                  title: "Top Process CPU",
+                  subtitle: "Top CPU-ranked processes over time",
+                  lines: timelineCharts.cpuProcesses.lines,
+                  suffix: "%",
+                },
+                {
+                  title: "Top Process Memory",
+                  subtitle: "Top RSS-ranked processes over time",
+                  lines: timelineCharts.memoryProcesses.lines,
+                  suffix: " MB",
+                },
+              ].map((chart) => (
+                <article
+                  key={chart.title}
+                  className="rounded-2xl border border-white/10 bg-[#111826] p-4"
+                >
+                  <h3 className="text-sm font-semibold text-white">{chart.title}</h3>
+                  <p className="mt-1 text-xs text-slate-500">{chart.subtitle}</p>
+                  <div className="mt-4 overflow-x-auto">
+                    <svg
+                      className="h-[180px] w-full min-w-[820px]"
+                      viewBox={`0 0 ${timelineCharts.width} ${timelineCharts.height}`}
+                    >
+                      {chart.lines.map((line) => (
+                        <path
+                          key={line.label}
+                          d={line.path}
+                          fill="none"
+                          opacity="0.95"
+                          stroke={line.color}
+                          strokeWidth="2.25"
+                        />
+                      ))}
+                    </svg>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {chart.lines.length === 0 ? (
+                      <div className="text-xs text-slate-500">
+                        No process samples yet for this window.
+                      </div>
+                    ) : (
+                      chart.lines.map((line) => (
+                        <div
+                          key={line.label}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-slate-300"
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: line.color }}
+                            />
+                            <span className="truncate">{line.label}</span>
+                          </span>
+                          <span className="shrink-0 text-slate-400">
+                            {line.maxValue.toFixed(chart.suffix === "%" ? 1 : 0)}
+                            {chart.suffix}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </div>

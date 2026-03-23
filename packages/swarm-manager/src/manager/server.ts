@@ -22,6 +22,21 @@ type WorkerMetrics = {
   containerCount: number;
 };
 
+type ProcessSample = {
+  pid: number;
+  comm: string;
+  state: string;
+  cpuPercent: number;
+  rssBytes: number;
+};
+
+type ProcessWindow = {
+  sampledAt: number;
+  intervalMs: number;
+  topCpu: ProcessSample[];
+  topMemory: ProcessSample[];
+};
+
 type ContainerMetrics = {
   containerId: string;
   containerName: string;
@@ -41,6 +56,7 @@ type WorkerHeartbeatMessage = {
   timestamp: number;
   worker: WorkerMetrics;
   containers: ContainerMetrics[];
+  processWindow?: ProcessWindow;
 };
 
 type IncomingMessage = WorkerAuthMessage | WorkerHeartbeatMessage;
@@ -95,6 +111,19 @@ type ContainerSampleRow = {
   memoryUsedBytes: number;
   memoryLimitBytes: number;
   memoryPercent: number;
+};
+
+type ProcessSampleRow = {
+  workerId: string;
+  instanceId: string;
+  tsMs: number;
+  ranking: "cpu" | "memory";
+  rank: number;
+  pid: number;
+  comm: string;
+  state: string;
+  cpuPercent: number;
+  rssBytes: number;
 };
 
 type WorkerLifecycleEventType =
@@ -304,6 +333,24 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_container_samples_project_ts
     ON container_samples(project_id, ts_ms);
 
+  CREATE TABLE IF NOT EXISTS process_samples (
+    worker_id TEXT NOT NULL,
+    instance_id TEXT NOT NULL,
+    ts_ms INTEGER NOT NULL,
+    ranking TEXT NOT NULL,
+    rank INTEGER NOT NULL,
+    pid INTEGER NOT NULL,
+    comm TEXT NOT NULL,
+    state TEXT NOT NULL,
+    cpu_percent REAL NOT NULL,
+    rss_bytes INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_process_samples_worker_ts
+    ON process_samples(worker_id, ts_ms);
+  CREATE INDEX IF NOT EXISTS idx_process_samples_worker_ranking_ts
+    ON process_samples(worker_id, ranking, ts_ms);
+
   CREATE TABLE IF NOT EXISTS worker_samples_1m (
     worker_id TEXT NOT NULL,
     bucket_start_ms INTEGER NOT NULL,
@@ -435,6 +482,21 @@ const insertContainerSample = db.query(
     memory_limit_bytes,
     memory_percent
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+);
+
+const insertProcessSample = db.query(
+  `INSERT INTO process_samples (
+    worker_id,
+    instance_id,
+    ts_ms,
+    ranking,
+    rank,
+    pid,
+    comm,
+    state,
+    cpu_percent,
+    rss_bytes
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 );
 
 const upsertServiceRecord = db.query(
@@ -630,6 +692,7 @@ const listLatestWorkerLifecycleEvents = db.query(
 
 const workerSampleBuffer: WorkerSampleRow[] = [];
 const containerSampleBuffer: ContainerSampleRow[] = [];
+const processSampleBuffer: ProcessSampleRow[] = [];
 const liveWorkers = new Map<string, LiveWorkerState>();
 const ec2InventoryWorkers = new Map<string, LiveWorkerState>();
 const sessions = new Map<string, Bun.ServerWebSocket<SocketData>>();
@@ -703,6 +766,41 @@ function isContainerMetricsArray(value: unknown): value is ContainerMetrics[] {
   });
 }
 
+function isProcessSampleArray(value: unknown): value is ProcessSample[] {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+
+  return value.every((process) => {
+    if (!process || typeof process !== "object") {
+      return false;
+    }
+
+    const item = process as Record<string, unknown>;
+    return (
+      isFiniteNumber(item.pid) &&
+      typeof item.comm === "string" &&
+      typeof item.state === "string" &&
+      isFiniteNumber(item.cpuPercent) &&
+      isFiniteNumber(item.rssBytes)
+    );
+  });
+}
+
+function isProcessWindow(value: unknown): value is ProcessWindow {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const item = value as Record<string, unknown>;
+  return (
+    isFiniteNumber(item.sampledAt) &&
+    isFiniteNumber(item.intervalMs) &&
+    isProcessSampleArray(item.topCpu) &&
+    isProcessSampleArray(item.topMemory)
+  );
+}
+
 function parseMessage(raw: string | Buffer): IncomingMessage | null {
   const text = typeof raw === "string" ? raw : raw.toString("utf8");
   const parsed = JSON.parse(text) as Record<string, unknown>;
@@ -730,7 +828,8 @@ function parseMessage(raw: string | Buffer): IncomingMessage | null {
       typeof parsed.privateIp === "string" &&
       isFiniteNumber(parsed.timestamp) &&
       isWorkerMetrics(parsed.worker) &&
-      isContainerMetricsArray(parsed.containers)
+      isContainerMetricsArray(parsed.containers) &&
+      (parsed.processWindow === undefined || isProcessWindow(parsed.processWindow))
     ) {
       return {
         ...(parsed as Omit<WorkerHeartbeatMessage, "nodeRole">),
@@ -1330,7 +1429,11 @@ function releasePortForService(
 }
 
 function flushSamples(): void {
-  if (workerSampleBuffer.length === 0 && containerSampleBuffer.length === 0) {
+  if (
+    workerSampleBuffer.length === 0 &&
+    containerSampleBuffer.length === 0 &&
+    processSampleBuffer.length === 0
+  ) {
     return;
   }
 
@@ -1339,6 +1442,7 @@ function flushSamples(): void {
     0,
     containerSampleBuffer.length,
   );
+  const pendingProcesses = processSampleBuffer.splice(0, processSampleBuffer.length);
 
   const transaction = db.transaction(() => {
     for (const sample of pendingWorkers) {
@@ -1365,6 +1469,21 @@ function flushSamples(): void {
         sample.memoryUsedBytes,
         sample.memoryLimitBytes,
         sample.memoryPercent,
+      );
+    }
+
+    for (const sample of pendingProcesses) {
+      insertProcessSample.run(
+        sample.workerId,
+        sample.instanceId,
+        sample.tsMs,
+        sample.ranking,
+        sample.rank,
+        sample.pid,
+        sample.comm,
+        sample.state,
+        sample.cpuPercent,
+        sample.rssBytes,
       );
     }
   });
@@ -1515,6 +1634,9 @@ function pruneOldData(): void {
   db.query("DELETE FROM container_samples WHERE ts_ms < ?").run(
     currentTime - config.rawRetentionMs,
   );
+  db.query("DELETE FROM process_samples WHERE ts_ms < ?").run(
+    currentTime - config.rawRetentionMs,
+  );
   db.query("DELETE FROM worker_samples_1m WHERE bucket_start_ms < ?").run(
     currentTime - config.rollup1mRetentionMs,
   );
@@ -1565,6 +1687,100 @@ function snapshotWorkers(): LiveWorkerState[] {
   );
 }
 
+function getWorkerTimeline(workerId: string, sinceTsMs: number): {
+  workerId: string;
+  sinceTsMs: number;
+  hostSamples: Array<{
+    tsMs: number;
+    cpuPercent: number;
+    memoryPercent: number;
+    memoryUsedBytes: number;
+    memoryTotalBytes: number;
+    containerCount: number;
+  }>;
+  processSamples: Array<{
+    tsMs: number;
+    ranking: "cpu" | "memory";
+    rank: number;
+    pid: number;
+    comm: string;
+    state: string;
+    cpuPercent: number;
+    rssBytes: number;
+  }>;
+} {
+  const hostSamples = db
+    .query(
+      `SELECT
+          ts_ms,
+          cpu_percent,
+          memory_percent,
+          memory_used_bytes,
+          memory_total_bytes,
+          container_count
+       FROM worker_samples
+       WHERE worker_id = ? AND ts_ms >= ?
+       ORDER BY ts_ms ASC`,
+    )
+    .all(workerId, sinceTsMs) as Array<{
+    ts_ms: number;
+    cpu_percent: number;
+    memory_percent: number;
+    memory_used_bytes: number;
+    memory_total_bytes: number;
+    container_count: number;
+  }>;
+
+  const processSamples = db
+    .query(
+      `SELECT
+          ts_ms,
+          ranking,
+          rank,
+          pid,
+          comm,
+          state,
+          cpu_percent,
+          rss_bytes
+       FROM process_samples
+       WHERE worker_id = ? AND ts_ms >= ?
+       ORDER BY ts_ms ASC, ranking ASC, rank ASC`,
+    )
+    .all(workerId, sinceTsMs) as Array<{
+    ts_ms: number;
+    ranking: "cpu" | "memory";
+    rank: number;
+    pid: number;
+    comm: string;
+    state: string;
+    cpu_percent: number;
+    rss_bytes: number;
+  }>;
+
+  return {
+    workerId,
+    sinceTsMs,
+    hostSamples: hostSamples.map((sample) => ({
+      tsMs: sample.ts_ms,
+      cpuPercent: sample.cpu_percent,
+      memoryPercent: sample.memory_percent,
+      memoryUsedBytes: sample.memory_used_bytes,
+      memoryTotalBytes: sample.memory_total_bytes,
+      containerCount: sample.container_count,
+    })),
+    processSamples: processSamples.map((sample) => ({
+      tsMs: sample.ts_ms,
+      ranking: sample.ranking,
+      rank: sample.rank,
+      pid: sample.pid,
+      comm: sample.comm,
+      state: sample.state,
+      cpuPercent: sample.cpu_percent,
+      rssBytes: sample.rss_bytes,
+    })),
+  };
+}
+
 function closeStaleSession(
   workerId: string,
   nextSocket: Bun.ServerWebSocket<SocketData>,
@@ -1612,6 +1828,29 @@ const server = Bun.serve<SocketData>({
 
     if (request.method === "GET" && url.pathname === "/workers") {
       return Response.json({ workers: snapshotWorkers() });
+    }
+
+    if (request.method === "GET" && url.pathname === "/workers/timeline") {
+      const workerId = normalizeName(url.searchParams.get("workerId") ?? "");
+      const rangeMinutesRaw = Number.parseInt(
+        url.searchParams.get("rangeMinutes") ?? "30",
+        10,
+      );
+
+      if (!workerId) {
+        return jsonError(400, "workerId is required");
+      }
+
+      const rangeMinutes = Math.min(
+        24 * 60,
+        Math.max(5, Number.isInteger(rangeMinutesRaw) ? rangeMinutesRaw : 30),
+      );
+      const sinceTsMs = nowMs() - rangeMinutes * 60 * 1000;
+
+      return Response.json({
+        ok: true,
+        ...getWorkerTimeline(workerId, sinceTsMs),
+      });
     }
 
     if (request.method === "GET" && url.pathname === "/workers/events") {
@@ -1995,6 +2234,38 @@ const server = Bun.serve<SocketData>({
             memoryLimitBytes: container.memoryLimitBytes,
             memoryPercent: container.memoryPercent,
           });
+        }
+
+        if (message.processWindow) {
+          for (const [index, process] of message.processWindow.topCpu.entries()) {
+            processSampleBuffer.push({
+              workerId: message.workerId,
+              instanceId: message.instanceId,
+              tsMs: message.processWindow.sampledAt,
+              ranking: "cpu",
+              rank: index + 1,
+              pid: process.pid,
+              comm: process.comm,
+              state: process.state,
+              cpuPercent: process.cpuPercent,
+              rssBytes: process.rssBytes,
+            });
+          }
+
+          for (const [index, process] of message.processWindow.topMemory.entries()) {
+            processSampleBuffer.push({
+              workerId: message.workerId,
+              instanceId: message.instanceId,
+              tsMs: message.processWindow.sampledAt,
+              ranking: "memory",
+              rank: index + 1,
+              pid: process.pid,
+              comm: process.comm,
+              state: process.state,
+              cpuPercent: process.cpuPercent,
+              rssBytes: process.rssBytes,
+            });
+          }
         }
       } catch (error) {
         console.error("worker message handling failed", error);
