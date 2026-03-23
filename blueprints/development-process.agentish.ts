@@ -42,6 +42,7 @@ const Rule = {
   verifyVersions: define.concept("VersionMatchVerification"),
   verifyBehavior: define.concept("BehaviorVerification"),
   ticketPlanForActiveWork: define.concept("TicketSystemOwnsImplementationPlan"),
+  standardRuntimeDeploy: define.concept("StandardRuntimeDeployBlueprint"),
 };
 
 DevelopmentProcess.enforces(`
@@ -60,6 +61,7 @@ DevelopmentProcess.enforces(`
 - state/ is only for temporary runtime state and recoverable operational artifacts.
 - Durable app data must live outside state/.
 - Provider-backed agents used for implementation must inherit this same workflow.
+- Runtime rollout should follow the deploy-manager-runtime blueprint as the standard deploy path.
 - UI-facing changes require real browser verification, screenshots, and deployed frontend-backend version matching.
 - Responsive UI changes must be verified at small, medium, and wide viewport sizes.
 - A rollout is not complete until post-deploy behavior has been verified on the live system.
@@ -76,6 +78,7 @@ DevelopmentProcess.defines(`
 - DeployByRuntimeCheckout means runtime is updated by checking out a committed source revision rather than editing deployed files directly.
 - VersionMatchVerification means the served frontend version and running backend version must match exactly after rollout.
 - TicketSystemOwnsImplementationPlan means active work sequencing, task breakdown, and unfinished implementation routing belong in tickets rather than in long-lived blueprint companion files.
+- StandardRuntimeDeployBlueprint means runtime rollout should use the repository's canonical deploy-manager-runtime path rather than improvised runtime or tunnel-control actions.
 `);
 
 DevelopmentProcess.contains(
@@ -103,6 +106,7 @@ DevelopmentProcess.contains(
   Rule.verifyVersions,
   Rule.verifyBehavior,
   Rule.ticketPlanForActiveWork,
+  Rule.standardRuntimeDeploy,
 );
 
 when(Actor.operator.implements("a feature or fix"))
@@ -114,6 +118,7 @@ when(Actor.operator.implements("a feature or fix"))
   .and(DevelopmentProcess.requires(Rule.mergeIntoBase))
   .and(DevelopmentProcess.requires(Rule.verifyLocally))
   .and(DevelopmentProcess.requires(Rule.deployByCheckout))
+  .and(DevelopmentProcess.requires(Rule.standardRuntimeDeploy))
   .and(DevelopmentProcess.requires(Rule.verifyBehavior))
   .and(DevelopmentProcess.requires(Rule.ticketPlanForActiveWork));
 
@@ -155,6 +160,11 @@ when(Artifact.blueprint.exists())
 when(Actor.operator.starts("substantial unfinished implementation work"))
   .then(DevelopmentProcess.prefers(Artifact.ticketPlan))
   .and(DevelopmentProcess.keeps("implementation sequencing and active work tracking in the ticket system"));
+
+when(Actor.operator.rollsOut("a committed revision to runtime"))
+  .then(DevelopmentProcess.requires(Rule.standardRuntimeDeploy))
+  .and(DevelopmentProcess.requires(Rule.deployByCheckout))
+  .and(DevelopmentProcess.treats("deploy-manager-runtime as the canonical rollout blueprint"));
 
 when(Artifact.temporaryState.contains("durable app content"))
   .then(DevelopmentProcess.violates(Rule.stateTemporaryOnly));
