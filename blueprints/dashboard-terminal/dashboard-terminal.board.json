@@ -1,0 +1,985 @@
+{
+  "kind": "agent-graph-board",
+  "id": "dashboard-terminal",
+  "label": "Dashboard Terminal",
+  "documents": [
+    "./dashboard-terminal.agentish.ts",
+    "./dashboard-terminal-dashboard-implementation.agentish.ts"
+  ],
+  "revision": 276,
+  "layers": [
+    {
+      "id": "layer-overview",
+      "label": "Overview",
+      "kind": "overview",
+      "nodeIds": [
+        "doc-dashboard-terminal-agentish-ts-agentish",
+        "doc-dashboard-terminal-agentish-ts-dashboard-terminal",
+        "doc-dashboard-terminal-agentish-ts-user",
+        "doc-dashboard-terminal-agentish-ts-dashboard-shell",
+        "doc-dashboard-terminal-agentish-ts-dashboard-feature",
+        "doc-dashboard-terminal-agentish-ts-dashboard-route",
+        "doc-dashboard-terminal-agentish-ts-dashboard-screen",
+        "doc-dashboard-terminal-agentish-ts-session-terminal",
+        "doc-dashboard-terminal-agentish-ts-session-tab",
+        "doc-dashboard-terminal-agentish-ts-session-shell-process",
+        "doc-dashboard-terminal-agentish-ts-session-pty",
+        "doc-dashboard-terminal-agentish-ts-session-cwd",
+        "doc-dashboard-terminal-agentish-ts-session-env",
+        "doc-dashboard-terminal-agentish-ts-session-command",
+        "doc-dashboard-terminal-agentish-ts-session-transcript",
+        "doc-dashboard-terminal-agentish-ts-session-resize",
+        "doc-dashboard-terminal-agentish-ts-session-input",
+        "doc-dashboard-terminal-agentish-ts-session-output",
+        "doc-dashboard-terminal-agentish-ts-session-lifecycle",
+        "doc-dashboard-terminal-agentish-ts-transport-websocket",
+        "doc-dashboard-terminal-agentish-ts-transport-snapshot",
+        "doc-dashboard-terminal-agentish-ts-transport-attach",
+        "doc-dashboard-terminal-agentish-ts-transport-create",
+        "doc-dashboard-terminal-agentish-ts-transport-close",
+        "doc-dashboard-terminal-agentish-ts-transport-heartbeat",
+        "doc-dashboard-terminal-agentish-ts-runtime-backend",
+        "doc-dashboard-terminal-agentish-ts-runtime-host",
+        "doc-dashboard-terminal-agentish-ts-runtime-process-spawner",
+        "doc-dashboard-terminal-agentish-ts-runtime-permission-policy",
+        "doc-dashboard-terminal-agentish-ts-runtime-allowed-root",
+        "doc-dashboard-terminal-agentish-ts-runtime-idle-reaper",
+        "doc-dashboard-terminal-agentish-ts-runtime-reconnect",
+        "doc-dashboard-terminal-agentish-ts-runtime-workspace-scoped",
+        "doc-dashboard-terminal-agentish-ts-runtime-shell-first",
+        "doc-dashboard-terminal-agentish-ts-runtime-stream-transport",
+        "doc-dashboard-terminal-agentish-ts-security-auth-boundary",
+        "doc-dashboard-terminal-agentish-ts-security-host-boundary",
+        "doc-dashboard-terminal-agentish-ts-security-path-guard",
+        "doc-dashboard-terminal-agentish-ts-security-env-filter",
+        "doc-dashboard-terminal-agentish-ts-security-session-isolation",
+        "doc-dashboard-terminal-agentish-ts-security-audit",
+        "doc-dashboard-terminal-agentish-ts-ui-terminal-surface",
+        "doc-dashboard-terminal-agentish-ts-ui-tab-bar",
+        "doc-dashboard-terminal-agentish-ts-ui-session-chrome",
+        "doc-dashboard-terminal-agentish-ts-ui-cwd-picker",
+        "doc-dashboard-terminal-agentish-ts-ui-shell-badge",
+        "doc-dashboard-terminal-agentish-ts-ui-reconnect-banner",
+        "doc-dashboard-terminal-agentish-ts-ui-empty-state",
+        "doc-dashboard-terminal-agentish-ts-ui-status-items",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-0",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-1",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-2",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-3",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-4",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-5",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-6",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-7",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-8",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-9",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-10",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-11",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-0",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-1",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-2",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-3",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-4",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-5",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-6",
+        "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-0",
+        "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-1",
+        "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-2",
+        "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-3",
+        "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-4",
+        "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-5",
+        "detail-doc-dashboard-terminal-agentish-ts-security-session-isolation-means-0",
+        "detail-doc-dashboard-terminal-agentish-ts-security-session-isolation-means-1",
+        "detail-doc-dashboard-terminal-agentish-ts-security-session-isolation-means-2",
+        "detail-doc-dashboard-terminal-agentish-ts-user-opens-0",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-screen-disconnects-0",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-screen-disconnects-1",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-0",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-1",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-2",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-3",
+        "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-4",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-agentish",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-user",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-shell",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-gateway",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-plugin",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-route",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-screen",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-backend",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-session",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-registry",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-pty",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-shell",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-cwd",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-env",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-profile",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-attachment",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-idle-timer",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-audit",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-list-sessions",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-create-session",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-close-session",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-snapshot-session",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-subscribe-session",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-attach-session",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-input-session",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-resize-session",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-workspace-panel",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-terminal-viewport",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-tab-strip",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-session-menu",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-create-dialog",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-cwd-field",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-shell-selector",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-offline-state",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-loading-state",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-status-items",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-lazy-ui",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-lazy-backend",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-pty-runtime",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-browser-terminal",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-reconnect",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-bounded-history",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-workspace-guard",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-auth",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-manager-only",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-single-attach",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-workspace-roots",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-shell-profiles",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-no-shared-shell",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-feature-id",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-backend-package",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-ui-package",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-transport",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-pty-library",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-scrollback",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-idle-timeout",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-package-ui",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-package-server",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-package-dashboard-ui",
+        "doc-dashboard-terminal-dashboard-implementation-agentish-ts-package-dashboard-server",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-2",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-3",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-4",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-5",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-6",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-7",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-8",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-9",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-10",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-11",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-2",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-3",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-4",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-5",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-manager-only-means-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-manager-only-means-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-manager-only-means-2",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-single-attach-means-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-single-attach-means-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-single-attach-means-2",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-workspace-roots-means-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-workspace-roots-means-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-workspace-roots-means-2",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-shell-profiles-means-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-shell-profiles-means-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-shell-profiles-means-2",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-no-shared-shell-means-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-no-shared-shell-means-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-no-shared-shell-means-2",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-shell-loads-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-shell-loads-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-gateway-proxies-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-gateway-proxies-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-terminal-viewport-renders-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-terminal-viewport-renders-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-screen-reconnects-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-prescribes-0",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-prescribes-1",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-prescribes-2",
+        "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-prescribes-3"
+      ],
+      "visible": true,
+      "x": 1256.1194221689486,
+      "y": 1506.8208005455258,
+      "derivedFromLayerId": null
+    }
+  ],
+  "nodePositions": {
+    "doc-dashboard-terminal-agentish-ts-agentish::layer-overview": {
+      "x": 32,
+      "y": 56
+    },
+    "doc-dashboard-terminal-agentish-ts-dashboard-terminal::layer-overview": {
+      "x": 2461.7565644080437,
+      "y": 2176.406687609445
+    },
+    "doc-dashboard-terminal-agentish-ts-user::layer-overview": {
+      "x": 691.9706719122473,
+      "y": 1154.5339688072993
+    },
+    "doc-dashboard-terminal-agentish-ts-dashboard-shell::layer-overview": {
+      "x": -375.9776453058407,
+      "y": 1219.9033821950886
+    },
+    "doc-dashboard-terminal-agentish-ts-dashboard-feature::layer-overview": {
+      "x": 687.5653406797942,
+      "y": -231.97821456489504
+    },
+    "doc-dashboard-terminal-agentish-ts-dashboard-route::layer-overview": {
+      "x": 79.08039967020127,
+      "y": 1211.845530731287
+    },
+    "doc-dashboard-terminal-agentish-ts-dashboard-screen::layer-overview": {
+      "x": 738.8693295132355,
+      "y": 2992.0435073092367
+    },
+    "doc-dashboard-terminal-agentish-ts-session-terminal::layer-overview": {
+      "x": 3932.8798283163205,
+      "y": 1165.3692842774994
+    },
+    "doc-dashboard-terminal-agentish-ts-session-tab::layer-overview": {
+      "x": 4880.669217993705,
+      "y": 1167.378560060047
+    },
+    "doc-dashboard-terminal-agentish-ts-session-shell-process::layer-overview": {
+      "x": 3022.235975295076,
+      "y": 1454.1753921169088
+    },
+    "doc-dashboard-terminal-agentish-ts-session-pty::layer-overview": {
+      "x": 3134.470397063881,
+      "y": 1157.7400839029983
+    },
+    "doc-dashboard-terminal-agentish-ts-session-cwd::layer-overview": {
+      "x": 4507.169217993705,
+      "y": 1159.378560060047
+    },
+    "doc-dashboard-terminal-agentish-ts-session-env::layer-overview": {
+      "x": 5205.169217993705,
+      "y": 1167.378560060047
+    },
+    "doc-dashboard-terminal-agentish-ts-session-command::layer-overview": {
+      "x": 5551.169217993705,
+      "y": 1167.378560060047
+    },
+    "doc-dashboard-terminal-agentish-ts-session-transcript::layer-overview": {
+      "x": 4507.169217993705,
+      "y": 1311.378560060047
+    },
+    "doc-dashboard-terminal-agentish-ts-session-resize::layer-overview": {
+      "x": 2727.5996063702833,
+      "y": 1006.1527895283693
+    },
+    "doc-dashboard-terminal-agentish-ts-session-input::layer-overview": {
+      "x": 2566.910090783206,
+      "y": 1239.9975473219079
+    },
+    "doc-dashboard-terminal-agentish-ts-session-output::layer-overview": {
+      "x": 3910.1723186384243,
+      "y": 1425.0780416325201
+    },
+    "doc-dashboard-terminal-agentish-ts-session-lifecycle::layer-overview": {
+      "x": 4855.169217993705,
+      "y": 1311.378560060047
+    },
+    "doc-dashboard-terminal-agentish-ts-transport-websocket::layer-overview": {
+      "x": 2417.842994050457,
+      "y": 1523.2546898443572
+    },
+    "doc-dashboard-terminal-agentish-ts-transport-snapshot::layer-overview": {
+      "x": 3638.5679978038934,
+      "y": -173.3098452362936
+    },
+    "doc-dashboard-terminal-agentish-ts-transport-attach::layer-overview": {
+      "x": 3986.5679978038934,
+      "y": -173.3098452362936
+    },
+    "doc-dashboard-terminal-agentish-ts-transport-create::layer-overview": {
+      "x": 4334.567997803893,
+      "y": -173.3098452362936
+    },
+    "doc-dashboard-terminal-agentish-ts-transport-close::layer-overview": {
+      "x": 4682.567997803893,
+      "y": -173.3098452362936
+    },
+    "doc-dashboard-terminal-agentish-ts-transport-heartbeat::layer-overview": {
+      "x": 3638.5679978038934,
+      "y": -21.30984523629361
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-backend::layer-overview": {
+      "x": 3047.8026377577644,
+      "y": 1.0850262226026643
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-host::layer-overview": {
+      "x": 325.97495680405564,
+      "y": 676.7248161772612
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-process-spawner::layer-overview": {
+      "x": 3986.5679978038934,
+      "y": -21.30984523629361
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-permission-policy::layer-overview": {
+      "x": 4334.567997803893,
+      "y": -21.30984523629361
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-allowed-root::layer-overview": {
+      "x": 2454.212553223412,
+      "y": 399.92190194126033
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-idle-reaper::layer-overview": {
+      "x": 4682.567997803893,
+      "y": -21.30984523629361
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-reconnect::layer-overview": {
+      "x": 3638.5679978038934,
+      "y": 130.6901547637064
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-workspace-scoped::layer-overview": {
+      "x": 3986.5679978038934,
+      "y": 130.6901547637064
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-shell-first::layer-overview": {
+      "x": -49.244794027287654,
+      "y": 2048.000683723262
+    },
+    "doc-dashboard-terminal-agentish-ts-runtime-stream-transport::layer-overview": {
+      "x": 4334.567997803893,
+      "y": 130.6901547637064
+    },
+    "doc-dashboard-terminal-agentish-ts-security-auth-boundary::layer-overview": {
+      "x": 4682.567997803893,
+      "y": 130.6901547637064
+    },
+    "doc-dashboard-terminal-agentish-ts-security-host-boundary::layer-overview": {
+      "x": 3638.5679978038934,
+      "y": 282.6901547637064
+    },
+    "doc-dashboard-terminal-agentish-ts-security-path-guard::layer-overview": {
+      "x": 2433.8481420653407,
+      "y": 587.0043470038877
+    },
+    "doc-dashboard-terminal-agentish-ts-security-env-filter::layer-overview": {
+      "x": 3986.5679978038934,
+      "y": 282.6901547637064
+    },
+    "doc-dashboard-terminal-agentish-ts-security-session-isolation::layer-overview": {
+      "x": 3625.2069705519916,
+      "y": 715.8289520066884
+    },
+    "doc-dashboard-terminal-agentish-ts-security-audit::layer-overview": {
+      "x": 4334.567997803893,
+      "y": 282.6901547637064
+    },
+    "doc-dashboard-terminal-agentish-ts-ui-terminal-surface::layer-overview": {
+      "x": 1134.2899067811159,
+      "y": 1685.645670587667
+    },
+    "doc-dashboard-terminal-agentish-ts-ui-tab-bar::layer-overview": {
+      "x": 1482.2899067811159,
+      "y": 1693.645670587667
+    },
+    "doc-dashboard-terminal-agentish-ts-ui-session-chrome::layer-overview": {
+      "x": 1196.8090964323012,
+      "y": 2914.004712745164
+    },
+    "doc-dashboard-terminal-agentish-ts-ui-cwd-picker::layer-overview": {
+      "x": 1544.8090964323012,
+      "y": 2914.004712745164
+    },
+    "doc-dashboard-terminal-agentish-ts-ui-shell-badge::layer-overview": {
+      "x": 1892.809096432301,
+      "y": 2922.004712745164
+    },
+    "doc-dashboard-terminal-agentish-ts-ui-reconnect-banner::layer-overview": {
+      "x": 1544.8090964323012,
+      "y": 3068.004712745164
+    },
+    "doc-dashboard-terminal-agentish-ts-ui-empty-state::layer-overview": {
+      "x": 1134.2899067811159,
+      "y": 1837.645670587667
+    },
+    "doc-dashboard-terminal-agentish-ts-ui-status-items::layer-overview": {
+      "x": 1178.1121459640706,
+      "y": -74.11903055105131
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-0::layer-overview": {
+      "x": 4315.968083163661,
+      "y": 1752.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-1::layer-overview": {
+      "x": 2923.9680831636606,
+      "y": 1742.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-2::layer-overview": {
+      "x": 3271.9680831636606,
+      "y": 1742.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-3::layer-overview": {
+      "x": 3619.9680831636606,
+      "y": 1742.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-4::layer-overview": {
+      "x": 3967.9680831636606,
+      "y": 1742.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-5::layer-overview": {
+      "x": 2923.9680831636606,
+      "y": 1938.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-6::layer-overview": {
+      "x": 3271.9680831636606,
+      "y": 1938.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-7::layer-overview": {
+      "x": 3619.9680831636606,
+      "y": 1938.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-8::layer-overview": {
+      "x": 3967.9680831636606,
+      "y": 1948.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-9::layer-overview": {
+      "x": 4315.968083163661,
+      "y": 1948.3750624758482
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-10::layer-overview": {
+      "x": 3619.9680831636606,
+      "y": 2144.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-enforces-11::layer-overview": {
+      "x": 4315.968083163661,
+      "y": 2154.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-0::layer-overview": {
+      "x": 3967.9680831636606,
+      "y": 2144.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-1::layer-overview": {
+      "x": 2923.9680831636606,
+      "y": 2134.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-2::layer-overview": {
+      "x": 3271.9680831636606,
+      "y": 2134.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-3::layer-overview": {
+      "x": 2923.9680831636606,
+      "y": 2350.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-4::layer-overview": {
+      "x": 3271.9680831636606,
+      "y": 2360.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-5::layer-overview": {
+      "x": 3619.9680831636606,
+      "y": 2360.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-defines-6::layer-overview": {
+      "x": 3967.9680831636606,
+      "y": 2360.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-0::layer-overview": {
+      "x": 5215.169217993705,
+      "y": 1319.378560060047
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-1::layer-overview": {
+      "x": 5592.169217993705,
+      "y": 1319.378560060047
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-2::layer-overview": {
+      "x": 5584.669217993705,
+      "y": 1483.378560060047
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-3::layer-overview": {
+      "x": 4855.169217993705,
+      "y": 1473.378560060047
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-4::layer-overview": {
+      "x": 4507.169217993705,
+      "y": 1463.378560060047
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-session-terminal-means-5::layer-overview": {
+      "x": 5203.169217993705,
+      "y": 1473.378560060047
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-security-session-isolation-means-0::layer-overview": {
+      "x": 4083.2356947237686,
+      "y": 625.6667489855164
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-security-session-isolation-means-1::layer-overview": {
+      "x": 4431.235694723769,
+      "y": 625.6667489855164
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-security-session-isolation-means-2::layer-overview": {
+      "x": 4083.2356947237686,
+      "y": 781.6667489855164
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-user-opens-0::layer-overview": {
+      "x": 1102.716464735147,
+      "y": 1154.5061377916757
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-screen-disconnects-0::layer-overview": {
+      "x": 1915.309096432301,
+      "y": 3076.004712745164
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-screen-disconnects-1::layer-overview": {
+      "x": 1196.8090964323012,
+      "y": 3066.004712745164
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-0::layer-overview": {
+      "x": 4315.968083163661,
+      "y": 2370.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-1::layer-overview": {
+      "x": 3967.9680831636606,
+      "y": 2576.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-2::layer-overview": {
+      "x": 2923.9680831636606,
+      "y": 2566.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-3::layer-overview": {
+      "x": 3271.9680831636606,
+      "y": 2566.375062475848
+    },
+    "detail-doc-dashboard-terminal-agentish-ts-dashboard-terminal-prescribes-4::layer-overview": {
+      "x": 3619.9680831636606,
+      "y": 2566.375062475848
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-agentish::layer-overview": {
+      "x": 392,
+      "y": 4424
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation::layer-overview": {
+      "x": 2173.9186016679323,
+      "y": 16476.45200792893
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-user::layer-overview": {
+      "x": 2091.8888708349905,
+      "y": 15259.77649686478
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-shell::layer-overview": {
+      "x": 1268.8422133151298,
+      "y": 15691.646008747708
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-gateway::layer-overview": {
+      "x": 1566.557641827422,
+      "y": 15786.10931721533
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-plugin::layer-overview": {
+      "x": 1612.14762099102,
+      "y": 15540.188413700836
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-route::layer-overview": {
+      "x": 2064.761433631156,
+      "y": 15442.433525505303
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-screen::layer-overview": {
+      "x": 2105.961911657636,
+      "y": 15599.801990214444
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-backend::layer-overview": {
+      "x": 2109.812674208183,
+      "y": 15350.92938878677
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-session::layer-overview": {
+      "x": 2588.2949385763445,
+      "y": 14993.784044822249
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-registry::layer-overview": {
+      "x": 2565.2698011428956,
+      "y": 14980.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-pty::layer-overview": {
+      "x": 2561.810340438039,
+      "y": 15017.862171313762
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-shell::layer-overview": {
+      "x": 2882.810340438039,
+      "y": 15017.862171313762
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-cwd::layer-overview": {
+      "x": 2913.2698011428956,
+      "y": 14980.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-env::layer-overview": {
+      "x": 3261.2698011428956,
+      "y": 14980.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-profile::layer-overview": {
+      "x": 3626.2698011428956,
+      "y": 14988.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-attachment::layer-overview": {
+      "x": 2565.2698011428956,
+      "y": 15132.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-idle-timer::layer-overview": {
+      "x": 2913.2698011428956,
+      "y": 15132.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-terminal-audit::layer-overview": {
+      "x": 3261.2698011428956,
+      "y": 15132.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-list-sessions::layer-overview": {
+      "x": 3609.2698011428956,
+      "y": 15132.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-create-session::layer-overview": {
+      "x": 2565.2698011428956,
+      "y": 15284.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-close-session::layer-overview": {
+      "x": 2913.2698011428956,
+      "y": 15284.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-snapshot-session::layer-overview": {
+      "x": 2560.527464560455,
+      "y": 15549.887632027208
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-subscribe-session::layer-overview": {
+      "x": 2657.766529736435,
+      "y": 15871.44441520315
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-attach-session::layer-overview": {
+      "x": 2908.527464560455,
+      "y": 15549.887632027208
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-input-session::layer-overview": {
+      "x": 3005.766529736435,
+      "y": 15871.44441520315
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-api-resize-session::layer-overview": {
+      "x": 2657.766529736435,
+      "y": 16023.44441520315
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-workspace-panel::layer-overview": {
+      "x": 2602.915474771287,
+      "y": 15567.473473031407
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-terminal-viewport::layer-overview": {
+      "x": 2268.4139301533705,
+      "y": 15791.738671005569
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-tab-strip::layer-overview": {
+      "x": 3314.915474771287,
+      "y": 15575.473473031407
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-session-menu::layer-overview": {
+      "x": 2950.915474771287,
+      "y": 15567.473473031407
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-create-dialog::layer-overview": {
+      "x": 2602.915474771287,
+      "y": 15719.473473031407
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-cwd-field::layer-overview": {
+      "x": 2878.97572117631,
+      "y": 15432.358993399217
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-shell-selector::layer-overview": {
+      "x": 2530.97572117631,
+      "y": 15424.358993399217
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-offline-state::layer-overview": {
+      "x": 2950.915474771287,
+      "y": 15719.473473031407
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-loading-state::layer-overview": {
+      "x": 3298.915474771287,
+      "y": 15719.473473031407
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-status-items::layer-overview": {
+      "x": 2602.915474771287,
+      "y": 15871.473473031407
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-lazy-ui::layer-overview": {
+      "x": 1938.5166029810966,
+      "y": 15531.116875748186
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-lazy-backend::layer-overview": {
+      "x": 2042.9544891900537,
+      "y": 15671.454998366919
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-pty-runtime::layer-overview": {
+      "x": 3261.2698011428956,
+      "y": 15284.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-browser-terminal::layer-overview": {
+      "x": 2635.9826025338307,
+      "y": 15509.863546658915
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-reconnect::layer-overview": {
+      "x": 2560.527464560455,
+      "y": 15701.887632027208
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-bounded-history::layer-overview": {
+      "x": 3609.2698011428956,
+      "y": 15284.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-workspace-guard::layer-overview": {
+      "x": 2534.810340438039,
+      "y": 15153.862171313762
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-runtime-auth::layer-overview": {
+      "x": 2565.2698011428956,
+      "y": 15436.27322358074
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-manager-only::layer-overview": {
+      "x": -492.96414026920263,
+      "y": 16656.804743218134
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-single-attach::layer-overview": {
+      "x": -280.181853714795,
+      "y": 13748.487184108517
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-workspace-roots::layer-overview": {
+      "x": -595.2254896772688,
+      "y": 15991.357299748863
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-shell-profiles::layer-overview": {
+      "x": -471.5341858001984,
+      "y": 16324.04109014665
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-no-shared-shell::layer-overview": {
+      "x": 123.71252222116368,
+      "y": 15759.450282430002
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-feature-id::layer-overview": {
+      "x": -355.6783212832088,
+      "y": 8869.108180278774
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-backend-package::layer-overview": {
+      "x": 385.27826516624555,
+      "y": 12513.502883871734
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-ui-package::layer-overview": {
+      "x": 2266.5637008119093,
+      "y": 15955.842804930866
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-transport::layer-overview": {
+      "x": -240.92525509351248,
+      "y": 9438.866399639935
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-pty-library::layer-overview": {
+      "x": 1904.368072105885,
+      "y": 15790.57335592775
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-scrollback::layer-overview": {
+      "x": 2604.3813147765322,
+      "y": 15905.901098421991
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-decision-idle-timeout::layer-overview": {
+      "x": -324.4155519350205,
+      "y": 9068.099422831707
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-package-ui::layer-overview": {
+      "x": 905.7832667928474,
+      "y": 15527.625657235356
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-package-server::layer-overview": {
+      "x": 2265.9038654943733,
+      "y": 15868.019843112224
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-package-dashboard-ui::layer-overview": {
+      "x": -251.09800591925944,
+      "y": 9583.684771608072
+    },
+    "doc-dashboard-terminal-dashboard-implementation-agentish-ts-package-dashboard-server::layer-overview": {
+      "x": 103.94835422986733,
+      "y": 10919.68249765455
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-0::layer-overview": {
+      "x": 3353.8151928988764,
+      "y": 16009.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-1::layer-overview": {
+      "x": 2657.8151928988764,
+      "y": 15999.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-2::layer-overview": {
+      "x": 3701.8151928988764,
+      "y": 16009.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-3::layer-overview": {
+      "x": 4049.8151928988764,
+      "y": 16009.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-4::layer-overview": {
+      "x": 3005.8151928988764,
+      "y": 15999.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-5::layer-overview": {
+      "x": 2657.8151928988764,
+      "y": 16211.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-6::layer-overview": {
+      "x": 3701.8151928988764,
+      "y": 16221.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-7::layer-overview": {
+      "x": 3005.8151928988764,
+      "y": 16211.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-8::layer-overview": {
+      "x": 4049.8151928988764,
+      "y": 16221.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-9::layer-overview": {
+      "x": 3353.8151928988764,
+      "y": 16211.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-10::layer-overview": {
+      "x": 3005.8151928988764,
+      "y": 16433.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-enforces-11::layer-overview": {
+      "x": 3353.8151928988764,
+      "y": 16433.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-0::layer-overview": {
+      "x": 2657.8151928988764,
+      "y": 16423.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-1::layer-overview": {
+      "x": 3701.8151928988764,
+      "y": 16433.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-2::layer-overview": {
+      "x": 4049.8151928988764,
+      "y": 16433.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-3::layer-overview": {
+      "x": 2657.8151928988764,
+      "y": 16655.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-4::layer-overview": {
+      "x": 3005.8151928988764,
+      "y": 16665.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-defines-5::layer-overview": {
+      "x": 3353.8151928988764,
+      "y": 16665.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-manager-only-means-0::layer-overview": {
+      "x": -34.84566394253238,
+      "y": 16566.5144313379
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-manager-only-means-1::layer-overview": {
+      "x": 313.1543360574676,
+      "y": 16566.5144313379
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-manager-only-means-2::layer-overview": {
+      "x": -34.84566394253238,
+      "y": 16722.5144313379
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-single-attach-means-0::layer-overview": {
+      "x": 177.77541530348492,
+      "y": 13658.543710085236
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-single-attach-means-1::layer-overview": {
+      "x": 525.7754153034849,
+      "y": 13658.543710085236
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-single-attach-means-2::layer-overview": {
+      "x": 177.77541530348492,
+      "y": 13814.543710085236
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-workspace-roots-means-0::layer-overview": {
+      "x": -137.15640592063187,
+      "y": 15901.555690699388
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-workspace-roots-means-1::layer-overview": {
+      "x": 210.84359407936813,
+      "y": 15901.555690699388
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-workspace-roots-means-2::layer-overview": {
+      "x": -137.15640592063187,
+      "y": 16057.555690699388
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-shell-profiles-means-0::layer-overview": {
+      "x": 334.5031453032595,
+      "y": 16234.11213411162
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-shell-profiles-means-1::layer-overview": {
+      "x": -13.496854696740513,
+      "y": 16224.11213411162
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-shell-profiles-means-2::layer-overview": {
+      "x": -13.496854696740513,
+      "y": 16400.11213411162
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-no-shared-shell-means-0::layer-overview": {
+      "x": 581.607904191338,
+      "y": 15679.176566770318
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-no-shared-shell-means-1::layer-overview": {
+      "x": 929.6079041913381,
+      "y": 15679.176566770318
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-scope-no-shared-shell-means-2::layer-overview": {
+      "x": 581.607904191338,
+      "y": 15835.176566770318
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-shell-loads-0::layer-overview": {
+      "x": 2017.9123320032313,
+      "y": 15926.94137680239
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-shell-loads-1::layer-overview": {
+      "x": 1669.9123320032315,
+      "y": 15916.94137680239
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-gateway-proxies-0::layer-overview": {
+      "x": 2323.2529799595723,
+      "y": 16060.951856444817
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-gateway-proxies-1::layer-overview": {
+      "x": 1975.2529799595723,
+      "y": 16050.951856444817
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-terminal-viewport-renders-0::layer-overview": {
+      "x": 2721.5089196016083,
+      "y": 16915.95941659543
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-ui-terminal-viewport-renders-1::layer-overview": {
+      "x": 3013.5089196016083,
+      "y": 16915.95941659543
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-screen-reconnects-0::layer-overview": {
+      "x": 2978.415474771287,
+      "y": 15879.473473031407
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-prescribes-0::layer-overview": {
+      "x": 3701.8151928988764,
+      "y": 16665.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-prescribes-1::layer-overview": {
+      "x": 4049.8151928988764,
+      "y": 16665.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-prescribes-2::layer-overview": {
+      "x": 3005.8151928988764,
+      "y": 16897.781632189264
+    },
+    "detail-doc-dashboard-terminal-dashboard-implementation-agentish-ts-dashboard-terminal-dashboard-implementation-prescribes-3::layer-overview": {
+      "x": 2657.8151928988764,
+      "y": 16887.781632189264
+    }
+  },
+  "pinnedNodeIds": [
+    "doc-dashboard-terminal-agentish-ts-dashboard-shell::layer-overview",
+    "doc-dashboard-terminal-agentish-ts-dashboard-screen::layer-overview",
+    "doc-dashboard-terminal-agentish-ts-dashboard-feature::layer-overview",
+    "doc-dashboard-terminal-agentish-ts-user::layer-overview",
+    "doc-dashboard-terminal-agentish-ts-dashboard-terminal::layer-overview",
+    "doc-dashboard-terminal-agentish-ts-session-terminal::layer-overview",
+    "doc-dashboard-terminal-agentish-ts-runtime-backend::layer-overview",
+    "doc-dashboard-terminal-agentish-ts-security-session-isolation::layer-overview"
+  ]
+}
