@@ -67,6 +67,7 @@ const RuntimeCode = {
   workerAgent: define.entity("WorkerAgentProgram"),
   graphServer: define.entity("GraphServerProgram"),
   accessHandler: define.entity("DashboardAccessHandler"),
+  swarmMonitor: define.entity("SwarmMonitorProgram"),
 };
 
 const Policy = {
@@ -103,6 +104,7 @@ SystemRuntime.enforces(`
 - The dashboard gateway may start a backend only when a feature path is actually used.
 - The dashboard gateway should prefer declared backend definitions over ad hoc one-off launch logic.
 - Manager updates should follow one full development process from source edit through post-deploy verification.
+- Swarm monitor process visibility should use sparse continuous sampling rather than burst-only capture.
 `);
 
 SystemRuntime.defines(`
@@ -116,6 +118,7 @@ SystemRuntime.defines(`
 - SystemLoggingRule means important system events emit short timestamped comments to a fixed log file.
 - GatewayBackendDefinition means one declared lazy backend contract with base URL, health probe, and optional start command.
 - FullManagerUpdateWorkflow means source change, local verification, commit, push, runtime rollout, and post-deploy checks.
+- SwarmMonitorProgram means the worker or manager telemetry path that captures cheap host metrics and sparse process context.
 `);
 
 Host.manager.contains(
@@ -161,6 +164,7 @@ SystemRuntime.means(`
 - a deployment workflow contract
 - a system-level logging contract
 - a lazy gateway-backend contract
+- a swarm-monitor observability contract
 `);
 
 Policy.sourceOfTruth.means(`
@@ -257,6 +261,11 @@ when(Operator.requests("the full manager development process"))
 when(RuntimeCode.workerPower.isUsedBy("a manager test or manager workflow"))
   .then(SystemRuntime.prefers("direct TS invocation"))
   .and(SystemRuntime.reduces("TS to shell to TS indirection"));
+
+when(RuntimeCode.swarmMonitor.observes("host distress"))
+  .then(SystemRuntime.prefers("pre-existing sparse process context"))
+  .and(SystemRuntime.forbids("starting expensive process scans only after the spike has already started"))
+  .and(SystemRuntime.treats("process lead-up capture as a manager observability requirement"));
 
 when(Layout.tools.contains(define.entity("RepoTool")))
   .then(SystemRuntime.keeps("repository helpers out of the runtime script surface"))
