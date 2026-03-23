@@ -202,6 +202,10 @@ function buildSessionTitle(text: string) {
   return `${normalized.slice(0, 53)}...`;
 }
 
+function normalizeOptionalValue(value: string | null | undefined) {
+  return value?.trim() || "";
+}
+
 function setRuntimeState(
   sessionId: string,
   update: Partial<SessionRuntimeState> | ((current: SessionRuntimeState) => SessionRuntimeState),
@@ -569,18 +573,51 @@ const server = Bun.serve<ChatSocketData>({
         const payload = body as {
           cwd?: string;
           title?: string;
+          providerKind?: AgentChatProviderKind;
+          modelRef?: string;
+          authProfile?: string | null;
+          imageModelRef?: string | null;
         };
+        const currentSession = store.getSession(sessionId);
+        if (!currentSession) {
+          return notFound();
+        }
+
         const nextDirectory = payload.cwd?.trim();
         const nextTitle = payload.title?.trim();
-        if (!nextDirectory && !nextTitle) {
-          return jsonResponse({ ok: false, error: "directory or title required" }, 400);
+        const nextProviderKind = payload.providerKind?.trim() as AgentChatProviderKind | undefined;
+        const nextModelRef = payload.modelRef?.trim();
+        const nextAuthProfile =
+          payload.authProfile === undefined ? undefined : payload.authProfile?.trim() || null;
+        const nextImageModelRef =
+          payload.imageModelRef === undefined ? undefined : payload.imageModelRef?.trim() || null;
+        const hasProviderPatch =
+          !!nextProviderKind ||
+          !!nextModelRef ||
+          payload.authProfile !== undefined ||
+          payload.imageModelRef !== undefined;
+
+        if (!nextDirectory && !nextTitle && !hasProviderPatch) {
+          return jsonResponse(
+            { ok: false, error: "directory, title, or provider settings required" },
+            400,
+          );
         }
-        let session = store.getSession(sessionId);
+        if (activeSessionRuns.has(sessionId) && hasProviderPatch) {
+          return jsonResponse(
+            { ok: false, error: "Cannot change provider settings while a run is active" },
+            409,
+          );
+        }
+        let session = currentSession;
         const queuedMessages: StoredMessage[] = [];
 
         if (nextDirectory && session && nextDirectory !== session.cwd) {
           store.markQueuedSystemMessagesSeenByPrefix(sessionId, DIRECTORY_QUEUE_PREFIX);
-          session = store.updateSessionCwd(sessionId, nextDirectory);
+          const updatedSession = store.updateSessionCwd(sessionId, nextDirectory);
+          if (updatedSession) {
+            session = updatedSession;
+          }
           const directoryMessage = store.appendMessage(sessionId, {
             role: "system",
             kind: "directoryInstruction",
@@ -593,16 +630,22 @@ const server = Bun.serve<ChatSocketData>({
             ],
           });
           queuedMessages.push(directoryMessage);
-          session = store.replacePendingSystemInstructionByPrefix(
+          const instructionSession = store.replacePendingSystemInstructionByPrefix(
             sessionId,
             DIRECTORY_INSTRUCTION_PREFIX,
             `${DIRECTORY_INSTRUCTION_PREFIX}${nextDirectory}. Use this directory for subsequent work unless the user says otherwise.`,
           );
+          if (instructionSession) {
+            session = instructionSession;
+          }
         }
 
         if (nextTitle && session && nextTitle !== session.title) {
           store.markQueuedSystemMessagesSeenByPrefix(sessionId, TITLE_QUEUE_PREFIX);
-          session = store.updateSessionTitle(sessionId, nextTitle);
+          const updatedSession = store.updateSessionTitle(sessionId, nextTitle);
+          if (updatedSession) {
+            session = updatedSession;
+          }
           const titleMessage = store.appendMessage(sessionId, {
             role: "system",
             providerSeenAtMs: null,
@@ -614,11 +657,71 @@ const server = Bun.serve<ChatSocketData>({
             ],
           });
           queuedMessages.push(titleMessage);
-          session = store.replacePendingSystemInstructionByPrefix(
+          const instructionSession = store.replacePendingSystemInstructionByPrefix(
             sessionId,
             TITLE_INSTRUCTION_PREFIX,
             `${TITLE_INSTRUCTION_PREFIX}${nextTitle}. Use this title when referring to this chat unless the user says otherwise.`,
           );
+          if (instructionSession) {
+            session = instructionSession;
+          }
+        }
+
+        if (hasProviderPatch && session) {
+          const resolvedProviderKind = nextProviderKind ?? session.providerKind;
+          const provider = getProviderCatalogEntry(resolvedProviderKind);
+          if (!provider) {
+            return jsonResponse({ ok: false, error: "unknown provider" }, 400);
+          }
+          if (provider.status !== "ready") {
+            return jsonResponse(
+              {
+                ok: false,
+                error: `${provider.label} is not implemented yet in Agent Chat`,
+              },
+              400,
+            );
+          }
+
+          const resolvedModelRef = nextModelRef || session.modelRef || provider.defaultModelRef;
+          const resolvedAuthProfile =
+            nextAuthProfile !== undefined
+              ? nextAuthProfile
+              : session.authProfile || provider.authProfiles[0] || null;
+          const resolvedImageModelRef =
+            nextImageModelRef !== undefined ? nextImageModelRef : session.imageModelRef;
+          const providerChanged =
+            resolvedProviderKind !== session.providerKind ||
+            resolvedModelRef !== session.modelRef ||
+            normalizeOptionalValue(resolvedAuthProfile) !==
+              normalizeOptionalValue(session.authProfile) ||
+            normalizeOptionalValue(resolvedImageModelRef) !==
+              normalizeOptionalValue(session.imageModelRef);
+
+          if (providerChanged) {
+            const updatedSession = store.updateSessionProviderSettings(sessionId, {
+              providerKind: resolvedProviderKind,
+              modelRef: resolvedModelRef,
+              authProfile: resolvedAuthProfile,
+              imageModelRef: resolvedImageModelRef,
+              clearProviderThread: true,
+            });
+            if (updatedSession) {
+              session = updatedSession;
+            }
+
+            const providerMessage = store.appendMessage(sessionId, {
+              role: "system",
+              providerSeenAtMs: Date.now(),
+              content: [
+                {
+                  type: "text",
+                  text: `Chat provider changed to ${provider.label} · ${resolvedModelRef}`,
+                },
+              ],
+            });
+            queuedMessages.push(providerMessage);
+          }
         }
 
         broadcastSession(sessionId, {

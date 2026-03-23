@@ -364,6 +364,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [authProfile, setAuthProfile] = useState("")
   const [imageModelRef, setImageModelRef] = useState("")
   const [activeSessionDirectory, setActiveSessionDirectory] = useState("")
+  const [activeSessionProviderKind, setActiveSessionProviderKind] =
+    useState<ProviderKind>("codex-app-server")
+  const [activeSessionModelRef, setActiveSessionModelRef] = useState("")
+  const [activeSessionAuthProfile, setActiveSessionAuthProfile] = useState("")
+  const [activeSessionImageModelRef, setActiveSessionImageModelRef] = useState("")
   const [updatingDirectory, setUpdatingDirectory] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false)
@@ -378,6 +383,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const activeProvider = useMemo(
     () => providers.find((entry) => entry.kind === providerKind) ?? null,
     [providerKind, providers],
+  )
+  const activeSessionProvider = useMemo(
+    () => providers.find((entry) => entry.kind === activeSessionProviderKind) ?? null,
+    [activeSessionProviderKind, providers],
   )
 
   const activeSession = useMemo(
@@ -434,11 +443,39 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
   useEffect(() => {
     setActiveSessionDirectory(activeSession?.cwd ?? "")
+    setActiveSessionProviderKind(activeSession?.providerKind ?? "codex-app-server")
+    setActiveSessionModelRef(activeSession?.modelRef ?? "")
+    setActiveSessionAuthProfile(activeSession?.authProfile ?? "")
+    setActiveSessionImageModelRef(activeSession?.imageModelRef ?? "")
     setReplyTargetMessageId(null)
     if (activeSession && renamingSessionId === activeSession.id) {
       setRenameTitle(activeSession.title)
     }
   }, [activeSession])
+
+  useEffect(() => {
+    if (!activeSessionProvider) {
+      return
+    }
+    const nextModel =
+      activeSessionProvider.modelOptions.find((option) => option === activeSessionModelRef) ??
+      activeSessionProvider.modelOptions.find(
+        (option) => option === activeSessionProvider.defaultModelRef,
+      ) ??
+      activeSessionProvider.modelOptions[0] ??
+      activeSessionProvider.defaultModelRef
+    if (nextModel !== activeSessionModelRef) {
+      setActiveSessionModelRef(nextModel)
+    }
+
+    const nextAuthProfile =
+      activeSessionProvider.authProfiles.find((option) => option === activeSessionAuthProfile) ??
+      activeSessionProvider.authProfiles[0] ??
+      ""
+    if (nextAuthProfile !== activeSessionAuthProfile) {
+      setActiveSessionAuthProfile(nextAuthProfile)
+    }
+  }, [activeSessionAuthProfile, activeSessionModelRef, activeSessionProvider])
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -817,6 +854,44 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setActivity(payload.activity)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Directory update failed.")
+    } finally {
+      setUpdatingDirectory(false)
+    }
+  }
+
+  async function updateCurrentChatSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!activeSessionId || !activeSession || !activeSessionDirectory.trim()) {
+      return
+    }
+
+    setUpdatingDirectory(true)
+    setError("")
+
+    try {
+      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          cwd: activeSessionDirectory,
+          providerKind: activeSessionProviderKind,
+          modelRef: activeSessionModelRef,
+          authProfile: activeSessionAuthProfile || null,
+          imageModelRef: activeSessionImageModelRef || null,
+        }),
+      })
+      const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Chat settings update failed.")
+      }
+      mergeSession(payload.session)
+      setMessages(payload.messages)
+      setQueuedMessages(payload.queuedMessages)
+      setActivity(payload.activity)
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Chat settings update failed.")
     } finally {
       setUpdatingDirectory(false)
     }
@@ -1405,7 +1480,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
               {settingsOpen ? (
                 <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-                  <form onSubmit={updateDirectory} className="space-y-4">
+                  <form onSubmit={updateCurrentChatSettings} className="space-y-4">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                           Current Chat
@@ -1419,6 +1494,75 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       </div>
                       <label className="block">
                         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Provider
+                        </span>
+                        <select
+                          value={activeSessionProviderKind}
+                          onChange={(event) => setActiveSessionProviderKind(event.target.value as ProviderKind)}
+                          disabled={!activeSession}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {providers.map((provider) => (
+                            <option key={provider.kind} value={provider.kind}>
+                              {provider.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Model
+                        </span>
+                        {activeSessionProvider?.modelOptions.length ? (
+                          <select
+                            value={activeSessionModelRef}
+                            onChange={(event) => setActiveSessionModelRef(event.target.value)}
+                            disabled={!activeSession}
+                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {activeSessionProvider.modelOptions.map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            value={activeSessionModelRef}
+                            readOnly
+                            disabled={!activeSession}
+                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                        )}
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Auth Profile
+                        </span>
+                        {activeSessionProvider?.authProfiles.length ? (
+                          <select
+                            value={activeSessionAuthProfile}
+                            onChange={(event) => setActiveSessionAuthProfile(event.target.value)}
+                            disabled={!activeSession}
+                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {activeSessionProvider.authProfiles.map((profile) => (
+                              <option key={profile} value={profile}>
+                                {profile}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            value={activeSessionAuthProfile}
+                            readOnly
+                            disabled={!activeSession}
+                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                        )}
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                           Directory
                         </span>
                         <input
@@ -1429,17 +1573,35 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Image Model Override
+                        </span>
+                        <input
+                          value={activeSessionImageModelRef}
+                          onChange={(event) => setActiveSessionImageModelRef(event.target.value)}
+                          placeholder="optional provider/model"
+                          disabled={!activeSession}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                      </label>
                       <button
                         type="submit"
                         disabled={
                           !activeSession ||
                           updatingDirectory ||
                           !activeSessionDirectory.trim() ||
-                          activeSessionDirectory.trim() === activeSession.cwd
+                          (
+                            activeSessionDirectory.trim() === activeSession.cwd &&
+                            activeSessionProviderKind === activeSession.providerKind &&
+                            activeSessionModelRef === activeSession.modelRef &&
+                            activeSessionAuthProfile === (activeSession.authProfile ?? "") &&
+                            activeSessionImageModelRef === (activeSession.imageModelRef ?? "")
+                          )
                         }
                         className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
                       >
-                        {updatingDirectory ? "Saving..." : "Queue Directory Change"}
+                        {updatingDirectory ? "Saving..." : "Save Chat Settings"}
                       </button>
                   </form>
                 </div>

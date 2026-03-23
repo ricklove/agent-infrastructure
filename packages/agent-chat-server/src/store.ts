@@ -249,6 +249,38 @@ export class AgentChatStore {
     return nextSession;
   }
 
+  updateSessionProviderSettings(
+    sessionId: string,
+    input: {
+      providerKind: AgentChatProviderKind;
+      modelRef: string;
+      authProfile: string | null;
+      imageModelRef: string | null;
+      clearProviderThread?: boolean;
+    },
+  ): StoredSession | null {
+    const current = this.sessionCache.get(sessionId);
+    const nextModelRef = input.modelRef.trim();
+    if (!current || !nextModelRef) {
+      return current ?? null;
+    }
+
+    const clearProviderThread = input.clearProviderThread ?? true;
+    const nextSession: StoredSession = {
+      ...current,
+      providerKind: input.providerKind,
+      modelRef: nextModelRef,
+      authProfile: input.authProfile?.trim() || null,
+      imageModelRef: input.imageModelRef?.trim() || null,
+      providerThreadId: clearProviderThread ? null : current.providerThreadId,
+      providerThreadPath: clearProviderThread ? null : current.providerThreadPath,
+      updatedAtMs: Date.now(),
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
+    return nextSession;
+  }
+
   queuePendingSystemInstruction(
     sessionId: string,
     instruction: string,
