@@ -858,14 +858,18 @@ async function handleApi(request: Request): Promise<Response> {
             : await request.text(),
       });
 
-      const body = await response.text();
+      const body = await response.arrayBuffer();
+      const contentType =
+        response.headers.get("content-type") ?? "application/json; charset=utf-8";
+      const cacheControl = response.headers.get("cache-control") ?? "no-store";
+      const contentLength = response.headers.get("content-length");
+
       return new Response(body, {
         status: response.status,
         headers: {
-          "content-type":
-            response.headers.get("content-type") ??
-            "application/json; charset=utf-8",
-          "cache-control": "no-store",
+          "content-type": contentType,
+          "cache-control": cacheControl,
+          ...(contentLength ? { "content-length": contentLength } : {}),
         },
       });
     } catch (error) {
