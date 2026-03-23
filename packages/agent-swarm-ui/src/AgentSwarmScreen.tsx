@@ -834,7 +834,7 @@ export function AgentSwarmScreen({
       const maxValue =
         ranking === "cpu"
           ? Math.max(
-              100,
+              1,
               ...topSeries.flatMap((series) => series.points.map((point) => point.value)),
             )
           : Math.max(
@@ -1486,7 +1486,14 @@ export function AgentSwarmScreen({
                       />
                       {chartGuideValues(
                         chart.title === "Top Process CPU"
-                          ? Math.max(chart.lines.reduce((maxValue, line) => Math.max(maxValue, line.maxValue), 100), 100)
+                          ? Math.max(
+                              chart.lines.reduce(
+                                (maxValue, line) =>
+                                  Math.max(maxValue, line.maxValue),
+                                1,
+                              ),
+                              1,
+                            )
                           : Math.max(chart.lines.reduce((maxValue, line) => Math.max(maxValue, line.maxValue), 1), 1),
                       ).map((value) => (
                         <g key={`${chart.title}-guide-${value}`}>
