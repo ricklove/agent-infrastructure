@@ -147,6 +147,19 @@ function maybeRestartService(name: string): void {
   logStep(`exit exit_code=0 restart=${name}`);
 }
 
+function serviceUnitExists(name: string): boolean {
+  return existsSync(`/etc/systemd/system/${name}`) || existsSync(`/usr/lib/systemd/system/${name}`);
+}
+
+function restartControllerService(): void {
+  if (serviceUnitExists("agent-manager-controller.service")) {
+    maybeRestartService("agent-manager-controller.service");
+    return;
+  }
+
+  maybeRestartService("agent-dashboard-controller.service");
+}
+
 async function main(): Promise<void> {
   const config = parseArgs(process.argv.slice(2));
   logStep(`setup.start runtimeDir=${config.runtimeDir} repoRef=${config.repoRef}`);
@@ -175,7 +188,7 @@ async function main(): Promise<void> {
   if (config.restartServices) {
     maybeRestartService("agent-swarm-monitor.service");
     maybeRestartService("agent-swarm-manager-node.service");
-    maybeRestartService("agent-dashboard-controller.service");
+    restartControllerService();
   }
 
   logStep("setup.complete");
