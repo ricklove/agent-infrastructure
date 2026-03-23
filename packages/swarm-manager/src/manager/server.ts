@@ -1687,9 +1687,10 @@ function snapshotWorkers(): LiveWorkerState[] {
   );
 }
 
-function getWorkerTimeline(workerId: string, sinceTsMs: number): {
+function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: number): {
   workerId: string;
   sinceTsMs: number;
+  untilTsMs: number;
   hostSamples: Array<{
     tsMs: number;
     cpuPercent: number;
@@ -1709,7 +1710,7 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number): {
     rssBytes: number;
   }>;
 } {
-  const rangeMs = Math.max(nowMs() - sinceTsMs, 0);
+  const rangeMs = Math.max(untilTsMs - sinceTsMs, 0);
 
   const hostSamples =
     rangeMs <= 6 * 60 * 60 * 1000
@@ -1778,7 +1779,7 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number): {
             container_count: number;
           }>);
 
-  const processSinceTsMs = Math.max(sinceTsMs, nowMs() - config.rawRetentionMs);
+  const processSinceTsMs = Math.max(sinceTsMs, untilTsMs - config.rawRetentionMs);
   const processBucketMs =
     rangeMs <= 60 * 60 * 1000
       ? 10 * 1000
@@ -1827,6 +1828,7 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number): {
   return {
     workerId,
     sinceTsMs,
+    untilTsMs,
     hostSamples: hostSamples.map((sample) => ({
       tsMs: sample.ts_ms,
       cpuPercent: sample.cpu_percent,
@@ -1912,11 +1914,12 @@ const server = Bun.serve<SocketData>({
         365 * 24 * 60,
         Math.max(5, Number.isInteger(rangeMinutesRaw) ? rangeMinutesRaw : 30),
       );
-      const sinceTsMs = nowMs() - rangeMinutes * 60 * 1000;
+      const untilTsMs = nowMs();
+      const sinceTsMs = untilTsMs - rangeMinutes * 60 * 1000;
 
       return Response.json({
         ok: true,
-        ...getWorkerTimeline(workerId, sinceTsMs),
+        ...getWorkerTimeline(workerId, sinceTsMs, untilTsMs),
       });
     }
 
