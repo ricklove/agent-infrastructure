@@ -273,7 +273,7 @@ const config = {
   workerZombieThresholdMs:
     Number(process.env.SWARM_WORKER_ZOMBIE_THRESHOLD_SECONDS ?? "120") * 1000,
   ec2InventoryRefreshMs:
-    Number(process.env.SWARM_EC2_INVENTORY_REFRESH_SECONDS ?? "15") * 1000,
+    Number(process.env.SWARM_EC2_INVENTORY_REFRESH_SECONDS ?? "300") * 1000,
   bootstrapContextPath:
     process.env.SWARM_BOOTSTRAP_CONTEXT_PATH ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH,
   ec2InventoryJson: process.env.SWARM_EC2_INVENTORY_JSON ?? "",

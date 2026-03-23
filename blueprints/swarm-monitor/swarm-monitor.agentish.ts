@@ -43,6 +43,7 @@ const UI = {
 const Source = {
   procfs: define.system("Procfs"),
   docker: define.system("DockerStats"),
+  ec2Inventory: define.system("Ec2InventoryPoll"),
 };
 
 const Policy = {
@@ -52,6 +53,7 @@ const Policy = {
   procfsFirst: define.concept("ProcfsFirst"),
   boundedPayload: define.concept("BoundedPayload"),
   crashLeadupVisibility: define.concept("CrashLeadupVisibility"),
+  slowZombieReconciliation: define.concept("SlowZombieReconciliation"),
 };
 
 const Trigger = {
@@ -71,6 +73,8 @@ SwarmMonitor.enforces(`
 - The monitor should preserve lead-up context before crashes, not only post-failure fragments.
 - Machine-level monitoring and process-level context belong in the same metrics history.
 - The swarm UI should expose machine timelines and top-process trends directly.
+- EC2 worker inventory reconciliation is a zombie-detection path, not a live-health path.
+- Healthy workers should be tracked primarily from heartbeats, not from frequent EC2 polling.
 `);
 
 SwarmMonitor.defines(`
@@ -83,6 +87,7 @@ SwarmMonitor.defines(`
 - TopProcessSeries means a line graph that tracks one ranked process trend across time.
 - SparseProcessSampling means process scanning at a lower cadence such as 5s, 10s, or 15s rather than every second.
 - NoBurstOnlyCapture means spike capture cannot depend on starting extra work at the moment the host is already distressed.
+- SlowZombieReconciliation means stale or missing workers may be reconciled from EC2 on a coarse cadence such as minutes rather than seconds.
 `);
 
 Worker.contains(Host.sample, Host.containerSample, Host.processRingBuffer, Host.processWindow);
@@ -135,6 +140,13 @@ Policy.crashLeadupVisibility.means(`
 - let operators correlate machine CPU and RAM spikes with top-process trends
 `);
 
+Policy.slowZombieReconciliation.means(`
+- use heartbeat telemetry as the primary source of live worker health
+- reserve EC2 inventory refresh for zombie, orphan, or stopped-worker reconciliation
+- default EC2 reconciliation toward minutes, not seconds
+- only use short aggressive polling during explicit lifecycle operations such as launch, wake, hibernate, or terminate
+`);
+
 when(Worker.emits(Trigger.periodicHostTick))
   .then(Worker.collects(Host.sample))
   .and(Worker.requires(Policy.cheapOneSecondHostSample));
@@ -150,6 +162,11 @@ when(Worker.collects(Host.processWindow))
   .then(Host.processRingBuffer.retains(Host.processWindow))
   .and(Worker.preserves(Policy.crashLeadupVisibility))
   .and(Worker.forbids("starting process capture only after a spike"));
+
+when(Manager.reconciles("worker inventory"))
+  .then(Manager.observes(Source.ec2Inventory))
+  .and(Manager.requires(Policy.slowZombieReconciliation))
+  .and(Manager.shouldPrefer("heartbeat truth for healthy workers"));
 
 when(Worker.observes(Trigger.anomalyObserved))
   .then(Worker.applies(Policy.noBurstOnlyCapture))
@@ -182,4 +199,3 @@ when(Dashboard.focuses("a machine"))
   .and(UI.machineTimeline.shows("top-process CPU lines over time"))
   .and(UI.machineTimeline.shows("top-process RSS lines over time"))
   .and(UI.processDrilldown.shows("ranked process snapshots for the selected time window"));
-

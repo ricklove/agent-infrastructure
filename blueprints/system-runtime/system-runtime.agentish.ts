@@ -105,6 +105,7 @@ SystemRuntime.enforces(`
 - The dashboard gateway should prefer declared backend definitions over ad hoc one-off launch logic.
 - Manager updates should follow one full development process from source edit through post-deploy verification.
 - Swarm monitor process visibility should use sparse continuous sampling rather than burst-only capture.
+- EC2 worker inventory refresh should default to slow zombie reconciliation rather than second-level live polling.
 `);
 
 SystemRuntime.defines(`
