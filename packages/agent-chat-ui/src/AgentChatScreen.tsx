@@ -1533,11 +1533,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               rel="noreferrer"
                               className="block overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60"
                             >
-                              <img
-                                src={messageContentAssetUrl(block.url)}
-                                alt="User supplied"
-                                className="max-h-[28rem] w-full bg-slate-950 object-contain"
-                              />
+                              <div className="flex max-h-[28rem] min-h-24 items-center justify-center bg-slate-950/80 p-3">
+                                <img
+                                  src={messageContentAssetUrl(block.url)}
+                                  alt="User supplied"
+                                  className="max-h-[calc(28rem-1.5rem)] max-w-full object-contain"
+                                />
+                              </div>
                               <div className="border-t border-white/10 px-3 py-2 text-xs text-slate-300">
                                 Open image
                               </div>
