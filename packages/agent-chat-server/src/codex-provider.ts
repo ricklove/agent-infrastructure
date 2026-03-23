@@ -2,6 +2,16 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { StoredSession } from "./store.js";
 
+type ProviderInputBlock =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      url: string;
+      mediaType: string | null;
+      filePath: string | null;
+      base64Data: string | null;
+    };
+
 const defaultSessionCwd =
   process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
 
@@ -117,7 +127,7 @@ export async function ensureCodexAppServer(log: (message: string) => void) {
 
 export async function runCodexTurn(
   session: StoredSession,
-  inputText: string,
+  inputBlocks: ProviderInputBlock[],
   pendingSystemInstruction: string | null,
   callbacks: CodexRunCallbacks,
 ): Promise<CodexRunResult> {
@@ -347,11 +357,29 @@ export async function runCodexTurn(
       });
     }
 
-    input.push({
-      type: "text",
-      text: inputText,
-      text_elements: [],
-    });
+    for (const block of inputBlocks) {
+      if (block.type === "text") {
+        input.push({
+          type: "text",
+          text: block.text,
+          text_elements: [],
+        });
+        continue;
+      }
+
+      if (block.filePath) {
+        input.push({
+          type: "localImage",
+          path: block.filePath,
+        });
+        continue;
+      }
+
+      input.push({
+        type: "image",
+        url: block.url,
+      });
+    }
 
     await request("turn/start", {
       threadId: currentThreadId,

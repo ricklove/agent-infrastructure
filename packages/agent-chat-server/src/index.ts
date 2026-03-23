@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { AgentChatStore, type StoredMessage, type StoredSession } from "./store.js";
+import {
+  AgentChatStore,
+  type StoredMessage,
+  type StoredMessageContentBlock,
+  type StoredSession,
+} from "./store.js";
 import {
   getProviderCatalogEntry,
   providerCatalog,
@@ -65,6 +70,16 @@ type SessionSnapshotPayload = {
 type SessionRuntimeState = SessionActivity & {
   interruptRequested: boolean;
 };
+
+type ProviderInputBlock =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      url: string;
+      mediaType: string | null;
+      filePath: string | null;
+      base64Data: string | null;
+    };
 
 function providerSupportsInterrupt(providerKind: AgentChatProviderKind) {
   return providerKind === "codex-app-server" || providerKind === "claude-agent-sdk";
@@ -202,6 +217,95 @@ function buildSessionTitle(text: string) {
   return `${normalized.slice(0, 53)}...`;
 }
 
+function buildSessionTitleFromContent(content: StoredMessageContentBlock[]) {
+  const firstText = content.find((block) => block.type === "text" && block.text.trim());
+  if (firstText?.type === "text") {
+    return buildSessionTitle(firstText.text);
+  }
+
+  const imageCount = content.filter((block) => block.type === "image").length;
+  return imageCount <= 1 ? "Shared image" : `Shared ${imageCount} images`;
+}
+
+function decodeImageDataUrl(dataUrl: string) {
+  const match = /^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=]+)$/i.exec(dataUrl.trim());
+  if (!match) {
+    throw new Error("Unsupported image payload. Expected a base64 image data URL.");
+  }
+
+  const mediaType = match[1]!.toLowerCase();
+  const base64Data = match[2]!;
+  return {
+    mediaType,
+    bytes: Buffer.from(base64Data, "base64"),
+  };
+}
+
+function normalizeMessageContent(
+  sessionId: string,
+  payload: {
+    text?: string;
+    content?: Array<
+      | { type?: "text"; text?: string }
+      | { type?: "image"; dataUrl?: string }
+    >;
+  },
+): StoredMessageContentBlock[] {
+  const nextContent: StoredMessageContentBlock[] = [];
+
+  for (const block of payload.content ?? []) {
+    if (block?.type === "text") {
+      const text = block.text?.trim() || "";
+      if (text) {
+        nextContent.push({ type: "text", text });
+      }
+      continue;
+    }
+
+    if (block?.type === "image") {
+      const dataUrl = block.dataUrl?.trim() || "";
+      if (!dataUrl) {
+        continue;
+      }
+      const decoded = decodeImageDataUrl(dataUrl);
+      const attachment = store.persistAttachment(sessionId, decoded);
+      nextContent.push({
+        type: "image",
+        url: attachment.url,
+      });
+    }
+  }
+
+  if (nextContent.length > 0) {
+    return nextContent;
+  }
+
+  const text = payload.text?.trim() || "";
+  return text ? [{ type: "text", text }] : [];
+}
+
+function buildProviderInputContent(content: StoredMessageContentBlock[]): ProviderInputBlock[] {
+  return content.reduce<ProviderInputBlock[]>((accumulator, block) => {
+    if (block.type === "text") {
+      const text = block.text.trim();
+      if (text) {
+        accumulator.push({ type: "text", text });
+      }
+      return accumulator;
+    }
+
+    const attachment = store.readAttachmentBytes(block.url);
+    accumulator.push({
+      type: "image",
+      url: block.url,
+      mediaType: attachment?.attachment.mediaType ?? null,
+      filePath: attachment?.attachment.path ?? null,
+      base64Data: attachment ? attachment.bytes.toString("base64") : null,
+    });
+    return accumulator;
+  }, []);
+}
+
 function normalizeOptionalValue(value: string | null | undefined) {
   return value?.trim() || "";
 }
@@ -277,8 +381,7 @@ async function runProviderTurnForQueuedMessage(
       throw new Error("Session disappeared before provider execution started");
     }
 
-    const messageText =
-      queuedMessage.content[0]?.type === "text" ? queuedMessage.content[0].text : "";
+    const messageContent = buildProviderInputContent(queuedMessage.content);
     const callbacks = {
       onRunStarted(payload: { threadId: string; turnId: string }) {
         setRuntimeState(sessionId, (current) => ({
@@ -338,7 +441,7 @@ async function runProviderTurnForQueuedMessage(
       await ensureCodexAppServer(log);
       result = await runCodexTurn(
         currentSession,
-        messageText,
+        messageContent,
         pendingSystemInstruction,
         callbacks,
       );
@@ -346,7 +449,7 @@ async function runProviderTurnForQueuedMessage(
       result = await runClaudeTurn(
         sessionId,
         currentSession,
-        messageText,
+        messageContent,
         pendingSystemInstruction,
         callbacks,
       );
@@ -474,6 +577,17 @@ const server = Bun.serve<ChatSocketData>({
   port,
   fetch(request, serverInstance) {
     const url = new URL(request.url);
+
+    const attachment = store.resolveAttachment(url.pathname);
+    if (attachment && request.method === "GET") {
+      return new Response(Bun.file(attachment.path), {
+        status: 200,
+        headers: {
+          "content-type": attachment.mediaType,
+          "cache-control": "no-store",
+        },
+      });
+    }
 
     if (url.pathname === "/api/agent-chat/ws") {
       const sessionId = url.searchParams.get("sessionId");
@@ -792,23 +906,34 @@ const server = Bun.serve<ChatSocketData>({
         const payload = body as {
           text?: string;
           replyToMessageId?: string | null;
+          content?: Array<
+            | { type?: "text"; text?: string }
+            | { type?: "image"; dataUrl?: string }
+          >;
         };
-        const text = payload.text?.trim() || "";
-        if (!text) {
-          return jsonResponse({ ok: false, error: "text required" }, 400);
+        let content: StoredMessageContentBlock[];
+        try {
+          content = normalizeMessageContent(sessionId, payload);
+        } catch (error) {
+          const errorText =
+            error instanceof Error ? error.message : "Invalid message content.";
+          return jsonResponse({ ok: false, error: errorText }, 400);
+        }
+        if (content.length === 0) {
+          return jsonResponse({ ok: false, error: "message content required" }, 400);
         }
 
         const userMessage = store.appendMessage(sessionId, {
           role: "user",
           providerSeenAtMs: null,
           replyToMessageId: payload.replyToMessageId?.trim() || null,
-          content: [{ type: "text", text }],
+          content,
         });
 
         const sessionBeforeRun = store.getSession(sessionId);
         const titledSession =
           sessionBeforeRun?.title === "New chat"
-            ? store.updateSessionTitle(sessionId, buildSessionTitle(text))
+            ? store.updateSessionTitle(sessionId, buildSessionTitleFromContent(content))
             : sessionBeforeRun;
 
         if (!activeSessionRuns.has(sessionId)) {

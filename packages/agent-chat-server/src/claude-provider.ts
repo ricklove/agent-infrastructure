@@ -1,5 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
 import type { StoredSession } from "./store.js";
+
+type ProviderInputBlock =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      url: string;
+      mediaType: string | null;
+      filePath: string | null;
+      base64Data: string | null;
+    };
 
 const defaultSessionCwd =
   process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
@@ -65,13 +76,56 @@ function parseClaudeModel(modelRef: string) {
   return parts.at(-1) || trimmed;
 }
 
-function buildClaudePrompt(inputText: string, pendingSystemInstruction: string | null) {
+function buildClaudeMessageContent(
+  inputBlocks: ProviderInputBlock[],
+  pendingSystemInstruction: string | null,
+) {
+  const content: Array<Record<string, unknown>> = [];
   const systemText = pendingSystemInstruction?.trim();
-  const userText = inputText.trim();
   if (systemText) {
-    return `${systemText}\n\n${userText}`;
+    content.push({
+      type: "text",
+      text: systemText,
+    });
   }
-  return userText;
+
+  for (const block of inputBlocks) {
+    if (block.type === "text") {
+      const text = block.text.trim();
+      if (!text) {
+        continue;
+      }
+      content.push({
+        type: "text",
+        text,
+      });
+      continue;
+    }
+
+    if (block.base64Data && block.mediaType) {
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: block.mediaType,
+          data: block.base64Data,
+        },
+      });
+      continue;
+    }
+
+    if (block.url.startsWith("http://") || block.url.startsWith("https://")) {
+      content.push({
+        type: "image",
+        source: {
+          type: "url",
+          url: block.url,
+        },
+      });
+    }
+  }
+
+  return content
 }
 
 function extractAssistantText(message: ClaudeSdkMessage["message"]) {
@@ -104,13 +158,23 @@ function buildClaudeEnv(session: StoredSession) {
 export async function runClaudeTurn(
   sessionId: string,
   session: StoredSession,
-  inputText: string,
+  inputBlocks: ProviderInputBlock[],
   pendingSystemInstruction: string | null,
   callbacks: ClaudeRunCallbacks,
 ): Promise<ClaudeRunResult> {
   const model = parseClaudeModel(session.modelRef);
   const sessionCwd = session.cwd.trim() || defaultSessionCwd;
-  const prompt = buildClaudePrompt(inputText, pendingSystemInstruction);
+  const prompt = (async function* () {
+    yield {
+      type: "user" as const,
+      message: {
+        role: "user" as const,
+        content: buildClaudeMessageContent(inputBlocks, pendingSystemInstruction),
+      },
+      parent_tool_use_id: null,
+      session_id: session.providerThreadId || randomUUID(),
+    }
+  })();
   const activeTaskIds = new Set<string>();
   let currentThreadId = session.providerThreadId || "";
   let currentTurnId = "";

@@ -4,6 +4,7 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readFileSync as readBinaryFileSync,
   readFileSync,
   readdirSync,
   statSync,
@@ -11,6 +12,19 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AgentChatProviderKind } from "./catalog.js";
+
+const attachmentRoutePrefix = "/api/agent-chat/sessions";
+
+export type StoredMessageContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; url: string };
+
+export type StoredAttachment = {
+  fileName: string;
+  mediaType: string;
+  path: string;
+  url: string;
+};
 
 export type StoredSession = {
   id: string;
@@ -36,7 +50,7 @@ export type StoredMessage = {
   kind: "chat" | "directoryInstruction";
   replyToMessageId: string | null;
   providerSeenAtMs: number | null;
-  content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
+  content: StoredMessageContentBlock[];
   createdAtMs: number;
 };
 
@@ -67,6 +81,10 @@ function summarizePreview(messages: StoredMessage[]): string | null {
     const preview = textBlock?.type === "text" ? textBlock.text.trim() : "";
     if (preview) {
       return preview;
+    }
+    const imageCount = message?.content.filter((block) => block.type === "image").length ?? 0;
+    if (imageCount > 0) {
+      return imageCount === 1 ? "Shared an image" : `Shared ${imageCount} images`;
     }
   }
   return null;
@@ -135,12 +153,107 @@ export class AgentChatStore {
     return [...(this.messageCache.get(sessionId) ?? [])];
   }
 
+  listMessagesPage(
+    sessionId: string,
+    input?: {
+      beforeMessageId?: string | null;
+      limit?: number;
+    },
+  ): {
+    messages: StoredMessage[];
+    hasOlderMessages: boolean;
+  } {
+    const allMessages = this.messageCache.get(sessionId) ?? [];
+    const limit = Math.max(1, Math.min(200, input?.limit ?? 50));
+    const beforeMessageId = input?.beforeMessageId?.trim() ?? "";
+
+    if (!beforeMessageId) {
+      const startIndex = Math.max(0, allMessages.length - limit);
+      return {
+        messages: allMessages.slice(startIndex),
+        hasOlderMessages: startIndex > 0,
+      };
+    }
+
+    const endIndex = allMessages.findIndex((message) => message.id === beforeMessageId);
+    if (endIndex <= 0) {
+      return {
+        messages: [],
+        hasOlderMessages: false,
+      };
+    }
+
+    const startIndex = Math.max(0, endIndex - limit);
+    return {
+      messages: allMessages.slice(startIndex, endIndex),
+      hasOlderMessages: startIndex > 0,
+    };
+  }
+
   listQueuedMessages(sessionId: string): StoredMessage[] {
     return this.listMessages(sessionId).filter(
       (message) =>
         message.providerSeenAtMs === null &&
         (message.role === "user" || message.role === "system"),
     );
+  }
+
+  persistAttachment(
+    sessionId: string,
+    input: {
+      mediaType: string;
+      bytes: Uint8Array;
+    },
+  ): StoredAttachment {
+    const current = this.sessionCache.get(sessionId);
+    if (!current) {
+      throw new Error(`Unknown session ${sessionId}`);
+    }
+
+    const extension = fileExtensionForMediaType(input.mediaType);
+    const fileName = `${randomUUID()}.${extension}`;
+    const path = this.attachmentPath(sessionId, fileName);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, input.bytes);
+    return {
+      fileName,
+      mediaType: input.mediaType,
+      path,
+      url: this.attachmentUrl(sessionId, fileName),
+    };
+  }
+
+  resolveAttachment(url: string): StoredAttachment | null {
+    const match = attachmentUrlPattern.exec(url);
+    if (!match) {
+      return null;
+    }
+
+    const sessionId = decodeURIComponent(match[1] ?? "");
+    const fileName = decodeURIComponent(match[2] ?? "");
+    const path = this.attachmentPath(sessionId, fileName);
+    if (!existsSync(path)) {
+      return null;
+    }
+
+    return {
+      fileName,
+      mediaType: mediaTypeForFileName(fileName),
+      path,
+      url: this.attachmentUrl(sessionId, fileName),
+    };
+  }
+
+  readAttachmentBytes(url: string): { attachment: StoredAttachment; bytes: Buffer } | null {
+    const attachment = this.resolveAttachment(url);
+    if (!attachment) {
+      return null;
+    }
+
+    return {
+      attachment,
+      bytes: readBinaryFileSync(attachment.path),
+    };
   }
 
   getNextQueuedUserMessage(sessionId: string): StoredMessage | null {
@@ -451,6 +564,18 @@ export class AgentChatStore {
     return join(this.sessionDir(sessionId), "messages.jsonl");
   }
 
+  private attachmentDir(sessionId: string) {
+    return join(this.sessionDir(sessionId), "attachments");
+  }
+
+  private attachmentPath(sessionId: string, fileName: string) {
+    return join(this.attachmentDir(sessionId), fileName);
+  }
+
+  private attachmentUrl(sessionId: string, fileName: string) {
+    return `${attachmentRoutePrefix}/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(fileName)}`;
+  }
+
   private writeSessionFiles(metadata: SessionMetadata, messages: StoredMessage[]) {
     mkdirSync(this.sessionDir(metadata.id), { recursive: true });
     mkdirSync(dirname(this.sessionMetadataPath(metadata.id)), { recursive: true });
@@ -658,4 +783,34 @@ export class AgentChatStore {
       legacyDb.close();
     }
   }
+}
+
+const attachmentUrlPattern =
+  /^\/api\/agent-chat\/sessions\/([^/]+)\/attachments\/([^/]+)$/;
+
+function fileExtensionForMediaType(mediaType: string) {
+  switch (mediaType) {
+    case "image/jpeg":
+      return "jpg";
+    case "image/gif":
+      return "gif";
+    case "image/webp":
+      return "webp";
+    default:
+      return "png";
+  }
+}
+
+function mediaTypeForFileName(fileName: string) {
+  const normalized = fileName.toLowerCase();
+  if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (normalized.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (normalized.endsWith(".webp")) {
+    return "image/webp";
+  }
+  return "image/png";
 }

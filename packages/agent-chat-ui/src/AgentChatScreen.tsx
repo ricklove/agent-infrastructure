@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type KeyboardEvent,
@@ -66,6 +67,12 @@ type SessionMessage = {
   providerSeenAtMs: number | null
   content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>
   createdAtMs: number
+}
+
+type ComposerImageAttachment = {
+  id: string
+  dataUrl: string
+  mediaType: string
 }
 
 type SessionSnapshotResponse = {
@@ -263,6 +270,55 @@ function clipText(text: string, maxLength = 88) {
   return `${normalized.slice(0, maxLength - 3)}...`
 }
 
+function summarizeMessageContent(
+  content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>,
+  maxLength = 88,
+) {
+  const firstText = content.find((block) => block.type === "text" && block.text.trim())
+  if (firstText?.type === "text") {
+    return clipText(firstText.text, maxLength)
+  }
+
+  const imageCount = content.filter((block) => block.type === "image").length
+  if (imageCount > 0) {
+    return imageCount === 1 ? "image" : `${imageCount} images`
+  }
+
+  return ""
+}
+
+function readClipboardImage(file: File) {
+  return new Promise<ComposerImageAttachment>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => {
+      reject(new Error("Clipboard image read failed."))
+    }
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : ""
+      if (!dataUrl) {
+        reject(new Error("Clipboard image read failed."))
+        return
+      }
+      resolve({
+        id: crypto.randomUUID(),
+        dataUrl,
+        mediaType: file.type || "image/png",
+      })
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function insertTextAtSelection(
+  textarea: HTMLTextAreaElement,
+  currentValue: string,
+  insertedText: string,
+) {
+  const start = textarea.selectionStart ?? currentValue.length
+  const end = textarea.selectionEnd ?? currentValue.length
+  return `${currentValue.slice(0, start)}${insertedText}${currentValue.slice(end)}`
+}
+
 function readStoredSessionToken(): string {
   return window.sessionStorage.getItem(sessionStorageKey) ?? ""
 }
@@ -334,6 +390,9 @@ function activityTone(activity: SessionActivity) {
 }
 
 export function AgentChatScreen(props: AgentChatScreenProps) {
+  const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
+  const pendingSessionOpenScrollRef = useRef<string | null>(null)
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
   const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeSessionId, setActiveSessionId] = useState("")
@@ -378,6 +437,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [renaming, setRenaming] = useState(false)
   const [wsStatus, setWsStatus] = useState<"idle" | "connecting" | "ready" | "error">("idle")
   const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null)
+  const [composerImages, setComposerImages] = useState<ComposerImageAttachment[]>([])
   const [nowMs, setNowMs] = useState(() => Date.now())
 
   const activeProvider = useMemo(
@@ -480,9 +540,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   useEffect(() => {
     if (!activeSessionId) {
       setComposerText("")
+      setComposerImages([])
       return
     }
     setComposerText(readDraft(activeSessionId))
+    setComposerImages([])
+  }, [activeSessionId])
+
+  useEffect(() => {
+    pendingSessionOpenScrollRef.current = activeSessionId || null
   }, [activeSessionId])
 
   useEffect(() => {
@@ -503,6 +569,29 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       window.clearInterval(handle)
     }
   }, [activity.status])
+
+  useEffect(() => {
+    if (!activeSessionId || pendingSessionOpenScrollRef.current !== activeSessionId) {
+      return
+    }
+
+    const viewport = transcriptViewportRef.current
+    if (!viewport) {
+      return
+    }
+
+    const frameHandle = window.requestAnimationFrame(() => {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior: "auto",
+      })
+      pendingSessionOpenScrollRef.current = null
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameHandle)
+    }
+  }, [activeSessionId, messages.length])
 
   useEffect(() => {
     let cancelled = false
@@ -813,6 +902,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setQueuedMessages(payload.queuedMessages)
       setActivity(payload.activity)
       setComposerText("")
+      setComposerImages([])
       setReplyTargetMessageId(null)
       setNewChatTitle("")
       setSettingsOpen(false)
@@ -935,7 +1025,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }
 
   async function sendMessage() {
-    if (!activeSessionId || !composerText.trim()) {
+    if (!activeSessionId || (!composerText.trim() && composerImages.length === 0)) {
       return
     }
 
@@ -950,6 +1040,20 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         },
         body: JSON.stringify({
           text: composerText,
+          content: [
+            ...(composerText.trim()
+              ? [
+                  {
+                    type: "text" as const,
+                    text: composerText,
+                  },
+                ]
+              : []),
+            ...composerImages.map((image) => ({
+              type: "image" as const,
+              dataUrl: image.dataUrl,
+            })),
+          ],
           replyToMessageId: replyTargetMessageId,
         }),
       })
@@ -958,6 +1062,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         throw new Error(payload.error ?? "Message send failed.")
       }
       setComposerText("")
+      setComposerImages([])
       setReplyTargetMessageId(null)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Message send failed.")
@@ -999,7 +1104,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault()
-        if (!activeSession || sending || !composerText.trim()) {
+        if (!activeSession || sending || (!composerText.trim() && composerImages.length === 0)) {
           return
         }
         void sendMessage()
@@ -1016,7 +1121,47 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         void interruptRun()
       }
     },
-    [activeSession, activity.canInterrupt, activity.status, composerText, interrupting, sending],
+    [
+      activeSession,
+      activity.canInterrupt,
+      activity.status,
+      composerImages.length,
+      composerText,
+      interrupting,
+      sending,
+    ],
+  )
+
+  const handleComposerPaste = useCallback(
+    async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const imageFiles = Array.from(event.clipboardData.items)
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null)
+
+      if (imageFiles.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+
+      const pastedText = event.clipboardData.getData("text/plain")
+      if (pastedText && composerInputRef.current) {
+        setComposerText((current) =>
+          insertTextAtSelection(composerInputRef.current!, current, pastedText),
+        )
+      }
+
+      try {
+        const nextImages = await Promise.all(imageFiles.map((file) => readClipboardImage(file)))
+        setComposerImages((current) => [...current, ...nextImages])
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error ? nextError.message : "Clipboard image paste failed.",
+        )
+      }
+    },
+    [],
   )
 
   useEffect(() => {
@@ -1308,7 +1453,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         ) : null}
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+          <div
+            ref={transcriptViewportRef}
+            className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6"
+          >
             {!activeSession ? (
               <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
                 Start or select a chat to see the thread.
@@ -1352,10 +1500,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       {replyTarget ? (
                         <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
                           Replying to {replyTarget.role} ·{" "}
-                          {clipText(
-                            replyTarget.content.find((block) => block.type === "text")?.text ?? "",
-                            72,
-                          )}
+                          {summarizeMessageContent(replyTarget.content, 72)}
                         </div>
                       ) : null}
 
@@ -1366,12 +1511,22 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               {block.text}
                             </p>
                           ) : (
-                            <div
+                            <a
                               key={`${message.id}-${index}`}
-                              className="rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-xs text-slate-300"
+                              href={block.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60"
                             >
-                              image {block.url}
-                            </div>
+                              <img
+                                src={block.url}
+                                alt="User supplied"
+                                className="max-h-[28rem] w-full bg-slate-950 object-contain"
+                              />
+                              <div className="border-t border-white/10 px-3 py-2 text-xs text-slate-300">
+                                Open image
+                              </div>
+                            </a>
                           ),
                         )}
                       </div>
@@ -1462,10 +1617,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   <div className="flex items-center justify-between gap-3">
                     <p>
                       Replying to {activeReplyTarget.role} ·{" "}
-                      {clipText(
-                        activeReplyTarget.content.find((block) => block.type === "text")?.text ?? "",
-                        108,
-                      )}
+                      {summarizeMessageContent(activeReplyTarget.content, 108)}
                     </p>
                     <button
                       type="button"
@@ -1607,11 +1759,62 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </div>
               ) : null}
 
+              {composerImages.length > 0 ? (
+                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                      Pasted Images
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setComposerImages([])}
+                      className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-100"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {composerImages.map((image) => (
+                      <div
+                        key={image.id}
+                        className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70"
+                      >
+                        <img
+                          src={image.dataUrl}
+                          alt="Pasted attachment"
+                          className="h-28 w-28 object-cover"
+                        />
+                        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
+                          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                            image
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setComposerImages((current) =>
+                                current.filter((attachment) => attachment.id !== image.id),
+                              )
+                            }
+                            className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <form onSubmit={submitMessage} className="space-y-3">
                 <textarea
+                  ref={composerInputRef}
                   value={composerText}
                   onChange={(event) => setComposerText(event.target.value)}
                   onKeyDown={handleComposerKeyDown}
+                  onPaste={(event) => {
+                    void handleComposerPaste(event)
+                  }}
                   rows={4}
                   placeholder={
                     activeSession
@@ -1623,7 +1826,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 />
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-slate-500">
-                    Ctrl+Enter sends. Esc interrupts when the provider supports it.
+                    Paste images directly from the clipboard. Ctrl+Enter sends. Esc interrupts when the provider supports it.
                   </p>
                   <div className="flex items-center gap-2">
                     <IconButton
@@ -1648,7 +1851,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       type="submit"
                       aria-label={sending ? "Sending message" : "Send message"}
                       title={sending ? "Sending..." : "Send"}
-                      disabled={!activeSession || sending || !composerText.trim()}
+                      disabled={
+                        !activeSession || sending || (!composerText.trim() && composerImages.length === 0)
+                      }
                       className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300 text-slate-950 disabled:cursor-not-allowed disabled:border-cyan-300/20 disabled:bg-cyan-300/40"
                     >
                       <SendIcon />
