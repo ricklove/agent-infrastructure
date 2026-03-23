@@ -23,7 +23,7 @@ const CurrentReality = {
   filePersistence: define.concept("FileBackedCanonicalSessions"),
   realtime: define.concept("RealtimeSessionUpdates"),
   directoryAndTitleQueueing: define.concept("QueuedDirectoryAndTitleInstructions"),
-  codexOnlyExecution: define.concept("CodexOnlyProviderExecution"),
+  codexAndClaudeExecution: define.concept("CodexAndClaudeProviderExecution"),
   genericSessionActivity: define.concept("GenericSessionActivityOnly"),
   fixedTurnDeadline: define.concept("FixedCodexTurnDeadline"),
   noFolderOrganization: define.concept("NoCanonicalFolderOrganization"),
@@ -33,13 +33,14 @@ const CurrentReality = {
 };
 
 AgentChatBlueprintState.defines(`
-- CurrentImplementationStatus means Agent Chat currently exists as a real dashboard feature with a working backend, working UI, canonical file-backed session persistence, realtime updates, and one implemented provider path.
+- CurrentImplementationStatus means Agent Chat currently exists as a real dashboard feature with a working backend, working UI, canonical file-backed session persistence, realtime updates, and more than one implemented provider path.
 - AssessmentConfidence is medium because overall Agent Chat state is still based mostly on direct source inspection, but the thread/composer layout path now also has direct browser verification at small, medium, and wide viewport sizes.
-- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-gap-fix/.
+- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-gap-fix/.
 - This blueprint-state compares current implementation reality against the ideal Agent Chat product blueprint in agent-chat.agentish.ts, the implementation-resolved dashboard blueprint in agent-chat-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
 - ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
-- KnownIssue means the provider catalog and UI present several provider options that are still planned while the backend only executes Codex app-server turns today.
-- KnownIssue also includes the current Codex adapter using a short fixed turn deadline that can fail long-running but otherwise active turns before the provider completes.
+- KnownIssue means the provider catalog and UI still include planned providers that do not yet execute in the backend today.
+- KnownIssue also includes the current Agent Chat provider layer still being uneven, with Codex and Claude implemented while OpenRouter and Gemini remain planned.
+- KnownIssue also includes the current Codex adapter retaining an adapter-level timeout policy that remains separate from the newer Claude path.
 `);
 
 AgentChatBlueprintState.contains(
@@ -53,7 +54,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.filePersistence,
   CurrentReality.realtime,
   CurrentReality.directoryAndTitleQueueing,
-  CurrentReality.codexOnlyExecution,
+  CurrentReality.codexAndClaudeExecution,
   CurrentReality.genericSessionActivity,
   CurrentReality.fixedTurnDeadline,
   CurrentReality.noFolderOrganization,
@@ -94,9 +95,9 @@ CurrentReality.directoryAndTitleQueueing.means(`
 - changing session title also queues a provider-visible system instruction for the next turn
 `);
 
-CurrentReality.codexOnlyExecution.means(`
-- Codex app-server is the only provider with a working execution adapter in the current backend
-- active Codex turns may be interrupted when thread and turn ids are available
+CurrentReality.codexAndClaudeExecution.means(`
+- Codex app-server and Claude Agent SDK both have working execution adapters in the current backend
+- active Codex and Claude turns may be interrupted while a run is active
 - provider thread ids remain metadata attached to the workspace-owned session rather than replacing canonical chat history
 `);
 
@@ -107,9 +108,9 @@ CurrentReality.genericSessionActivity.means(`
 `);
 
 CurrentReality.fixedTurnDeadline.means(`
-- the current Codex adapter fails a turn after a fixed 120 second wall-clock timeout
-- that deadline is enforced in packages/agent-chat-server/src/codex-provider.ts rather than being derived from provider idleness or transport failure
-- long-running active turns can therefore fail in Agent Chat even when equivalent Codex CLI usage would normally continue
+- the current Codex adapter still applies its own turn timeout policy in packages/agent-chat-server/src/codex-provider.ts
+- the Claude adapter does not share that exact transport or timeout path
+- provider runtime behavior therefore still differs across the implemented adapters
 `);
 
 CurrentReality.noFolderOrganization.means(`
@@ -119,9 +120,9 @@ CurrentReality.noFolderOrganization.means(`
 `);
 
 CurrentReality.plannedProviders.means(`
-- OpenRouter, Claude Agent SDK, and Gemini appear in the provider catalog as planned entries
+- OpenRouter and Gemini still appear in the provider catalog as planned entries
 - new sessions cannot be created with those planned providers because the backend rejects non-ready provider selections
-- the multi-provider blueprint direction is established, but the implementation is still effectively single-provider today
+- the multi-provider blueprint direction is established, but the implementation is still partial rather than blueprint-complete
 `);
 
 CurrentReality.deferredScope.means(`
@@ -154,7 +155,7 @@ when(CurrentReality.fixedTurnDeadline.exists())
 when(CurrentReality.noFolderOrganization.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
 
-when(CurrentReality.codexOnlyExecution.exists())
+when(CurrentReality.codexAndClaudeExecution.exists())
   .then(AgentChatBlueprintState.treats("Agent Chat as a useful but partial vertical slice rather than a blueprint-complete system"));
 
 when(CurrentReality.workflowAlignment.exists())

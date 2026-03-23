@@ -19,6 +19,7 @@ type ProviderCatalogEntry = {
   label: string
   description: string
   defaultModelRef: string
+  modelOptions: string[]
   authProfiles: string[]
   status: "ready" | "planned"
   supportsImageInput: boolean
@@ -423,7 +424,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     if (!activeProvider) {
       return
     }
-    setModelRef(activeProvider.defaultModelRef)
+    const nextModel =
+      activeProvider.modelOptions.find((option) => option === activeProvider.defaultModelRef) ??
+      activeProvider.modelOptions[0] ??
+      activeProvider.defaultModelRef
+    setModelRef(nextModel)
     setAuthProfile(activeProvider.authProfiles[0] ?? "")
   }, [activeProvider])
 
@@ -1041,11 +1046,25 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Model
                 </span>
-                <input
-                  value={modelRef}
-                  onChange={(event) => setModelRef(event.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
-                />
+                {activeProvider?.modelOptions.length ? (
+                  <select
+                    value={modelRef}
+                    onChange={(event) => setModelRef(event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                  >
+                    {activeProvider.modelOptions.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={modelRef}
+                    readOnly
+                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                  />
+                )}
               </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">

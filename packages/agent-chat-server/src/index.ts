@@ -8,6 +8,10 @@ import {
   type AgentChatProviderKind,
 } from "./catalog.js";
 import {
+  interruptClaudeTurn,
+  runClaudeTurn,
+} from "./claude-provider.js";
+import {
   ensureCodexAppServer,
   interruptCodexTurn,
   runCodexTurn,
@@ -61,6 +65,10 @@ type SessionSnapshotPayload = {
 type SessionRuntimeState = SessionActivity & {
   interruptRequested: boolean;
 };
+
+function providerSupportsInterrupt(providerKind: AgentChatProviderKind) {
+  return providerKind === "codex-app-server" || providerKind === "claude-agent-sdk";
+}
 
 mkdirSync(dirname(logPath), { recursive: true });
 
@@ -252,7 +260,7 @@ async function runProviderTurnForQueuedMessage(
     waitingFlags: [],
     lastError: null,
     currentMessageId: queuedMessage.id,
-    canInterrupt: session.providerKind === "codex-app-server",
+    canInterrupt: providerSupportsInterrupt(session.providerKind),
     interruptRequested: false,
   });
   store.markMessagesSeen(sessionId, [queuedMessage.id]);
@@ -260,18 +268,15 @@ async function runProviderTurnForQueuedMessage(
   broadcastActivity(sessionId);
 
   try {
-    if (session.providerKind !== "codex-app-server") {
-      throw new Error(`${session.providerKind} provider adapter is not implemented yet`);
-    }
-
-    await ensureCodexAppServer(log);
     const currentSession = store.getSession(sessionId);
     if (!currentSession) {
       throw new Error("Session disappeared before provider execution started");
     }
 
-    const result = await runCodexTurn(currentSession, queuedMessage.content[0]?.type === "text" ? queuedMessage.content[0].text : "", pendingSystemInstruction, {
-      onRunStarted(payload) {
+    const messageText =
+      queuedMessage.content[0]?.type === "text" ? queuedMessage.content[0].text : "";
+    const callbacks = {
+      onRunStarted(payload: { threadId: string; turnId: string }) {
         setRuntimeState(sessionId, (current) => ({
           ...current,
           status: "running",
@@ -286,7 +291,7 @@ async function runProviderTurnForQueuedMessage(
           activity: toSessionActivity(sessionId),
         });
       },
-      onThreadStatusChanged(payload) {
+      onThreadStatusChanged(payload: { threadId: string; flags: string[] }) {
         setRuntimeState(sessionId, (current) => ({
           ...current,
           threadId: payload.threadId || current.threadId,
@@ -294,7 +299,11 @@ async function runProviderTurnForQueuedMessage(
         }));
         broadcastActivity(sessionId);
       },
-      onBackgroundProcessCountChanged(payload) {
+      onBackgroundProcessCountChanged(payload: {
+        threadId: string;
+        turnId: string;
+        backgroundProcessCount: number;
+      }) {
         setRuntimeState(sessionId, (current) => ({
           ...current,
           threadId: payload.threadId || current.threadId,
@@ -303,7 +312,12 @@ async function runProviderTurnForQueuedMessage(
         }));
         broadcastActivity(sessionId);
       },
-      onAssistantDelta(payload) {
+      onAssistantDelta(payload: {
+        threadId: string;
+        turnId: string;
+        itemId: string;
+        delta: string;
+      }) {
         broadcastSession(sessionId, {
           type: "run.delta",
           sessionId,
@@ -313,7 +327,28 @@ async function runProviderTurnForQueuedMessage(
           delta: payload.delta,
         });
       },
-    });
+    };
+
+    let result;
+    if (currentSession.providerKind === "codex-app-server") {
+      await ensureCodexAppServer(log);
+      result = await runCodexTurn(
+        currentSession,
+        messageText,
+        pendingSystemInstruction,
+        callbacks,
+      );
+    } else if (currentSession.providerKind === "claude-agent-sdk") {
+      result = await runClaudeTurn(
+        sessionId,
+        currentSession,
+        messageText,
+        pendingSystemInstruction,
+        callbacks,
+      );
+    } else {
+      throw new Error(`${currentSession.providerKind} provider adapter is not implemented yet`);
+    }
 
     const updatedSession = store.updateProviderThread(sessionId, {
       threadId: result.threadId,
@@ -606,14 +641,21 @@ const server = Bun.serve<ChatSocketData>({
       if (!session) {
         return notFound();
       }
-      if (session.providerKind !== "codex-app-server") {
+      if (!providerSupportsInterrupt(session.providerKind)) {
         return jsonResponse({ ok: false, error: "Interrupt not supported for this provider" }, 400);
       }
-      if (!runtime.turnId || !runtime.threadId) {
+      if (runtime.status !== "running") {
         return jsonResponse({ ok: false, error: "No active turn to interrupt" }, 409);
       }
 
-      return interruptCodexTurn(session, runtime.threadId, runtime.turnId)
+      const interruptPromise =
+        session.providerKind === "codex-app-server"
+          ? !runtime.turnId || !runtime.threadId
+            ? Promise.reject(new Error("No active turn to interrupt"))
+            : interruptCodexTurn(session, runtime.threadId, runtime.turnId)
+          : interruptClaudeTurn(sessionId);
+
+      return interruptPromise
         .then(() => {
           setRuntimeState(sessionId, {
             status: "interrupted",
