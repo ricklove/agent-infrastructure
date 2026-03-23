@@ -528,14 +528,22 @@ function buildTimelineQueryParams(workerId: string, query: TimelineQuery): strin
 }
 
 function colorForSeries(key: string): string {
+  // Use FNV-1a hash (same as agent-graph-ui)
   let hash = 2166136261
   for (let index = 0; index < key.length; index += 1) {
     hash ^= key.charCodeAt(index)
     hash = Math.imul(hash, 16777619)
   }
+  hash = hash >>> 0
 
-  const hue = Math.abs(hash) % 360
-  return `hsl(${hue}, 72%, 60%)`
+  // Use golden ratio for hue distribution (same as agent-graph-ui stableHue)
+  const hue = Number((((hash * 0.61803398875) % 1) * 360).toFixed(1))
+
+  // Vary saturation and lightness for better color distribution
+  const saturation = 66 + (hash % 13)
+  const lightness = 56 + ((hash >>> 8) % 10)
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`
 }
 
 function formatProcessSeriesLabel(sample: TimelineProcessSample): string {
