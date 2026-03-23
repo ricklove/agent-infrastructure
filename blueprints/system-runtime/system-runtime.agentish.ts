@@ -189,6 +189,8 @@ Policy.logging.means(`
 `);
 
 Policy.fullUpdateWorkflow.means(`
+ - check /home/ec2-user/workspace/README.md before assuming local tool availability
+ - check relevant notes under /home/ec2-user/workspace/tools/ for installed machine-specific utilities
 - check the relevant blueprints before making implementation changes
 - treat blueprint review as mandatory, not optional
 - edit source only
