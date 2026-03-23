@@ -39,9 +39,9 @@ properly defined, lazy-loaded, and integrated with both shell and gateway.
 - None currently identified
 
 ### Recently Fixed Issues (Continued)
-- **Agent Swarm Process Color Distribution (2026-03-23)**: Colors are now keyed by PID with preset
-  hue slots (23 positions) to ensure each unique process instance gets a visually distinct color
-  without collisions.
+- **Agent Swarm Process Color Distribution (2026-03-23)**: Colors are keyed by the full process
+  label (comm + PID, e.g., "node:vite (66711)") with preset hue slots (23 positions) to ensure
+  each unique process instance gets a visually distinct color without collisions.
 
 ### Verification Status
 - Agent Swarm UI scrolling fix: Awaiting browser verification and screenshot
