@@ -103,12 +103,32 @@ export type AgentChatScreenProps = {
   wsRootUrl: string
 }
 
+const sessionStorageKey = "agent-infrastructure.dashboard.session"
+
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+  })
+}
+
+function readStoredSessionToken(): string {
+  return window.sessionStorage.getItem(sessionStorageKey) ?? ""
+}
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers)
+  const sessionToken = readStoredSessionToken().trim()
+
+  if (sessionToken) {
+    headers.set("x-dashboard-session", sessionToken)
+  }
+
+  return fetch(path, {
+    ...init,
+    headers,
   })
 }
 
@@ -157,8 +177,20 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
       try {
         const [providersResponse, sessionsResponse] = await Promise.all([
-          fetch(`${props.apiRootUrl}/providers`).then((response) => response.json() as Promise<ProvidersResponse>),
-          fetch(`${props.apiRootUrl}/sessions`).then((response) => response.json() as Promise<SessionsResponse>),
+          apiFetch(`${props.apiRootUrl}/providers`).then(async (response) => {
+            const payload = (await response.json()) as ProvidersResponse & { error?: string }
+            if (!response.ok || !payload.ok || !Array.isArray(payload.providers)) {
+              throw new Error(payload.error ?? "Agent Chat providers failed to load.")
+            }
+            return payload
+          }),
+          apiFetch(`${props.apiRootUrl}/sessions`).then(async (response) => {
+            const payload = (await response.json()) as SessionsResponse & { error?: string }
+            if (!response.ok || !payload.ok || !Array.isArray(payload.sessions)) {
+              throw new Error(payload.error ?? "Agent Chat sessions failed to load.")
+            }
+            return payload
+          }),
         ])
 
         if (cancelled) {
@@ -198,8 +230,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
     async function loadSession() {
       try {
-        const response = await fetch(`${props.apiRootUrl}/sessions/${activeSessionId}`)
-        const payload = (await response.json()) as SessionSnapshotResponse
+        const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}`)
+        const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
+        if (!response.ok || !payload.ok || !Array.isArray(payload.messages)) {
+          throw new Error(payload.error ?? "Session load failed.")
+        }
         if (!cancelled) {
           setMessages(payload.messages)
         }
@@ -227,6 +262,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
     const socketUrl = new URL(props.wsRootUrl)
     socketUrl.searchParams.set("sessionId", activeSessionId)
+    const sessionToken = readStoredSessionToken().trim()
+    if (sessionToken) {
+      socketUrl.searchParams.set("sessionToken", sessionToken)
+    }
     const socket = new WebSocket(socketUrl.toString())
     socketRef.current = socket
 
@@ -340,7 +379,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setError("")
 
     try {
-      const response = await fetch(`${props.apiRootUrl}/sessions`, {
+      const response = await apiFetch(`${props.apiRootUrl}/sessions`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -378,7 +417,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setError("")
 
     try {
-      const response = await fetch(`${props.apiRootUrl}/sessions/${activeSessionId}/messages`, {
+      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}/messages`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
