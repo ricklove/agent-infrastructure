@@ -59,6 +59,7 @@ Policy.repairFirst.means(`
 - let Lambda keep polling readiness while the manager-side controller repairs in parallel
 - keep one always-on controller as the single lifecycle and recovery owner
 - if the controller observes a dead local origin during an active connection window, attempt repair automatically
+- if the controller observes that the current public URL fails while the local origin is still healthy during an active connection window, attempt tunnel repair immediately
 - prune stale dashboard and tunnel processes
 - restart the dashboard path when the local origin is dead
 - persist the newest public URL as the canonical runtime state
@@ -79,8 +80,11 @@ Policy.tunnelCooldown.means(`
 
 Policy.classifyFailuresSeparately.means(`
 - local dashboard origin failure and public tunnel failure are different failure classes
+- the controller must prove which class failed by testing both the local origin and the current public URL
 - when the local origin is dead, restart the dashboard server first without touching the tunnel
 - when the local origin is healthy, treat public-unready as a tunnel-side problem
+- a working public tunnel with a dead local server means "repair server, keep tunnel"
+- a dead public tunnel with a healthy local server means "repair or replace tunnel, keep server"
 - keep the current quick tunnel when cloudflared is still alive unless strong evidence and cooldown permit replacement
 `);
 

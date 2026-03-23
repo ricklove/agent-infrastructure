@@ -1512,13 +1512,23 @@ export async function runDashboardLifecycleController(input?: {
           !status.dashboardHealthy ||
           !state?.publicUrl ||
           !status.tunnelRunning;
+        const activeDemandConfirmedTunnelFailure =
+          hasDemand &&
+          Boolean(state?.publicUrl) &&
+          status.dashboardHealthy &&
+          shouldCheckPublic &&
+          !status.publicReady;
         const sustainedPublicFailure =
           publicFailureSinceMs !== null &&
           now - publicFailureSinceMs >= sustainedPublicFailureReplacementMs;
         const tunnelReplacementCooldownSatisfied =
           now - getLastTunnelReplacementAttemptAtMs(state) >= quickTunnelReplacementCooldownMs;
 
-        if (!runtimeMissing && (!sustainedPublicFailure || !tunnelReplacementCooldownSatisfied)) {
+        if (
+          !runtimeMissing &&
+          !activeDemandConfirmedTunnelFailure &&
+          (!sustainedPublicFailure || !tunnelReplacementCooldownSatisfied)
+        ) {
           await Bun.sleep(dashboardLifecyclePollMs);
           continue;
         }
