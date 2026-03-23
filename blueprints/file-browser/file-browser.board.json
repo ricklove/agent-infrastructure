@@ -1,0 +1,23 @@
+{
+  "kind": "agent-graph-board",
+  "id": "file-browser",
+  "label": "File Browser",
+  "documents": [
+    "./file-browser-dashboard-implementation.agentish.ts"
+  ],
+  "revision": 1,
+  "layers": [
+    {
+      "id": "layer-overview",
+      "label": "Overview",
+      "kind": "overview",
+      "nodeIds": [],
+      "visible": true,
+      "x": 280,
+      "y": 120,
+      "derivedFromLayerId": null
+    }
+  ],
+  "nodePositions": {},
+  "pinnedNodeIds": []
+}
