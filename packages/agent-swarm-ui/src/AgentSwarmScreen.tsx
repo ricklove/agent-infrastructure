@@ -527,6 +527,12 @@ function buildTimelineQueryParams(workerId: string, query: TimelineQuery): strin
   return params.toString()
 }
 
+// Preset hue slots for better color distribution (same as agent-graph-ui)
+const PROCESS_HUE_SLOTS = [
+  4, 18, 32, 46, 60, 74, 88, 104, 122, 140, 158, 176,
+  194, 210, 226, 242, 258, 274, 290, 306, 322, 338, 352,
+]
+
 function colorForSeries(key: string): string {
   // Use FNV-1a hash (same as agent-graph-ui)
   let hash = 2166136261
@@ -536,12 +542,14 @@ function colorForSeries(key: string): string {
   }
   hash = hash >>> 0
 
-  // Use golden ratio for hue distribution (same as agent-graph-ui stableHue)
-  const hue = Number((((hash * 0.61803398875) % 1) * 360).toFixed(1))
+  // Pick from preset hue slots with offset (prevents color collisions)
+  const slot = hash % PROCESS_HUE_SLOTS.length
+  const offset = ((hash >>> 8) % 9) - 4
+  const hue = PROCESS_HUE_SLOTS[slot] + offset
 
-  // Vary saturation and lightness for better color distribution
-  const saturation = 66 + (hash % 13)
-  const lightness = 56 + ((hash >>> 8) % 10)
+  // Vary saturation and lightness for additional distinction
+  const saturation = 66 + ((hash >>> 16) % 13)
+  const lightness = 56 + ((hash >>> 24) % 10)
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`
 }
