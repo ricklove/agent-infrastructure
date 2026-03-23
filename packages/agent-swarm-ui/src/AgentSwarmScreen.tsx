@@ -62,6 +62,24 @@ type WorkerTimelineResponse = {
   processSamples: TimelineProcessSample[]
 }
 
+type RelativeRangeUnit = "minutes" | "hours" | "days" | "weeks" | "months"
+
+type TimelineQuery =
+  | {
+      mode: "preset"
+      rangeMinutes: number
+    }
+  | {
+      mode: "relative"
+      amount: number
+      unit: RelativeRangeUnit
+    }
+  | {
+      mode: "absolute"
+      sinceInput: string
+      untilInput: string
+    }
+
 type Service = {
   namespace: string
   serviceName: string
@@ -253,27 +271,69 @@ function xForTimestamp(
   return layout.padLeft + position * chartInnerWidth(layout)
 }
 
-function buildSeriesPath(
+function typicalStepMs(points: Array<{ tsMs: number; value: number }>): number {
+  const deltas: number[] = []
+
+  for (let index = 1; index < points.length; index += 1) {
+    const delta = points[index]!.tsMs - points[index - 1]!.tsMs
+    if (delta > 0) {
+      deltas.push(delta)
+    }
+  }
+
+  if (deltas.length === 0) {
+    return 0
+  }
+
+  deltas.sort((left, right) => left - right)
+  return deltas[Math.floor(deltas.length / 2)] ?? deltas[0] ?? 0
+}
+
+function buildSeriesPaths(
   points: Array<{ tsMs: number; value: number }>,
   maxValue: number,
   layout: ChartLayout,
   domainStartTsMs: number,
   domainEndTsMs: number,
-): string {
+): string[] {
   if (points.length === 0 || maxValue <= 0) {
-    return ""
+    return []
   }
 
   const innerHeight = chartInnerHeight(layout)
-  const renderedPoints = points.map((point) => ({
-    x: xForTimestamp(point.tsMs, domainStartTsMs, domainEndTsMs, layout),
-    y:
-      layout.padTop +
-      innerHeight -
-      (Math.max(point.value, 0) / maxValue) * innerHeight,
-  }))
+  const gapBreakThresholdMs = Math.max(typicalStepMs(points) * 1.75, 0)
+  const segments: Array<Array<{ x: number; y: number }>> = []
+  let currentSegment: Array<{ x: number; y: number }> = []
 
-  return linePath(renderedPoints)
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index]!
+    const previousPoint = index > 0 ? points[index - 1] : null
+
+    if (
+      previousPoint &&
+      gapBreakThresholdMs > 0 &&
+      point.tsMs - previousPoint.tsMs > gapBreakThresholdMs
+    ) {
+      if (currentSegment.length >= 2) {
+        segments.push(currentSegment)
+      }
+      currentSegment = []
+    }
+
+    currentSegment.push({
+      x: xForTimestamp(point.tsMs, domainStartTsMs, domainEndTsMs, layout),
+      y:
+        layout.padTop +
+        innerHeight -
+        (Math.max(point.value, 0) / maxValue) * innerHeight,
+    })
+  }
+
+  if (currentSegment.length >= 2) {
+    segments.push(currentSegment)
+  }
+
+  return segments.map((segment) => linePath(segment))
 }
 
 function guideLineY(value: number, maxValue: number, layout: ChartLayout): number {
@@ -333,6 +393,52 @@ function formatTimeAxisLabel(timestamp: number, rangeMinutes: number): string {
   })
 }
 
+function buildTimeAxisTicks(
+  layout: ChartLayout,
+  domainStartTsMs: number,
+  domainEndTsMs: number,
+  rangeMinutes: number,
+): Array<{
+  label: string
+  x: number
+  timestamp: number
+  anchor: "start" | "middle" | "end"
+}> {
+  const innerWidth = chartInnerWidth(layout)
+  const tickCount = Math.max(2, Math.min(8, Math.floor(innerWidth / 160) + 1))
+  const ticks: Array<{
+    label: string
+    x: number
+    timestamp: number
+    anchor: "start" | "middle" | "end"
+  }> = []
+
+  for (let index = 0; index < tickCount; index += 1) {
+    const ratio = tickCount === 1 ? 0 : index / (tickCount - 1)
+    const timestamp = Math.round(
+      domainStartTsMs + (domainEndTsMs - domainStartTsMs) * ratio,
+    )
+    ticks.push({
+      label: formatTimeAxisLabel(timestamp, rangeMinutes),
+      x: xForTimestamp(timestamp, domainStartTsMs, domainEndTsMs, layout),
+      timestamp,
+      anchor:
+        index === 0
+          ? "start"
+          : index === tickCount - 1
+            ? "end"
+            : "middle",
+    })
+  }
+
+  return ticks.filter((tick, index) => {
+    if (index === 0 || index === ticks.length - 1) {
+      return true
+    }
+    return tick.label !== ticks[index - 1]?.label
+  })
+}
+
 const timelineRangeOptions = [
   15,
   30,
@@ -346,6 +452,80 @@ const timelineRangeOptions = [
   262800,
   525600,
 ]
+
+const relativeRangeUnitOptions: Array<{
+  value: RelativeRangeUnit
+  label: string
+  minutes: number
+}> = [
+  { value: "minutes", label: "minutes", minutes: 1 },
+  { value: "hours", label: "hours", minutes: 60 },
+  { value: "days", label: "days", minutes: 24 * 60 },
+  { value: "weeks", label: "weeks", minutes: 7 * 24 * 60 },
+  { value: "months", label: "months", minutes: 30 * 24 * 60 },
+]
+
+function formatDateTimeLocalInput(timestamp: number): string {
+  const date = new Date(timestamp)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  const hours = String(date.getHours()).padStart(2, "0")
+  const minutes = String(date.getMinutes()).padStart(2, "0")
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
+function parseDateTimeLocalInput(input: string): number | null {
+  if (!input) {
+    return null
+  }
+
+  const timestamp = new Date(input).getTime()
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function relativeRangeMinutes(amount: number, unit: RelativeRangeUnit): number {
+  const option = relativeRangeUnitOptions.find((item) => item.value === unit)
+  return Math.max(1, Math.floor(amount)) * (option?.minutes ?? 60)
+}
+
+function timelineQueryRangeMinutes(query: TimelineQuery): number {
+  if (query.mode === "preset") {
+    return query.rangeMinutes
+  }
+
+  if (query.mode === "relative") {
+    return relativeRangeMinutes(query.amount, query.unit)
+  }
+
+  const sinceTsMs = parseDateTimeLocalInput(query.sinceInput)
+  const untilTsMs = parseDateTimeLocalInput(query.untilInput)
+  if (sinceTsMs === null || untilTsMs === null || untilTsMs <= sinceTsMs) {
+    return 30
+  }
+
+  return Math.max(1, Math.round((untilTsMs - sinceTsMs) / 60000))
+}
+
+function buildTimelineQueryParams(workerId: string, query: TimelineQuery): string {
+  const params = new URLSearchParams({
+    workerId,
+  })
+
+  if (query.mode === "absolute") {
+    const sinceTsMs = parseDateTimeLocalInput(query.sinceInput)
+    const untilTsMs = parseDateTimeLocalInput(query.untilInput)
+
+    if (sinceTsMs !== null && untilTsMs !== null && untilTsMs > sinceTsMs) {
+      params.set("sinceTsMs", String(sinceTsMs))
+      params.set("untilTsMs", String(untilTsMs))
+      return params.toString()
+    }
+  }
+
+  params.set("rangeMinutes", String(timelineQueryRangeMinutes(query)))
+  return params.toString()
+}
 
 function colorForSeries(key: string): string {
   let hash = 2166136261
@@ -369,7 +549,22 @@ export function AgentSwarmScreen({
   const [workers, setWorkers] = useState<Worker[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [selectedWorkerId, setSelectedWorkerId] = useState("")
-  const [timelineRangeMinutes, setTimelineRangeMinutes] = useState(30)
+  const [timelineQuery, setTimelineQuery] = useState<TimelineQuery>({
+    mode: "preset",
+    rangeMinutes: 30,
+  })
+  const [timelineQueryMode, setTimelineQueryMode] = useState<
+    "preset" | "relative" | "absolute"
+  >("preset")
+  const [relativeAmountInput, setRelativeAmountInput] = useState("6")
+  const [relativeUnit, setRelativeUnit] =
+    useState<RelativeRangeUnit>("hours")
+  const [absoluteSinceInput, setAbsoluteSinceInput] = useState(() =>
+    formatDateTimeLocalInput(Date.now() - 6 * 60 * 60 * 1000),
+  )
+  const [absoluteUntilInput, setAbsoluteUntilInput] = useState(() =>
+    formatDateTimeLocalInput(Date.now()),
+  )
   const [timeline, setTimeline] = useState<WorkerTimelineResponse | null>(null)
   const [error, setError] = useState("")
   const [authMessage, setAuthMessage] = useState("")
@@ -489,7 +684,7 @@ export function AgentSwarmScreen({
         const response = await apiFetch(
           featurePath(
             apiRootUrl,
-            `workers/timeline?workerId=${encodeURIComponent(selectedWorkerId)}&rangeMinutes=${timelineRangeMinutes}`,
+            `workers/timeline?${buildTimelineQueryParams(selectedWorkerId, timelineQuery)}`,
           ),
         )
 
@@ -529,7 +724,7 @@ export function AgentSwarmScreen({
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [apiRootUrl, selectedWorkerId, timelineRangeMinutes])
+  }, [apiRootUrl, selectedWorkerId, timelineQuery])
 
   const summary = useMemo(() => {
     const connectedWorkers = workers.filter(
@@ -554,6 +749,7 @@ export function AgentSwarmScreen({
   const dashboardPortLabel = health?.dashboard?.port
     ? String(health.dashboard.port)
     : "--"
+  const timelineRangeMinutes = timelineQueryRangeMinutes(timelineQuery)
 
   const hostChartLayout = useMemo(
     () => createChartLayout(hostChartMeasure.width),
@@ -576,7 +772,7 @@ export function AgentSwarmScreen({
     const domainEndTsMs =
       timeline?.untilTsMs ?? domainStartTsMs + timelineRangeMinutes * 60 * 1000
 
-    const cpuPath = buildSeriesPath(
+    const cpuPaths = buildSeriesPaths(
       hostSamples.map((sample) => ({
         tsMs: sample.tsMs,
         value: sample.cpuPercent,
@@ -586,7 +782,7 @@ export function AgentSwarmScreen({
       domainStartTsMs,
       domainEndTsMs,
     )
-    const memoryPath = buildSeriesPath(
+    const memoryPaths = buildSeriesPaths(
       hostSamples.map((sample) => ({
         tsMs: sample.tsMs,
         value: sample.memoryPercent,
@@ -651,7 +847,7 @@ export function AgentSwarmScreen({
         lines: topSeries.map((series) => ({
           label: series.label,
           color: series.color,
-          path: buildSeriesPath(
+          paths: buildSeriesPaths(
             series.points,
             maxValue,
             ranking === "cpu" ? processCpuChartLayout : processMemoryChartLayout,
@@ -676,8 +872,8 @@ export function AgentSwarmScreen({
       hostLayout: hostChartLayout,
       processCpuLayout: processCpuChartLayout,
       processMemoryLayout: processMemoryChartLayout,
-      cpuPath,
-      memoryPath,
+      cpuPaths,
+      memoryPaths,
       cpuProcesses,
       memoryProcesses,
       lastHostSample: hostSamples[hostSamples.length - 1] ?? null,
@@ -693,23 +889,12 @@ export function AgentSwarmScreen({
   ])
 
   function buildAxisLabels(layout: ChartLayout) {
-    const startTsMs = timelineCharts.domainStartTsMs
-    const endTsMs = timelineCharts.domainEndTsMs
-    const middleTsMs = startTsMs + (endTsMs - startTsMs) / 2
-
-    return [
-      { label: formatTimeAxisLabel(startTsMs, timelineRangeMinutes), x: layout.padLeft, anchor: "start" as const },
-      {
-        label: formatTimeAxisLabel(middleTsMs, timelineRangeMinutes),
-        x: layout.padLeft + chartInnerWidth(layout) / 2,
-        anchor: "middle" as const,
-      },
-      {
-        label: formatTimeAxisLabel(endTsMs, timelineRangeMinutes),
-        x: layout.width - layout.padRight,
-        anchor: "end" as const,
-      },
-    ]
+    return buildTimeAxisTicks(
+      layout,
+      timelineCharts.domainStartTsMs,
+      timelineCharts.domainEndTsMs,
+      timelineRangeMinutes,
+    )
   }
 
   const hostAxisLabels = useMemo(
@@ -989,17 +1174,109 @@ export function AgentSwarmScreen({
               </select>
               <select
                 className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
-                onChange={(event) =>
-                  setTimelineRangeMinutes(Number(event.target.value))
-                }
-                value={timelineRangeMinutes}
+                onChange={(event) => {
+                  const nextMode = event.target.value as
+                    | "preset"
+                    | "relative"
+                    | "absolute"
+                  setTimelineQueryMode(nextMode)
+                }}
+                value={timelineQueryMode}
               >
-                {timelineRangeOptions.map((minutes) => (
-                  <option key={minutes} value={minutes}>
-                    {formatRelativeMinutes(minutes)}
-                  </option>
-                ))}
+                <option value="preset">preset</option>
+                <option value="relative">relative</option>
+                <option value="absolute">absolute</option>
               </select>
+              {timelineQueryMode === "preset" ? (
+                <select
+                  className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+                  onChange={(event) =>
+                    setTimelineQuery({
+                      mode: "preset",
+                      rangeMinutes: Number(event.target.value),
+                    })
+                  }
+                  value={
+                    timelineQuery.mode === "preset"
+                      ? timelineQuery.rangeMinutes
+                      : 30
+                  }
+                >
+                  {timelineRangeOptions.map((minutes) => (
+                    <option key={minutes} value={minutes}>
+                      {formatRelativeMinutes(minutes)}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {timelineQueryMode === "relative" ? (
+                <>
+                  <input
+                    className="w-24 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+                    inputMode="numeric"
+                    onChange={(event) => setRelativeAmountInput(event.target.value)}
+                    value={relativeAmountInput}
+                  />
+                  <select
+                    className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+                    onChange={(event) =>
+                      setRelativeUnit(event.target.value as RelativeRangeUnit)
+                    }
+                    value={relativeUnit}
+                  >
+                    {relativeRangeUnitOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-100"
+                    onClick={() =>
+                      setTimelineQuery({
+                        mode: "relative",
+                        amount: Math.max(
+                          1,
+                          Number.parseInt(relativeAmountInput || "1", 10) || 1,
+                        ),
+                        unit: relativeUnit,
+                      })
+                    }
+                    type="button"
+                  >
+                    Apply
+                  </button>
+                </>
+              ) : null}
+              {timelineQueryMode === "absolute" ? (
+                <>
+                  <input
+                    className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+                    onChange={(event) => setAbsoluteSinceInput(event.target.value)}
+                    type="datetime-local"
+                    value={absoluteSinceInput}
+                  />
+                  <input
+                    className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+                    onChange={(event) => setAbsoluteUntilInput(event.target.value)}
+                    type="datetime-local"
+                    value={absoluteUntilInput}
+                  />
+                  <button
+                    className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-100"
+                    onClick={() =>
+                      setTimelineQuery({
+                        mode: "absolute",
+                        sinceInput: absoluteSinceInput,
+                        untilInput: absoluteUntilInput,
+                      })
+                    }
+                    type="button"
+                  >
+                    Apply
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
 
@@ -1076,31 +1353,49 @@ export function AgentSwarmScreen({
                         </text>
                       </g>
                     ))}
-                    <path
-                      d={timelineCharts.memoryPath}
-                      fill="none"
-                      opacity="0.95"
-                      stroke="#38bdf8"
-                      strokeWidth="2.5"
-                    />
-                    <path
-                      d={timelineCharts.cpuPath}
-                      fill="none"
-                      opacity="0.95"
-                      stroke="#34d399"
-                      strokeWidth="2.5"
-                    />
+                    {timelineCharts.memoryPaths.map((path, index) => (
+                      <path
+                        key={`memory-path-${index}`}
+                        d={path}
+                        fill="none"
+                        opacity="0.95"
+                        stroke="#38bdf8"
+                        strokeWidth="2.5"
+                      />
+                    ))}
+                    {timelineCharts.cpuPaths.map((path, index) => (
+                      <path
+                        key={`cpu-path-${index}`}
+                        d={path}
+                        fill="none"
+                        opacity="0.95"
+                        stroke="#34d399"
+                        strokeWidth="2.5"
+                      />
+                    ))}
                     {hostAxisLabels.map((item) => (
-                      <text
-                        key={`host-axis-${item.anchor}-${item.label}`}
-                        fill="rgba(148, 163, 184, 0.9)"
-                        fontSize="11"
-                        textAnchor={item.anchor}
-                        x={item.x}
-                        y={timelineCharts.hostLayout.height - 4}
-                      >
-                        {item.label}
-                      </text>
+                      <g key={`host-axis-${item.timestamp}`}>
+                        <line
+                          stroke="rgba(148, 163, 184, 0.22)"
+                          strokeDasharray="3 6"
+                          x1={item.x}
+                          x2={item.x}
+                          y1={timelineCharts.hostLayout.padTop}
+                          y2={
+                            timelineCharts.hostLayout.height -
+                            timelineCharts.hostLayout.padBottom
+                          }
+                        />
+                        <text
+                          fill="rgba(148, 163, 184, 0.9)"
+                          fontSize="11"
+                          textAnchor={item.anchor}
+                          x={item.x}
+                          y={timelineCharts.hostLayout.height - 4}
+                        >
+                          {item.label}
+                        </text>
+                      </g>
                     ))}
                   </svg>
                 </div>
@@ -1238,27 +1533,38 @@ export function AgentSwarmScreen({
                           </text>
                         </g>
                       ))}
-                      {chart.lines.map((line) => (
-                        <path
-                          key={line.label}
-                          d={line.path}
-                          fill="none"
-                          opacity="0.95"
-                          stroke={line.color}
-                          strokeWidth="2.25"
-                        />
-                      ))}
+                      {chart.lines.flatMap((line) =>
+                        line.paths.map((path, index) => (
+                          <path
+                            key={`${line.label}-${index}`}
+                            d={path}
+                            fill="none"
+                            opacity="0.95"
+                            stroke={line.color}
+                            strokeWidth="2.25"
+                          />
+                        )),
+                      )}
                       {axisLabels.map((item) => (
-                        <text
-                          key={`${chart.title}-axis-${item.anchor}-${item.label}`}
-                          fill="rgba(148, 163, 184, 0.9)"
-                          fontSize="11"
-                          textAnchor={item.anchor}
-                          x={item.x}
-                          y={layout.height - 4}
-                        >
-                          {item.label}
-                        </text>
+                        <g key={`${chart.title}-axis-${item.timestamp}`}>
+                          <line
+                            stroke="rgba(148, 163, 184, 0.22)"
+                            strokeDasharray="3 6"
+                            x1={item.x}
+                            x2={item.x}
+                            y1={layout.padTop}
+                            y2={layout.height - layout.padBottom}
+                          />
+                          <text
+                            fill="rgba(148, 163, 184, 0.9)"
+                            fontSize="11"
+                            textAnchor={item.anchor}
+                            x={item.x}
+                            y={layout.height - 4}
+                          >
+                            {item.label}
+                          </text>
+                        </g>
                       ))}
                           </>
                         )

@@ -1724,10 +1724,10 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
                 memory_total_bytes,
                 container_count
              FROM worker_samples
-             WHERE worker_id = ? AND ts_ms >= ?
+             WHERE worker_id = ? AND ts_ms >= ? AND ts_ms <= ?
              ORDER BY ts_ms ASC`,
           )
-          .all(workerId, sinceTsMs) as Array<{
+          .all(workerId, sinceTsMs, untilTsMs) as Array<{
           ts_ms: number;
           cpu_percent: number;
           memory_percent: number;
@@ -1746,10 +1746,10 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
                   0 AS memory_total_bytes,
                   avg_container_count AS container_count
                FROM worker_samples_1m
-               WHERE worker_id = ? AND bucket_start_ms >= ?
+               WHERE worker_id = ? AND bucket_start_ms >= ? AND bucket_start_ms <= ?
                ORDER BY bucket_start_ms ASC`,
             )
-            .all(workerId, sinceTsMs) as Array<{
+            .all(workerId, sinceTsMs, untilTsMs) as Array<{
             ts_ms: number;
             cpu_percent: number;
             memory_percent: number;
@@ -1767,10 +1767,10 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
                   0 AS memory_total_bytes,
                   avg_container_count AS container_count
                FROM worker_samples_1h
-               WHERE worker_id = ? AND bucket_start_ms >= ?
+               WHERE worker_id = ? AND bucket_start_ms >= ? AND bucket_start_ms <= ?
                ORDER BY bucket_start_ms ASC`,
             )
-            .all(workerId, sinceTsMs) as Array<{
+            .all(workerId, sinceTsMs, untilTsMs) as Array<{
             ts_ms: number;
             cpu_percent: number;
             memory_percent: number;
@@ -1803,7 +1803,7 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
           MAX(cpu_percent) AS cpu_percent,
           MAX(rss_bytes) AS rss_bytes
        FROM process_samples
-       WHERE worker_id = ? AND ts_ms >= ?
+       WHERE worker_id = ? AND ts_ms >= ? AND ts_ms <= ?
        GROUP BY (ts_ms / ?) * ?, ranking, pid, comm, state
        ORDER BY ts_ms ASC, ranking ASC, rank ASC`,
     )
@@ -1812,6 +1812,7 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
       processBucketMs,
       workerId,
       processSinceTsMs,
+      untilTsMs,
       processBucketMs,
       processBucketMs,
     ) as Array<{
@@ -1901,6 +1902,14 @@ const server = Bun.serve<SocketData>({
 
     if (request.method === "GET" && url.pathname === "/workers/timeline") {
       const workerId = normalizeName(url.searchParams.get("workerId") ?? "");
+      const sinceTsMsRaw = Number.parseInt(
+        url.searchParams.get("sinceTsMs") ?? "",
+        10,
+      );
+      const untilTsMsRaw = Number.parseInt(
+        url.searchParams.get("untilTsMs") ?? "",
+        10,
+      );
       const rangeMinutesRaw = Number.parseInt(
         url.searchParams.get("rangeMinutes") ?? "30",
         10,
@@ -1910,12 +1919,20 @@ const server = Bun.serve<SocketData>({
         return jsonError(400, "workerId is required");
       }
 
-      const rangeMinutes = Math.min(
-        365 * 24 * 60,
-        Math.max(5, Number.isInteger(rangeMinutesRaw) ? rangeMinutesRaw : 30),
-      );
-      const untilTsMs = nowMs();
-      const sinceTsMs = untilTsMs - rangeMinutes * 60 * 1000;
+      const hasAbsoluteRange =
+        Number.isInteger(sinceTsMsRaw) &&
+        Number.isInteger(untilTsMsRaw) &&
+        untilTsMsRaw > sinceTsMsRaw;
+      const untilTsMs = hasAbsoluteRange ? untilTsMsRaw : nowMs();
+      const sinceTsMs = hasAbsoluteRange
+        ? Math.max(untilTsMs - 365 * 24 * 60 * 60 * 1000, sinceTsMsRaw)
+        : untilTsMs -
+          Math.min(
+            365 * 24 * 60,
+            Math.max(5, Number.isInteger(rangeMinutesRaw) ? rangeMinutesRaw : 30),
+          ) *
+            60 *
+            1000;
 
       return Response.json({
         ok: true,
