@@ -149,6 +149,7 @@ export type AgentChatScreenProps = {
 
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
 const defaultSessionDirectory = "/home/ec2-user/workspace"
+const draftStorageKeyPrefix = "agent-infrastructure.agent-chat.draft."
 
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
@@ -179,6 +180,28 @@ function clipText(text: string, maxLength = 88) {
 
 function readStoredSessionToken(): string {
   return window.sessionStorage.getItem(sessionStorageKey) ?? ""
+}
+
+function draftStorageKey(sessionId: string) {
+  return `${draftStorageKeyPrefix}${sessionId}`
+}
+
+function readDraft(sessionId: string) {
+  if (typeof window === "undefined" || !sessionId) {
+    return ""
+  }
+  return window.localStorage.getItem(draftStorageKey(sessionId)) ?? ""
+}
+
+function writeDraft(sessionId: string, draft: string) {
+  if (typeof window === "undefined" || !sessionId) {
+    return
+  }
+  if (draft.trim()) {
+    window.localStorage.setItem(draftStorageKey(sessionId), draft)
+    return
+  }
+  window.localStorage.removeItem(draftStorageKey(sessionId))
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -319,6 +342,21 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setActiveSessionDirectory(activeSession?.cwd ?? "")
     setReplyTargetMessageId(null)
   }, [activeSession])
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      setComposerText("")
+      return
+    }
+    setComposerText(readDraft(activeSessionId))
+  }, [activeSessionId])
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      return
+    }
+    writeDraft(activeSessionId, composerText)
+  }, [activeSessionId, composerText])
 
   useEffect(() => {
     if (activity.status !== "running") {
