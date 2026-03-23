@@ -503,9 +503,22 @@ async function resolveManagerInstanceId(): Promise<string> {
 }
 
 async function issueDashboardAccess(): Promise<string> {
-  logAuthStep("auth.finish.dashboard-session.issue.requested");
+  return runDashboardSessionCommand("issue-dashboard-session.sh", "auth.finish.dashboard-session.issue");
+}
+
+function shellToken(value: string): string {
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
+}
+
+async function runDashboardSessionCommand(
+  scriptName: string,
+  logPrefix: string,
+  extraArgs: string[] = [],
+  extraDetail?: Record<string, unknown>,
+): Promise<string> {
+  logAuthStep(`${logPrefix}.requested`, extraDetail);
   const managerInstanceId = await resolveManagerInstanceId();
-  logAuthStep("auth.finish.dashboard-session.manager.resolved", { managerInstanceId });
+  logAuthStep(`${logPrefix}.manager.resolved`, { managerInstanceId, ...extraDetail });
   const send = await ssm.send(
     new SendCommandCommand({
       InstanceIds: [managerInstanceId],
@@ -513,7 +526,14 @@ async function issueDashboardAccess(): Promise<string> {
       Parameters: {
         commands: [
           "set -euo pipefail",
-          `bash ${config.agentHome}/runtime/scripts/issue-dashboard-session.sh --ttl-seconds ${config.dashboardSessionTtlSeconds}`,
+          [
+            `bash ${config.agentHome}/runtime/scripts/${scriptName}`,
+            "--ttl-seconds",
+            String(config.dashboardSessionTtlSeconds),
+            ...extraArgs.map((value) =>
+              value.startsWith("--") ? value : shellToken(value),
+            ),
+          ].join(" "),
         ],
       },
     }),
@@ -521,11 +541,11 @@ async function issueDashboardAccess(): Promise<string> {
 
   const commandId = send.Command?.CommandId;
   if (!commandId) {
-    logAuthStep("auth.finish.dashboard-session.issue.failed", { reason: "missing-command-id" });
+    logAuthStep(`${logPrefix}.failed`, { reason: "missing-command-id", ...extraDetail });
     throw new Error("failed to create dashboard session command");
   }
 
-  logAuthStep("auth.finish.dashboard-session.command.sent", { commandId });
+  logAuthStep(`${logPrefix}.command.sent`, { commandId, ...extraDetail });
 
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
@@ -560,17 +580,17 @@ async function issueDashboardAccess(): Promise<string> {
         .at(-1);
 
       if (!line) {
-        logAuthStep("auth.finish.dashboard-session.issue.failed", { reason: "missing-json-output" });
+        logAuthStep(`${logPrefix}.failed`, { reason: "missing-json-output", ...extraDetail });
         throw new Error("dashboard session command did not return JSON");
       }
 
       const payload = JSON.parse(line) as { sessionUrl?: string };
       if (!payload.sessionUrl) {
-        logAuthStep("auth.finish.dashboard-session.issue.failed", { reason: "missing-session-url" });
+        logAuthStep(`${logPrefix}.failed`, { reason: "missing-session-url", ...extraDetail });
         throw new Error("dashboard session URL was missing");
       }
 
-      logAuthStep("auth.finish.dashboard-session.issued", { sessionUrl: payload.sessionUrl });
+      logAuthStep(`${logPrefix}.issued`, { sessionUrl: payload.sessionUrl, ...extraDetail });
 
       return payload.sessionUrl;
     }
@@ -581,8 +601,9 @@ async function issueDashboardAccess(): Promise<string> {
       invocation.Status === "Failed" ||
       invocation.Status === "TimedOut"
     ) {
-      logAuthStep("auth.finish.dashboard-session.issue.failed", {
+      logAuthStep(`${logPrefix}.failed`, {
         reason: invocation.Status ?? "unknown-status",
+        ...extraDetail,
       });
       throw new Error(
         invocation.StandardErrorContent?.trim() || "dashboard session command failed",
@@ -592,7 +613,7 @@ async function issueDashboardAccess(): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
-  logAuthStep("auth.finish.dashboard-session.issue.failed", { reason: "timeout" });
+  logAuthStep(`${logPrefix}.failed`, { reason: "timeout", ...extraDetail });
   throw new Error("dashboard session command timed out");
 }
 
@@ -770,7 +791,7 @@ async function finishAuthentication(
       progressMessage: "Requesting dashboard session from manager.",
       progressDetail: { flowId },
     });
-    const dashboardUrl = await issueDashboardAccess();
+    let dashboardUrl = await issueDashboardAccess();
     logAuthStep("auth.finish.dashboard-session.url.received", { flowId, dashboardUrl });
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.dashboard-session.url.received",
@@ -809,28 +830,28 @@ async function finishAuthentication(
       progressStep: "auth.finish.error",
       progressMessage: "Authentication failed.",
       progressDetail: {
-        flowId,
-        credentialId: credential.id,
-        ...errorDetail(error),
-      },
-      failureStep,
-      error:
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : "authentication failed",
-    });
-    return jsonResponse(
-      {
-        ok: false,
+          flowId,
+          credentialId: credential.id,
+          ...errorDetail(error),
+        },
+        failureStep,
         error:
           error instanceof Error && error.message.trim().length > 0
             ? error.message
             : "authentication failed",
-        failureStep,
-      },
-      500,
-    );
-  }
+      });
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            error instanceof Error && error.message.trim().length > 0
+              ? error.message
+              : "authentication failed",
+          failureStep,
+        },
+        500,
+      );
+    }
 }
 
 async function createEnrollmentTicket(

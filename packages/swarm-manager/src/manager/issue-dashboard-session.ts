@@ -1,4 +1,9 @@
-import { issueDashboardSession } from "./dashboard-runtime.js";
+import {
+  issueDashboardSession,
+  recoverDashboardSession,
+  requestDashboardHelp,
+  waitForPublicDashboardReady,
+} from "./dashboard-runtime.js";
 
 function parseArgs(argv: string[]): {
   ttlSeconds: number;
@@ -43,5 +48,42 @@ function parseArgs(argv: string[]): {
 }
 
 const config = parseArgs(process.argv.slice(2));
-const result = await issueDashboardSession(config);
-console.log(JSON.stringify({ ok: true, ...result }));
+try {
+  let result = await issueDashboardSession(config);
+
+  try {
+    await waitForPublicDashboardReady(result.publicUrl);
+  } catch (error) {
+    result = await recoverDashboardSession({
+      ...config,
+      reason: "public-readiness-failed",
+    });
+
+    try {
+      await waitForPublicDashboardReady(result.publicUrl);
+    } catch (recoveryError) {
+      requestDashboardHelp({
+        reason: "dashboard-recovery-failed",
+        dashboardUrl: result.publicUrl,
+        detail:
+          recoveryError instanceof Error && recoveryError.message.trim().length > 0
+            ? recoveryError.message
+            : "dashboard recovery failed",
+      });
+      throw recoveryError;
+    }
+  }
+
+  console.log(JSON.stringify({ ok: true, ...result }));
+} catch (error) {
+  console.log(
+    JSON.stringify({
+      ok: false,
+      error:
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "dashboard session issuance failed",
+    }),
+  );
+  process.exitCode = 1;
+}

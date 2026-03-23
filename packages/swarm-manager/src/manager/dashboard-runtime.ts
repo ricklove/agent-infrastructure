@@ -77,6 +77,14 @@ const browserSessionRenewIntervalMs =
   ) * 1000;
 const SYSTEM_EVENT_LOG_PATH =
   process.env.SYSTEM_EVENT_LOG_PATH?.trim() || "/home/ec2-user/state/logs/system-events.log";
+const dashboardRecoveryIncidentDir = resolve(
+  process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
+  "dashboard-recovery-incidents",
+);
+const dashboardHelpRequestDir = resolve(
+  process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
+  "dashboard-help-requests",
+);
 
 function logSystemStep(source: string, message: string): void {
   const line = `[${new Date().toISOString()}:${source}] ${message}`;
@@ -201,6 +209,93 @@ function discoverPidByPattern(pattern: RegExp): number | null {
   }
 
   return null;
+}
+
+function listPidsByPattern(pattern: RegExp): number[] {
+  const shellPattern = shellQuote(pattern.source);
+  const result = Bun.spawnSync(
+    ["bash", "-lc", `ps -eo pid=,args= | rg --color never ${shellPattern}`],
+    {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+
+  if (result.exitCode !== 0) {
+    return [];
+  }
+
+  const output = result.stdout.toString().trim();
+  if (!output) {
+    return [];
+  }
+
+  const pids = new Set<number>();
+  for (const line of output.split("\n")) {
+    const [pidToken] = line.trim().split(/\s+/, 1);
+    const pid = Number.parseInt(pidToken ?? "", 10);
+    if (Number.isInteger(pid) && pid > 0 && isPidRunning(pid)) {
+      pids.add(pid);
+    }
+  }
+
+  return [...pids];
+}
+
+async function terminatePids(pids: number[], source: string): Promise<void> {
+  const unique = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
+  if (unique.length === 0) {
+    return;
+  }
+
+  logSystemStep(source, `start terminate_pids pids=${unique.join(",")}`);
+  for (const pid of unique) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {}
+  }
+
+  await Bun.sleep(500);
+
+  const stillRunning = unique.filter((pid) => isPidRunning(pid));
+  for (const pid of stillRunning) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+  }
+
+  logSystemStep(source, `exit terminate_pids pids=${unique.join(",")}`);
+}
+
+async function terminateDashboardRuntimeProcesses(port: number): Promise<void> {
+  const dashboardPids = listPidsByPattern(/packages\/dashboard\/src\/server\.ts/);
+  const cloudflaredPids = listPidsByPattern(
+    new RegExp(`cloudflared\\s+tunnel\\s+--url\\s+http:\\/\\/127\\.0\\.0\\.1:${port}`),
+  );
+
+  await terminatePids(dashboardPids, "dashboard-runtime");
+  await terminatePids(cloudflaredPids, "dashboard-runtime");
+}
+
+function writeDashboardRecoveryIncident(detail: Record<string, unknown>): string {
+  mkdirSync(dashboardRecoveryIncidentDir, { recursive: true });
+  const path = resolve(
+    dashboardRecoveryIncidentDir,
+    `${new Date().toISOString().replaceAll(":", "").replaceAll(".", "")}.json`,
+  );
+  writeFileSync(path, `${JSON.stringify(detail, null, 2)}\n`);
+  return path;
+}
+
+function writeDashboardHelpIncident(detail: Record<string, unknown>): string {
+  mkdirSync(dashboardHelpRequestDir, { recursive: true });
+  const path = resolve(
+    dashboardHelpRequestDir,
+    `${new Date().toISOString().replaceAll(":", "").replaceAll(".", "")}.json`,
+  );
+  writeFileSync(path, `${JSON.stringify(detail, null, 2)}\n`);
+  return path;
 }
 
 async function recoverDashboardRuntimeState(
@@ -698,4 +793,88 @@ export async function issueDashboardSession(input?: {
     dashboardPid: runtime.dashboardPid,
     cloudflaredPid: runtime.cloudflaredPid,
   };
+}
+
+export async function waitForPublicDashboardReady(
+  publicUrl: string,
+  maxAttempts = 30,
+  delayMs = 1000,
+): Promise<void> {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (await isPublicDashboardReady(publicUrl)) {
+      return;
+    }
+    await Bun.sleep(delayMs);
+  }
+
+  throw new Error("dashboard public URL did not become ready in time");
+}
+
+export function requestDashboardHelp(input: {
+  reason?: string;
+  dashboardUrl?: string;
+  detail?: string;
+}): string {
+  const payload = {
+    at: new Date().toISOString(),
+    reason: input.reason?.trim() || "dashboard-recovery-failed",
+    dashboardUrl: input.dashboardUrl?.trim() || "",
+    detail: input.detail?.trim() || "",
+  };
+  const incidentPath = writeDashboardHelpIncident(payload);
+  logSystemStep(
+    "dashboard-help",
+    `requested reason=${payload.reason} dashboard_url=${payload.dashboardUrl || "unknown"} incident=${incidentPath}`,
+  );
+  return incidentPath;
+}
+
+export async function recoverDashboardSession(input?: {
+  port?: number;
+  managerUrl?: string;
+  ttlSeconds?: number;
+  reason?: string;
+}): Promise<{
+  token: string;
+  expiresAtMs: number;
+  localUrl: string;
+  publicUrl: string;
+  sessionUrl: string;
+  dashboardPid: number;
+  cloudflaredPid: number;
+}> {
+  const port = input?.port ?? 3000;
+  const reason = input?.reason?.trim() || "dashboard-unreachable";
+  logSystemStep("dashboard-recovery", `start reason=${reason} port=${port}`);
+
+  try {
+    await terminateDashboardRuntimeProcesses(port);
+    clearRuntimeState();
+    const session = await issueDashboardSession({
+      port,
+      managerUrl: input?.managerUrl,
+      ttlSeconds: input?.ttlSeconds,
+    });
+    logSystemStep(
+      "dashboard-recovery",
+      `exit public_url=${session.publicUrl} dashboard_pid=${session.dashboardPid} cloudflared_pid=${session.cloudflaredPid}`,
+    );
+    return session;
+  } catch (error) {
+    const incidentPath = writeDashboardRecoveryIncident({
+      at: new Date().toISOString(),
+      reason,
+      port,
+      error:
+        error instanceof Error
+          ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack,
+            }
+          : { error: String(error) },
+    });
+    logSystemStep("dashboard-recovery", `error incident=${incidentPath}`);
+    throw error;
+  }
 }

@@ -106,6 +106,7 @@ SystemRuntime.enforces(`
 - Manager updates should follow one full development process from source edit through post-deploy verification.
 - Swarm monitor process visibility should use sparse continuous sampling rather than burst-only capture.
 - EC2 worker inventory refresh should default to slow zombie reconciliation rather than second-level live polling.
+- Dashboard session issuance during an active connect attempt should trigger automatic repair before escalation.
 `);
 
 SystemRuntime.defines(`
@@ -224,7 +225,10 @@ when(Operator.changes("server code"))
 when(AWS.lambda.invokes(Entrypoint.issueDashboardSession))
   .then(AWS.ssm.executes("a host command"))
   .and(Host.manager.runs(Entrypoint.issueDashboardSession))
-  .and(SystemRuntime.treats("that script as a valid external boundary"));
+  .and(SystemRuntime.treats("that script as a valid external boundary"))
+  .and(Entrypoint.issueDashboardSession.detects("dashboard readiness failure"))
+  .then(Entrypoint.issueDashboardSession.repairs(RuntimeCode.dashboardRuntime))
+  .and(Entrypoint.issueDashboardSession.records("a durable help-request incident on unrecoverable failure"));
 
 when(Host.manager.starts(Host.service))
   .then(Host.service.executes(Entrypoint.manager).orExecutes(Entrypoint.managerNode))
