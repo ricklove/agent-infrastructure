@@ -25,13 +25,42 @@ function hsl(hue: number, saturation: number, lightness: number): string {
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
 
-export function stableGraphColor(seed: string) {
-  const hue = stableHue(seed);
-  const saturation = stablePercent(seed, "s", 62, 17);
-  const lightness = stablePercent(seed, "l", 56, 11);
-  const borderLightness = Math.max(44, lightness - 8);
-  const textLightness = Math.min(86, lightness + 22);
-  const deepLightness = Math.max(16, lightness - 40);
+type GraphColorDomain = "node-type" | "node-avatar" | "edge";
+
+function domainHue(seed: string, domain: GraphColorDomain): number {
+  const base = stableHue(seed);
+
+  if (domain === "node-type") {
+    return Number(((base * 0.82 + 18) % 360).toFixed(1));
+  }
+
+  if (domain === "node-avatar") {
+    return Number(((base * 0.88 + 142) % 360).toFixed(1));
+  }
+
+  return Number(((base * 0.76 + 248) % 360).toFixed(1));
+}
+
+export function stableGraphColor(seed: string, domain: GraphColorDomain) {
+  const hue = domainHue(seed, domain);
+  const saturation =
+    domain === "node-type"
+      ? stablePercent(seed, `${domain}:s`, 66, 13)
+      : domain === "node-avatar"
+        ? stablePercent(seed, `${domain}:s`, 58, 15)
+        : stablePercent(seed, `${domain}:s`, 72, 11);
+  const lightness =
+    domain === "node-type"
+      ? stablePercent(seed, `${domain}:l`, 56, 10)
+      : domain === "node-avatar"
+        ? stablePercent(seed, `${domain}:l`, 38, 10)
+        : stablePercent(seed, `${domain}:l`, 60, 8);
+  const borderLightness =
+    domain === "node-avatar" ? Math.min(76, lightness + 14) : Math.max(44, lightness - 8);
+  const textLightness =
+    domain === "edge" ? Math.min(92, lightness + 20) : Math.min(86, lightness + 22);
+  const deepLightness =
+    domain === "node-avatar" ? Math.max(14, lightness - 26) : Math.max(16, lightness - 40);
 
   return {
     hue,
@@ -44,7 +73,7 @@ export function stableGraphColor(seed: string) {
 }
 
 export function nodeTypeColors(kind: string) {
-  const color = stableGraphColor(kind);
+  const color = stableGraphColor(kind, "node-type");
 
   return {
     borderColor: hsla(color.hue, color.saturation, color.borderLightness, 0.72),
@@ -58,7 +87,7 @@ export function nodeTypeColors(kind: string) {
 }
 
 export function nodeAvatarColors(key: string) {
-  const color = stableGraphColor(key);
+  const color = stableGraphColor(key, "node-avatar");
 
   return {
     background: hsl(color.hue, color.saturation, Math.max(36, color.lightness - 16)),
@@ -69,7 +98,7 @@ export function nodeAvatarColors(key: string) {
 }
 
 export function edgeColors(key: string) {
-  const color = stableGraphColor(key);
+  const color = stableGraphColor(key, "edge");
 
   return {
     stroke: hsl(color.hue, color.saturation, Math.min(76, color.lightness + 2)),
