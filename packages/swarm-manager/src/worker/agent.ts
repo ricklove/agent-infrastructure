@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { basename } from "node:path";
 
 type CpuSnapshot = {
   idle: number;
@@ -280,6 +281,44 @@ function parseProcessSnapshot(pid: number): ProcessSnapshot | null {
   }
 }
 
+function summarizeProcessLabel(pid: number, fallbackComm: string): string {
+  try {
+    const cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8")
+      .split("\u0000")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+
+    if (cmdline.length === 0) {
+      return fallbackComm
+    }
+
+    const executable = basename(cmdline[0] ?? fallbackComm)
+    const primaryArg = cmdline.find((part, index) => index > 0 && !part.startsWith("-"))
+    const typeArg = cmdline.find((part) => part.startsWith("--type="))
+    const utilitySubtypeArg = cmdline.find((part) =>
+      part.startsWith("--utility-sub-type="),
+    )
+
+    if (["node", "bun", "python", "python3"].includes(executable) && primaryArg) {
+      return `${executable}:${basename(primaryArg)}`
+    }
+
+    if (typeArg) {
+      const type = typeArg.slice("--type=".length)
+      if (utilitySubtypeArg) {
+        return `${executable}:${type}:${utilitySubtypeArg
+          .slice("--utility-sub-type=".length)
+          .replace(/^[^.]*\./, "")}`
+      }
+      return `${executable}:${type}`
+    }
+
+    return executable || fallbackComm
+  } catch {
+    return fallbackComm
+  }
+}
+
 function rankProcesses(
   currentCpuSnapshot: CpuSnapshot,
   sampledAt: number,
@@ -349,11 +388,23 @@ function rankProcesses(
     })
     .slice(0, topCount);
 
+  const labelByPid = new Map<number, string>();
+  function withBetterLabel(sample: ProcessSample): ProcessSample {
+    const label =
+      labelByPid.get(sample.pid) ??
+      summarizeProcessLabel(sample.pid, sample.comm);
+    labelByPid.set(sample.pid, label);
+    return {
+      ...sample,
+      comm: label,
+    };
+  }
+
   return {
     sampledAt,
     intervalMs,
-    topCpu,
-    topMemory,
+    topCpu: topCpu.map(withBetterLabel),
+    topMemory: topMemory.map(withBetterLabel),
   };
 }
 
