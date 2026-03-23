@@ -127,6 +127,7 @@ type DashboardSessionStore = {
 type ProxyWsData = {
   kind: "graph-proxy";
   backendId: string;
+  upstreamUrl: string;
   upstream: WebSocket | null;
   queue: string[];
 };
@@ -969,6 +970,7 @@ const server = Bun.serve<DashboardWsData>({
           data: {
             kind: "graph-proxy",
             backendId: wsBackend.id,
+            upstreamUrl: `${wsBackend.wsUrl}${url.search}`,
             upstream: null,
             queue: [],
           },
@@ -1028,7 +1030,7 @@ const server = Bun.serve<DashboardWsData>({
         } catch {}
         return;
       }
-      const upstream = new WebSocket(backend.wsUrl);
+      const upstream = new WebSocket(proxyData.upstreamUrl || backend.wsUrl);
       proxyData.upstream = upstream;
 
       upstream.addEventListener("open", () => {
