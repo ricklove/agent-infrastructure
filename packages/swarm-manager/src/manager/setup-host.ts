@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import {
   DEFAULT_AGENT_HOME,
   DEFAULT_BOOTSTRAP_CONTEXT_PATH,
@@ -69,6 +69,20 @@ function runChecked(
     throw new Error(`command failed: ${command.join(" ")}`);
   }
   logStep(`exit exit_code=0 command=${command.join(" ")}`);
+}
+
+function runBestEffort(command: string[], cwd?: string, extraEnv?: Record<string, string>): void {
+  logStep(`run ${command.join(" ")}`);
+  const result = Bun.spawnSync(command, {
+    cwd,
+    env: {
+      ...process.env,
+      ...extraEnv,
+    },
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  logStep(`exit exit_code=${result.exitCode} command=${command.join(" ")}`);
 }
 
 function commandOutput(command: string[]): string {
@@ -155,16 +169,16 @@ WantedBy=multi-user.target
 `;
 }
 
-function dashboardControllerServiceUnit(hostRoot: string): string {
+function managerControllerServiceUnit(hostRoot: string): string {
   return `[Unit]
-Description=Dashboard lifecycle controller
+Description=Agent manager controller
 After=network-online.target agent-swarm-monitor.service
 Wants=network-online.target agent-swarm-monitor.service
 
 [Service]
 Type=simple
 User=ec2-user
-ExecStart=/usr/bin/env bash ${hostRoot}/scripts/run-dashboard-controller.sh
+ExecStart=/usr/bin/env bash ${hostRoot}/scripts/run-manager-controller.sh
 Restart=always
 RestartSec=2
 
@@ -231,10 +245,15 @@ async function main(): Promise<void> {
   );
   logStep("wrote /etc/systemd/system/agent-swarm-manager-node.service");
   writeFileSync(
-    "/etc/systemd/system/agent-dashboard-controller.service",
-    dashboardControllerServiceUnit(config.hostRoot),
+    "/etc/systemd/system/agent-manager-controller.service",
+    managerControllerServiceUnit(config.hostRoot),
   );
-  logStep("wrote /etc/systemd/system/agent-dashboard-controller.service");
+  logStep("wrote /etc/systemd/system/agent-manager-controller.service");
+  if (existsSync("/etc/systemd/system/agent-dashboard-controller.service")) {
+    runBestEffort(["systemctl", "disable", "--now", "agent-dashboard-controller.service"]);
+    rmSync("/etc/systemd/system/agent-dashboard-controller.service", { force: true });
+    logStep("removed /etc/systemd/system/agent-dashboard-controller.service");
+  }
 
   writeFileSync(
     managerEnvPath,
@@ -311,7 +330,7 @@ GIT_TERMINAL_PROMPT=0
   runChecked(["systemctl", "daemon-reload"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-monitor.service"]);
   runChecked(["systemctl", "enable", "--now", "agent-swarm-manager-node.service"]);
-  runChecked(["systemctl", "enable", "--now", "agent-dashboard-controller.service"]);
+  runChecked(["systemctl", "enable", "--now", "agent-manager-controller.service"]);
   logStep("setup.complete");
 
   console.log(

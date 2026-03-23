@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   AgentChatStore,
@@ -32,6 +32,9 @@ const legacyDbPath =
 const port = Number.parseInt(process.env.AGENT_CHAT_PORT ?? "8789", 10);
 const defaultSessionDirectory =
   process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
+const workspacePersistenceRequestPath =
+  process.env.WORKSPACE_PERSISTENCE_REQUEST_PATH?.trim() ||
+  `${stateDir}/workspace-persistence-request.json`;
 const DIRECTORY_QUEUE_PREFIX = "Directory will switch to ";
 const TITLE_QUEUE_PREFIX = "Chat title will change to ";
 const DIRECTORY_INSTRUCTION_PREFIX = "Working directory changed to ";
@@ -71,6 +74,13 @@ type SessionRuntimeState = SessionActivity & {
   interruptRequested: boolean;
 };
 
+type WorkspacePersistenceRequest = {
+  requestedAtMs: number;
+  flushNow?: boolean;
+  reason?: string;
+  source?: string;
+};
+
 type ProviderInputBlock =
   | { type: "text"; text: string }
   | {
@@ -87,9 +97,36 @@ function providerSupportsInterrupt(providerKind: AgentChatProviderKind) {
 
 mkdirSync(dirname(logPath), { recursive: true });
 
+function readWorkspacePersistenceRequest(): WorkspacePersistenceRequest | null {
+  if (!existsSync(workspacePersistenceRequestPath)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(readFileSync(workspacePersistenceRequestPath, "utf8")) as WorkspacePersistenceRequest;
+  } catch {
+    return null;
+  }
+}
+
+function requestWorkspacePersistence(reason: string) {
+  const current = readWorkspacePersistenceRequest();
+  const next: WorkspacePersistenceRequest = {
+    requestedAtMs: Date.now(),
+    flushNow: current?.flushNow ?? false,
+    reason,
+    source: "agent-chat-server",
+  };
+  mkdirSync(dirname(workspacePersistenceRequestPath), { recursive: true });
+  writeFileSync(workspacePersistenceRequestPath, `${JSON.stringify(next, null, 2)}\n`);
+}
+
 const store = new AgentChatStore({
   dataDir: appDataDir,
   legacySqlitePath: legacyDbPath,
+  onCanonicalWrite(event) {
+    requestWorkspacePersistence(`agent-chat:${event.reason}:${event.sessionId}`);
+  },
 });
 const sessionSockets = new Map<string, Set<Bun.ServerWebSocket<ChatSocketData>>>();
 const activeSessionRuns = new Set<string>();

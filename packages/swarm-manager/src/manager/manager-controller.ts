@@ -1,10 +1,12 @@
 import { runDashboardLifecycleController } from "./dashboard-runtime.js";
 import { runWorkspacePersistenceController } from "./workspace-persistence.js";
 
-function parseArgs(argv: string[]): {
+export type ManagerControllerConfig = {
   port: number;
   managerUrl: string;
-} {
+};
+
+export function parseManagerControllerArgs(argv: string[]): ManagerControllerConfig {
   const args = new Map<string, string[]>();
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -37,8 +39,11 @@ function parseArgs(argv: string[]): {
   };
 }
 
-const input = parseArgs(process.argv.slice(2));
-await Promise.all([
-  runDashboardLifecycleController(input),
-  runWorkspacePersistenceController(),
-]);
+export async function runManagerController(input: ManagerControllerConfig): Promise<void> {
+  await Promise.all([
+    runDashboardLifecycleController(input),
+    runWorkspacePersistenceController(),
+  ]);
+}
+
+await runManagerController(parseManagerControllerArgs(process.argv.slice(2)));

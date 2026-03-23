@@ -63,9 +63,20 @@ export type CreateSessionInput = {
   imageModelRef?: string | null;
 };
 
+type CanonicalWriteEvent = {
+  sessionId: string;
+  reason:
+    | "session-created"
+    | "attachment-persisted"
+    | "message-appended"
+    | "session-metadata-updated"
+    | "message-visibility-updated";
+};
+
 type AgentChatStoreOptions = {
   dataDir: string;
   legacySqlitePath?: string | null;
+  onCanonicalWrite?: (event: CanonicalWriteEvent) => void;
 };
 
 type SessionMetadata = Omit<StoredSession, "preview" | "messageCount">;
@@ -100,11 +111,13 @@ function sessionSummary(metadata: SessionMetadata, messages: StoredMessage[]): S
 
 export class AgentChatStore {
   private readonly sessionsDir: string;
+  private readonly onCanonicalWrite?: (event: CanonicalWriteEvent) => void;
   private readonly sessionCache = new Map<string, StoredSession>();
   private readonly messageCache = new Map<string, StoredMessage[]>();
 
   constructor(options: AgentChatStoreOptions) {
     this.sessionsDir = join(options.dataDir, "sessions");
+    this.onCanonicalWrite = options.onCanonicalWrite;
     mkdirSync(this.sessionsDir, { recursive: true });
     this.importLegacySqliteIfNeeded(options.legacySqlitePath ?? null);
     this.loadCache();
@@ -146,6 +159,10 @@ export class AgentChatStore {
     const summary = sessionSummary(metadata, messages);
     this.sessionCache.set(sessionId, summary);
     this.messageCache.set(sessionId, messages);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-created",
+    });
     return summary;
   }
 
@@ -215,6 +232,10 @@ export class AgentChatStore {
     const path = this.attachmentPath(sessionId, fileName);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, input.bytes);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "attachment-persisted",
+    });
     return {
       fileName,
       mediaType: input.mediaType,
@@ -305,6 +326,10 @@ export class AgentChatStore {
     this.writeSessionMetadata(nextSession);
     appendFileSync(this.messagesPath(sessionId), `${JSON.stringify(message)}\n`);
     this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "message-appended",
+    });
     return message;
   }
 
@@ -322,6 +347,10 @@ export class AgentChatStore {
     };
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-metadata-updated",
+    });
     return nextSession;
   }
 
@@ -342,6 +371,10 @@ export class AgentChatStore {
     };
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-metadata-updated",
+    });
     return nextSession;
   }
 
@@ -359,6 +392,10 @@ export class AgentChatStore {
     };
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-metadata-updated",
+    });
     return nextSession;
   }
 
@@ -391,6 +428,10 @@ export class AgentChatStore {
     };
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-metadata-updated",
+    });
     return nextSession;
   }
 
@@ -412,6 +453,10 @@ export class AgentChatStore {
     };
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-metadata-updated",
+    });
     return nextSession;
   }
 
@@ -441,6 +486,10 @@ export class AgentChatStore {
     };
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-metadata-updated",
+    });
     return nextSession;
   }
 
@@ -458,6 +507,10 @@ export class AgentChatStore {
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
     this.markQueuedSystemMessagesSeen(sessionId);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-metadata-updated",
+    });
     return instruction;
   }
 
@@ -523,6 +576,16 @@ export class AgentChatStore {
     this.writeMessagesFile(sessionId, nextMessages);
     const metadata = this.readSessionMetadata(sessionId);
     this.sessionCache.set(sessionId, sessionSummary(metadata, nextMessages));
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "message-visibility-updated",
+    });
+  }
+
+  private notifyCanonicalWrite(event: CanonicalWriteEvent) {
+    try {
+      this.onCanonicalWrite?.(event);
+    } catch {}
   }
 
   private loadCache() {
