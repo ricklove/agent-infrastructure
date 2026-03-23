@@ -105,6 +105,7 @@ const dashboardRecoveryMonitorLockPath = resolve(
   process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state",
   "dashboard-recovery-monitor.lock",
 );
+const quickTunnelHostnamePattern = /^[a-z0-9-]+\.trycloudflare\.com$/i;
 const quickTunnelReplacementCooldownMs =
   Math.max(
     300,
@@ -540,11 +541,85 @@ async function isPublicDashboardReady(publicUrl?: string): Promise<boolean> {
   }
 
   try {
-    const response = await fetch(`${publicUrl}/api/config`);
-    return response.ok;
+    const parsedUrl = new URL(publicUrl);
+    if (quickTunnelHostnamePattern.test(parsedUrl.hostname)) {
+      return isPublicDashboardReadyWithExplicitResolve(publicUrl);
+    }
   } catch {
     return false;
   }
+
+  try {
+    const response = await fetch(`${publicUrl}/api/config`);
+    return response.ok;
+  } catch {
+    return isPublicDashboardReadyWithExplicitResolve(publicUrl);
+  }
+}
+
+async function resolveHostnameViaDnsGoogle(hostname: string): Promise<string[]> {
+  try {
+    const response = await fetch(
+      `https://dns.google/resolve?name=${encodeURIComponent(hostname)}&type=A`,
+    );
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json()) as {
+      Answer?: Array<{ data?: string }>;
+    };
+    return (payload.Answer ?? [])
+      .map((answer) => answer.data?.trim() ?? "")
+      .filter((value) => value.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function isPublicDashboardReadyWithExplicitResolve(publicUrl: string): Promise<boolean> {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(publicUrl);
+  } catch {
+    return false;
+  }
+
+  if (!quickTunnelHostnamePattern.test(parsedUrl.hostname)) {
+    return false;
+  }
+
+  const addresses = await resolveHostnameViaDnsGoogle(parsedUrl.hostname);
+  if (addresses.length === 0) {
+    return false;
+  }
+
+  for (const address of addresses) {
+    const result = Bun.spawnSync(
+      [
+        "curl",
+        "-sS",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        "--resolve",
+        `${parsedUrl.hostname}:443:${address}`,
+        `${publicUrl}/api/config`,
+      ],
+      {
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    if (result.exitCode === 0 && result.stdout.toString().trim() === "200") {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 async function isExpectedProcess(pid: number | undefined, pattern: RegExp): Promise<boolean> {
@@ -730,7 +805,7 @@ async function startCloudflared(port: number): Promise<{ pid: number; url: strin
   );
 
   try {
-    await waitForPublicDashboardReady(url, 10, 1000);
+    await waitForPublicDashboardReady(url, 20, 1000);
   } catch {
     await terminatePids([pid], "dashboard-runtime");
     throw new Error(`cloudflared public URL did not become ready: ${url}`);
@@ -776,6 +851,8 @@ async function startTemporaryTunnel(
   provider: "cloudflared" | "localhost-run";
   logPath: string;
 }> {
+  await terminatePids(listTunnelPids(), "dashboard-runtime");
+
   try {
     const tunnel = await startCloudflared(port);
     return {
