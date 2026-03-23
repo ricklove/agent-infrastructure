@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Handle, NodeToolbar, Position, type NodeProps } from "reactflow";
 import { NodeAvatar } from "../components/NodeAvatar";
 import { VisibilityIcon } from "../components/VisibilityIcon";
+import { nodeTypeColors } from "../components/graphColors";
 
 function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
@@ -26,63 +27,32 @@ function humanizeKind(kind: string): string {
 }
 
 function nodeTypeTheme(sourceKind?: string): {
-  accent: string;
-  tint: string;
+  borderColor: string;
+  dotColor: string;
+  bandColor: string;
+  bandGlow: string;
+  chipBackground: string;
+  chipBorder: string;
+  chipText: string;
   label: string | null;
 } {
   const normalized = sourceKind?.trim().toLowerCase() ?? "";
 
   if (!normalized) {
     return {
-      accent: "border-stone-600/80 text-stone-300",
-      tint: "from-stone-400/10 via-transparent to-transparent",
+      borderColor: "hsla(32, 6%, 42%, 0.72)",
+      dotColor: "hsl(32, 10%, 72%)",
+      bandColor: "hsla(32, 14%, 62%, 0.18)",
+      bandGlow: "hsla(32, 14%, 62%, 0.12)",
+      chipBackground: "hsla(32, 10%, 18%, 0.72)",
+      chipBorder: "hsla(32, 10%, 42%, 0.48)",
+      chipText: "hsl(32, 10%, 78%)",
       label: null,
     };
   }
 
-  if (/(actor|user|agent|operator|participant)/.test(normalized)) {
-    return {
-      accent: "border-cyan-500/60 text-cyan-200",
-      tint: "from-cyan-400/14 via-cyan-400/4 to-transparent",
-      label: humanizeKind(normalized),
-    };
-  }
-
-  if (/(system|runtime|service|server|adapter|provider)/.test(normalized)) {
-    return {
-      accent: "border-emerald-500/60 text-emerald-200",
-      tint: "from-emerald-400/14 via-emerald-400/4 to-transparent",
-      label: humanizeKind(normalized),
-    };
-  }
-
-  if (/(workspace|board|layer|plane|graph|session)/.test(normalized)) {
-    return {
-      accent: "border-violet-500/60 text-violet-200",
-      tint: "from-violet-400/14 via-violet-400/4 to-transparent",
-      label: humanizeKind(normalized),
-    };
-  }
-
-  if (/(document|artifact|file|blueprint|transcript|summary)/.test(normalized)) {
-    return {
-      accent: "border-amber-500/60 text-amber-200",
-      tint: "from-amber-400/14 via-amber-400/4 to-transparent",
-      label: humanizeKind(normalized),
-    };
-  }
-
-  if (/(concept|truth|policy|status|meaning|language)/.test(normalized)) {
-    return {
-      accent: "border-fuchsia-500/60 text-fuchsia-200",
-      tint: "from-fuchsia-400/14 via-fuchsia-400/4 to-transparent",
-      label: humanizeKind(normalized),
-    };
-  }
-
   return {
-    accent: "border-sky-500/60 text-sky-200",
-    tint: "from-sky-400/14 via-sky-400/4 to-transparent",
+    ...nodeTypeColors(normalized),
     label: humanizeKind(normalized),
   };
 }
@@ -114,6 +84,11 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
   const selectionCount = data.selectionToolbarNodeIds?.length ?? 0;
   const hiddenCount = data.selectionHiddenCount ?? 0;
   const theme = nodeTypeTheme(data.sourceKind);
+  const typeChipStyle = {
+    backgroundColor: theme.chipBackground,
+    borderColor: theme.chipBorder,
+    color: theme.chipText,
+  };
 
   return (
     <div
@@ -125,7 +100,19 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
             : "border border-stone-700/80 bg-zinc-950/95"
       }`}
     >
-      <div className={`pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-2xl bg-gradient-to-b ${theme.tint}`} />
+      <div
+        className="pointer-events-none absolute inset-y-3 left-0 w-1.5 rounded-r-full"
+        style={{
+          backgroundColor: theme.dotColor,
+          boxShadow: `0 0 18px ${theme.bandGlow}`,
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-12 rounded-t-2xl"
+        style={{
+          background: `linear-gradient(180deg, ${theme.bandColor} 0%, ${theme.bandGlow} 45%, transparent 100%)`,
+        }}
+      />
       {data.showSelectionToolbar && data.selectionToolbarNodeIds?.length ? (
         <NodeToolbar
           nodeId={data.selectionToolbarNodeIds}
@@ -239,9 +226,19 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
             {data.label}
           </div>
           {theme.label ? (
-            <div className="mt-1 flex items-center gap-2">
-              <span className={`inline-block h-2 w-2 rounded-full border ${theme.accent}`} />
-              <div className={`text-[10px] uppercase tracking-[0.16em] ${theme.accent}`}>
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-full border"
+                style={{
+                  borderColor: theme.borderColor,
+                  backgroundColor: theme.dotColor,
+                  boxShadow: `0 0 12px ${theme.bandGlow}`,
+                }}
+              />
+              <div
+                className="inline-flex items-center rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.16em]"
+                style={typeChipStyle}
+              >
                 {theme.label}
               </div>
             </div>
