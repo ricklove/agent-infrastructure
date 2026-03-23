@@ -721,6 +721,8 @@ async function handleApi(request: Request): Promise<Response> {
       const search = new URLSearchParams();
       const workerId = url.searchParams.get("workerId")?.trim() ?? "";
       const rangeMinutes = url.searchParams.get("rangeMinutes")?.trim() ?? "";
+      const sinceTsMs = url.searchParams.get("sinceTsMs")?.trim() ?? "";
+      const untilTsMs = url.searchParams.get("untilTsMs")?.trim() ?? "";
 
       if (workerId) {
         search.set("workerId", workerId);
@@ -728,6 +730,14 @@ async function handleApi(request: Request): Promise<Response> {
 
       if (rangeMinutes) {
         search.set("rangeMinutes", rangeMinutes);
+      }
+
+      if (sinceTsMs) {
+        search.set("sinceTsMs", sinceTsMs);
+      }
+
+      if (untilTsMs) {
+        search.set("untilTsMs", untilTsMs);
       }
 
       const suffix = search.toString();
