@@ -33,6 +33,7 @@ const Session = {
   message: define.entity("ChatMessage"),
   turn: define.entity("ChatTurn"),
   participant: define.entity("SessionParticipant"),
+  folder: define.entity("SessionFolder"),
   title: define.concept("SessionTitle"),
   summary: define.concept("SessionSummary"),
   import: define.entity("ImportedConversation"),
@@ -83,6 +84,7 @@ const Observability = {
   usage: define.entity("TokenUsage"),
   connection: define.entity("ProviderConnectionState"),
   status: define.entity("SessionStatus"),
+  workerState: define.entity("WorkerState"),
   inspection: define.entity("ContextInspection"),
 };
 
@@ -118,6 +120,7 @@ Session.conversation.contains(
   Session.message,
   Session.turn,
   Session.participant,
+  Session.folder,
   Session.title,
   Session.summary,
   Session.reference,
@@ -131,6 +134,7 @@ Session.conversation.contains(
   Compaction.event,
   Observability.usage,
   Observability.status,
+  Observability.workerState,
 );
 
 Session.participant.contains(Participant.human, Participant.agent, Participant.system);
@@ -151,20 +155,37 @@ AgentChat.defines(`
 - A canonical transcript is the durable event record for the session.
 - A provider binding is an execution attachment between one participant and one provider runtime.
 - A workspace reference is a durable pointer between a session and any workspace entity such as a board, layer, document, project, artifact, or run.
+- A session folder is a workspace-owned grouping container used to organize sessions without changing their identity.
 - A hydration context packet is the explicit context AgentChat chooses to provide to a provider binding at run time.
 - An active context artifact is the retained context currently shaping future runs.
 - A context revision identifies which retained artifact a provider binding was last hydrated from.
 - Native compaction means provider-managed retention.
 - Agentish compaction means app-managed retention into a structured Agentish artifact.
-- Token usage, compaction events, active context, provider binding state, and approvals are inspectable session data.
+- Worker state is the inspectable provider-backed execution state that explains what the active agent workers are doing for a session.
+- Token usage, compaction events, active context, provider binding state, worker state, and approvals are inspectable session data.
 `);
 
 Session.conversation.means(`
 - one stable user-facing conversation
 - one canonical transcript
 - many future provider runs
+- optional folder membership for session-list organization
 - default workspace root /home/ec2-user/workspace unless the session explicitly chooses a narrower root
 - zero obligation to mirror provider thread storage as source of truth
+`);
+
+Session.folder.means(`
+- optional session-list grouping chosen by the workspace operator
+- stable folder identity that may contain many sessions
+- organization metadata owned by AgentChat rather than inferred from cwd, title, or provider
+- intended for browsing, collapsing, and moving sessions without rewriting transcript history
+`);
+
+Observability.workerState.means(`
+- active or recent worker status visible from the session list and active session view
+- provider-backed state such as queued work, running work, waiting state, background worker count, and interruption state
+- structured state that must not be reduced to an ambiguous generic status label when richer worker details exist
+- compact enough for session-list display while still preserving a deeper inspectable form in the active session
 `);
 
 Provider.binding.means(`
@@ -206,6 +227,7 @@ when(User.creates(Session.conversation))
 
 when(User.opens(Session.conversation))
   .then(AgentChat.loads(Session.transcript))
+  .and(AgentChat.loads(Session.folder))
   .and(AgentChat.loads(Session.reference))
   .and(AgentChat.loads(Context.active))
   .and(AgentChat.shows(Observability.inspection));

@@ -102,6 +102,7 @@ when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
   .and(DevelopmentProcess.requires(Rule.blueprintCommitFirst))
   .and(DevelopmentProcess.requires(Rule.blueprintStateRequired))
   .and(DevelopmentProcess.requires("the same relevant blueprints the operator would check"))
+  .and(DevelopmentProcess.requires("the Agent Chat blueprint-state document to be updated as the current implementation comparison for Agent Chat work"))
   .and(DevelopmentProcess.requires("the same rollout and verification rules the operator would follow"))
   .and(DevelopmentProcess.requires("the same blueprint-state updates the operator would make"))
   .and(DevelopmentProcess.requires("the same ticket-plan discipline the operator would follow"));

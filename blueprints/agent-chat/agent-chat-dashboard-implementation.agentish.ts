@@ -31,6 +31,8 @@ const Chat = {
   approval: define.entity("AgentChatApproval"),
   participant: define.entity("AgentChatParticipant"),
   providerBinding: define.entity("AgentChatProviderBinding"),
+  workerState: define.entity("AgentChatWorkerState"),
+  folder: define.entity("AgentChatSessionFolder"),
 };
 
 const Provider = {
@@ -91,20 +93,25 @@ const Capability = {
 
 const Api = {
   listSessions: define.entity("ListSessionsEndpoint"),
+  listFolders: define.entity("ListFoldersEndpoint"),
   createSession: define.entity("CreateSessionEndpoint"),
+  createFolder: define.entity("CreateFolderEndpoint"),
   getSession: define.entity("GetSessionEndpoint"),
   appendMessage: define.entity("AppendMessageEndpoint"),
   renameSession: define.entity("RenameSessionEndpoint"),
+  moveSession: define.entity("MoveSessionEndpoint"),
   listMessages: define.entity("ListMessagesEndpoint"),
   subscribeSession: define.entity("SubscribeSessionEndpoint"),
 };
 
 const Ui = {
   sessionList: define.entity("SessionListPanel"),
+  sessionFolderTree: define.entity("SessionFolderTree"),
   transcript: define.entity("TranscriptPanel"),
   composer: define.entity("ComposerPanel"),
   composerSettingsMenu: define.entity("ComposerSettingsMenu"),
   activityStatus: define.entity("AgentActivityStatus"),
+  workerStatusSummary: define.entity("WorkerStatusSummary"),
   queuedMessageList: define.entity("QueuedMessageList"),
   replyTargetReminder: define.entity("ReplyTargetReminder"),
   providerPicker: define.entity("ProviderPicker"),
@@ -135,15 +142,19 @@ AgentChatDashboardImplementation.enforces(`
 - Each provider adapter must be re-researched against current provider docs and relevant open-source reference implementations immediately before implementing that adapter.
 - Agent Chat sessions must inherit the development-process blueprint so provider-backed agents use the same blueprint-first workflow rules.
 - The browser should own session list, transcript rendering, composer state, reconnect logic, and streaming UI.
+- Session-list organization must be canonical app data rather than browser-only preference state.
 - The main chat surface should prioritize the active thread and keep secondary controls behind menus or drawers.
 - Session/provider/model/directory controls should live with the composer area rather than occupying the main thread surface.
 - The composer-area menu is scoped to the current chat only; new-chat creation belongs to the session-list area rather than the active-thread controls.
 - Directory changes must enqueue a system instruction that the provider sees before the next user turn.
 - Agent activity should be shown near the composer with explicit working state, elapsed time, and provider-backed background activity count when available.
+- Session list rows should show worker state when the backend can report it, not just a generic session status pill.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - The composer should support a lightweight reply-target reminder so the operator can indicate that the in-progress human message responds to a specific earlier agent message.
 - The browser should preserve unsent per-session message drafts in local storage so transient reloads do not discard typed input.
 - Keyboard interrupt should be exposed as Esc when the selected provider supports a real interrupt action.
+- Provider adapters must not fail an otherwise active turn on a short fixed wall-clock deadline while the provider is still streaming output or reporting honest activity.
+- Provider timeout policy should be configurable and should treat lost activity or broken transport as failure conditions more strongly than ordinary long-running work.
 - The gateway should proxy Agent Chat traffic and lazy-start the chat backend on first use.
 - V1 should ship only the behaviors needed for real day-to-day chat use and defer broader ambitions that are not required yet.
 `);
@@ -158,10 +169,11 @@ AgentChatDashboardImplementation.defines(`
 - SessionProviderSelection means each session records one concrete provider choice and its provider-specific metadata.
 - AgentChatContentBlock means a canonical block such as text or image that is preserved before adapter mapping.
 - ProviderQualifiedModelRef means model identity is stored as a provider-qualified reference rather than an ambiguous bare model name.
+- Provider timeout policy means adapter-side failure thresholds are explicit, configurable, and aligned with long-running interactive agent work rather than a short hard stop.
 `);
 
 Dashboard.plugin.contains(Dashboard.route, Dashboard.screen, Chat.backend);
-Chat.backend.contains(Chat.api, Chat.ws, Chat.session, Chat.message, Chat.contentBlock, Chat.attachment, Chat.run, Chat.approval, Chat.providerBinding);
+Chat.backend.contains(Chat.api, Chat.ws, Chat.session, Chat.message, Chat.contentBlock, Chat.attachment, Chat.run, Chat.approval, Chat.providerBinding, Chat.workerState, Chat.folder);
 Chat.providerBinding.contains(
   Provider.codexAdapter,
   Provider.openrouterAdapter,
@@ -185,19 +197,24 @@ Chat.stateStore.contains(
 );
 Chat.api.contains(
   Api.listSessions,
+  Api.listFolders,
   Api.createSession,
+  Api.createFolder,
   Api.getSession,
   Api.appendMessage,
   Api.renameSession,
+  Api.moveSession,
   Api.listMessages,
 );
 Chat.ws.contains(Api.subscribeSession);
 Dashboard.screen.contains(
   Ui.sessionList,
+  Ui.sessionFolderTree,
   Ui.transcript,
   Ui.composer,
   Ui.composerSettingsMenu,
   Ui.activityStatus,
+  Ui.workerStatusSummary,
   Ui.queuedMessageList,
   Ui.replyTargetReminder,
   Ui.providerPicker,
@@ -272,11 +289,28 @@ Ui.composer.means(`
 `);
 
 Ui.sessionList.means(`
-- the session list should show a condensed status summary such as running, queued, or background activity count when available
+- the session list should show a condensed worker-state summary such as running, queued, waiting, interrupted, or background worker count when available
 - the main session list should stay visually compact so the active thread remains the primary focus
+- the session list should group sessions by optional folders before falling back to an ungrouped collection
+- the operator should be able to create folders and move sessions between folders from the session-list surface
+- folders are for organization only and must not change session identity, ordering rules within a folder, or canonical history
 - session-list controls may create a new chat because they operate on the chat collection rather than the active thread
 - session-list controls should allow renaming the selected chat without routing that action through the active-thread composer menu
 - renaming a chat should enqueue a lightweight agent-visible system note so the provider sees the new chat title before the next turn
+`);
+
+Ui.sessionFolderTree.means(`
+- folders appear as compact session-list groupings rather than as a separate management screen
+- empty folders may still render so the operator can organize before moving sessions
+- unfiled sessions remain visible in a default top-level collection
+- collapse and expand state may be browser-local convenience state while folder membership itself is canonical
+`);
+
+Ui.workerStatusSummary.means(`
+- a session-list row should surface the most relevant worker state in one compact line
+- examples include queued, running, waiting on approval, waiting on background workers, interrupted, or failed
+- when richer worker details exist, the active session may show them more fully than the list row
+- the backend should expose worker-state fields explicitly rather than forcing the UI to infer them from transcript text
 `);
 
 Capability.multimodal.means(`
@@ -331,10 +365,13 @@ Scope.deferImports.means(`
 Storage.fileCanonical.means(`
 - use durable structured files at a path such as /home/ec2-user/workspace/data/agent-chat
 - store one session directory per chat session
+- store folder metadata as canonical app data alongside session metadata rather than as browser-only local state
 - store session metadata in JSON
 - store canonical messages and run events in append-friendly JSONL files
 - store provider kind, provider model, provider thread handle, and provider configuration references in canonical session metadata
 - store provider auth-profile choice and optional image-model override in canonical session metadata
+- store session folder membership in canonical session metadata
+- store structured worker-state summary fields when they are durable enough to help session-list recovery after reconnect or restart
 - store canonical content blocks and cache hints instead of only flattened prompt strings
 - treat the files as the source of truth
 `);
@@ -384,6 +421,7 @@ Decision.port.means(`
 Decision.sessionIdentity.means(`
 - a new session is created explicitly from the UI
 - the session list is sorted by last activity
+- the session may optionally belong to a folder used for session-list organization
 - the new-session form should allow an explicit optional title at creation time
 - if the operator does not provide a title, the title is generated from the first user prompt
 - the title can be renamed later
@@ -471,6 +509,12 @@ when(Ui.sessionList.opens(Chat.session))
   .and(Dashboard.screen.requires(Decision.sessionIdentity))
   .and(Dashboard.screen.requires(Decision.v1Cut));
 
+when(Ui.sessionList.organizes(Chat.session))
+  .then(Chat.api.uses(Api.listFolders))
+  .and(Chat.api.uses(Api.createFolder))
+  .and(Chat.api.uses(Api.moveSession))
+  .and(Chat.backend.preserves(Chat.folder));
+
 when(Ui.composer.opens(Ui.composerSettingsMenu))
   .then(Ui.composerSettingsMenu.contains(Ui.providerPicker))
   .and(Ui.composerSettingsMenu.contains(Ui.workspacePicker))
@@ -481,7 +525,8 @@ when(Chat.run.is("active"))
   .then(Ui.activityStatus.shows("working state"))
   .and(Ui.activityStatus.shows("elapsed time"))
   .and(Ui.activityStatus.shows("background process count when the provider can report it"))
-  .and(Ui.sessionList.shows("a condensed agent activity summary for each active session"));
+  .and(Ui.sessionList.shows("a condensed worker-state summary for each active session"))
+  .and(Chat.backend.projects(Chat.workerState).into(Ui.workerStatusSummary));
 
 when(Chat.session.has("queued messages not yet seen by the provider"))
   .then(Ui.queuedMessageList.shows("those queued messages"))
