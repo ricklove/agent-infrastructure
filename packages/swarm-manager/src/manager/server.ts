@@ -1709,44 +1709,111 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number): {
     rssBytes: number;
   }>;
 } {
-  const hostSamples = db
-    .query(
-      `SELECT
-          ts_ms,
-          cpu_percent,
-          memory_percent,
-          memory_used_bytes,
-          memory_total_bytes,
-          container_count
-       FROM worker_samples
-       WHERE worker_id = ? AND ts_ms >= ?
-       ORDER BY ts_ms ASC`,
-    )
-    .all(workerId, sinceTsMs) as Array<{
-    ts_ms: number;
-    cpu_percent: number;
-    memory_percent: number;
-    memory_used_bytes: number;
-    memory_total_bytes: number;
-    container_count: number;
-  }>;
+  const rangeMs = Math.max(nowMs() - sinceTsMs, 0);
+
+  const hostSamples =
+    rangeMs <= 6 * 60 * 60 * 1000
+      ? (db
+          .query(
+            `SELECT
+                ts_ms,
+                cpu_percent,
+                memory_percent,
+                memory_used_bytes,
+                memory_total_bytes,
+                container_count
+             FROM worker_samples
+             WHERE worker_id = ? AND ts_ms >= ?
+             ORDER BY ts_ms ASC`,
+          )
+          .all(workerId, sinceTsMs) as Array<{
+          ts_ms: number;
+          cpu_percent: number;
+          memory_percent: number;
+          memory_used_bytes: number;
+          memory_total_bytes: number;
+          container_count: number;
+        }>)
+      : rangeMs <= 30 * 24 * 60 * 60 * 1000
+        ? (db
+            .query(
+              `SELECT
+                  bucket_start_ms AS ts_ms,
+                  avg_cpu_percent AS cpu_percent,
+                  avg_memory_percent AS memory_percent,
+                  0 AS memory_used_bytes,
+                  0 AS memory_total_bytes,
+                  avg_container_count AS container_count
+               FROM worker_samples_1m
+               WHERE worker_id = ? AND bucket_start_ms >= ?
+               ORDER BY bucket_start_ms ASC`,
+            )
+            .all(workerId, sinceTsMs) as Array<{
+            ts_ms: number;
+            cpu_percent: number;
+            memory_percent: number;
+            memory_used_bytes: number;
+            memory_total_bytes: number;
+            container_count: number;
+          }>)
+        : (db
+            .query(
+              `SELECT
+                  bucket_start_ms AS ts_ms,
+                  avg_cpu_percent AS cpu_percent,
+                  avg_memory_percent AS memory_percent,
+                  0 AS memory_used_bytes,
+                  0 AS memory_total_bytes,
+                  avg_container_count AS container_count
+               FROM worker_samples_1h
+               WHERE worker_id = ? AND bucket_start_ms >= ?
+               ORDER BY bucket_start_ms ASC`,
+            )
+            .all(workerId, sinceTsMs) as Array<{
+            ts_ms: number;
+            cpu_percent: number;
+            memory_percent: number;
+            memory_used_bytes: number;
+            memory_total_bytes: number;
+            container_count: number;
+          }>);
+
+  const processSinceTsMs = Math.max(sinceTsMs, nowMs() - config.rawRetentionMs);
+  const processBucketMs =
+    rangeMs <= 60 * 60 * 1000
+      ? 10 * 1000
+      : rangeMs <= 6 * 60 * 60 * 1000
+        ? 60 * 1000
+        : rangeMs <= 24 * 60 * 60 * 1000
+          ? 5 * 60 * 1000
+          : rangeMs <= 7 * 24 * 60 * 60 * 1000
+            ? 15 * 60 * 1000
+            : 60 * 60 * 1000;
 
   const processSamples = db
     .query(
       `SELECT
-          ts_ms,
+          (ts_ms / ?) * ? AS ts_ms,
           ranking,
-          rank,
+          MIN(rank) AS rank,
           pid,
           comm,
           state,
-          cpu_percent,
-          rss_bytes
+          MAX(cpu_percent) AS cpu_percent,
+          MAX(rss_bytes) AS rss_bytes
        FROM process_samples
        WHERE worker_id = ? AND ts_ms >= ?
+       GROUP BY (ts_ms / ?) * ?, ranking, pid, comm, state
        ORDER BY ts_ms ASC, ranking ASC, rank ASC`,
     )
-    .all(workerId, sinceTsMs) as Array<{
+    .all(
+      processBucketMs,
+      processBucketMs,
+      workerId,
+      processSinceTsMs,
+      processBucketMs,
+      processBucketMs,
+    ) as Array<{
     ts_ms: number;
     ranking: "cpu" | "memory";
     rank: number;
@@ -1842,7 +1909,7 @@ const server = Bun.serve<SocketData>({
       }
 
       const rangeMinutes = Math.min(
-        24 * 60,
+        365 * 24 * 60,
         Math.max(5, Number.isInteger(rangeMinutesRaw) ? rangeMinutesRaw : 30),
       );
       const sinceTsMs = nowMs() - rangeMinutes * 60 * 1000;

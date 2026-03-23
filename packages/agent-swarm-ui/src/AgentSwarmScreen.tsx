@@ -128,7 +128,55 @@ function formatTimestamp(timestamp: number): string {
 }
 
 function formatRelativeMinutes(minutes: number): string {
-  return `${minutes}m`
+  if (minutes < 60) {
+    return `${minutes}m`
+  }
+
+  if (minutes < 24 * 60) {
+    const hours = minutes / 60
+    return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`
+  }
+
+  const days = minutes / (24 * 60)
+  if (days < 30) {
+    return Number.isInteger(days) ? `${days}d` : `${days.toFixed(1)}d`
+  }
+
+  if (days < 365) {
+    const months = days / 30
+    return Number.isInteger(months)
+      ? `${months}mo`
+      : `${months.toFixed(1)}mo`
+  }
+
+  const years = days / 365
+  return Number.isInteger(years) ? `${years}y` : `${years.toFixed(1)}y`
+}
+
+type ChartLayout = {
+  width: number
+  height: number
+  padLeft: number
+  padRight: number
+  padTop: number
+  padBottom: number
+}
+
+const chartLayout: ChartLayout = {
+  width: 820,
+  height: 180,
+  padLeft: 42,
+  padRight: 10,
+  padTop: 10,
+  padBottom: 22,
+}
+
+function chartInnerWidth(layout: ChartLayout): number {
+  return layout.width - layout.padLeft - layout.padRight
+}
+
+function chartInnerHeight(layout: ChartLayout): number {
+  return layout.height - layout.padTop - layout.padBottom
 }
 
 function linePath(points: Array<{ x: number; y: number }>): string {
@@ -143,22 +191,65 @@ function linePath(points: Array<{ x: number; y: number }>): string {
 
 function buildSeriesPath(
   values: number[],
-  width: number,
-  height: number,
   maxValue: number,
+  layout: ChartLayout,
 ): string {
   if (values.length === 0 || maxValue <= 0) {
     return ""
   }
 
   const lastIndex = Math.max(values.length - 1, 1)
+  const innerWidth = chartInnerWidth(layout)
+  const innerHeight = chartInnerHeight(layout)
   const points = values.map((value, index) => ({
-    x: (index / lastIndex) * width,
-    y: height - (Math.max(value, 0) / maxValue) * height,
+    x: layout.padLeft + (index / lastIndex) * innerWidth,
+    y:
+      layout.padTop +
+      innerHeight -
+      (Math.max(value, 0) / maxValue) * innerHeight,
   }))
 
   return linePath(points)
 }
+
+function guideLineY(value: number, maxValue: number, layout: ChartLayout): number {
+  const innerHeight = chartInnerHeight(layout)
+  return (
+    layout.padTop +
+    innerHeight -
+    (Math.max(value, 0) / Math.max(maxValue, 1)) * innerHeight
+  )
+}
+
+function formatAxisValue(value: number, suffix: "%" | "memory"): string {
+  if (suffix === "%") {
+    return `${Math.round(value)}%`
+  }
+
+  if (value >= 1024) {
+    return `${(value / 1024).toFixed(1)} GB`
+  }
+
+  return `${Math.round(value)} MB`
+}
+
+function chartGuideValues(maxValue: number): [number, number, number] {
+  return [maxValue, maxValue / 2, 0]
+}
+
+const timelineRangeOptions = [
+  15,
+  30,
+  60,
+  180,
+  720,
+  1440,
+  10080,
+  43200,
+  129600,
+  262800,
+  525600,
+]
 
 function colorForSeries(key: string): string {
   let hash = 2166136261
@@ -366,22 +457,18 @@ export function AgentSwarmScreen({
     : "--"
 
   const timelineCharts = useMemo(() => {
-    const width = 820
-    const height = 180
     const hostSamples = timeline?.hostSamples ?? []
     const processSamples = timeline?.processSamples ?? []
 
     const cpuPath = buildSeriesPath(
       hostSamples.map((sample) => sample.cpuPercent),
-      width,
-      height,
       100,
+      chartLayout,
     )
     const memoryPath = buildSeriesPath(
       hostSamples.map((sample) => sample.memoryPercent),
-      width,
-      height,
       100,
+      chartLayout,
     )
 
     function buildProcessRankingSeries(
@@ -443,7 +530,7 @@ export function AgentSwarmScreen({
         lines: topSeries.map((series) => ({
           label: series.label,
           color: series.color,
-          path: buildSeriesPath(series.values, width, height, maxValue),
+          path: buildSeriesPath(series.values, maxValue, chartLayout),
           maxValue: series.maxValue,
         })),
       }
@@ -459,8 +546,7 @@ export function AgentSwarmScreen({
     )
 
     return {
-      width,
-      height,
+      layout: chartLayout,
       cpuPath,
       memoryPath,
       cpuProcesses,
@@ -738,7 +824,7 @@ export function AgentSwarmScreen({
                 }
                 value={timelineRangeMinutes}
               >
-                {[15, 30, 60, 180].map((minutes) => (
+                {timelineRangeOptions.map((minutes) => (
                   <option key={minutes} value={minutes}>
                     {formatRelativeMinutes(minutes)}
                   </option>
@@ -781,9 +867,44 @@ export function AgentSwarmScreen({
                 </div>
                 <div className="mt-4 overflow-x-auto">
                   <svg
-                    className="h-[180px] w-full min-w-[820px]"
-                    viewBox={`0 0 ${timelineCharts.width} ${timelineCharts.height}`}
+                    className="h-[180px] w-full"
+                    preserveAspectRatio="none"
+                    viewBox={`0 0 ${timelineCharts.layout.width} ${timelineCharts.layout.height}`}
                   >
+                    <rect
+                      fill="none"
+                      height={chartInnerHeight(timelineCharts.layout)}
+                      opacity="0.8"
+                      rx="12"
+                      ry="12"
+                      stroke="rgba(148, 163, 184, 0.18)"
+                      strokeWidth="1"
+                      width={chartInnerWidth(timelineCharts.layout)}
+                      x={timelineCharts.layout.padLeft}
+                      y={timelineCharts.layout.padTop}
+                    />
+                    {chartGuideValues(100).map((value) => (
+                      <g key={`host-guide-${value}`}>
+                        <line
+                          stroke={value === 100 ? "rgba(248, 250, 252, 0.30)" : "rgba(148, 163, 184, 0.18)"}
+                          strokeDasharray={value === 100 ? undefined : "4 4"}
+                          strokeWidth={value === 100 ? "1.2" : "1"}
+                          x1={timelineCharts.layout.padLeft}
+                          x2={timelineCharts.layout.width - timelineCharts.layout.padRight}
+                          y1={guideLineY(value, 100, timelineCharts.layout)}
+                          y2={guideLineY(value, 100, timelineCharts.layout)}
+                        />
+                        <text
+                          fill="rgba(148, 163, 184, 0.9)"
+                          fontSize="11"
+                          textAnchor="end"
+                          x={timelineCharts.layout.padLeft - 8}
+                          y={guideLineY(value, 100, timelineCharts.layout) + 4}
+                        >
+                          {formatAxisValue(value, "%")}
+                        </text>
+                      </g>
+                    ))}
                     <path
                       d={timelineCharts.memoryPath}
                       fill="none"
@@ -832,11 +953,73 @@ export function AgentSwarmScreen({
                 >
                   <h3 className="text-sm font-semibold text-white">{chart.title}</h3>
                   <p className="mt-1 text-xs text-slate-500">{chart.subtitle}</p>
-                  <div className="mt-4 overflow-x-auto">
+                <div className="mt-4 overflow-x-auto">
                     <svg
-                      className="h-[180px] w-full min-w-[820px]"
-                      viewBox={`0 0 ${timelineCharts.width} ${timelineCharts.height}`}
+                      className="h-[180px] w-full"
+                      preserveAspectRatio="none"
+                      viewBox={`0 0 ${timelineCharts.layout.width} ${timelineCharts.layout.height}`}
                     >
+                      <rect
+                        fill="none"
+                        height={chartInnerHeight(timelineCharts.layout)}
+                        opacity="0.8"
+                        rx="12"
+                        ry="12"
+                        stroke="rgba(148, 163, 184, 0.18)"
+                        strokeWidth="1"
+                        width={chartInnerWidth(timelineCharts.layout)}
+                        x={timelineCharts.layout.padLeft}
+                        y={timelineCharts.layout.padTop}
+                      />
+                      {chartGuideValues(
+                        chart.title === "Top Process CPU"
+                          ? Math.max(chart.lines.reduce((maxValue, line) => Math.max(maxValue, line.maxValue), 100), 100)
+                          : Math.max(chart.lines.reduce((maxValue, line) => Math.max(maxValue, line.maxValue), 1), 1),
+                      ).map((value) => (
+                        <g key={`${chart.title}-guide-${value}`}>
+                          <line
+                            stroke={value > 0 ? "rgba(148, 163, 184, 0.18)" : "rgba(248, 250, 252, 0.30)"}
+                            strokeDasharray={value > 0 ? "4 4" : undefined}
+                            strokeWidth={value > 0 ? "1" : "1.2"}
+                            x1={timelineCharts.layout.padLeft}
+                            x2={timelineCharts.layout.width - timelineCharts.layout.padRight}
+                            y1={guideLineY(
+                              value,
+                              chart.title === "Top Process CPU"
+                                ? timelineCharts.cpuProcesses.maxValue
+                                : timelineCharts.memoryProcesses.maxValue,
+                              timelineCharts.layout,
+                            )}
+                            y2={guideLineY(
+                              value,
+                              chart.title === "Top Process CPU"
+                                ? timelineCharts.cpuProcesses.maxValue
+                                : timelineCharts.memoryProcesses.maxValue,
+                              timelineCharts.layout,
+                            )}
+                          />
+                          <text
+                            fill="rgba(148, 163, 184, 0.9)"
+                            fontSize="11"
+                            textAnchor="end"
+                            x={timelineCharts.layout.padLeft - 8}
+                            y={
+                              guideLineY(
+                                value,
+                                chart.title === "Top Process CPU"
+                                  ? timelineCharts.cpuProcesses.maxValue
+                                  : timelineCharts.memoryProcesses.maxValue,
+                                timelineCharts.layout,
+                              ) + 4
+                            }
+                          >
+                            {formatAxisValue(
+                              value,
+                              chart.title === "Top Process CPU" ? "%" : "memory",
+                            )}
+                          </text>
+                        </g>
+                      ))}
                       {chart.lines.map((line) => (
                         <path
                           key={line.label}
@@ -852,7 +1035,9 @@ export function AgentSwarmScreen({
                   <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                     {chart.lines.length === 0 ? (
                       <div className="text-xs text-slate-500">
-                        No process samples yet for this window.
+                        {timelineRangeMinutes > 7 * 24 * 60
+                          ? "No process samples available for this window. Process history is currently retained for the recent crash-analysis window only."
+                          : "No process samples yet for this window."}
                       </div>
                     ) : (
                       chart.lines.map((line) => (
