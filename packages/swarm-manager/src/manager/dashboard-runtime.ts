@@ -701,6 +701,8 @@ async function startCloudflared(port: number): Promise<{ pid: number; url: strin
 async function startLocalhostRun(port: number): Promise<{ pid: number; url: string }> {
   const command = [
     "ssh",
+    "-n",
+    "-T",
     "-o",
     "StrictHostKeyChecking=no",
     "-o",
