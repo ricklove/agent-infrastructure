@@ -19,6 +19,7 @@ const Assessment = {
 
 const CurrentReality = {
   verticalSlice: define.concept("WorkingDashboardVerticalSlice"),
+  viewportBoundLayout: define.concept("ViewportBoundThreadLayout"),
   filePersistence: define.concept("FileBackedCanonicalSessions"),
   realtime: define.concept("RealtimeSessionUpdates"),
   directoryAndTitleQueueing: define.concept("QueuedDirectoryAndTitleInstructions"),
@@ -33,8 +34,8 @@ const CurrentReality = {
 
 AgentChatBlueprintState.defines(`
 - CurrentImplementationStatus means Agent Chat currently exists as a real dashboard feature with a working backend, working UI, canonical file-backed session persistence, realtime updates, and one implemented provider path.
-- AssessmentConfidence is medium because this state is based on direct source inspection of the current server, store, provider catalog, and dashboard UI rather than on a full end-to-end verification pass.
-- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, and the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx.
+- AssessmentConfidence is medium because overall Agent Chat state is still based mostly on direct source inspection, but the thread/composer layout path now also has direct browser verification at small, medium, and wide viewport sizes.
+- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-gap-fix/.
 - This blueprint-state compares current implementation reality against the ideal Agent Chat product blueprint in agent-chat.agentish.ts, the implementation-resolved dashboard blueprint in agent-chat-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
 - ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
 - KnownIssue means the provider catalog and UI present several provider options that are still planned while the backend only executes Codex app-server turns today.
@@ -48,6 +49,7 @@ AgentChatBlueprintState.contains(
   Assessment.gap,
   Assessment.issue,
   CurrentReality.verticalSlice,
+  CurrentReality.viewportBoundLayout,
   CurrentReality.filePersistence,
   CurrentReality.realtime,
   CurrentReality.directoryAndTitleQueueing,
@@ -64,6 +66,13 @@ CurrentReality.verticalSlice.means(`
 - the dashboard loads a real Agent Chat screen instead of a placeholder
 - the backend serves provider catalog, session list, session creation, session read, session patch, interrupt, and websocket subscription routes
 - the UI can create chats, open chats, send messages, stream assistant deltas, rename chats, and show run activity
+`);
+
+CurrentReality.viewportBoundLayout.means(`
+- the dashboard shell now constrains feature rendering to the browser viewport instead of letting the page grow with sidebar content
+- the Agent Chat sessions list scrolls independently from the active thread and composer
+- short transcripts remain visible with the composer in the same viewport rather than creating a tall dead zone between the first message and the input
+- this specific behavior was verified in-browser at small, medium, and wide viewport sizes
 `);
 
 CurrentReality.filePersistence.means(`

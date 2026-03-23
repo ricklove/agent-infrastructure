@@ -435,7 +435,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
     (!config?.requiresSession || Boolean(readStoredSessionToken()))
 
   return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-100">
+    <div className="flex h-dvh overflow-hidden bg-slate-950 text-slate-100">
       <aside className="flex w-14 shrink-0 flex-col items-center gap-3 border-r border-white/10 bg-[#0a0f17] px-1.5 py-2">
         <div className="group relative">
           <button
