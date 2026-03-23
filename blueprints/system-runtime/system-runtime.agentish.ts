@@ -122,6 +122,7 @@ SystemRuntime.enforces(`
 - Dashboard session issuance during an active connect attempt should start manager-side recovery monitoring before escalation.
 - Dashboard recovery should distinguish local origin failure from public tunnel failure.
 - Quick tunnel replacement should be conservative, cooldown-based, and never eager churn.
+- Temporary dashboard ingress should support a backup tunnel provider when the primary provider cannot issue a URL.
 `);
 
 SystemRuntime.defines(`
@@ -255,6 +256,7 @@ when(AWS.lambda.invokes(Entrypoint.issueDashboardSession))
   .and(Integration.dashboardRecoveryMonitor.classifies("origin failure separately from tunnel failure"))
   .and(Integration.dashboardRecoveryMonitor.keeps("the current quick tunnel while cloudflared is still alive"))
   .and(Integration.dashboardRecoveryMonitor.replaces("a quick tunnel only on strong evidence and after cooldown"))
+  .and(Integration.dashboardRecoveryMonitor.fallsBack("to a backup temporary tunnel provider when the primary provider cannot issue a URL"))
   .and(Entrypoint.issueDashboardSession.records("a durable help-request incident on unrecoverable failure"));
 
 when(Host.manager.starts(Host.service))

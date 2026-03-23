@@ -30,6 +30,9 @@ type DashboardRuntimeState = {
   localUrl: string;
   cloudflaredPid?: number;
   cloudflaredLogPath?: string;
+  tunnelPid?: number;
+  tunnelLogPath?: string;
+  tunnelProvider?: "cloudflared" | "localhost-run";
   publicUrl?: string;
   tunnelCreatedAtMs?: number;
   lastTunnelReplaceAtMs?: number;
@@ -57,6 +60,7 @@ const runtimeDir = process.env.DASHBOARD_RUNTIME_DIR?.trim() || DEFAULT_DASHBOAR
 const runtimeStatePath = resolve(runtimeDir, "runtime-state.json");
 const dashboardLogPath = resolve(runtimeDir, "dashboard.log");
 const cloudflaredLogPath = resolve(runtimeDir, "cloudflared.log");
+const localhostRunLogPath = resolve(runtimeDir, "localhost-run.log");
 const bootstrapContextPath =
   process.env.SWARM_BOOTSTRAP_CONTEXT_PATH?.trim() || DEFAULT_BOOTSTRAP_CONTEXT_PATH;
 const sessionStorePath =
@@ -304,6 +308,59 @@ function listCloudflaredTunnelPids(): number[] {
   return [...pids];
 }
 
+function listLocalhostRunTunnelPids(): number[] {
+  const result = Bun.spawnSync(["pgrep", "-f", "nokey@localhost.run"], {
+    cwd: repoRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  if (result.exitCode !== 0) {
+    return [];
+  }
+
+  const output = result.stdout.toString().trim();
+  if (!output) {
+    return [];
+  }
+
+  const pids = new Set<number>();
+  for (const line of output.split("\n")) {
+    const pid = Number.parseInt(line.trim(), 10);
+    if (Number.isInteger(pid) && pid > 0 && isPidRunning(pid)) {
+      pids.add(pid);
+    }
+  }
+
+  return [...pids];
+}
+
+function listTunnelPids(): number[] {
+  return [...new Set([...listCloudflaredTunnelPids(), ...listLocalhostRunTunnelPids()])];
+}
+
+function getRuntimeTunnelPid(state: DashboardRuntimeState | null): number | undefined {
+  return state?.tunnelPid ?? state?.cloudflaredPid;
+}
+
+function getRuntimeTunnelLogPath(state: DashboardRuntimeState | null): string | undefined {
+  return state?.tunnelLogPath ?? state?.cloudflaredLogPath;
+}
+
+function getRuntimeTunnelProvider(
+  state: DashboardRuntimeState | null,
+): "cloudflared" | "localhost-run" | undefined {
+  return state?.tunnelProvider ?? (state?.cloudflaredPid ? "cloudflared" : undefined);
+}
+
+function getTunnelCommandPattern(provider?: string, port?: number): RegExp {
+  if (provider === "localhost-run") {
+    return /ssh .*nokey@localhost\.run/;
+  }
+
+  return new RegExp(`cloudflared\\s+tunnel\\s+--url\\s+http:\\/\\/127\\.0\\.0\\.1:${port ?? 3000}`);
+}
+
 async function terminatePids(pids: number[], source: string): Promise<void> {
   const unique = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
   if (unique.length === 0) {
@@ -334,9 +391,11 @@ async function terminateDashboardRuntimeProcesses(port: number): Promise<void> {
   const cloudflaredPids = listPidsByPattern(
     new RegExp(`cloudflared\\s+tunnel\\s+--url\\s+http:\\/\\/127\\.0\\.0\\.1:${port}`),
   );
+  const localhostRunPids = listPidsByPattern(/ssh .*nokey@localhost\.run/);
 
   await terminatePids(dashboardPids, "dashboard-runtime");
   await terminatePids(cloudflaredPids, "dashboard-runtime");
+  await terminatePids(localhostRunPids, "dashboard-runtime");
 }
 
 function writeDashboardRecoveryIncident(detail: Record<string, unknown>): string {
@@ -393,30 +452,51 @@ async function recoverDashboardRuntimeState(
     };
   }
 
-  let publicUrl = "";
-  for (const candidate of extractQuickTunnelUrls().reverse()) {
-    if (await isPublicDashboardReady(candidate)) {
-      publicUrl = candidate;
-      break;
+  const tunnelLogs: Array<{
+    provider: "cloudflared" | "localhost-run";
+    logPath: string;
+  }> = [
+    { provider: "cloudflared", logPath: cloudflaredLogPath },
+    { provider: "localhost-run", logPath: localhostRunLogPath },
+  ];
+
+  for (const candidateLog of tunnelLogs) {
+    if (!existsSync(candidateLog.logPath)) {
+      continue;
+    }
+
+    let urls: string[] = [];
+    try {
+      const log = readFileSync(candidateLog.logPath, "utf8");
+      urls = [...new Set(log.match(/https:\/\/[a-z0-9.-]+/gi) ?? [])];
+    } catch {}
+
+    for (const candidateUrl of urls.reverse()) {
+      if (!(await isPublicDashboardReady(candidateUrl))) {
+        continue;
+      }
+
+      const tunnelPid =
+        candidateLog.provider === "cloudflared"
+          ? discoverPidByPattern(/cloudflared\s+tunnel\s+--url\s+http:\/\/127\.0\.0\.1:\d+/) ?? 0
+          : discoverPidByPattern(/ssh .*nokey@localhost\.run/) ?? 0;
+
+      return {
+        dashboardPid,
+        dashboardLogPath,
+        localUrl,
+        tunnelPid,
+        tunnelLogPath: candidateLog.logPath,
+        tunnelProvider: candidateLog.provider,
+        cloudflaredPid: candidateLog.provider === "cloudflared" ? tunnelPid : undefined,
+        cloudflaredLogPath:
+          candidateLog.provider === "cloudflared" ? cloudflaredLogPath : undefined,
+        publicUrl: candidateUrl,
+      };
     }
   }
 
-  if (!publicUrl) {
-    return null;
-  }
-
-  const cloudflaredPid =
-    discoverPidByPattern(/cloudflared\s+tunnel\s+--url\s+http:\/\/127\.0\.0\.1:\d+/) ??
-    0;
-
-  return {
-    dashboardPid,
-    dashboardLogPath,
-    localUrl,
-    cloudflaredPid,
-    cloudflaredLogPath,
-    publicUrl,
-  };
+  return null;
 }
 
 function readBootstrapContextValue(key: string): string {
@@ -566,6 +646,30 @@ async function startDashboardServer(config: DashboardRuntimeConfig): Promise<num
   });
 }
 
+async function waitForUrlInLog(
+  logPath: string,
+  source: string,
+  timeoutMs: number,
+  pattern: RegExp,
+): Promise<string> {
+  const attempts = Math.ceil(timeoutMs / 500);
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const log = readFileSync(logPath, "utf8");
+      const match = log.match(pattern);
+      if (match?.[0]) {
+        return match[0];
+      }
+    } catch {}
+
+    await Bun.sleep(500);
+  }
+
+  logSystemStep("dashboard-runtime", `error ${source}_no_url`);
+  throw new Error(`${source} did not return a public URL in time`);
+}
+
 async function startCloudflared(port: number): Promise<{ pid: number; url: string }> {
   const command = [
     "cloudflared",
@@ -577,25 +681,85 @@ async function startCloudflared(port: number): Promise<{ pid: number; url: strin
     .join(" ");
 
   const pid = await spawnDetached(command, cloudflaredLogPath);
-  const pattern = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
+  const url = await waitForUrlInLog(
+    cloudflaredLogPath,
+    "cloudflared",
+    20_000,
+    /https:\/\/[a-z0-9-]+\.trycloudflare\.com/,
+  );
 
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    try {
-      const log = readFileSync(cloudflaredLogPath, "utf8");
-      const match = log.match(pattern);
-      if (match) {
-        return {
-          pid,
-          url: match[0],
-        };
-      }
-    } catch {}
+  return {
+    pid,
+    url,
+  };
+}
 
-    await Bun.sleep(500);
+async function startLocalhostRun(port: number): Promise<{ pid: number; url: string }> {
+  const command = [
+    "ssh",
+    "-o",
+    "StrictHostKeyChecking=no",
+    "-o",
+    "UserKnownHostsFile=/dev/null",
+    "-o",
+    "ServerAliveInterval=30",
+    "-o",
+    "ExitOnForwardFailure=yes",
+    "-R",
+    `80:127.0.0.1:${port}`,
+    "nokey@localhost.run",
+  ]
+    .map(shellQuote)
+    .join(" ");
+
+  const pid = await spawnDetached(command, localhostRunLogPath);
+  const url = await waitForUrlInLog(
+    localhostRunLogPath,
+    "localhost_run",
+    25_000,
+    /https:\/\/[a-z0-9.-]+/i,
+  );
+
+  return {
+    pid,
+    url,
+  };
+}
+
+async function startTemporaryTunnel(
+  port: number,
+): Promise<{
+  pid: number;
+  url: string;
+  provider: "cloudflared" | "localhost-run";
+  logPath: string;
+}> {
+  try {
+    const tunnel = await startCloudflared(port);
+    return {
+      pid: tunnel.pid,
+      url: tunnel.url,
+      provider: "cloudflared",
+      logPath: cloudflaredLogPath,
+    };
+  } catch (error) {
+    logSystemStep(
+      "dashboard-runtime",
+      `warn cloudflared_start_failed detail=${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
-  logSystemStep("dashboard-runtime", `error cloudflared_no_url port=${port}`);
-  throw new Error("cloudflared did not return a quick tunnel URL in time");
+  const tunnel = await startLocalhostRun(port);
+  logSystemStep(
+    "dashboard-runtime",
+    `exit fallback_tunnel_provider=localhost-run public_url=${tunnel.url}`,
+  );
+  return {
+    pid: tunnel.pid,
+    url: tunnel.url,
+    provider: "localhost-run",
+    logPath: localhostRunLogPath,
+  };
 }
 
 export async function ensureDashboardRuntime(
@@ -615,8 +779,8 @@ export async function ensureDashboardRuntime(
       ? (currentState?.dashboardPid ?? 0)
       : discoverPidByPattern(/packages\/dashboard\/src\/server\.ts/) ?? 0;
   const cloudflaredRunning = await isExpectedProcess(
-    currentState?.cloudflaredPid,
-    /cloudflared\s+tunnel/,
+    getRuntimeTunnelPid(currentState),
+    getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), config.port),
   );
   const dashboardHealthy = await isDashboardHealthy(config.port);
   const publicDashboardReady =
@@ -672,21 +836,35 @@ export async function ensureDashboardRuntime(
   if (cloudflaredRunning && currentState?.publicUrl && publicDashboardReady) {
     nextState = {
       ...nextState,
-      cloudflaredPid: currentState.cloudflaredPid,
-      cloudflaredLogPath: currentState.cloudflaredLogPath ?? cloudflaredLogPath,
+      tunnelPid: getRuntimeTunnelPid(currentState),
+      tunnelLogPath: getRuntimeTunnelLogPath(currentState) ?? cloudflaredLogPath,
+      tunnelProvider: getRuntimeTunnelProvider(currentState),
+      cloudflaredPid:
+        getRuntimeTunnelProvider(currentState) === "cloudflared"
+          ? getRuntimeTunnelPid(currentState)
+          : undefined,
+      cloudflaredLogPath:
+        getRuntimeTunnelProvider(currentState) === "cloudflared"
+          ? cloudflaredLogPath
+          : undefined,
       publicUrl: currentState.publicUrl,
+      tunnelCreatedAtMs: currentState.tunnelCreatedAtMs,
+      lastTunnelReplaceAtMs: currentState.lastTunnelReplaceAtMs,
     };
     logSystemStep("dashboard-runtime", "exit cloudflared=reused");
     writeRuntimeState(nextState);
     return nextState;
   }
 
-  const tunnel = await startCloudflared(config.port);
+  const tunnel = await startTemporaryTunnel(config.port);
   const tunnelCreatedAtMs = Date.now();
   nextState = {
     ...nextState,
-    cloudflaredPid: tunnel.pid,
-    cloudflaredLogPath,
+    tunnelPid: tunnel.pid,
+    tunnelLogPath: tunnel.logPath,
+    tunnelProvider: tunnel.provider,
+    cloudflaredPid: tunnel.provider === "cloudflared" ? tunnel.pid : undefined,
+    cloudflaredLogPath: tunnel.provider === "cloudflared" ? cloudflaredLogPath : undefined,
     publicUrl: tunnel.url,
     tunnelCreatedAtMs,
     lastTunnelReplaceAtMs: tunnelCreatedAtMs,
@@ -838,7 +1016,8 @@ export async function issueDashboardSession(input?: {
     useCloudflared: true,
   });
 
-  if (!runtime.publicUrl || !runtime.cloudflaredPid) {
+  const tunnelPid = runtime.tunnelPid ?? runtime.cloudflaredPid;
+  if (!runtime.publicUrl || !tunnelPid) {
     throw new Error("dashboard runtime did not produce a public URL");
   }
 
@@ -867,7 +1046,7 @@ export async function issueDashboardSession(input?: {
     publicUrl: runtime.publicUrl,
     sessionUrl,
     dashboardPid: runtime.dashboardPid,
-    cloudflaredPid: runtime.cloudflaredPid,
+    cloudflaredPid: tunnelPid,
   };
 }
 
@@ -975,8 +1154,8 @@ export async function runDashboardRecoveryMonitor(input: {
       const dashboardHealthy = await isDashboardHealthy(port);
       const publicReady = await isPublicDashboardReady(expectedPublicUrl);
       const cloudflaredRunning = await isExpectedProcess(
-        currentState?.cloudflaredPid,
-        /cloudflared\s+tunnel/,
+        getRuntimeTunnelPid(currentState),
+        getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), port),
       );
       const now = Date.now();
 
@@ -995,8 +1174,17 @@ export async function runDashboardRecoveryMonitor(input: {
           dashboardPid,
           dashboardLogPath,
           localUrl: `http://127.0.0.1:${port}`,
-          cloudflaredPid: currentState?.cloudflaredPid,
-          cloudflaredLogPath: currentState?.cloudflaredLogPath ?? cloudflaredLogPath,
+          tunnelPid: getRuntimeTunnelPid(currentState),
+          tunnelLogPath: getRuntimeTunnelLogPath(currentState),
+          tunnelProvider: getRuntimeTunnelProvider(currentState),
+          cloudflaredPid:
+            getRuntimeTunnelProvider(currentState) === "cloudflared"
+              ? getRuntimeTunnelPid(currentState)
+              : undefined,
+          cloudflaredLogPath:
+            getRuntimeTunnelProvider(currentState) === "cloudflared"
+              ? cloudflaredLogPath
+              : undefined,
           publicUrl: expectedPublicUrl,
           tunnelCreatedAtMs: currentState?.tunnelCreatedAtMs,
           lastTunnelReplaceAtMs: currentState?.lastTunnelReplaceAtMs,
@@ -1033,24 +1221,27 @@ export async function runDashboardRecoveryMonitor(input: {
         }
 
         if (shouldReplaceTunnel && cooldownReady) {
-          const cloudflaredPids = listCloudflaredTunnelPids();
-          await terminatePids(cloudflaredPids, "dashboard-recovery-monitor");
-          const tunnel = await startCloudflared(port);
+          const tunnelPids = listTunnelPids();
+          await terminatePids(tunnelPids, "dashboard-recovery-monitor");
+          const tunnel = await startTemporaryTunnel(port);
           expectedPublicUrl = tunnel.url;
           const replacementAtMs = Date.now();
           writeRuntimeState({
             dashboardPid: currentState?.dashboardPid ?? 0,
             dashboardLogPath,
             localUrl: `http://127.0.0.1:${port}`,
-            cloudflaredPid: tunnel.pid,
-            cloudflaredLogPath,
+            tunnelPid: tunnel.pid,
+            tunnelLogPath: tunnel.logPath,
+            tunnelProvider: tunnel.provider,
+            cloudflaredPid: tunnel.provider === "cloudflared" ? tunnel.pid : undefined,
+            cloudflaredLogPath: tunnel.provider === "cloudflared" ? cloudflaredLogPath : undefined,
             publicUrl: tunnel.url,
             tunnelCreatedAtMs: replacementAtMs,
             lastTunnelReplaceAtMs: replacementAtMs,
           });
           logSystemStep(
             "dashboard-recovery-monitor",
-            `replace_tunnel old_public_url=${currentState?.publicUrl ?? "missing"} new_public_url=${tunnel.url} cloudflared_pid=${tunnel.pid}`,
+            `replace_tunnel old_public_url=${currentState?.publicUrl ?? "missing"} new_public_url=${tunnel.url} tunnel_provider=${tunnel.provider} tunnel_pid=${tunnel.pid}`,
           );
           publicFailureSinceMs = null;
           await Bun.sleep(1000);

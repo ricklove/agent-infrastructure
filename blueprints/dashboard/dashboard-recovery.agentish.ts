@@ -23,6 +23,7 @@ const Manager = {
   recovery: define.entity("DashboardRecoveryAttempt"),
   helpRequest: define.entity("DashboardHelpRequest"),
   tunnel: define.entity("CloudflaredTunnel"),
+  backupTunnel: define.entity("BackupTemporaryTunnel"),
   gateway: define.entity("DashboardGatewayProcess"),
 };
 
@@ -32,6 +33,7 @@ const Policy = {
   oneCanonicalTunnel: define.concept("OneCanonicalTunnel"),
   tunnelCooldown: define.concept("QuickTunnelReplacementCooldown"),
   classifyFailuresSeparately: define.concept("SeparateOriginAndTunnelFailures"),
+  backupTunnelFallback: define.concept("BackupTemporaryTunnelFallback"),
   escalateAfterFailedRepair: define.concept("EscalateAfterFailedRepair"),
 };
 
@@ -40,6 +42,7 @@ DashboardRecovery.enforces(`
 - The recovery path must not depend on the dashboard UI being reachable first.
 - Automatic repair should start immediately when the manager receives a real connection attempt.
 - One canonical dashboard tunnel should exist after recovery, not a pile of stale tunnels.
+- Temporary ingress may use a backup tunnel provider when the primary quick tunnel provider cannot issue a URL.
 - If automatic repair still fails, the system should create an explicit ask-help incident for agent follow-up.
 `);
 
@@ -77,6 +80,13 @@ Policy.classifyFailuresSeparately.means(`
 - keep the current quick tunnel when cloudflared is still alive unless strong evidence and cooldown permit replacement
 `);
 
+Policy.backupTunnelFallback.means(`
+- the manager should prefer the primary temporary tunnel provider first
+- when the primary temporary tunnel provider cannot issue a usable URL, the manager may fall back to a backup temporary tunnel provider
+- the backup provider should preserve the temporary-URL model rather than forcing a permanent ingress change
+- recovery should still converge to one canonical active tunnel after fallback
+`);
+
 Policy.escalateAfterFailedRepair.means(`
 - if repair and re-readiness both fail, emit a durable help-request incident
 - help escalation is a real recovery artifact, not just a transient log line
@@ -87,6 +97,7 @@ when(Access.lambda.invokes(Manager.sessionIssue).andObserves(Access.attempt))
   .and(DashboardRecovery.requires(Policy.repairFirst))
   .and(DashboardRecovery.requires(Policy.classifyFailuresSeparately))
   .and(DashboardRecovery.requires(Policy.tunnelCooldown))
+  .and(DashboardRecovery.requires(Policy.backupTunnelFallback))
   .and(Manager.sessionIssue.starts(Manager.monitor))
   .and(Manager.monitor.detects(Manager.readinessFailure))
   .and(Manager.recovery.repairs(Manager.runtime))
@@ -100,7 +111,9 @@ when(Manager.recovery.repairs(Manager.runtime))
   .then(DashboardRecovery.requires(Policy.oneCanonicalTunnel))
   .and(DashboardRecovery.requires(Policy.classifyFailuresSeparately))
   .and(DashboardRecovery.requires(Policy.tunnelCooldown))
+  .and(DashboardRecovery.requires(Policy.backupTunnelFallback))
   .and(Manager.recovery.terminates(Manager.tunnel))
+  .and(Manager.recovery.mayReplace(Manager.backupTunnel))
   .and(Manager.recovery.restarts(Manager.gateway))
   .and(Manager.recovery.mayReplace(Manager.tunnel));
 
