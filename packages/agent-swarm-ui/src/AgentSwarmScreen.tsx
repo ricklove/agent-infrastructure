@@ -89,10 +89,10 @@ export type AgentSwarmScreenProps = {
 
 function useMeasuredWidth() {
   const ref = useRef<HTMLDivElement | null>(null)
+  const [element, setElement] = useState<HTMLDivElement | null>(null)
   const [width, setWidth] = useState(defaultChartLayout.width)
 
   useEffect(() => {
-    const element = ref.current
     if (!element || typeof ResizeObserver === "undefined") {
       return
     }
@@ -121,9 +121,15 @@ function useMeasuredWidth() {
       observer.disconnect()
       window.removeEventListener("resize", measure)
     }
-  }, [])
+  }, [element])
 
-  return { ref, width }
+  return {
+    ref: (node: HTMLDivElement | null) => {
+      ref.current = node
+      setElement(node)
+    },
+    width,
+  }
 }
 
 function readStoredSessionToken(): string {
