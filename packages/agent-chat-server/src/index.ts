@@ -529,35 +529,60 @@ const server = Bun.serve<ChatSocketData>({
       return request.json().then((body: unknown) => {
         const payload = body as {
           cwd?: string;
+          title?: string;
         };
         const nextDirectory = payload.cwd?.trim();
-        if (!nextDirectory) {
-          return jsonResponse({ ok: false, error: "directory required" }, 400);
+        const nextTitle = payload.title?.trim();
+        if (!nextDirectory && !nextTitle) {
+          return jsonResponse({ ok: false, error: "directory or title required" }, 400);
+        }
+        let session = store.getSession(sessionId);
+        const queuedMessages: StoredMessage[] = [];
+
+        if (nextDirectory && session && nextDirectory !== session.cwd) {
+          store.markQueuedSystemMessagesSeen(sessionId);
+          session = store.updateSessionCwd(sessionId, nextDirectory);
+          const directoryMessage = store.appendMessage(sessionId, {
+            role: "system",
+            kind: "directoryInstruction",
+            providerSeenAtMs: null,
+            content: [
+              {
+                type: "text",
+                text: `Directory will switch to ${nextDirectory} for the next agent turn.`,
+              },
+            ],
+          });
+          queuedMessages.push(directoryMessage);
+          session = store.queuePendingSystemInstruction(
+            sessionId,
+            `Working directory changed to ${nextDirectory}. Use this directory for subsequent work unless the user says otherwise.`,
+          );
         }
 
-        store.markQueuedDirectoryInstructionsSeen(sessionId);
-        store.updateSessionCwd(sessionId, nextDirectory);
-        const directoryMessage = store.appendMessage(sessionId, {
-          role: "system",
-          kind: "directoryInstruction",
-          providerSeenAtMs: null,
-          content: [
-            {
-              type: "text",
-              text: `Directory will switch to ${nextDirectory} for the next agent turn.`,
-            },
-          ],
-        });
-        const session = store.queuePendingSystemInstruction(
-          sessionId,
-          `Working directory changed to ${nextDirectory}. Use this directory for subsequent work unless the user says otherwise.`,
-          directoryMessage.id,
-        );
+        if (nextTitle && session && nextTitle !== session.title) {
+          session = store.updateSessionTitle(sessionId, nextTitle);
+          const titleMessage = store.appendMessage(sessionId, {
+            role: "system",
+            providerSeenAtMs: null,
+            content: [
+              {
+                type: "text",
+                text: `Chat title will change to ${nextTitle} for the next agent turn.`,
+              },
+            ],
+          });
+          queuedMessages.push(titleMessage);
+          session = store.queuePendingSystemInstruction(
+            sessionId,
+            `Chat title changed to ${nextTitle}. Use this title when referring to this chat unless the user says otherwise.`,
+          );
+        }
 
         broadcastSession(sessionId, {
           type: "session.updated",
           session: session ? buildSessionSummary(session) : null,
-          messages: [directoryMessage],
+          messages: queuedMessages,
           queuedMessages: store.listQueuedMessages(sessionId),
           activity: toSessionActivity(sessionId),
         });

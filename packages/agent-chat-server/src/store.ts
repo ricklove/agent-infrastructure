@@ -19,7 +19,6 @@ export type StoredSession = {
   modelRef: string;
   cwd: string;
   pendingSystemInstruction: string | null;
-  pendingSystemInstructionMessageId: string | null;
   authProfile: string | null;
   imageModelRef: string | null;
   providerThreadId: string | null;
@@ -116,7 +115,6 @@ export class AgentChatStore {
       modelRef: input.modelRef,
       cwd: input.cwd,
       pendingSystemInstruction: null,
-      pendingSystemInstructionMessageId: null,
       authProfile: input.authProfile ?? null,
       imageModelRef: input.imageModelRef ?? null,
       providerThreadId: null,
@@ -141,7 +139,7 @@ export class AgentChatStore {
     return this.listMessages(sessionId).filter(
       (message) =>
         message.providerSeenAtMs === null &&
-        (message.role === "user" || message.kind === "directoryInstruction"),
+        (message.role === "user" || message.role === "system"),
     );
   }
 
@@ -254,7 +252,6 @@ export class AgentChatStore {
   queuePendingSystemInstruction(
     sessionId: string,
     instruction: string,
-    messageId: string,
   ): StoredSession | null {
     const current = this.sessionCache.get(sessionId);
     if (!current) {
@@ -263,8 +260,9 @@ export class AgentChatStore {
 
     const nextSession: StoredSession = {
       ...current,
-      pendingSystemInstruction: instruction,
-      pendingSystemInstructionMessageId: messageId,
+      pendingSystemInstruction: current.pendingSystemInstruction
+        ? `${current.pendingSystemInstruction}\n${instruction}`
+        : instruction,
       updatedAtMs: Date.now(),
     };
     this.writeSessionMetadata(nextSession);
@@ -279,23 +277,26 @@ export class AgentChatStore {
     }
 
     const instruction = current.pendingSystemInstruction;
-    const messageId = current.pendingSystemInstructionMessageId;
     const nextSession: StoredSession = {
       ...current,
       pendingSystemInstruction: null,
-      pendingSystemInstructionMessageId: null,
     };
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
-    if (messageId) {
-      this.markMessagesSeen(sessionId, [messageId]);
-    }
+    this.markQueuedSystemMessagesSeen(sessionId);
     return instruction;
   }
 
   markQueuedDirectoryInstructionsSeen(sessionId: string, seenAtMs = Date.now()) {
     const messageIds = this.listQueuedMessages(sessionId)
-      .filter((message) => message.kind === "directoryInstruction")
+      .filter((message) => message.role === "system")
+      .map((message) => message.id);
+    this.markMessagesSeen(sessionId, messageIds, seenAtMs);
+  }
+
+  markQueuedSystemMessagesSeen(sessionId: string, seenAtMs = Date.now()) {
+    const messageIds = this.listQueuedMessages(sessionId)
+      .filter((message) => message.role === "system")
       .map((message) => message.id);
     this.markMessagesSeen(sessionId, messageIds, seenAtMs);
   }
@@ -394,7 +395,6 @@ export class AgentChatStore {
       modelRef: session.modelRef,
       cwd: session.cwd,
       pendingSystemInstruction: session.pendingSystemInstruction,
-      pendingSystemInstructionMessageId: session.pendingSystemInstructionMessageId,
       authProfile: session.authProfile,
       imageModelRef: session.imageModelRef,
       providerThreadId: session.providerThreadId,
@@ -419,9 +419,6 @@ export class AgentChatStore {
       cwd: String(parsed.cwd || "/home/ec2-user/workspace"),
       pendingSystemInstruction: parsed.pendingSystemInstruction
         ? String(parsed.pendingSystemInstruction)
-        : null,
-      pendingSystemInstructionMessageId: parsed.pendingSystemInstructionMessageId
-        ? String(parsed.pendingSystemInstructionMessageId)
         : null,
       authProfile: parsed.authProfile ? String(parsed.authProfile) : null,
       imageModelRef: parsed.imageModelRef ? String(parsed.imageModelRef) : null,
@@ -513,7 +510,6 @@ export class AgentChatStore {
           model_ref,
           ${legacyHasCwd ? "cwd," : "'/home/ec2-user/workspace' AS cwd,"}
           ${sessionColumns.has("pending_system_instruction") ? "pending_system_instruction," : "NULL AS pending_system_instruction,"}
-          ${sessionColumns.has("pending_system_instruction_message_id") ? "pending_system_instruction_message_id," : "NULL AS pending_system_instruction_message_id,"}
           auth_profile,
           image_model_ref,
           provider_thread_id,
@@ -548,9 +544,6 @@ export class AgentChatStore {
           cwd: row.cwd ? String(row.cwd) : "/home/ec2-user/workspace",
           pendingSystemInstruction: row.pending_system_instruction
             ? String(row.pending_system_instruction)
-            : null,
-          pendingSystemInstructionMessageId: row.pending_system_instruction_message_id
-            ? String(row.pending_system_instruction_message_id)
             : null,
           authProfile: row.auth_profile ? String(row.auth_profile) : null,
           imageModelRef: row.image_model_ref ? String(row.image_model_ref) : null,

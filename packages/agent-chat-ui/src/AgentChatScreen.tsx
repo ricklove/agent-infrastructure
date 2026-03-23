@@ -226,6 +226,15 @@ function PlusIcon() {
   )
 }
 
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <path d="M4 20h4l9.5-9.5-4-4L4 16v4Z" />
+      <path d="m12.5 7.5 4 4" />
+    </svg>
+  )
+}
+
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
     month: "short",
@@ -357,6 +366,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false)
   const [newChatOpen, setNewChatOpen] = useState(false)
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renameTitle, setRenameTitle] = useState("")
+  const [renaming, setRenaming] = useState(false)
   const [wsStatus, setWsStatus] = useState<"idle" | "connecting" | "ready" | "error">("idle")
   const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
@@ -417,6 +429,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   useEffect(() => {
     setActiveSessionDirectory(activeSession?.cwd ?? "")
     setReplyTargetMessageId(null)
+    if (activeSession && renamingSessionId === activeSession.id) {
+      setRenameTitle(activeSession.title)
+    }
   }, [activeSession])
 
   useEffect(() => {
@@ -799,6 +814,43 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
   }
 
+  async function renameSession(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!renamingSessionId || !renameTitle.trim()) {
+      return
+    }
+
+    setRenaming(true)
+    setError("")
+    try {
+      const response = await apiFetch(`${props.apiRootUrl}/sessions/${renamingSessionId}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          title: renameTitle,
+        }),
+      })
+      const payload = (await response.json()) as (SessionSnapshotResponse & { error?: string })
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Rename failed.")
+      }
+      mergeSession(payload.session)
+      if (payload.session.id === activeSessionId) {
+        setMessages(payload.messages)
+        setQueuedMessages(payload.queuedMessages)
+        setActivity(payload.activity)
+      }
+      setRenamingSessionId(null)
+      setRenameTitle("")
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Rename failed.")
+    } finally {
+      setRenaming(false)
+    }
+  }
+
   async function sendMessage() {
     if (!activeSessionId || !composerText.trim()) {
       return
@@ -1039,30 +1091,62 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </div>
               ) : (
                 sessions.map((session) => (
-                  <button
+                  <div
                     key={session.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveSessionId(session.id)
-                      setMobileSessionsOpen(false)
-                    }}
-                    className={`block w-full rounded-2xl border px-4 py-4 text-left transition ${
+                    className={`rounded-2xl border px-4 py-4 transition ${
                       session.id === activeSessionId
                         ? "border-fuchsia-300/40 bg-fuchsia-300/10"
                         : "border-white/10 bg-slate-900/70 hover:border-white/20"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveSessionId(session.id)
+                          setMobileSessionsOpen(false)
+                        }}
+                        className="min-w-0 flex-1 text-left"
+                      >
                         <p className="truncate text-sm font-semibold text-white">
                           {session.title}
                         </p>
                         <p className="mt-1 truncate text-xs text-slate-500">
                           {session.providerKind} · {session.modelRef}
                         </p>
+                      </button>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500">{session.messageCount}</span>
+                        {session.id === activeSessionId ? (
+                          <IconButton
+                            label="Rename chat"
+                            title="Rename Chat"
+                            onClick={() => {
+                              setRenamingSessionId(session.id)
+                              setRenameTitle(session.title)
+                            }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        ) : null}
                       </div>
-                      <span className="text-xs text-slate-500">{session.messageCount}</span>
                     </div>
+                    {renamingSessionId === session.id ? (
+                      <form onSubmit={renameSession} className="mt-3 flex gap-2">
+                        <input
+                          value={renameTitle}
+                          onChange={(event) => setRenameTitle(event.target.value)}
+                          className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
+                        />
+                        <button
+                          type="submit"
+                          disabled={renaming || !renameTitle.trim() || renameTitle.trim() === session.title}
+                          className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {renaming ? "Saving..." : "Save"}
+                        </button>
+                      </form>
+                    ) : null}
                     <p className="mt-3 truncate text-sm text-slate-300">
                       {session.preview ?? "No messages yet"}
                     </p>
@@ -1076,7 +1160,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     <p className="mt-2 truncate text-xs text-slate-500">
                       {session.cwd}
                     </p>
-                  </button>
+                  </div>
                 ))
               )}
             </div>
