@@ -1593,7 +1593,7 @@ export function AgentSwarmScreen({
                         >
                           <span className="flex min-w-0 items-center gap-2">
                             <span
-                              className="h-2.5 w-2.5 rounded-full"
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
                               style={{ backgroundColor: line.color }}
                             />
                             <span className="truncate">{line.label}</span>
