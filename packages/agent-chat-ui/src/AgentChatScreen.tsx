@@ -357,6 +357,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [streamingAssistantText, setStreamingAssistantText] = useState("")
   const [composerText, setComposerText] = useState("")
   const [providerKind, setProviderKind] = useState<ProviderKind>("codex-app-server")
+  const [newChatTitle, setNewChatTitle] = useState("")
   const [modelRef, setModelRef] = useState("")
   const [directory, setDirectory] = useState(defaultSessionDirectory)
   const [authProfile, setAuthProfile] = useState("")
@@ -752,6 +753,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           "content-type": "application/json",
         },
         body: JSON.stringify({
+          title: newChatTitle.trim() || null,
           providerKind,
           modelRef,
           cwd: directory,
@@ -770,6 +772,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setActivity(payload.activity)
       setComposerText("")
       setReplyTargetMessageId(null)
+      setNewChatTitle("")
       setSettingsOpen(false)
       setNewChatOpen(false)
       setMobileSessionsOpen(false)
@@ -1007,6 +1010,17 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   Start another chat from the sessions side.
                 </p>
               </div>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Title
+                </span>
+                <input
+                  value={newChatTitle}
+                  onChange={(event) => setNewChatTitle(event.target.value)}
+                  placeholder="optional"
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                />
+              </label>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Provider
