@@ -55,6 +55,8 @@ const Scope = {
   multiProvider: define.concept("MultiProviderV1"),
   singleAgent: define.concept("SingleAgentV1"),
   canonicalSessions: define.concept("CanonicalSessionOwnership"),
+  workspaceRootDefault: define.concept("WorkspaceRootDefault"),
+  sessionWorkspaceSelection: define.concept("SessionWorkspaceSelection"),
   lazyBackend: define.concept("LazyChatBackend"),
   browserOwnsUi: define.concept("BrowserOwnedChatUi"),
   dashboardAuth: define.concept("DashboardSessionAuthBoundary"),
@@ -62,8 +64,10 @@ const Scope = {
 };
 
 const Storage = {
-  sqlite: define.concept("SqlitePersistence"),
-  runtimeState: define.concept("StateDirectoryPersistence"),
+  fileCanonical: define.concept("FileCanonicalPersistence"),
+  inMemoryCache: define.concept("InMemoryDerivedCache"),
+  appData: define.concept("AppDataPersistence"),
+  runtimeState: define.concept("TemporaryRuntimeStateOnly"),
   transcript: define.entity("TranscriptRecord"),
   sessionIndex: define.entity("SessionIndexRecord"),
   runEvent: define.entity("RunEventRecord"),
@@ -100,6 +104,7 @@ const Ui = {
   transcript: define.entity("TranscriptPanel"),
   composer: define.entity("ComposerPanel"),
   providerPicker: define.entity("ProviderPicker"),
+  workspacePicker: define.entity("WorkspacePicker"),
   runStatus: define.entity("RunStatusRail"),
   statusItems: define.entity("ChatFeatureStatusItems"),
 };
@@ -121,9 +126,10 @@ AgentChatDashboardImplementation.enforces(`
 - The first working Agent Chat in the dashboard should be a complete vertical slice, not another placeholder.
 - The dashboard chat tab should be backed by a real feature-owned backend declared through the dashboard plugin model.
 - The first implementation should minimize architectural risk by choosing one backend, one canonical persistence model, and one provider-agnostic adapter boundary.
-- Canonical chat history must be workspace-owned and persisted under state/, not hidden inside provider-owned thread state.
+- Canonical chat history must be workspace-owned durable app data and must not live under state/.
 - Canonical chat content must stay structured enough to preserve text, images, and cache boundaries across providers.
 - Each provider adapter must be re-researched against current provider docs and relevant open-source reference implementations immediately before implementing that adapter.
+- Agent Chat sessions must inherit the development-process blueprint so provider-backed agents use the same blueprint-first workflow rules.
 - The browser should own session list, transcript rendering, composer state, reconnect logic, and streaming UI.
 - The gateway should proxy Agent Chat traffic and lazy-start the chat backend on first use.
 - V1 should ship only the behaviors needed for real day-to-day chat use and defer broader ambitions that are not required yet.
@@ -133,7 +139,9 @@ AgentChatDashboardImplementation.defines(`
 - AgentChatBackend means the Bun server that owns chat API, realtime events, persistence, and provider integration for the dashboard feature.
 - CanonicalSessionOwnership means Agent Chat sessions and messages are the source of truth even if the provider also has thread state.
 - GatewayProxiedTransport means the browser talks only to dashboard-relative /api/agent-chat and /ws/agent-chat paths.
-- SqlitePersistence means sessions, messages, run events, and provider metadata are stored in one SQLite database under state/.
+- FileCanonicalPersistence means canonical sessions, messages, and provider metadata are stored as structured files under durable app data, not under temporary runtime state.
+- InMemoryDerivedCache means the backend may keep a rebuildable in-memory index for fast list and session reads, but that cache is not canonical.
+- TemporaryRuntimeStateOnly means state/ is reserved for recoverable runtime artifacts such as logs, sockets, pid files, and controller metadata.
 - SessionProviderSelection means each session records one concrete provider choice and its provider-specific metadata.
 - AgentChatContentBlock means a canonical block such as text or image that is preserved before adapter mapping.
 - ProviderQualifiedModelRef means model identity is stored as a provider-qualified reference rather than an ambiguous bare model name.
@@ -153,7 +161,15 @@ Chat.providerBinding.contains(
   Provider.imageModelRef,
   Provider.capability,
 );
-Chat.stateStore.contains(Storage.transcript, Storage.sessionIndex, Storage.runEvent, Storage.providerConfig, Storage.cacheHint);
+Chat.stateStore.contains(
+  Storage.transcript,
+  Storage.sessionIndex,
+  Storage.runEvent,
+  Storage.providerConfig,
+  Storage.cacheHint,
+  Storage.fileCanonical,
+  Storage.inMemoryCache,
+);
 Chat.api.contains(
   Api.listSessions,
   Api.createSession,
@@ -163,7 +179,15 @@ Chat.api.contains(
   Api.listMessages,
 );
 Chat.ws.contains(Api.subscribeSession);
-Dashboard.screen.contains(Ui.sessionList, Ui.transcript, Ui.composer, Ui.providerPicker, Ui.runStatus, Ui.statusItems);
+Dashboard.screen.contains(
+  Ui.sessionList,
+  Ui.transcript,
+  Ui.composer,
+  Ui.providerPicker,
+  Ui.workspacePicker,
+  Ui.runStatus,
+  Ui.statusItems,
+);
 
 Scope.singleUser.means(`
 - V1 is for one operator on the manager-host dashboard
@@ -187,6 +211,18 @@ Scope.canonicalSessions.means(`
 - one stable session id per chat
 - canonical messages are stored by Agent Chat
 - provider thread ids are metadata on the binding, not the source of truth
+`);
+
+Scope.workspaceRootDefault.means(`
+- the default workspace root for a new chat session is /home/ec2-user/workspace
+- provider adapters should use that workspace root unless the session chooses an explicit override
+- the default must not silently collapse to one specific project checkout
+`);
+
+Scope.sessionWorkspaceSelection.means(`
+- each session records an explicit workspace root selection
+- the chat UI lets the operator inspect and change that workspace root during a chat
+- provider runs use the session-selected workspace root rather than a backend-global hard-coded cwd
 `);
 
 Capability.multimodal.means(`
@@ -235,18 +271,28 @@ Scope.deferImports.means(`
 - a minimal real chat experience is more important than completing every high-level concept immediately
 `);
 
-Storage.sqlite.means(`
-- use one SQLite database at /home/ec2-user/state/agent-chat/agent-chat.sqlite
-- store sessions, messages, provider bindings, run events, and approval records there
-- store provider kind, provider model, provider thread handle, and provider configuration references there
-- store provider auth-profile choice and optional image-model override there
+Storage.fileCanonical.means(`
+- use durable structured files at a path such as /home/ec2-user/workspace/data/agent-chat
+- store one session directory per chat session
+- store session metadata in JSON
+- store canonical messages and run events in append-friendly JSONL files
+- store provider kind, provider model, provider thread handle, and provider configuration references in canonical session metadata
+- store provider auth-profile choice and optional image-model override in canonical session metadata
 - store canonical content blocks and cache hints instead of only flattened prompt strings
-- avoid JSON-file transcript storage for the first implementation
+- treat the files as the source of truth
+`);
+
+Storage.inMemoryCache.means(`
+- keep a rebuildable in-memory session index inside the backend process
+- startup may rebuild that cache by scanning canonical session files
+- cache invalidation complexity should stay minimal in V1
+- no SQLite cache is required in V1
 `);
 
 Storage.runtimeState.means(`
-- mutable chat state lives under /home/ec2-user/state/agent-chat
+- temporary runtime state for chat lives under /home/ec2-user/state/agent-chat
 - backend logs live under /home/ec2-user/state/logs/agent-chat-server.log
+- durable transcripts, sessions, and user content do not live under /home/ec2-user/state
 - runtime source stays in the readonly runtime checkout
 `);
 
@@ -348,7 +394,8 @@ when(Chat.backend.starts())
   .and(Chat.backend.requires(Scope.multiProvider))
   .and(Chat.backend.requires(Scope.singleAgent))
   .and(Chat.backend.requires(Scope.canonicalSessions))
-  .and(Chat.backend.requires(Storage.sqlite))
+  .and(Chat.backend.requires(Storage.fileCanonical))
+  .and(Chat.backend.requires(Storage.inMemoryCache))
   .and(Chat.backend.requires(Storage.runtimeState))
   .and(Chat.backend.requires(Capability.multimodal))
   .and(Chat.backend.requires(Capability.imageInput))

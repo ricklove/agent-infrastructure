@@ -92,6 +92,7 @@ AgentChat.enforces(`
 - A workspace chat session is the primary object the user opens, names, resumes, inspects, imports into, and references.
 - Session identity survives provider switching.
 - Provider bindings may change without rewriting canonical session history.
+- Provider-backed chat sessions must inherit the shared development-process blueprint so implementation work inside a chat follows the same blueprint-first workflow.
 - Chat may reference workspace entities.
 - Workspace entities may reference chat.
 - Agents may explore referenced workspace entities when needed.
@@ -162,6 +163,7 @@ Session.conversation.means(`
 - one stable user-facing conversation
 - one canonical transcript
 - many future provider runs
+- default workspace root /home/ec2-user/workspace unless the session explicitly chooses a narrower root
 - zero obligation to mirror provider thread storage as source of truth
 `);
 

@@ -119,6 +119,7 @@ SystemRuntime.enforces(`
 - The dashboard gateway may start a backend only when a feature path is actually used.
 - The dashboard gateway should prefer declared backend definitions over ad hoc one-off launch logic.
 - Manager updates should follow one full development process from source edit through post-deploy verification.
+- state/ is only for temporary runtime state and recoverable operational artifacts, never durable app data.
 - Swarm monitor process visibility should use sparse continuous sampling rather than burst-only capture.
 - EC2 worker inventory refresh should default to slow zombie reconciliation rather than second-level live polling.
 - Dashboard session issuance during an active connect attempt should notify one thin always-on dashboard lifecycle controller.
@@ -234,6 +235,7 @@ Policy.fullUpdateWorkflow.means(`
 - verify the running backend version matches the deployed revision
 - require the deployed frontend version and deployed backend version to match exactly
 - treat any frontend-backend version mismatch as a failed rollout state
+- treat durable app data under state/ as a failed architecture state
 `);
 
 Gateway.lazyStart.means(`
