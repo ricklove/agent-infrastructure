@@ -10,14 +10,21 @@ import {
 import { ensureCodexAppServer, runCodexTurn } from "./codex-provider.js";
 
 const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state";
+const appDataDir =
+  process.env.AGENT_CHAT_DATA_DIR?.trim() || "/home/ec2-user/workspace/data/agent-chat";
 const logPath =
   process.env.AGENT_CHAT_LOG_PATH?.trim() || `${stateDir}/logs/agent-chat-server.log`;
-const dbPath =
+const legacyDbPath =
   process.env.AGENT_CHAT_DB_PATH?.trim() || `${stateDir}/agent-chat/agent-chat.sqlite`;
 const port = Number.parseInt(process.env.AGENT_CHAT_PORT ?? "8789", 10);
+const defaultSessionCwd =
+  process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
 
 mkdirSync(dirname(logPath), { recursive: true });
-const store = new AgentChatStore(dbPath);
+const store = new AgentChatStore({
+  dataDir: appDataDir,
+  legacySqlitePath: legacyDbPath,
+});
 const sessionSockets = new Map<string, Set<Bun.ServerWebSocket<ChatSocketData>>>();
 const activeSessionRuns = new Set<string>();
 
@@ -228,6 +235,7 @@ const server = Bun.serve<ChatSocketData>({
           title?: string;
           providerKind?: AgentChatProviderKind;
           modelRef?: string;
+          cwd?: string;
           authProfile?: string | null;
           imageModelRef?: string | null;
         };
@@ -255,6 +263,7 @@ const server = Bun.serve<ChatSocketData>({
           title: payload.title,
           providerKind: payload.providerKind,
           modelRef: payload.modelRef?.trim() || provider.defaultModelRef,
+          cwd: payload.cwd?.trim() || defaultSessionCwd,
           authProfile: payload.authProfile?.trim() || provider.authProfiles[0] || null,
           imageModelRef: payload.imageModelRef?.trim() || null,
         });
@@ -272,6 +281,31 @@ const server = Bun.serve<ChatSocketData>({
       const sessionId = decodeURIComponent(sessionMatch[1]!);
       const snapshot = sessionSummary(sessionId);
       return snapshot ? jsonResponse({ ok: true, ...snapshot }) : notFound();
+    }
+
+    if (sessionMatch && request.method === "PATCH") {
+      const sessionId = decodeURIComponent(sessionMatch[1]!);
+      if (!store.getSession(sessionId)) {
+        return notFound();
+      }
+
+      return request.json().then((body: unknown) => {
+        const payload = body as {
+          cwd?: string;
+        };
+        const nextCwd = payload.cwd?.trim();
+        if (!nextCwd) {
+          return jsonResponse({ ok: false, error: "cwd required" }, 400);
+        }
+
+        const session = store.updateSessionCwd(sessionId, nextCwd);
+        broadcastSession(sessionId, {
+          type: "session.updated",
+          session,
+          messages: [],
+        });
+        return jsonResponse({ ok: true, session });
+      });
     }
 
     const messagesMatch = /^\/api\/agent-chat\/sessions\/([^/]+)\/messages$/.exec(url.pathname);

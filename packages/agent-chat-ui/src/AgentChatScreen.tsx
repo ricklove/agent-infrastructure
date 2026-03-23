@@ -1,9 +1,11 @@
 import {
   useEffect,
   useMemo,
+  useCallback,
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
 } from "react"
 
 type ProviderKind =
@@ -30,6 +32,7 @@ type SessionSummary = {
   title: string
   providerKind: ProviderKind
   modelRef: string
+  cwd: string
   authProfile: string | null
   imageModelRef: string | null
   createdAtMs: number
@@ -50,6 +53,11 @@ type SessionSnapshotResponse = {
   ok: boolean
   session: SessionSummary
   messages: SessionMessage[]
+}
+
+type SessionResponse = {
+  ok: boolean
+  session: SessionSummary
 }
 
 type SessionsResponse = {
@@ -104,6 +112,7 @@ export type AgentChatScreenProps = {
 }
 
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
+const defaultSessionCwd = "/home/ec2-user/workspace"
 
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
@@ -146,8 +155,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [composerText, setComposerText] = useState("")
   const [providerKind, setProviderKind] = useState<ProviderKind>("codex-app-server")
   const [modelRef, setModelRef] = useState("")
+  const [cwd, setCwd] = useState(defaultSessionCwd)
   const [authProfile, setAuthProfile] = useState("")
   const [imageModelRef, setImageModelRef] = useState("")
+  const [activeSessionCwd, setActiveSessionCwd] = useState("")
+  const [updatingSessionCwd, setUpdatingSessionCwd] = useState(false)
   const socketRef = useRef<WebSocket | null>(null)
 
   const activeProvider = useMemo(
@@ -167,6 +179,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setModelRef(activeProvider.defaultModelRef)
     setAuthProfile(activeProvider.authProfiles[0] ?? "")
   }, [activeProvider])
+
+  useEffect(() => {
+    setActiveSessionCwd(activeSession?.cwd ?? "")
+  }, [activeSession])
 
   useEffect(() => {
     let cancelled = false
@@ -387,6 +403,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         body: JSON.stringify({
           providerKind,
           modelRef,
+          cwd,
           authProfile: authProfile || null,
           imageModelRef: imageModelRef || null,
         }),
@@ -407,8 +424,42 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
   }
 
-  async function submitMessage(event: FormEvent<HTMLFormElement>) {
+  async function updateSessionCwd(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!activeSessionId || !activeSessionCwd.trim()) {
+      return
+    }
+
+    setUpdatingSessionCwd(true)
+    setError("")
+
+    try {
+      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          cwd: activeSessionCwd,
+        }),
+      })
+      const payload = (await response.json()) as (SessionResponse & { error?: string })
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Session update failed.")
+      }
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === payload.session.id ? payload.session : session,
+        ),
+      )
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Session update failed.")
+    } finally {
+      setUpdatingSessionCwd(false)
+    }
+  }
+
+  async function sendMessage() {
     if (!activeSessionId || !composerText.trim()) {
       return
     }
@@ -440,6 +491,24 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
   }
 
+  async function submitMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    await sendMessage()
+  }
+
+  const handleComposerKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault()
+        if (!activeSession || sending || !composerText.trim()) {
+          return
+        }
+        void sendMessage()
+      }
+    },
+    [activeSession, composerText, sending],
+  )
+
   return (
     <div className="flex h-full flex-col bg-slate-950 text-slate-100">
       <div className="border-b border-white/10 px-8 py-6">
@@ -451,7 +520,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         </h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
           This first slice makes the chat tab real: provider catalog, lazy backend,
-          canonical SQLite transcript storage, session creation, and a live session
+          canonical file-backed transcript storage, session creation, and a live session
           surface through the dashboard gateway.
         </p>
         {error ? (
@@ -493,6 +562,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 <input
                   value={modelRef}
                   onChange={(event) => setModelRef(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Working Directory
+                </span>
+                <input
+                  value={cwd}
+                  onChange={(event) => setCwd(event.target.value)}
+                  placeholder={defaultSessionCwd}
                   className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
                 />
               </label>
@@ -603,6 +684,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     <p className="mt-2 text-xs text-slate-500">
                       {session.modelRef} · {formatTime(session.updatedAtMs)}
                     </p>
+                    <p className="mt-2 truncate text-xs text-slate-500">
+                      {session.cwd}
+                    </p>
                   </button>
                 ))
               )}
@@ -620,6 +704,27 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 ? `${activeSession.providerKind} · ${activeSession.modelRef}`
                 : "Select a session to view its canonical transcript."}
             </p>
+            {activeSession ? (
+              <form onSubmit={updateSessionCwd} className="mt-4 flex gap-3">
+                <input
+                  value={activeSessionCwd}
+                  onChange={(event) => setActiveSessionCwd(event.target.value)}
+                  placeholder={defaultSessionCwd}
+                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={
+                    updatingSessionCwd ||
+                    !activeSessionCwd.trim() ||
+                    activeSessionCwd.trim() === activeSession.cwd
+                  }
+                  className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                >
+                  {updatingSessionCwd ? "Saving..." : "Set CWD"}
+                </button>
+              </form>
+            ) : null}
             <p className="mt-2 text-xs uppercase tracking-[0.2em] text-slate-500">
               run {runStatus}
             </p>
@@ -688,6 +793,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             <textarea
               value={composerText}
               onChange={(event) => setComposerText(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
               rows={4}
               placeholder={
                 activeSession
@@ -699,7 +805,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             />
             <div className="mt-3 flex items-center justify-between">
               <p className="text-xs text-slate-500">
-                Codex is wired through app-server now. The other provider adapters are still pending.
+                Ctrl+Enter sends. Codex is wired through app-server now. The other provider adapters are still pending.
               </p>
               <button
                 type="submit"

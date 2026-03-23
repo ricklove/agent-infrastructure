@@ -1,7 +1,15 @@
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import type { AgentChatProviderKind } from "./catalog.js";
 
 export type StoredSession = {
@@ -9,6 +17,7 @@ export type StoredSession = {
   title: string;
   providerKind: AgentChatProviderKind;
   modelRef: string;
+  cwd: string;
   authProfile: string | null;
   imageModelRef: string | null;
   providerThreadId: string | null;
@@ -31,220 +40,364 @@ export type CreateSessionInput = {
   title?: string;
   providerKind: AgentChatProviderKind;
   modelRef: string;
+  cwd: string;
   authProfile?: string | null;
   imageModelRef?: string | null;
 };
 
-export class AgentChatStore {
-  private readonly db: Database;
+type AgentChatStoreOptions = {
+  dataDir: string;
+  legacySqlitePath?: string | null;
+};
 
-  constructor(dbPath: string) {
-    mkdirSync(dirname(dbPath), { recursive: true });
-    if (!existsSync(dbPath)) {
-      mkdirSync(dirname(dbPath), { recursive: true });
+type SessionMetadata = Omit<StoredSession, "preview" | "messageCount">;
+
+function safeJsonParse<T>(raw: string): T {
+  return JSON.parse(raw) as T;
+}
+
+function summarizePreview(messages: StoredMessage[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const textBlock = message?.content.find((block) => block.type === "text");
+    const preview = textBlock?.type === "text" ? textBlock.text.trim() : "";
+    if (preview) {
+      return preview;
     }
-    this.db = new Database(dbPath, { create: true });
-    this.migrate();
   }
+  return null;
+}
 
-  private migrate() {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        provider_kind TEXT NOT NULL,
-        model_ref TEXT NOT NULL,
-        auth_profile TEXT,
-        image_model_ref TEXT,
-        provider_thread_id TEXT,
-        provider_thread_path TEXT,
-        created_at_ms INTEGER NOT NULL,
-        updated_at_ms INTEGER NOT NULL
-      );
+function sessionSummary(
+  metadata: SessionMetadata,
+  messages: StoredMessage[],
+): StoredSession {
+  return {
+    ...metadata,
+    preview: summarizePreview(messages),
+    messageCount: messages.length,
+  };
+}
 
-      CREATE TABLE IF NOT EXISTS messages (
-        id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        role TEXT NOT NULL,
-        content_json TEXT NOT NULL,
-        created_at_ms INTEGER NOT NULL
-      );
+export class AgentChatStore {
+  private readonly dataDir: string;
+  private readonly sessionsDir: string;
+  private readonly sessionCache = new Map<string, StoredSession>();
+  private readonly messageCache = new Map<string, StoredMessage[]>();
 
-      CREATE INDEX IF NOT EXISTS messages_session_id_created_at_idx
-      ON messages(session_id, created_at_ms);
-    `);
-
-    const sessionColumns = this.db
-      .query(`PRAGMA table_info(sessions)`)
-      .all() as Array<Record<string, unknown>>;
-    const existingColumnNames = new Set(
-      sessionColumns.map((column) => String(column.name)),
-    );
-
-    if (!existingColumnNames.has("provider_thread_id")) {
-      this.db.exec(`ALTER TABLE sessions ADD COLUMN provider_thread_id TEXT`);
-    }
-    if (!existingColumnNames.has("provider_thread_path")) {
-      this.db.exec(`ALTER TABLE sessions ADD COLUMN provider_thread_path TEXT`);
-    }
+  constructor(options: AgentChatStoreOptions) {
+    this.dataDir = options.dataDir;
+    this.sessionsDir = join(this.dataDir, "sessions");
+    mkdirSync(this.sessionsDir, { recursive: true });
+    this.importLegacySqliteIfNeeded(options.legacySqlitePath ?? null);
+    this.loadCache();
   }
 
   listSessions(): StoredSession[] {
-    const query = this.db.query(`
-      SELECT
-        s.id,
-        s.title,
-        s.provider_kind,
-        s.model_ref,
-        s.auth_profile,
-        s.image_model_ref,
-        s.provider_thread_id,
-        s.provider_thread_path,
-        s.created_at_ms,
-        s.updated_at_ms,
-        (
-          SELECT json_extract(m.content_json, '$[0].text')
-          FROM messages m
-          WHERE m.session_id = s.id
-          ORDER BY m.created_at_ms DESC
-          LIMIT 1
-        ) AS preview,
-        (
-          SELECT COUNT(*)
-          FROM messages m
-          WHERE m.session_id = s.id
-        ) AS message_count
-      FROM sessions s
-      ORDER BY s.updated_at_ms DESC, s.created_at_ms DESC
-    `);
-
-    return query.all().map((row) => {
-      const sessionRow = row as Record<string, unknown>;
-      return {
-        id: String(sessionRow.id),
-        title: String(sessionRow.title),
-        providerKind: sessionRow.provider_kind as AgentChatProviderKind,
-        modelRef: String(sessionRow.model_ref),
-        authProfile: sessionRow.auth_profile ? String(sessionRow.auth_profile) : null,
-        imageModelRef: sessionRow.image_model_ref ? String(sessionRow.image_model_ref) : null,
-        providerThreadId: sessionRow.provider_thread_id
-          ? String(sessionRow.provider_thread_id)
-          : null,
-        providerThreadPath: sessionRow.provider_thread_path
-          ? String(sessionRow.provider_thread_path)
-          : null,
-        createdAtMs: Number(sessionRow.created_at_ms),
-        updatedAtMs: Number(sessionRow.updated_at_ms),
-        preview: sessionRow.preview ? String(sessionRow.preview) : null,
-        messageCount: Number(sessionRow.message_count),
-      };
+    return Array.from(this.sessionCache.values()).sort((left, right) => {
+      if (right.updatedAtMs !== left.updatedAtMs) {
+        return right.updatedAtMs - left.updatedAtMs;
+      }
+      return right.createdAtMs - left.createdAtMs;
     });
   }
 
   getSession(sessionId: string): StoredSession | null {
-    return this.listSessions().find((session) => session.id === sessionId) ?? null;
+    return this.sessionCache.get(sessionId) ?? null;
   }
 
   createSession(input: CreateSessionInput): StoredSession {
     const now = Date.now();
     const sessionId = randomUUID();
-    const title = input.title?.trim() || "New chat";
+    const metadata: SessionMetadata = {
+      id: sessionId,
+      title: input.title?.trim() || "New chat",
+      providerKind: input.providerKind,
+      modelRef: input.modelRef,
+      cwd: input.cwd,
+      authProfile: input.authProfile ?? null,
+      imageModelRef: input.imageModelRef ?? null,
+      providerThreadId: null,
+      providerThreadPath: null,
+      createdAtMs: now,
+      updatedAtMs: now,
+    };
+    const messages: StoredMessage[] = [];
 
-    this.db
-      .query(`
-        INSERT INTO sessions (
-          id, title, provider_kind, model_ref, auth_profile, image_model_ref, provider_thread_id, provider_thread_path, created_at_ms, updated_at_ms
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(
-        sessionId,
-        title,
-        input.providerKind,
-        input.modelRef,
-        input.authProfile ?? null,
-        input.imageModelRef ?? null,
-        null,
-        null,
-        now,
-        now,
-      );
-
-    return this.getSession(sessionId)!;
+    this.writeSessionFiles(metadata, messages);
+    const summary = sessionSummary(metadata, messages);
+    this.sessionCache.set(sessionId, summary);
+    this.messageCache.set(sessionId, messages);
+    return summary;
   }
 
   listMessages(sessionId: string): StoredMessage[] {
-    const query = this.db.query(`
-      SELECT id, session_id, role, content_json, created_at_ms
-      FROM messages
-      WHERE session_id = ?
-      ORDER BY created_at_ms ASC, id ASC
-    `);
-
-    return query.all(sessionId).map((row) => {
-      const messageRow = row as Record<string, unknown>;
-      return {
-        id: String(messageRow.id),
-        sessionId: String(messageRow.session_id),
-        role: messageRow.role as StoredMessage["role"],
-        content: JSON.parse(String(messageRow.content_json)) as StoredMessage["content"],
-        createdAtMs: Number(messageRow.created_at_ms),
-      };
-    });
+    return [...(this.messageCache.get(sessionId) ?? [])];
   }
 
   appendMessage(
     sessionId: string,
     input: { role: StoredMessage["role"]; content: StoredMessage["content"] },
   ): StoredMessage {
-    const now = Date.now();
-    const messageId = randomUUID();
-    this.db
-      .query(`
-        INSERT INTO messages (id, session_id, role, content_json, created_at_ms)
-        VALUES (?, ?, ?, ?, ?)
-      `)
-      .run(messageId, sessionId, input.role, JSON.stringify(input.content), now);
+    const session = this.sessionCache.get(sessionId);
+    if (!session) {
+      throw new Error(`Unknown session ${sessionId}`);
+    }
 
-    this.db
-      .query(`UPDATE sessions SET updated_at_ms = ? WHERE id = ?`)
-      .run(now, sessionId);
-
-    return {
-      id: messageId,
+    const message: StoredMessage = {
+      id: randomUUID(),
       sessionId,
       role: input.role,
       content: input.content,
-      createdAtMs: now,
+      createdAtMs: Date.now(),
     };
+
+    const nextMessages = [...(this.messageCache.get(sessionId) ?? []), message];
+    this.messageCache.set(sessionId, nextMessages);
+
+    const nextSession: StoredSession = {
+      ...session,
+      updatedAtMs: message.createdAtMs,
+      preview: summarizePreview(nextMessages),
+      messageCount: nextMessages.length,
+    };
+
+    this.writeSessionMetadata(nextSession);
+    appendFileSync(this.messagesPath(sessionId), `${JSON.stringify(message)}\n`);
+    this.sessionCache.set(sessionId, nextSession);
+    return message;
   }
 
   updateSessionTitle(sessionId: string, title: string): StoredSession | null {
+    const current = this.sessionCache.get(sessionId);
     const nextTitle = title.trim();
-    if (!nextTitle) {
-      return this.getSession(sessionId);
+    if (!current || !nextTitle) {
+      return current ?? null;
     }
 
-    const now = Date.now();
-    this.db
-      .query(`UPDATE sessions SET title = ?, updated_at_ms = ? WHERE id = ?`)
-      .run(nextTitle, now, sessionId);
-
-    return this.getSession(sessionId);
+    const nextSession: StoredSession = {
+      ...current,
+      title: nextTitle,
+      updatedAtMs: Date.now(),
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
+    return nextSession;
   }
 
   updateProviderThread(
     sessionId: string,
     input: { threadId: string | null; threadPath: string | null },
   ): StoredSession | null {
-    const now = Date.now();
-    this.db
-      .query(`
-        UPDATE sessions
-        SET provider_thread_id = ?, provider_thread_path = ?, updated_at_ms = ?
-        WHERE id = ?
-      `)
-      .run(input.threadId, input.threadPath, now, sessionId);
+    const current = this.sessionCache.get(sessionId);
+    if (!current) {
+      return null;
+    }
 
-    return this.getSession(sessionId);
+    const nextSession: StoredSession = {
+      ...current,
+      providerThreadId: input.threadId,
+      providerThreadPath: input.threadPath,
+      updatedAtMs: Date.now(),
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
+    return nextSession;
+  }
+
+  updateSessionCwd(sessionId: string, cwd: string): StoredSession | null {
+    const current = this.sessionCache.get(sessionId);
+    const nextCwd = cwd.trim();
+    if (!current || !nextCwd) {
+      return current ?? null;
+    }
+
+    const nextSession: StoredSession = {
+      ...current,
+      cwd: nextCwd,
+      updatedAtMs: Date.now(),
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
+    return nextSession;
+  }
+
+  private loadCache() {
+    this.sessionCache.clear();
+    this.messageCache.clear();
+
+    for (const sessionId of this.listSessionDirectories()) {
+      const metadata = this.readSessionMetadata(sessionId);
+      const messages = this.readMessages(sessionId);
+      const summary = sessionSummary(metadata, messages);
+      this.sessionCache.set(sessionId, summary);
+      this.messageCache.set(sessionId, messages);
+    }
+  }
+
+  private listSessionDirectories() {
+    if (!existsSync(this.sessionsDir)) {
+      return [];
+    }
+
+    return readdirSync(this.sessionsDir).filter((entry) => {
+      try {
+        return statSync(join(this.sessionsDir, entry)).isDirectory();
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  private sessionDir(sessionId: string) {
+    return join(this.sessionsDir, sessionId);
+  }
+
+  private sessionMetadataPath(sessionId: string) {
+    return join(this.sessionDir(sessionId), "session.json");
+  }
+
+  private messagesPath(sessionId: string) {
+    return join(this.sessionDir(sessionId), "messages.jsonl");
+  }
+
+  private writeSessionFiles(metadata: SessionMetadata, messages: StoredMessage[]) {
+    mkdirSync(this.sessionDir(metadata.id), { recursive: true });
+    mkdirSync(dirname(this.sessionMetadataPath(metadata.id)), { recursive: true });
+    mkdirSync(dirname(this.messagesPath(metadata.id)), { recursive: true });
+    writeFileSync(this.sessionMetadataPath(metadata.id), `${JSON.stringify(metadata, null, 2)}\n`);
+    const lines = messages.map((message) => JSON.stringify(message)).join("\n");
+    writeFileSync(this.messagesPath(metadata.id), lines ? `${lines}\n` : "");
+  }
+
+  private writeSessionMetadata(session: StoredSession) {
+    const metadata: SessionMetadata = {
+      id: session.id,
+      title: session.title,
+      providerKind: session.providerKind,
+      modelRef: session.modelRef,
+      cwd: session.cwd,
+      authProfile: session.authProfile,
+      imageModelRef: session.imageModelRef,
+      providerThreadId: session.providerThreadId,
+      providerThreadPath: session.providerThreadPath,
+      createdAtMs: session.createdAtMs,
+      updatedAtMs: session.updatedAtMs,
+    };
+    mkdirSync(this.sessionDir(session.id), { recursive: true });
+    mkdirSync(dirname(this.sessionMetadataPath(session.id)), { recursive: true });
+    writeFileSync(this.sessionMetadataPath(session.id), `${JSON.stringify(metadata, null, 2)}\n`);
+  }
+
+  private readSessionMetadata(sessionId: string): SessionMetadata {
+    return safeJsonParse<SessionMetadata>(readFileSync(this.sessionMetadataPath(sessionId), "utf8"));
+  }
+
+  private readMessages(sessionId: string): StoredMessage[] {
+    const path = this.messagesPath(sessionId);
+    if (!existsSync(path)) {
+      return [];
+    }
+
+    const raw = readFileSync(path, "utf8");
+    return raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => safeJsonParse<StoredMessage>(line))
+      .sort((left, right) => {
+        if (left.createdAtMs !== right.createdAtMs) {
+          return left.createdAtMs - right.createdAtMs;
+        }
+        return left.id.localeCompare(right.id);
+      });
+  }
+
+  private importLegacySqliteIfNeeded(legacySqlitePath: string | null) {
+    if (!legacySqlitePath || !existsSync(legacySqlitePath)) {
+      return;
+    }
+
+    if (this.listSessionDirectories().length > 0) {
+      return;
+    }
+
+    const legacyDb = new Database(legacySqlitePath, { create: false, readonly: true });
+
+    try {
+      const tables = new Set(
+        (legacyDb.query(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as Array<{
+          name: string;
+        }>).map((row) => row.name),
+      );
+
+      if (!tables.has("sessions") || !tables.has("messages")) {
+        return;
+      }
+
+      const sessionColumns = new Set(
+        (
+          legacyDb.query(`PRAGMA table_info(sessions)`).all() as Array<{
+            name: string;
+          }>
+        ).map((row) => row.name),
+      );
+      const legacyHasCwd = sessionColumns.has("cwd");
+
+      const sessionRows = legacyDb.query(`
+        SELECT
+          id,
+          title,
+          provider_kind,
+          model_ref,
+          ${legacyHasCwd ? "cwd," : "'/home/ec2-user/workspace' AS cwd,"}
+          auth_profile,
+          image_model_ref,
+          provider_thread_id,
+          provider_thread_path,
+          created_at_ms,
+          updated_at_ms
+        FROM sessions
+        ORDER BY created_at_ms ASC, id ASC
+      `).all() as Array<Record<string, unknown>>;
+
+      const messageQuery = legacyDb.query(`
+        SELECT id, session_id, role, content_json, created_at_ms
+        FROM messages
+        WHERE session_id = ?
+        ORDER BY created_at_ms ASC, id ASC
+      `);
+
+      for (const row of sessionRows) {
+        const metadata: SessionMetadata = {
+          id: String(row.id),
+          title: String(row.title),
+          providerKind: row.provider_kind as AgentChatProviderKind,
+          modelRef: String(row.model_ref),
+          cwd: row.cwd ? String(row.cwd) : "/home/ec2-user/workspace",
+          authProfile: row.auth_profile ? String(row.auth_profile) : null,
+          imageModelRef: row.image_model_ref ? String(row.image_model_ref) : null,
+          providerThreadId: row.provider_thread_id ? String(row.provider_thread_id) : null,
+          providerThreadPath: row.provider_thread_path ? String(row.provider_thread_path) : null,
+          createdAtMs: Number(row.created_at_ms),
+          updatedAtMs: Number(row.updated_at_ms),
+        };
+
+        const messages = messageQuery.all(metadata.id).map((messageRow) => {
+          const rowObject = messageRow as Record<string, unknown>;
+          return {
+            id: String(rowObject.id),
+            sessionId: String(rowObject.session_id),
+            role: rowObject.role as StoredMessage["role"],
+            content: safeJsonParse<StoredMessage["content"]>(String(rowObject.content_json)),
+            createdAtMs: Number(rowObject.created_at_ms),
+          } satisfies StoredMessage;
+        });
+
+        this.writeSessionFiles(metadata, messages);
+      }
+    } finally {
+      legacyDb.close();
+    }
   }
 }

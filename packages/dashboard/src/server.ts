@@ -950,21 +950,6 @@ const server = Bun.serve<DashboardWsData>({
         return unauthorized;
       }
 
-      try {
-        await ensureBackend(wsBackend);
-      } catch (error) {
-        return jsonResponse(
-          {
-            ok: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : "failed to start agent graph server",
-          },
-          502,
-        );
-      }
-
       if (
         server.upgrade(request, {
           data: {
@@ -1030,31 +1015,50 @@ const server = Bun.serve<DashboardWsData>({
         } catch {}
         return;
       }
-      const upstream = new WebSocket(proxyData.upstreamUrl || backend.wsUrl);
-      proxyData.upstream = upstream;
-
-      upstream.addEventListener("open", () => {
-        for (const message of proxyData.queue) {
-          upstream.send(message);
+      void (async () => {
+        try {
+          await ensureBackend(backend);
+        } catch {
+          try {
+            ws.close();
+          } catch {}
+          return;
         }
-        proxyData.queue = [];
-      });
 
-      upstream.addEventListener("message", (event) => {
-        ws.send(String(event.data));
-      });
+        const upstreamUrl = proxyData.upstreamUrl || backend.wsUrl;
+        if (!upstreamUrl) {
+          try {
+            ws.close();
+          } catch {}
+          return;
+        }
 
-      upstream.addEventListener("close", () => {
-        try {
-          ws.close();
-        } catch {}
-      });
+        const upstream = new WebSocket(upstreamUrl);
+        proxyData.upstream = upstream;
 
-      upstream.addEventListener("error", () => {
-        try {
-          ws.close();
-        } catch {}
-      });
+        upstream.addEventListener("open", () => {
+          for (const message of proxyData.queue) {
+            upstream.send(message);
+          }
+          proxyData.queue = [];
+        });
+
+        upstream.addEventListener("message", (event) => {
+          ws.send(String(event.data));
+        });
+
+        upstream.addEventListener("close", () => {
+          try {
+            ws.close();
+          } catch {}
+        });
+
+        upstream.addEventListener("error", () => {
+          try {
+            ws.close();
+          } catch {}
+        });
+      })();
     },
     message(ws, message) {
       if (ws.data.kind === "dashboard-status") {

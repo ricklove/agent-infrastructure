@@ -2,6 +2,9 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { StoredSession } from "./store.js";
 
+const defaultSessionCwd =
+  process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
+
 type JsonRpcResponse = {
   id?: number;
   result?: Record<string, unknown>;
@@ -221,6 +224,7 @@ export async function runCodexTurn(
     });
 
     const model = parseCodexModel(session.modelRef);
+    const sessionCwd = session.cwd.trim() || defaultSessionCwd;
 
     if (currentThreadId) {
       try {
@@ -229,7 +233,7 @@ export async function runCodexTurn(
           model,
           approvalPolicy: "never",
           sandbox: "danger-full-access",
-          cwd: "/home/ec2-user/workspace/projects/agent-infrastructure",
+          cwd: sessionCwd,
           persistExtendedHistory: false,
         });
         const thread = response.thread as Record<string, unknown> | undefined;
@@ -246,7 +250,7 @@ export async function runCodexTurn(
         model,
         approvalPolicy: "never",
         sandbox: "danger-full-access",
-        cwd: "/home/ec2-user/workspace/projects/agent-infrastructure",
+        cwd: sessionCwd,
         experimentalRawEvents: false,
         persistExtendedHistory: false,
         serviceName: "agent-chat-server",
