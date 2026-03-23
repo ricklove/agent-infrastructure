@@ -948,7 +948,7 @@ export function AgentSwarmScreen({
                     </div>
                   </div>
                 </div>
-                <div ref={chartMeasureRef} className="mt-4">
+                <div ref={chartMeasureRef} className="mt-4 w-full overflow-hidden">
                   <svg
                     className="block"
                     height={timelineCharts.layout.height}
@@ -1049,7 +1049,7 @@ export function AgentSwarmScreen({
                 >
                   <h3 className="text-sm font-semibold text-white">{chart.title}</h3>
                   <p className="mt-1 text-xs text-slate-500">{chart.subtitle}</p>
-                  <div className="mt-4 overflow-x-auto">
+                  <div className="mt-4 w-full overflow-hidden">
                     <svg
                       className="block"
                       height={timelineCharts.layout.height}
