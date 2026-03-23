@@ -5,7 +5,7 @@
   "documents": [
     "./agent-chat.agentish.ts"
   ],
-  "revision": 719,
+  "revision": 738,
   "layers": [
     {
       "id": "layer-overview",
@@ -137,8 +137,8 @@
         "doc-agent-chat-agentish-ts-participant-system"
       ],
       "visible": true,
-      "x": 598,
-      "y": 196,
+      "x": 1228,
+      "y": 273,
       "derivedFromLayerId": null
     }
   ],
@@ -148,24 +148,24 @@
       "y": -974.2285521020909
     },
     "doc-agent-chat-agentish-ts-agentish::layer-overview": {
-      "x": -1792.9484304673656,
-      "y": 2662.8319458286487
+      "x": -1792.9483197792413,
+      "y": 2662.6469144532675
     },
     "doc-agent-chat-agentish-ts-agent-chat::layer-overview": {
-      "x": -1704.1283534873828,
-      "y": 4076.577143358674
+      "x": -1937.6970190034463,
+      "y": 4044.6688557198677
     },
     "doc-agent-chat-agentish-ts-workspace-shell::layer-overview": {
       "x": -725.9299358892961,
       "y": 12.026276642117864
     },
     "doc-agent-chat-agentish-ts-workspace-entity::layer-overview": {
-      "x": -3224.104024579236,
+      "x": -3230.7430408893483,
       "y": -2467.379319711318
     },
     "doc-agent-chat-agentish-ts-workspace-artifact::layer-overview": {
-      "x": -267.99413256272135,
-      "y": -56.862227152835686
+      "x": -268.0128459716883,
+      "y": -57.06729593619818
     },
     "doc-agent-chat-agentish-ts-chat-session::layer-overview": {
       "x": -162.9021490447657,
@@ -216,31 +216,31 @@
       "y": 1559.2419818342207
     },
     "doc-agent-chat-agentish-ts-provider-adapter::layer-overview": {
-      "x": -3033.8412333419674,
-      "y": 2937.742033517386
+      "x": -3031.7182359214585,
+      "y": 2937.786324190373
     },
     "doc-agent-chat-agentish-ts-provider-binding::layer-overview": {
       "x": -3486.8072531669973,
       "y": 3087.807171721676
     },
     "doc-agent-chat-agentish-ts-provider-codex::layer-overview": {
-      "x": -2683.8412333419674,
-      "y": 2945.742033517386
+      "x": -2681.7182359214585,
+      "y": 2945.786324190373
     },
     "doc-agent-chat-agentish-ts-provider-thread::layer-overview": {
-      "x": -2337.8412333419674,
-      "y": 2945.742033517386
+      "x": -2335.7182359214585,
+      "y": 2945.786324190373
     },
     "doc-agent-chat-agentish-ts-provider-run::layer-overview": {
-      "x": -4710.558205446052,
+      "x": -4732.251763679915,
       "y": 1733.7226223158998
     },
     "doc-agent-chat-agentish-ts-provider-event::layer-overview": {
-      "x": -3317.143275501224,
+      "x": -3301.7432141120344,
       "y": 2410.8102264929475
     },
     "doc-agent-chat-agentish-ts-provider-approval::layer-overview": {
-      "x": -3665.143275501224,
+      "x": -3649.7432141120344,
       "y": 2402.8102264929475
     },
     "doc-agent-chat-agentish-ts-compaction-mode::layer-overview": {
@@ -248,7 +248,7 @@
       "y": 1537.622954791231
     },
     "doc-agent-chat-agentish-ts-compaction-threshold::layer-overview": {
-      "x": -4173.565461781329,
+      "x": -4173.319458047434,
       "y": -2419.090134447171
     },
     "doc-agent-chat-agentish-ts-compaction-native::layer-overview": {
@@ -256,12 +256,12 @@
       "y": 1725.706949883679
     },
     "doc-agent-chat-agentish-ts-compaction-agentish::layer-overview": {
-      "x": -3732.4911102376586,
-      "y": -1586.4797546924044
+      "x": -3732.511284468399,
+      "y": -1585.758439098915
     },
     "doc-agent-chat-agentish-ts-compaction-artifact::layer-overview": {
-      "x": -3411.3812084891865,
-      "y": -2646.5553094807115
+      "x": -3411.4234681592575,
+      "y": -2646.895715117135
     },
     "doc-agent-chat-agentish-ts-compaction-living-context::layer-overview": {
       "x": 710.8608866468787,
@@ -284,112 +284,112 @@
       "y": 1932.9690633886657
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-0::layer-overview": {
-      "x": 71.28124011376724,
-      "y": 3651.5765590702895
+      "x": 34.68342344630588,
+      "y": 3651.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-1::layer-overview": {
-      "x": -624.7187598862328,
-      "y": 3641.5765590702895
+      "x": -661.3165765536942,
+      "y": 3641.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-2::layer-overview": {
-      "x": -972.7187598862328,
-      "y": 3631.5765590702895
+      "x": -1009.3165765536942,
+      "y": 3631.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-3::layer-overview": {
-      "x": 419.28124011376724,
-      "y": 3651.5765590702895
+      "x": 382.6834234463058,
+      "y": 3651.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-4::layer-overview": {
-      "x": -276.71875988623276,
-      "y": 3641.5765590702895
+      "x": -313.3165765536941,
+      "y": 3641.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-5::layer-overview": {
-      "x": 767.2812401137672,
-      "y": 3651.5765590702895
+      "x": 730.6834234463058,
+      "y": 3651.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-6::layer-overview": {
-      "x": 419.28124011376724,
-      "y": 4025.5765590702895
+      "x": 382.6834234463058,
+      "y": 4025.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-7::layer-overview": {
-      "x": 767.2812401137672,
-      "y": 4025.5765590702895
+      "x": 730.6834234463058,
+      "y": 4025.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-8::layer-overview": {
-      "x": 71.28124011376724,
-      "y": 3823.5765590702895
+      "x": 34.68342344630588,
+      "y": 3823.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-9::layer-overview": {
-      "x": 419.28124011376724,
-      "y": 3833.5765590702895
+      "x": 382.6834234463058,
+      "y": 3833.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-10::layer-overview": {
-      "x": 767.2812401137672,
-      "y": 3833.5765590702895
+      "x": 730.6834234463058,
+      "y": 3833.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-0::layer-overview": {
-      "x": -624.7187598862328,
-      "y": 3813.5765590702895
+      "x": -661.3165765536942,
+      "y": 3813.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-1::layer-overview": {
-      "x": 71.28124011376724,
-      "y": 4207.5765590702895
+      "x": 34.68342344630588,
+      "y": 4207.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-2::layer-overview": {
-      "x": 71.28124011376724,
-      "y": 4015.5765590702895
+      "x": 34.68342344630588,
+      "y": 4015.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-3::layer-overview": {
-      "x": -1320.7187598862326,
-      "y": 3995.5765590702895
+      "x": -1357.3165765536942,
+      "y": 3995.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-4::layer-overview": {
-      "x": -624.7187598862328,
-      "y": 4005.5765590702895
+      "x": -661.3165765536942,
+      "y": 4005.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-5::layer-overview": {
-      "x": -1320.7187598862326,
-      "y": 4197.5765590702895
+      "x": -1357.3165765536942,
+      "y": 4197.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-6::layer-overview": {
-      "x": -276.71875988623276,
-      "y": 4015.5765590702895
+      "x": -313.3165765536941,
+      "y": 4015.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-7::layer-overview": {
-      "x": 419.28124011376724,
-      "y": 4207.5765590702895
+      "x": 382.6834234463058,
+      "y": 4207.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-8::layer-overview": {
-      "x": -972.7187598862328,
-      "y": 4197.5765590702895
+      "x": -1009.3165765536942,
+      "y": 4197.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-compaction-native-means-0::layer-overview": {
       "x": -630.2095994675539,
-      "y": 1652.5547336224229
+      "y": 1652.8426143689458
     },
     "detail-doc-agent-chat-agentish-ts-compaction-native-means-1::layer-overview": {
       "x": -275.70959946755386,
-      "y": 1652.5547336224229
+      "y": 1652.8426143689458
     },
     "detail-doc-agent-chat-agentish-ts-compaction-native-means-2::layer-overview": {
       "x": -311.20959946755386,
-      "y": 1784.5547336224229
+      "y": 1784.8426143689458
     },
     "detail-doc-agent-chat-agentish-ts-compaction-agentish-means-0::layer-overview": {
-      "x": -3254.4497865758403,
-      "y": -1649.442651098184
+      "x": -3254.436259083695,
+      "y": -1649.7992507374515
     },
     "detail-doc-agent-chat-agentish-ts-compaction-agentish-means-1::layer-overview": {
-      "x": -2926.4497865758403,
-      "y": -1649.442651098184
+      "x": -2926.436259083695,
+      "y": -1649.7992507374515
     },
     "detail-doc-agent-chat-agentish-ts-compaction-agentish-means-2::layer-overview": {
-      "x": -2897.4497865758403,
-      "y": -1517.442651098184
+      "x": -2897.436259083695,
+      "y": -1517.7992507374515
     },
     "detail-doc-agent-chat-agentish-ts-compaction-agentish-means-3::layer-overview": {
-      "x": -3274.4497865758403,
-      "y": -1527.442651098184
+      "x": -3274.436259083695,
+      "y": -1527.7992507374515
     },
     "detail-doc-agent-chat-agentish-ts-user-creates-0::layer-overview": {
       "x": 424.28911800580295,
@@ -404,31 +404,31 @@
       "y": 1961.4486522549691
     },
     "detail-doc-agent-chat-agentish-ts-workspace-entity-references-0::layer-overview": {
-      "x": -2418.0501957892284,
+      "x": -2414.2089748736144,
       "y": -2459.6892017738014
     },
     "detail-doc-agent-chat-agentish-ts-workspace-entity-references-1::layer-overview": {
-      "x": -2766.0501957892284,
+      "x": -2762.2089748736144,
       "y": -2469.6892017738014
     },
     "detail-doc-agent-chat-agentish-ts-user-adds-0::layer-overview": {
-      "x": -6824.2298726107,
-      "y": -1156.1680739373846
+      "x": -6882.128291651181,
+      "y": -1156.2757629423031
     },
     "detail-doc-agent-chat-agentish-ts-user-switches-0::layer-overview": {
-      "x": -5780.2298726107,
-      "y": -1136.1680739373846
+      "x": -5858.128291651181,
+      "y": -1306.2757629423031
     },
     "detail-doc-agent-chat-agentish-ts-user-switches-1::layer-overview": {
-      "x": -6476.2298726107,
-      "y": -1146.1680739373846
+      "x": -6539.128291651181,
+      "y": -1317.5257629423031
     },
     "detail-doc-agent-chat-agentish-ts-provider-binding-targets-0::layer-overview": {
-      "x": -2003.8412333419674,
-      "y": 2945.742033517386
+      "x": -2001.7182359214585,
+      "y": 2945.786324190373
     },
     "detail-doc-agent-chat-agentish-ts-provider-run-emits-0::layer-overview": {
-      "x": -4296.717972883288,
+      "x": -4292.532661276165,
       "y": 1714.040660258793
     },
     "detail-doc-agent-chat-agentish-ts-chat-session-uses-0::layer-overview": {
@@ -440,64 +440,64 @@
       "y": -2560.2636713284564
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-hydrates-0::layer-overview": {
-      "x": -624.7187598862328,
-      "y": 4369.5765590702895
+      "x": -661.3165765536942,
+      "y": 4369.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-user-inspects-0::layer-overview": {
-      "x": -6128.2298726107,
-      "y": -1146.1680739373846
+      "x": -6197.378291651181,
+      "y": -1316.2757629423031
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-prescribes-0::layer-overview": {
-      "x": 767.2812401137672,
-      "y": 4207.5765590702895
+      "x": 730.6834234463058,
+      "y": 4207.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-prescribes-1::layer-overview": {
-      "x": -276.71875988623276,
-      "y": 4197.5765590702895
+      "x": -313.3165765536941,
+      "y": 4197.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-prescribes-2::layer-overview": {
-      "x": -624.7187598862328,
-      "y": 4197.5765590702895
+      "x": -661.3165765536942,
+      "y": 4197.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-prescribes-3::layer-overview": {
-      "x": -276.71875988623276,
-      "y": 4369.5765590702895
+      "x": -313.3165765536941,
+      "y": 4369.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-prescribes-4::layer-overview": {
-      "x": -972.7187598862328,
-      "y": 4359.5765590702895
+      "x": -1009.3165765536942,
+      "y": 4359.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-prescribes-5::layer-overview": {
-      "x": -1320.7187598862326,
-      "y": 4359.5765590702895
+      "x": -1357.3165765536942,
+      "y": 4359.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-uses-files-0::layer-overview": {
-      "x": 71.28124011376724,
-      "y": 4369.5765590702895
+      "x": 34.68342344630588,
+      "y": 4369.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-uses-files-1::layer-overview": {
-      "x": 458.78124011376724,
-      "y": 4379.5765590702895
+      "x": 422.1834234463058,
+      "y": 4379.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-uses-files-2::layer-overview": {
-      "x": 792.2812401137672,
-      "y": 4379.5765590702895
+      "x": 755.6834234463058,
+      "y": 4379.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-uses-files-3::layer-overview": {
-      "x": -1281.2187598862326,
-      "y": 4521.5765590702895
+      "x": -1317.8165765536942,
+      "y": 4521.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-uses-files-4::layer-overview": {
-      "x": -923.7187598862328,
-      "y": 4521.5765590702895
+      "x": -960.3165765536942,
+      "y": 4521.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-uses-files-5::layer-overview": {
-      "x": -591.2187598862328,
-      "y": 4521.5765590702895
+      "x": -627.8165765536942,
+      "y": 4521.51592537342
     },
     "doc-agent-chat-agentish-ts-context-packet::layer-overview": {
-      "x": -1434.2645384701007,
-      "y": 3356.993923771819
+      "x": -1434.0790133897813,
+      "y": 3357.598755833216
     },
     "doc-agent-chat-agentish-ts-context-active::layer-overview": {
       "x": -1299.3471633442869,
@@ -508,204 +508,204 @@
       "y": 487.81479573926674
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-11::layer-overview": {
-      "x": -1320.7187598862326,
-      "y": 3631.5765590702895
+      "x": -1357.3165765536942,
+      "y": 3631.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-enforces-12::layer-overview": {
-      "x": -276.71875988623276,
-      "y": 3823.5765590702895
+      "x": -313.3165765536941,
+      "y": 3823.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-defines-9::layer-overview": {
-      "x": -1320.7187598862326,
-      "y": 3813.5765590702895
+      "x": -1357.3165765536942,
+      "y": 3813.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-prescribes-6::layer-overview": {
-      "x": -972.7187598862328,
-      "y": 3813.5765590702895
+      "x": -1009.3165765536942,
+      "y": 3813.51592537342
     },
     "detail-doc-agent-chat-agentish-ts-agent-chat-prescribes-7::layer-overview": {
-      "x": -972.7187598862328,
-      "y": 4005.5765590702895
+      "x": -1009.3165765536942,
+      "y": 4005.51592537342
     },
     "doc-agent-chat-agentish-ts-session-conversation::layer-overview": {
       "x": -4702.370620769723,
       "y": -3707.016722904473
     },
     "doc-agent-chat-agentish-ts-session-transcript::layer-overview": {
-      "x": -5761.9813241964,
-      "y": -2165.212308130743
+      "x": -5707.439714786877,
+      "y": -2185.335044094319
     },
     "doc-agent-chat-agentish-ts-session-timeline::layer-overview": {
-      "x": -5757.9813241964,
-      "y": -2027.2123081307432
+      "x": -5703.439714786877,
+      "y": -2047.335044094319
     },
     "doc-agent-chat-agentish-ts-session-title::layer-overview": {
-      "x": -5055.4813241964,
-      "y": -2157.212308130743
+      "x": -5000.939714786877,
+      "y": -2177.335044094319
     },
     "doc-agent-chat-agentish-ts-compaction-strategy::layer-overview": {
-      "x": -3825.5654617813293,
+      "x": -3825.3194580474337,
       "y": -2419.090134447171
     },
     "doc-agent-chat-agentish-ts-context-policy::layer-overview": {
-      "x": -5399.9813241964,
-      "y": -2027.2123081307432
+      "x": -5345.439714786877,
+      "y": -2047.335044094319
     },
     "doc-agent-chat-agentish-ts-session-reference::layer-overview": {
-      "x": -5413.9813241964,
-      "y": -2165.212308130743
+      "x": -5359.439714786877,
+      "y": -2185.335044094319
     },
     "doc-agent-chat-agentish-ts-observability-inspection::layer-overview": {
       "x": -3675.786663746172,
       "y": -60.2837464715203
     },
     "doc-agent-chat-agentish-ts-session-import::layer-overview": {
-      "x": -6476.2298726107,
-      "y": -982.1680739373847
+      "x": -6534.128291651181,
+      "y": -982.275762942303
     },
     "doc-agent-chat-agentish-ts-session-message::layer-overview": {
-      "x": -5065.9813241964,
-      "y": -2027.2123081307432
+      "x": -5011.439714786877,
+      "y": -2047.335044094319
     },
     "doc-agent-chat-agentish-ts-session-source::layer-overview": {
-      "x": -6121.2298726107,
-      "y": -974.1680739373847
+      "x": -6179.128291651181,
+      "y": -974.275762942303
     },
     "doc-agent-chat-agentish-ts-participant-agent::layer-overview": {
       "x": -5649.002672556575,
       "y": 263.17201511122926
     },
     "detail-doc-agent-chat-agentish-ts-user-imports-0::layer-overview": {
-      "x": -6824.2298726107,
-      "y": -994.1680739373847
+      "x": -6878.378291651181,
+      "y": -1318.0257629423027
     },
     "detail-doc-agent-chat-agentish-ts-user-copies-0::layer-overview": {
-      "x": -5775.7298726107,
-      "y": -974.1680739373847
+      "x": -5833.628291651181,
+      "y": -974.275762942303
     },
     "detail-doc-agent-chat-agentish-ts-user-copies-1::layer-overview": {
-      "x": -6824.2298726107,
-      "y": -832.1680739373847
+      "x": -6882.128291651181,
+      "y": -832.275762942303
     },
     "detail-doc-agent-chat-agentish-ts-user-copies-2::layer-overview": {
-      "x": -6453.2298726107,
-      "y": -812.1680739373847
+      "x": -6511.128291651181,
+      "y": -812.275762942303
     },
     "doc-agent-chat-agentish-ts-workspace-project::layer-overview": {
-      "x": 80.00586743727868,
-      "y": -56.862227152835686
+      "x": 79.98715402831169,
+      "y": -57.06729593619818
     },
     "doc-agent-chat-agentish-ts-workspace-board::layer-overview": {
-      "x": 428.00586743727865,
-      "y": -56.862227152835686
+      "x": 427.9871540283117,
+      "y": -57.06729593619818
     },
     "doc-agent-chat-agentish-ts-workspace-layer::layer-overview": {
-      "x": 94.50586743727868,
-      "y": 89.13777284716431
+      "x": 94.48715402831169,
+      "y": 88.93270406380182
     },
     "doc-agent-chat-agentish-ts-workspace-document::layer-overview": {
-      "x": -267.99413256272135,
-      "y": 81.13777284716431
+      "x": -268.0128459716883,
+      "y": 80.93270406380182
     },
     "doc-agent-chat-agentish-ts-provider-future::layer-overview": {
-      "x": -2679.3412333419674,
-      "y": 3085.742033517386
+      "x": -2677.2182359214585,
+      "y": 3085.786324190373
     },
     "detail-doc-agent-chat-agentish-ts-provider-binding-means-0::layer-overview": {
-      "x": -3033.8412333419674,
-      "y": 3075.742033517386
+      "x": -3031.7182359214585,
+      "y": 3075.786324190373
     },
     "detail-doc-agent-chat-agentish-ts-provider-binding-means-1::layer-overview": {
-      "x": -2303.3412333419674,
-      "y": 3085.742033517386
+      "x": -2301.2182359214585,
+      "y": 3085.786324190373
     },
     "detail-doc-agent-chat-agentish-ts-provider-binding-means-2::layer-overview": {
-      "x": -1979.8412333419674,
-      "y": 3085.742033517386
+      "x": -1977.7182359214585,
+      "y": 3085.786324190373
     },
     "detail-doc-agent-chat-agentish-ts-provider-binding-means-3::layer-overview": {
-      "x": -3033.8412333419674,
-      "y": 3217.742033517386
+      "x": -3031.7182359214585,
+      "y": 3217.786324190373
     },
     "detail-doc-agent-chat-agentish-ts-provider-binding-targets-1::layer-overview": {
-      "x": -2685.8412333419674,
-      "y": 3217.742033517386
+      "x": -2683.7182359214585,
+      "y": 3217.786324190373
     },
     "detail-doc-agent-chat-agentish-ts-compaction-native-means-3::layer-overview": {
       "x": -659.2095994675539,
-      "y": 1774.5547336224229
+      "y": 1774.8426143689458
     },
     "doc-agent-chat-agentish-ts-compaction-living::layer-overview": {
-      "x": -3759.3812084891865,
-      "y": -2646.5553094807115
+      "x": -3759.4234681592575,
+      "y": -2646.895715117135
     },
     "doc-agent-chat-agentish-ts-context-window::layer-overview": {
       "x": -841.4050399595627,
       "y": 1934.07123234842
     },
     "doc-agent-chat-agentish-ts-session-turn::layer-overview": {
-      "x": -3866.397662135586,
-      "y": -3557.0833691022913
+      "x": -3927.2433354940226,
+      "y": -3556.750784109321
     },
     "doc-agent-chat-agentish-ts-session-participant::layer-overview": {
       "x": -5460.552173551022,
       "y": -94.45025349902653
     },
     "doc-agent-chat-agentish-ts-session-summary::layer-overview": {
-      "x": -3896.397662135586,
-      "y": -3839.0833691022913
+      "x": -3957.2433354940226,
+      "y": -3838.750784109321
     },
     "doc-agent-chat-agentish-ts-observability-status::layer-overview": {
-      "x": -3548.397662135586,
-      "y": -3831.0833691022913
+      "x": -3609.2433354940226,
+      "y": -3830.750784109321
     },
     "doc-agent-chat-agentish-ts-agent::layer-overview": {
-      "x": -3188.897662135586,
-      "y": -3831.0833691022913
+      "x": -4700.6637635668485,
+      "y": -3834.5527563765777
     },
     "detail-doc-agent-chat-agentish-ts-session-conversation-means-0::layer-overview": {
-      "x": -4239.397662135586,
-      "y": -3557.0833691022913
+      "x": -4300.243335494022,
+      "y": -3556.750784109321
     },
     "detail-doc-agent-chat-agentish-ts-session-conversation-means-1::layer-overview": {
-      "x": -3865.397662135586,
-      "y": -3689.0833691022913
+      "x": -3926.2433354940226,
+      "y": -3688.750784109321
     },
     "detail-doc-agent-chat-agentish-ts-session-conversation-means-2::layer-overview": {
-      "x": -3518.897662135586,
-      "y": -3689.0833691022913
+      "x": -3579.7433354940226,
+      "y": -3688.750784109321
     },
     "detail-doc-agent-chat-agentish-ts-session-conversation-means-3::layer-overview": {
-      "x": -4244.397662135586,
-      "y": -3841.0833691022913
+      "x": -4305.243335494022,
+      "y": -3840.750784109321
     },
     "detail-doc-agent-chat-agentish-ts-session-conversation-references-0::layer-overview": {
-      "x": -3203.397662135586,
-      "y": -3689.0833691022913
+      "x": -3264.2433354940226,
+      "y": -3688.750784109321
     },
     "detail-doc-agent-chat-agentish-ts-session-conversation-uses-0::layer-overview": {
-      "x": -4244.397662135586,
-      "y": -3699.0833691022913
+      "x": -4305.243335494022,
+      "y": -3698.750784109321
     },
     "detail-doc-agent-chat-agentish-ts-context-packet-means-0::layer-overview": {
-      "x": -931.2864292510931,
-      "y": 3284.0853813716403
+      "x": -931.0149108013832,
+      "y": 3283.658082790868
     },
     "detail-doc-agent-chat-agentish-ts-context-packet-means-1::layer-overview": {
-      "x": -628.2864292510931,
-      "y": 3284.0853813716403
+      "x": -628.0149108013832,
+      "y": 3283.658082790868
     },
     "detail-doc-agent-chat-agentish-ts-context-packet-means-2::layer-overview": {
-      "x": -370.28642925109307,
-      "y": 3284.0853813716403
+      "x": -370.01491080138317,
+      "y": 3283.658082790868
     },
     "detail-doc-agent-chat-agentish-ts-context-packet-means-3::layer-overview": {
-      "x": -628.2864292510931,
-      "y": 3426.0853813716403
+      "x": -628.0149108013832,
+      "y": 3425.658082790868
     },
     "detail-doc-agent-chat-agentish-ts-context-packet-means-4::layer-overview": {
-      "x": -976.2864292510931,
-      "y": 3406.0853813716403
+      "x": -976.0149108013832,
+      "y": 3405.658082790868
     },
     "doc-agent-chat-agentish-ts-participant-human::layer-overview": {
       "x": -4654.429461949163,
