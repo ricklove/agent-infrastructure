@@ -475,6 +475,19 @@ export function AgentSwarmScreen({
     if (!container || typeof ResizeObserver === "undefined") {
       return
     }
+    const observedContainer = container
+
+    function measure() {
+      const nextWidth = Math.max(
+        Math.floor(observedContainer.getBoundingClientRect().width),
+        320,
+      )
+      setChartWidth((currentWidth) =>
+        currentWidth === nextWidth ? currentWidth : nextWidth,
+      )
+    }
+
+    measure()
 
     const observer = new ResizeObserver((entries) => {
       const nextWidth = Math.max(
@@ -486,12 +499,14 @@ export function AgentSwarmScreen({
       )
     })
 
-    observer.observe(container)
+    observer.observe(observedContainer)
+    window.addEventListener("resize", measure)
 
     return () => {
       observer.disconnect()
+      window.removeEventListener("resize", measure)
     }
-  }, [])
+  }, [timelineRangeMinutes, selectedWorkerId, timeline?.workerId])
 
   const summary = useMemo(() => {
     const connectedWorkers = workers.filter(
@@ -925,7 +940,7 @@ export function AgentSwarmScreen({
               Loading timeline…
             </div>
           ) : (
-            <div className="space-y-4 p-4">
+            <div ref={chartMeasureRef} className="space-y-4 p-4">
               <article className="rounded-2xl border border-white/10 bg-[#111826] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
@@ -948,7 +963,7 @@ export function AgentSwarmScreen({
                     </div>
                   </div>
                 </div>
-                <div ref={chartMeasureRef} className="mt-4 w-full overflow-hidden">
+                <div className="mt-4 w-full">
                   <svg
                     className="block"
                     height={timelineCharts.layout.height}
@@ -1049,7 +1064,7 @@ export function AgentSwarmScreen({
                 >
                   <h3 className="text-sm font-semibold text-white">{chart.title}</h3>
                   <p className="mt-1 text-xs text-slate-500">{chart.subtitle}</p>
-                  <div className="mt-4 w-full overflow-hidden">
+                  <div className="mt-4 w-full">
                     <svg
                       className="block"
                       height={timelineCharts.layout.height}
