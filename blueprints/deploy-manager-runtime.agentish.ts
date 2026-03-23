@@ -17,7 +17,9 @@ const Actor = {
 const Artifact = {
   sourceRepo: define.workspace("SourceRepository"),
   baseBranch: define.workspace("BaseBranch"),
+  releaseBranch: define.workspace("ReleaseBranch"),
   runtimeCheckout: define.workspace("RuntimeCheckout"),
+  releaseTag: define.document("ReleaseGitTag"),
   targetRevision: define.document("TargetRevision"),
   frontendBuild: define.document("RuntimeFrontendBuild"),
   backendProcess: define.entity("RuntimeBackendProcess"),
@@ -27,6 +29,8 @@ const Artifact = {
 
 const Policy = {
   sourceCommittedOnly: define.concept("CommittedSourceOnlyDeploy"),
+  releaseFromMain: define.concept("ReleasePromotionFromMain"),
+  tagTargetDeploy: define.concept("ReleaseTagDeployTarget"),
   runtimeCheckoutDeploy: define.concept("RuntimeCheckoutDeploy"),
   frontendBuildRequired: define.concept("FrontendBuildRequired"),
   backendRestartOnly: define.concept("BackendRestartOnly"),
@@ -36,8 +40,9 @@ const Policy = {
 };
 
 DeployManagerRuntime.enforces(`
-- Deploy starts from a committed source revision on the base branch.
-- Deploy updates the runtime checkout to the intended committed revision.
+- Deploy starts from a committed source revision that has already been promoted to `main`.
+- Deploy starts from a release git tag created from that promoted release commit.
+- Deploy updates the runtime checkout to the intended release tag.
 - Deploy rebuilds frontend assets from the runtime checkout after that checkout update.
 - Deploy may terminate local backend server processes so normal runtime supervision can restart them.
 - Deploy does not manage dashboard tunnel lifecycle.
@@ -48,7 +53,9 @@ DeployManagerRuntime.enforces(`
 
 DeployManagerRuntime.defines(`
 - CommittedSourceOnlyDeploy means rollout targets a committed source revision rather than runtime drift or uncommitted workspace state.
-- RuntimeCheckoutDeploy means the deployed tree is advanced by git checkout or pull in the runtime checkout, not by manual file edits.
+- ReleasePromotionFromMain means the release commit is promoted onto `main` before a runtime deploy is allowed.
+- ReleaseTagDeployTarget means runtime checkout targets an immutable release git tag rather than an integration branch ref.
+- RuntimeCheckoutDeploy means the deployed tree is advanced by git checkout of the release tag in the runtime checkout, not by manual file edits.
 - FrontendBuildRequired means frontend assets are rebuilt from the runtime checkout after the target revision is selected.
 - BackendRestartOnly means deploy restarts local backend server processes and relies on normal supervision for recovery rather than ad hoc runtime mutation.
 - TunnelUntouchedByDeploy means deploy never kills, replaces, rotates, or otherwise manages the dashboard tunnel.
@@ -59,13 +66,17 @@ DeployManagerRuntime.defines(`
 DeployManagerRuntime.contains(
   Artifact.sourceRepo,
   Artifact.baseBranch,
+  Artifact.releaseBranch,
   Artifact.runtimeCheckout,
+  Artifact.releaseTag,
   Artifact.targetRevision,
   Artifact.frontendBuild,
   Artifact.backendProcess,
   Artifact.tunnel,
   Artifact.verification,
   Policy.sourceCommittedOnly,
+  Policy.releaseFromMain,
+  Policy.tagTargetDeploy,
   Policy.runtimeCheckoutDeploy,
   Policy.frontendBuildRequired,
   Policy.backendRestartOnly,
@@ -76,15 +87,22 @@ DeployManagerRuntime.contains(
 
 when(Actor.operator.runs("a standard manager runtime deploy"))
   .then(DeployManagerRuntime.requires(Policy.sourceCommittedOnly))
+  .and(DeployManagerRuntime.requires(Policy.releaseFromMain))
+  .and(DeployManagerRuntime.requires(Policy.tagTargetDeploy))
   .and(DeployManagerRuntime.requires(Policy.runtimeCheckoutDeploy))
   .and(DeployManagerRuntime.requires(Policy.frontendBuildRequired))
   .and(DeployManagerRuntime.requires(Policy.backendRestartOnly))
   .and(DeployManagerRuntime.requires(Policy.tunnelUntouched))
   .and(DeployManagerRuntime.requires(Policy.devProcessResumesAfterDeploy));
 
-when(Artifact.runtimeCheckout.receives("the target committed revision"))
+when(Artifact.runtimeCheckout.receives("the target release tag"))
   .then(DeployManagerRuntime.expects(Artifact.frontendBuild))
-  .and(DeployManagerRuntime.expects("frontend build completion before backend restart"));
+  .and(DeployManagerRuntime.expects("frontend build completion before backend restart"))
+  .and(DeployManagerRuntime.expects("runtime checkout revision to match the tagged release commit"));
+
+when(Artifact.releaseTag.identifies("the deploy target"))
+  .then(DeployManagerRuntime.expects(Artifact.releaseBranch))
+  .and(DeployManagerRuntime.expects("the release tag to point at a commit on main"));
 
 when(Actor.operator.restarts("runtime backend processes during deploy"))
   .then(DeployManagerRuntime.keeps(Artifact.tunnel))

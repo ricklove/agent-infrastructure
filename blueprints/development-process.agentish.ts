@@ -17,6 +17,7 @@ const Actor = {
 const Artifact = {
   sourceRepo: define.workspace("SourceRepository"),
   baseBranch: define.workspace("BaseBranch"),
+  releaseBranch: define.workspace("ReleaseBranch"),
   featureBranch: define.workspace("FeatureBranch"),
   implementationWorktree: define.workspace("ImplementationWorktree"),
   runtimeCheckout: define.workspace("RuntimeCheckout"),
@@ -24,6 +25,7 @@ const Artifact = {
   appData: define.workspace("DurableAppData"),
   blueprint: define.document("RelevantBlueprint"),
   blueprintState: define.document("RelevantBlueprintState"),
+  releaseTag: define.document("ReleaseGitTag"),
   screenshot: define.document("VerificationScreenshot"),
   ticketPlan: define.document("ImplementationTicketPlan"),
 };
@@ -56,7 +58,9 @@ DevelopmentProcess.enforces(`
 - The shared repository checkout should remain on the current base branch used for ongoing integration work.
 - Feature and fix implementation should begin from a feature branch created from the current base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
-- Completed feature branch work should be committed and merged back into the base branch before rollout proceeds.
+- Completed feature branch work should be committed and merged back into the base branch before release promotion proceeds.
+- Release rollout should start only after the shared base-branch checkout is clean.
+- Release rollout should promote the intended integrated commit onto `main`, create a release git tag from that exact commit, and deploy runtime from that tag.
 - Runtime is a deployed checkout and not an editing surface.
 - state/ is only for temporary runtime state and recoverable operational artifacts.
 - Durable app data must live outside state/.
@@ -75,17 +79,20 @@ DevelopmentProcess.defines(`
 - WorkspaceToolingDiscovery means local machine tooling should be discovered from workspace README guidance and tools/ notes before installing replacements or parallel toolchains.
 - IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
+- ReleaseBranch means `main` is the canonical release branch for runtime deployment.
+- ReleaseGitTag means an immutable git tag created from the promoted release commit and used as the runtime deploy target.
 - TemporaryStateOnly means logs, pids, sockets, caches, and controller metadata may live under state/, but durable user or app content may not.
-- DeployByRuntimeCheckout means runtime is updated by checking out a committed source revision rather than editing deployed files directly.
+- DeployByRuntimeCheckout means runtime is updated by checking out a release tag that points at a committed source revision rather than editing deployed files directly.
 - VersionMatchVerification means the served frontend version and running backend version must match exactly after rollout.
 - TicketSystemOwnsImplementationPlan means active work sequencing, task breakdown, and unfinished implementation routing belong in tickets rather than in long-lived blueprint companion files.
-- StandardRuntimeDeployBlueprint means runtime rollout should use the repository's canonical deploy-manager-runtime path rather than improvised runtime or tunnel-control actions.
-- `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path.
+- StandardRuntimeDeployBlueprint means runtime rollout should use the repository's canonical deploy-manager-runtime path and should target a release tag rather than an integration branch ref.
+- `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path after release promotion and tag creation.
 `);
 
 DevelopmentProcess.contains(
   Artifact.sourceRepo,
   Artifact.baseBranch,
+  Artifact.releaseBranch,
   Artifact.featureBranch,
   Artifact.implementationWorktree,
   Artifact.runtimeCheckout,
@@ -93,6 +100,7 @@ DevelopmentProcess.contains(
   Artifact.appData,
   Artifact.blueprint,
   Artifact.blueprintState,
+  Artifact.releaseTag,
   Artifact.screenshot,
   Artifact.ticketPlan,
   Rule.blueprintFirst,
@@ -149,6 +157,7 @@ when(Actor.operator.finishes("code-changing implementation on a feature branch")
   .then(DevelopmentProcess.prefers(Artifact.featureBranch))
   .and(DevelopmentProcess.expects("committed implementation changes on the feature branch"))
   .and(DevelopmentProcess.expects("a normal merge of the feature branch back into the base branch"))
+  .and(DevelopmentProcess.expects("release promotion to main and release-tag creation before runtime deploy"))
   .and(DevelopmentProcess.requires(Rule.mergeIntoBase));
 
 when(Actor.operator.runs("development or local verification for a feature branch"))
@@ -167,7 +176,10 @@ when(Actor.operator.rollsOut("a committed revision to runtime"))
   .then(DevelopmentProcess.requires(Rule.standardRuntimeDeploy))
   .and(DevelopmentProcess.requires(Rule.deployByCheckout))
   .and(DevelopmentProcess.treats("deploy-manager-runtime as the canonical rollout blueprint"))
-  .and(DevelopmentProcess.expects("bun run deploy-manager-runtime to be the normal rollout command"));
+  .and(DevelopmentProcess.expects("a clean shared base-branch checkout before release promotion"))
+  .and(DevelopmentProcess.expects("promotion of the intended integrated commit to main"))
+  .and(DevelopmentProcess.expects("creation and push of a release git tag before runtime deploy"))
+  .and(DevelopmentProcess.expects("bun run deploy-manager-runtime <release-tag> to be the normal rollout command"));
 
 when(Artifact.temporaryState.contains("durable app content"))
   .then(DevelopmentProcess.violates(Rule.stateTemporaryOnly));
