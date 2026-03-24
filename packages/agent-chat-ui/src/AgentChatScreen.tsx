@@ -2066,6 +2066,17 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </div>
               ) : null}
 
+              {activeSession?.pendingSystemInstruction ? (
+                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                    Next Turn Instruction
+                  </p>
+                  <p className="mt-3 text-sm text-cyan-50">
+                    {clipText(activeSession.pendingSystemInstruction, 240)}
+                  </p>
+                </div>
+              ) : null}
+
               {queuedUserMessages.length > 0 ? (
                 <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
