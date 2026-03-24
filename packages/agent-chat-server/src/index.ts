@@ -45,7 +45,6 @@ const processBlueprintsDir =
   resolve(import.meta.dir, "../../../blueprints/process-blueprints");
 const DIRECTORY_QUEUE_PREFIX = "Directory will switch to ";
 const TITLE_QUEUE_PREFIX = "Chat title will change to ";
-const PROCESS_QUEUE_PREFIX = "Session process expectation will change to ";
 const DIRECTORY_INSTRUCTION_PREFIX = "Working directory changed to ";
 const TITLE_INSTRUCTION_PREFIX = "Chat title changed to ";
 const PROCESS_INSTRUCTION_PREFIX = "Session process expectation changed to ";
@@ -324,14 +323,6 @@ function buildProcessExpectationInstruction(processBlueprint: ProcessBlueprint |
   }
 
   return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}`;
-}
-
-function buildProcessExpectationQueueText(processBlueprint: ProcessBlueprint | null) {
-  if (!processBlueprint) {
-    return `${PROCESS_QUEUE_PREFIX}none for the next agent turn. Continue based on the latest explicit user request and current transcript context.`;
-  }
-
-  return `${PROCESS_QUEUE_PREFIX}${processBlueprint.title} for the next agent turn. ${processBlueprint.expectation}`;
 }
 
 function maybeTriggerSessionWatchdog(sessionId: string) {
@@ -1060,19 +1051,7 @@ const server = Bun.serve<ChatSocketData>({
             session = updatedSession;
           }
           if (previousProcessBlueprintId !== (nextProcessBlueprintId ?? null)) {
-            store.markQueuedSystemMessagesSeenByPrefix(sessionId, PROCESS_QUEUE_PREFIX);
             const processBlueprint = getSessionProcessBlueprint(session);
-            const processMessage = store.appendMessage(sessionId, {
-              role: "system",
-              providerSeenAtMs: null,
-              content: [
-                {
-                  type: "text",
-                  text: buildProcessExpectationQueueText(processBlueprint),
-                },
-              ],
-            });
-            queuedMessages.push(processMessage);
             const instructionSession = store.replacePendingSystemInstructionByPrefix(
               sessionId,
               PROCESS_INSTRUCTION_PREFIX,
