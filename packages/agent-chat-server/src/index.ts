@@ -45,8 +45,10 @@ const processBlueprintsDir =
   resolve(import.meta.dir, "../../../blueprints/process-blueprints");
 const DIRECTORY_QUEUE_PREFIX = "Directory will switch to ";
 const TITLE_QUEUE_PREFIX = "Chat title will change to ";
+const PROCESS_QUEUE_PREFIX = "Session process expectation will change to ";
 const DIRECTORY_INSTRUCTION_PREFIX = "Working directory changed to ";
 const TITLE_INSTRUCTION_PREFIX = "Chat title changed to ";
+const PROCESS_INSTRUCTION_PREFIX = "Session process expectation changed to ";
 
 type ChatSocketData = {
   socketId: string;
@@ -314,6 +316,22 @@ function maybeMarkProcessBlueprintCompletion(sessionId: string, assistantText: s
     lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
     completedAtMs: Date.now(),
   });
+}
+
+function buildProcessExpectationInstruction(processBlueprint: ProcessBlueprint | null) {
+  if (!processBlueprint) {
+    return `${PROCESS_INSTRUCTION_PREFIX}none. Continue based on the latest explicit user request and current transcript context.`;
+  }
+
+  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}`;
+}
+
+function buildProcessExpectationQueueText(processBlueprint: ProcessBlueprint | null) {
+  if (!processBlueprint) {
+    return `${PROCESS_QUEUE_PREFIX}none for the next agent turn. Continue based on the latest explicit user request and current transcript context.`;
+  }
+
+  return `${PROCESS_QUEUE_PREFIX}${processBlueprint.title} for the next agent turn. ${processBlueprint.expectation}`;
 }
 
 function maybeTriggerSessionWatchdog(sessionId: string) {
@@ -1033,12 +1051,36 @@ const server = Bun.serve<ChatSocketData>({
           if (nextProcessBlueprintId && !processBlueprintById.has(nextProcessBlueprintId)) {
             return jsonResponse({ ok: false, error: "unknown process blueprint" }, 400);
           }
+          const previousProcessBlueprintId = session.processBlueprintId;
           const updatedSession = store.updateSessionProcessBlueprint(
             sessionId,
             nextProcessBlueprintId ?? null,
           );
           if (updatedSession) {
             session = updatedSession;
+          }
+          if (previousProcessBlueprintId !== (nextProcessBlueprintId ?? null)) {
+            store.markQueuedSystemMessagesSeenByPrefix(sessionId, PROCESS_QUEUE_PREFIX);
+            const processBlueprint = getSessionProcessBlueprint(session);
+            const processMessage = store.appendMessage(sessionId, {
+              role: "system",
+              providerSeenAtMs: null,
+              content: [
+                {
+                  type: "text",
+                  text: buildProcessExpectationQueueText(processBlueprint),
+                },
+              ],
+            });
+            queuedMessages.push(processMessage);
+            const instructionSession = store.replacePendingSystemInstructionByPrefix(
+              sessionId,
+              PROCESS_INSTRUCTION_PREFIX,
+              buildProcessExpectationInstruction(processBlueprint),
+            );
+            if (instructionSession) {
+              session = instructionSession;
+            }
           }
           cancelSessionWatchdog(sessionId);
           maybeScheduleSessionWatchdog(sessionId);
