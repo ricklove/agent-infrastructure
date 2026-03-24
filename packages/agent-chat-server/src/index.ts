@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import {
   AgentChatStore,
+  type SessionWatchdogState,
   type StoredMessage,
   type StoredMessageContentBlock,
   type StoredSession,
@@ -21,6 +22,10 @@ import {
   interruptCodexTurn,
   runCodexTurn,
 } from "./codex-provider.js";
+import {
+  loadProcessBlueprintCatalog,
+  type ProcessBlueprint,
+} from "./process-blueprints.js";
 
 const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state";
 const appDataDir =
@@ -35,6 +40,9 @@ const defaultSessionDirectory =
 const workspacePersistenceRequestPath =
   process.env.WORKSPACE_PERSISTENCE_REQUEST_PATH?.trim() ||
   `${stateDir}/workspace-persistence-request.json`;
+const processBlueprintsDir =
+  process.env.AGENT_PROCESS_BLUEPRINTS_DIR?.trim() ||
+  resolve(import.meta.dir, "../../../blueprints/process-blueprints");
 const DIRECTORY_QUEUE_PREFIX = "Directory will switch to ";
 const TITLE_QUEUE_PREFIX = "Chat title will change to ";
 const DIRECTORY_INSTRUCTION_PREFIX = "Working directory changed to ";
@@ -60,6 +68,22 @@ type SessionActivity = {
 type SessionSummaryResponseItem = StoredSession & {
   activity: SessionActivity;
   queuedMessageCount: number;
+};
+
+type ProcessBlueprintResponseItem = {
+  id: string;
+  title: string;
+  expectation: string;
+  idlePrompt: string;
+  completionMode: "exact_reply";
+  completionToken: string;
+  stopConditions: string[];
+  watchdog: {
+    enabled: boolean;
+    idleTimeoutSeconds: number;
+    maxNudgesPerIdleEpisode: number;
+  };
+  companionPath: string | null;
 };
 
 type SessionSnapshotPayload = {
@@ -128,9 +152,12 @@ const store = new AgentChatStore({
     requestWorkspacePersistence(`agent-chat:${event.reason}:${event.sessionId}`);
   },
 });
+const processBlueprintCatalog = loadProcessBlueprintCatalog(processBlueprintsDir);
+const processBlueprintById = new Map(processBlueprintCatalog.map((entry) => [entry.id, entry] as const));
 const sessionSockets = new Map<string, Set<Bun.ServerWebSocket<ChatSocketData>>>();
 const activeSessionRuns = new Set<string>();
 const sessionRuntime = new Map<string, SessionRuntimeState>();
+const sessionWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function log(message: string) {
   const line = `[${new Date().toISOString()}:agent-chat-server] ${message}\n`;
@@ -218,6 +245,144 @@ function buildSessionSnapshot(sessionId: string): SessionSnapshotPayload | null 
     queuedMessages: store.listQueuedMessages(sessionId),
     activity,
   };
+}
+
+function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
+  return processBlueprintCatalog.map((entry) => ({
+    id: entry.id,
+    title: entry.title,
+    expectation: entry.expectation,
+    idlePrompt: entry.idlePrompt,
+    completionMode: entry.completionMode,
+    completionToken: entry.completionToken,
+    stopConditions: [...entry.stopConditions],
+    watchdog: {
+      enabled: entry.watchdog.enabled,
+      idleTimeoutSeconds: entry.watchdog.idleTimeoutSeconds,
+      maxNudgesPerIdleEpisode: entry.watchdog.maxNudgesPerIdleEpisode,
+    },
+    companionPath: entry.companionPath,
+  }));
+}
+
+function getSessionProcessBlueprint(session: StoredSession | null | undefined): ProcessBlueprint | null {
+  if (!session?.processBlueprintId) {
+    return null;
+  }
+  return processBlueprintById.get(session.processBlueprintId) ?? null;
+}
+
+function cancelSessionWatchdog(sessionId: string) {
+  const handle = sessionWatchdogTimers.get(sessionId);
+  if (!handle) {
+    return;
+  }
+  clearTimeout(handle);
+  sessionWatchdogTimers.delete(sessionId);
+}
+
+function setSessionWatchdogState(sessionId: string, watchdogState: SessionWatchdogState) {
+  const updated = store.updateSessionWatchdogState(sessionId, watchdogState);
+  if (updated) {
+    broadcastSnapshot(sessionId);
+  }
+  return updated;
+}
+
+function resetSessionWatchdogState(sessionId: string) {
+  const updated = store.resetSessionWatchdogState(sessionId);
+  if (updated) {
+    broadcastSnapshot(sessionId);
+  }
+  return updated;
+}
+
+function maybeMarkProcessBlueprintCompletion(sessionId: string, assistantText: string) {
+  const session = store.getSession(sessionId);
+  const processBlueprint = getSessionProcessBlueprint(session);
+  if (!session || !processBlueprint) {
+    return;
+  }
+
+  if (assistantText.trim() !== processBlueprint.completionToken) {
+    return;
+  }
+
+  setSessionWatchdogState(sessionId, {
+    status: "completed",
+    nudgeCount: session.watchdogState.nudgeCount,
+    lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
+    completedAtMs: Date.now(),
+  });
+}
+
+function maybeTriggerSessionWatchdog(sessionId: string) {
+  sessionWatchdogTimers.delete(sessionId);
+  const session = store.getSession(sessionId);
+  if (!session) {
+    return;
+  }
+
+  const processBlueprint = getSessionProcessBlueprint(session);
+  if (!processBlueprint?.watchdog.enabled) {
+    return;
+  }
+
+  const runtime = ensureRuntimeState(sessionId);
+  if (runtime.status !== "idle") {
+    return;
+  }
+
+  if (session.watchdogState.status === "completed") {
+    return;
+  }
+
+  if (session.watchdogState.nudgeCount >= processBlueprint.watchdog.maxNudgesPerIdleEpisode) {
+    return;
+  }
+
+  const watchdogMessage = store.appendMessage(sessionId, {
+    role: "system",
+    kind: "watchdogPrompt",
+    providerSeenAtMs: null,
+    content: [{ type: "text", text: processBlueprint.idlePrompt }],
+  });
+
+  setSessionWatchdogState(sessionId, {
+    status: "nudged",
+    nudgeCount: session.watchdogState.nudgeCount + 1,
+    lastNudgedAtMs: Date.now(),
+    completedAtMs: null,
+  });
+
+  broadcastSession(sessionId, {
+    type: "session.updated",
+    session: store.getSession(sessionId) ? buildSessionSummary(store.getSession(sessionId)!) : null,
+    messages: [watchdogMessage],
+    queuedMessages: store.listQueuedMessages(sessionId),
+    activity: toSessionActivity(sessionId),
+  });
+
+  void processSessionQueue(sessionId);
+}
+
+function maybeScheduleSessionWatchdog(sessionId: string) {
+  cancelSessionWatchdog(sessionId);
+  const session = store.getSession(sessionId);
+  const processBlueprint = getSessionProcessBlueprint(session);
+  if (!session || !processBlueprint?.watchdog.enabled) {
+    return;
+  }
+
+  const runtime = ensureRuntimeState(sessionId);
+  if (runtime.status !== "idle" || session.watchdogState.status === "completed") {
+    return;
+  }
+
+  const handle = setTimeout(() => {
+    maybeTriggerSessionWatchdog(sessionId);
+  }, processBlueprint.watchdog.idleTimeoutSeconds * 1000);
+  sessionWatchdogTimers.set(sessionId, handle);
 }
 
 function broadcastSession(sessionId: string, event: unknown) {
@@ -357,6 +522,11 @@ function setRuntimeState(
       ? update({ ...current, waitingFlags: [...current.waitingFlags] })
       : { ...current, ...update };
   sessionRuntime.set(sessionId, next);
+  if (next.status === "idle") {
+    maybeScheduleSessionWatchdog(sessionId);
+  } else {
+    cancelSessionWatchdog(sessionId);
+  }
   return next;
 }
 
@@ -508,6 +678,7 @@ async function runProviderTurnForQueuedMessage(
         },
       ],
     });
+    maybeMarkProcessBlueprintCompletion(sessionId, result.assistantText || "");
 
     setRuntimeState(sessionId, {
       status: "idle",
@@ -656,6 +827,13 @@ const server = Bun.serve<ChatSocketData>({
       });
     }
 
+    if (url.pathname === "/api/agent-chat/process-blueprints") {
+      return jsonResponse({
+        ok: true,
+        processBlueprints: listProcessBlueprints(),
+      });
+    }
+
     if (url.pathname === "/api/agent-chat/sessions" && request.method === "GET") {
       return jsonResponse({
         ok: true,
@@ -672,6 +850,7 @@ const server = Bun.serve<ChatSocketData>({
           cwd?: string;
           authProfile?: string | null;
           imageModelRef?: string | null;
+          processBlueprintId?: string | null;
         };
 
         if (!payload.providerKind) {
@@ -693,6 +872,11 @@ const server = Bun.serve<ChatSocketData>({
           );
         }
 
+        const nextProcessBlueprintId = payload.processBlueprintId?.trim() || null;
+        if (nextProcessBlueprintId && !processBlueprintById.has(nextProcessBlueprintId)) {
+          return jsonResponse({ ok: false, error: "unknown process blueprint" }, 400);
+        }
+
         const session = store.createSession({
           title: payload.title,
           providerKind: payload.providerKind,
@@ -701,6 +885,9 @@ const server = Bun.serve<ChatSocketData>({
           authProfile: payload.authProfile?.trim() || provider.authProfiles[0] || null,
           imageModelRef: payload.imageModelRef?.trim() || null,
         });
+        if (nextProcessBlueprintId) {
+          store.updateSessionProcessBlueprint(session.id, nextProcessBlueprintId);
+        }
 
         const snapshot = buildSessionSnapshot(session.id);
         return snapshot ? jsonResponse(snapshot) : notFound();
@@ -725,6 +912,7 @@ const server = Bun.serve<ChatSocketData>({
           cwd?: string;
           title?: string;
           archived?: boolean;
+          processBlueprintId?: string | null;
           providerKind?: AgentChatProviderKind;
           modelRef?: string;
           authProfile?: string | null;
@@ -739,6 +927,8 @@ const server = Bun.serve<ChatSocketData>({
         const nextTitle = payload.title?.trim();
         const nextArchived =
           typeof payload.archived === "boolean" ? payload.archived : undefined;
+        const nextProcessBlueprintId =
+          payload.processBlueprintId === undefined ? undefined : payload.processBlueprintId?.trim() || null;
         const nextProviderKind = payload.providerKind?.trim() as AgentChatProviderKind | undefined;
         const nextModelRef = payload.modelRef?.trim();
         const nextAuthProfile =
@@ -750,10 +940,21 @@ const server = Bun.serve<ChatSocketData>({
           !!nextModelRef ||
           payload.authProfile !== undefined ||
           payload.imageModelRef !== undefined;
+        const hasProcessBlueprintPatch = payload.processBlueprintId !== undefined;
 
-        if (!nextDirectory && !nextTitle && nextArchived === undefined && !hasProviderPatch) {
+        if (
+          !nextDirectory &&
+          !nextTitle &&
+          nextArchived === undefined &&
+          !hasProviderPatch &&
+          !hasProcessBlueprintPatch
+        ) {
           return jsonResponse(
-            { ok: false, error: "directory, title, archive state, or provider settings required" },
+            {
+              ok: false,
+              error:
+                "directory, title, archive state, process blueprint, or provider settings required",
+            },
             400,
           );
         }
@@ -826,6 +1027,21 @@ const server = Bun.serve<ChatSocketData>({
           if (updatedSession) {
             session = updatedSession;
           }
+        }
+
+        if (hasProcessBlueprintPatch && session) {
+          if (nextProcessBlueprintId && !processBlueprintById.has(nextProcessBlueprintId)) {
+            return jsonResponse({ ok: false, error: "unknown process blueprint" }, 400);
+          }
+          const updatedSession = store.updateSessionProcessBlueprint(
+            sessionId,
+            nextProcessBlueprintId ?? null,
+          );
+          if (updatedSession) {
+            session = updatedSession;
+          }
+          cancelSessionWatchdog(sessionId);
+          maybeScheduleSessionWatchdog(sessionId);
         }
 
         if (hasProviderPatch && session) {
@@ -976,6 +1192,7 @@ const server = Bun.serve<ChatSocketData>({
           replyToMessageId: payload.replyToMessageId?.trim() || null,
           content,
         });
+        resetSessionWatchdogState(sessionId);
 
         const sessionBeforeRun = store.getSession(sessionId);
         const titledSession =

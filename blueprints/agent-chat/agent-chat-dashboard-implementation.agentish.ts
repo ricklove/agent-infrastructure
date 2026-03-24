@@ -149,6 +149,7 @@ AgentChatDashboardImplementation.enforces(`
 - The composer must accept image paste from the browser clipboard and preserve those pasted images as first-class canonical content blocks.
 - Each provider adapter must be re-researched against current provider docs and relevant open-source reference implementations immediately before implementing that adapter.
 - Agent Chat sessions must inherit the development-process blueprint so provider-backed agents use the same blueprint-first workflow rules.
+- The session model should support assignment of a repository process blueprint that defines expectation text and idle-watchdog behavior.
 - The browser should own session list, transcript rendering, composer state, reconnect logic, and streaming UI.
 - Session-list organization must be canonical app data rather than browser-only preference state.
 - The main chat surface should prioritize the active thread and keep secondary controls behind menus or drawers.
@@ -157,6 +158,7 @@ AgentChatDashboardImplementation.enforces(`
 - Directory changes must enqueue a system instruction that the provider sees before the next user turn.
 - Agent activity should be shown near the composer with explicit working state, elapsed time, and provider-backed background activity count when available.
 - Session list rows should show worker state when the backend can report it, not just a generic session status pill.
+- Session list rows should show the selected process expectation when one is assigned and should surface watchdog attention state when a session goes idle unresolved.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - The composer should support a lightweight reply-target reminder so the operator can indicate that the in-progress human message responds to a specific earlier agent message.
 - The browser should preserve unsent per-session message drafts in local storage so transient reloads do not discard typed input.
@@ -182,6 +184,9 @@ AgentChatDashboardImplementation.defines(`
 - ProviderQualifiedModelRef means model identity is stored as a provider-qualified reference rather than an ambiguous bare model name.
 - Provider timeout policy means adapter-side failure thresholds are explicit, configurable, and aligned with long-running interactive agent work rather than a short hard stop.
 - WorkspacePersistenceSignal means the backend emits a post-write durability signal after canonical session mutations and lets the manager controller decide batching, commit, push, retry, and escalation behavior.
+- ProcessBlueprintCatalog means the backend can enumerate machine-readable process blueprints from the repository blueprints tree and expose them to the browser.
+- SessionProcessAssignment means canonical session metadata stores the selected process blueprint id for a session.
+- ExpectationIdleWatchdog means the backend observes unresolved idle sessions and emits process-blueprint-specific follow-up prompts when the selected watchdog policy says to do so.
 `);
 
 Dashboard.plugin.contains(Dashboard.route, Dashboard.screen, Chat.backend);
@@ -211,6 +216,7 @@ Chat.stateStore.contains(
 Manager.controller.contains(Manager.workspacePersistence);
 Chat.api.contains(
   Api.listSessions,
+  Api.listProcessBlueprints,
   Api.listFolders,
   Api.createSession,
   Api.createFolder,
@@ -307,6 +313,8 @@ Ui.composer.means(`
 
 Ui.sessionList.means(`
 - the session list should show a condensed worker-state summary such as running, queued, waiting, interrupted, or background worker count when available
+- the session list should show the selected process blueprint title or expectation title when a session has one
+- unresolved watchdog attention should be visible in the list without overwhelming the primary worker-state summary
 - the main session list should stay visually compact so the active thread remains the primary focus
 - the session list should group sessions by optional folders before falling back to an ungrouped collection
 - the main list should exclude archived sessions by default
@@ -333,6 +341,10 @@ Ui.workerStatusSummary.means(`
 - when richer worker details exist, the active session may show them more fully than the list row
 - the backend should expose worker-state fields explicitly rather than forcing the UI to infer them from transcript text
 `);
+
+when(Chat.backend.enumerates("repository process blueprints"))
+  .then(Chat.api.serves(Api.listProcessBlueprints))
+  .and(Dashboard.screen.shows("a session-scoped process blueprint picker"));
 
 Capability.multimodal.means(`
 - provider adapters should accept canonical structured content rather than flattened strings

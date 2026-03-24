@@ -1,0 +1,17 @@
+{
+  "id": "define_blueprint",
+  "title": "Define Blueprint",
+  "expectation": "Review relevant existing blueprints, create or update the blueprint layer needed for the task, and stop before implementation unless the user explicitly asks for implementation.",
+  "idlePrompt": "If the blueprint work is complete, reply only with 'done: blueprint defined'. Otherwise continue the blueprint work or state what information is missing.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: blueprint defined",
+  "stopConditions": [
+    "blueprint work complete",
+    "missing information from the user"
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 90,
+    "maxNudgesPerIdleEpisode": 1
+  }
+}

@@ -26,10 +26,19 @@ export type StoredAttachment = {
   url: string;
 };
 
+export type SessionWatchdogState = {
+  status: "unconfigured" | "unresolved" | "nudged" | "completed";
+  nudgeCount: number;
+  lastNudgedAtMs: number | null;
+  completedAtMs: number | null;
+}
+
 export type StoredSession = {
   id: string;
   title: string;
   archived: boolean;
+  processBlueprintId: string | null;
+  watchdogState: SessionWatchdogState;
   providerKind: AgentChatProviderKind;
   modelRef: string;
   cwd: string;
@@ -48,7 +57,7 @@ export type StoredMessage = {
   id: string;
   sessionId: string;
   role: "user" | "assistant" | "system";
-  kind: "chat" | "directoryInstruction";
+  kind: "chat" | "directoryInstruction" | "watchdogPrompt";
   replyToMessageId: string | null;
   providerSeenAtMs: number | null;
   content: StoredMessageContentBlock[];
@@ -81,6 +90,13 @@ type AgentChatStoreOptions = {
 };
 
 type SessionMetadata = Omit<StoredSession, "preview" | "messageCount">;
+
+const defaultWatchdogState = (processBlueprintId: string | null): SessionWatchdogState => ({
+  status: processBlueprintId ? "unresolved" : "unconfigured",
+  nudgeCount: 0,
+  lastNudgedAtMs: null,
+  completedAtMs: null,
+});
 
 function safeJsonParse<T>(raw: string): T {
   return JSON.parse(raw) as T;
@@ -144,6 +160,8 @@ export class AgentChatStore {
       id: sessionId,
       title: input.title?.trim() || "New chat",
       archived: false,
+      processBlueprintId: null,
+      watchdogState: defaultWatchdogState(null),
       providerKind: input.providerKind,
       modelRef: input.modelRef,
       cwd: input.cwd,
@@ -282,7 +300,9 @@ export class AgentChatStore {
   getNextQueuedUserMessage(sessionId: string): StoredMessage | null {
     return (
       this.listMessages(sessionId).find(
-        (message) => message.role === "user" && message.providerSeenAtMs === null,
+        (message) =>
+          message.providerSeenAtMs === null &&
+          (message.role === "user" || message.kind === "watchdogPrompt"),
       ) ?? null
     );
   }
@@ -370,6 +390,67 @@ export class AgentChatStore {
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
     return nextSession;
+  }
+
+  updateSessionProcessBlueprint(sessionId: string, processBlueprintId: string | null): StoredSession | null {
+    const current = this.sessionCache.get(sessionId);
+    const normalizedId = processBlueprintId?.trim() || null;
+    if (!current || current.processBlueprintId === normalizedId) {
+      return current ?? null;
+    }
+
+    const nextSession: StoredSession = {
+      ...current,
+      processBlueprintId: normalizedId,
+      watchdogState: defaultWatchdogState(normalizedId),
+      updatedAtMs: Date.now(),
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-metadata-updated",
+    });
+    return nextSession;
+  }
+
+  updateSessionWatchdogState(
+    sessionId: string,
+    watchdogState: SessionWatchdogState,
+  ): StoredSession | null {
+    const current = this.sessionCache.get(sessionId);
+    if (!current) {
+      return null;
+    }
+
+    const nextSession: StoredSession = {
+      ...current,
+      watchdogState: {
+        status: watchdogState.status,
+        nudgeCount: watchdogState.nudgeCount,
+        lastNudgedAtMs: watchdogState.lastNudgedAtMs,
+        completedAtMs: watchdogState.completedAtMs,
+      },
+      updatedAtMs: Date.now(),
+    };
+    this.writeSessionMetadata(nextSession);
+    this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "session-metadata-updated",
+    });
+    return nextSession;
+  }
+
+  resetSessionWatchdogState(sessionId: string): StoredSession | null {
+    const current = this.sessionCache.get(sessionId);
+    if (!current) {
+      return null;
+    }
+    return this.updateSessionWatchdogState(
+      sessionId,
+      defaultWatchdogState(current.processBlueprintId),
+    );
   }
 
   updateProviderThread(
@@ -676,6 +757,8 @@ export class AgentChatStore {
       id: session.id,
       title: session.title,
       archived: session.archived,
+      processBlueprintId: session.processBlueprintId,
+      watchdogState: session.watchdogState,
       providerKind: session.providerKind,
       modelRef: session.modelRef,
       cwd: session.cwd,
@@ -700,6 +783,31 @@ export class AgentChatStore {
       id: String(parsed.id),
       title: String(parsed.title),
       archived: Boolean(parsed.archived),
+      processBlueprintId: parsed.processBlueprintId ? String(parsed.processBlueprintId) : null,
+      watchdogState: {
+        status:
+          parsed.watchdogState?.status === "completed" ||
+          parsed.watchdogState?.status === "nudged" ||
+          parsed.watchdogState?.status === "unresolved"
+            ? parsed.watchdogState.status
+            : parsed.processBlueprintId
+              ? "unresolved"
+              : "unconfigured",
+        nudgeCount:
+          parsed.watchdogState?.nudgeCount === null || parsed.watchdogState?.nudgeCount === undefined
+            ? 0
+            : Number(parsed.watchdogState.nudgeCount),
+        lastNudgedAtMs:
+          parsed.watchdogState?.lastNudgedAtMs === null ||
+          parsed.watchdogState?.lastNudgedAtMs === undefined
+            ? null
+            : Number(parsed.watchdogState.lastNudgedAtMs),
+        completedAtMs:
+          parsed.watchdogState?.completedAtMs === null ||
+          parsed.watchdogState?.completedAtMs === undefined
+            ? null
+            : Number(parsed.watchdogState.completedAtMs),
+      },
       providerKind: parsed.providerKind as AgentChatProviderKind,
       modelRef: String(parsed.modelRef),
       cwd: String(parsed.cwd || "/home/ec2-user/workspace"),
@@ -732,7 +840,12 @@ export class AgentChatStore {
           id: String(parsed.id),
           sessionId: String(parsed.sessionId),
           role: parsed.role as StoredMessage["role"],
-          kind: parsed.kind === "directoryInstruction" ? "directoryInstruction" : "chat",
+          kind:
+            parsed.kind === "directoryInstruction"
+              ? "directoryInstruction"
+              : parsed.kind === "watchdogPrompt"
+                ? "watchdogPrompt"
+                : "chat",
           replyToMessageId: parsed.replyToMessageId ? String(parsed.replyToMessageId) : null,
           providerSeenAtMs:
             parsed.providerSeenAtMs === null || parsed.providerSeenAtMs === undefined
@@ -826,6 +939,8 @@ export class AgentChatStore {
           id: String(row.id),
           title: String(row.title),
           archived: false,
+          processBlueprintId: null,
+          watchdogState: defaultWatchdogState(null),
           providerKind: row.provider_kind as AgentChatProviderKind,
           modelRef: String(row.model_ref),
           cwd: row.cwd ? String(row.cwd) : "/home/ec2-user/workspace",
