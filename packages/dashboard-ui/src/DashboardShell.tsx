@@ -103,6 +103,25 @@ function GraphIcon(props: { className?: string }) {
   )
 }
 
+function TerminalIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="m7 9 3 3-3 3" />
+      <path d="M13 15h4" />
+    </svg>
+  )
+}
+
 function CopyIcon(props: { className?: string }) {
   return (
     <svg
@@ -136,6 +155,7 @@ const featureIconMap: Record<
   swarm: SwarmIcon,
   chat: ChatIcon,
   graph: GraphIcon,
+  terminal: TerminalIcon,
 }
 
 export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersion?: string }) {
