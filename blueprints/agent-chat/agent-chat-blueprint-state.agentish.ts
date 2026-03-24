@@ -29,7 +29,11 @@ const CurrentReality = {
   archivedSessionOrganization: define.concept("ArchivedSessionOrganization"),
   sessionListSearch: define.concept("SessionListSearch"),
   sessionListQuickProcessSet: define.concept("SessionListQuickProcessSet"),
+  sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
+  threadNavigationGap: define.concept("ThreadNavigationGap"),
+  settingsAndMessageStateGap: define.concept("SettingsAndMessageStateGap"),
   genericSessionActivity: define.concept("GenericSessionActivityOnly"),
+  claudeSdkModelCatalog: define.concept("ClaudeSdkModelCatalog"),
   fixedTurnDeadline: define.concept("FixedCodexTurnDeadline"),
   noFolderOrganization: define.concept("NoCanonicalFolderOrganization"),
   plannedProviders: define.concept("PlannedButUnimplementedProviders"),
@@ -68,7 +72,11 @@ AgentChatBlueprintState.contains(
   CurrentReality.archivedSessionOrganization,
   CurrentReality.sessionListSearch,
   CurrentReality.sessionListQuickProcessSet,
+  CurrentReality.sessionListWorkflowPolishGap,
+  CurrentReality.threadNavigationGap,
+  CurrentReality.settingsAndMessageStateGap,
   CurrentReality.genericSessionActivity,
+  CurrentReality.claudeSdkModelCatalog,
   CurrentReality.fixedTurnDeadline,
   CurrentReality.noFolderOrganization,
   CurrentReality.plannedProviders,
@@ -151,6 +159,47 @@ CurrentReality.sessionListQuickProcessSet.means(`
 - changing the process assignment updates the queued next-turn system instruction so the agent sees the updated expectation on the next provider turn
 `);
 
+CurrentReality.sessionListWorkflowPolishGap.means(`
+- session-list card hierarchy and spacing are still looser than the intended compact workflow surface
+- titles, status color, and model metadata do not yet reflect the intended stronger visual hierarchy
+- button and icon chrome still costs too much row space in the session list
+- the top-of-rail text and new-chat surface still consume space that should be easier to reclaim
+- the archived reveal control still has a known broken path and needs reliability work
+- the new-chat surface still needs explicit scrollability under constrained rail heights
+`);
+
+CurrentReality.threadNavigationGap.means(`
+- loading a session now retries scroll-to-latest so the active thread lands near the latest visible content more reliably after the transcript mounts
+- the current custom transcript rail is still not reliable enough to justify its space and should be removed or deferred until a clearly stable design exists
+- the active thread surface can still leak a browser-level horizontal scrollbar in some layouts, so horizontal containment is not fully solved yet
+- richer local zoom or lens treatment is still deferred until there is a version that preserves the stability of the thin rail
+`);
+
+CurrentReality.settingsAndMessageStateGap.means(`
+- chat settings are still more constrained than intended during active work
+- provider selection in an active session can still reset unexpectedly before save
+- duplicate message rendering still appears after send until refresh in some flows
+- queued and transcript rendering still blur pending versus delivered state instead of showing one clear message-state model
+- queued user messages are now consumed into the next provider turn as one batch instead of one-at-a-time follow-up turns
+- when queued system instructions such as process changes are consumed at run start, they now become canonical transcript history at that moment and survive refresh
+- Codex reasoning checkpoints are not yet recorded canonically at receipt time, so the current thought-entry behavior is not aligned with the intended canonical-only transcript model
+- live assistant streaming text is still only an in-memory UI buffer and is not yet recorded canonically as transcript checkpoint history
+- provider-originated run events are still not consistently persisted into canonical Agent Chat history, so the transcript cannot yet be replayed solely from app-owned records for every surfaced provider event
+- the current stream-history presentation still mislabels observed provider text as draft semantics and needs cleaner stream-specific wording
+- internal stream checkpoint storage still leaks too directly into operator-facing transcript concepts and needs cleaner presentation boundaries
+- replaced-stream history still needs to move into the main assistant header row; the current collapsed expander still costs a separate row above the message body
+- the current inline replaced-stream expander still needs one more correction so expanded replaced history appears above the final assistant text instead of after it
+- transcript spacing around secondary history affordances is still looser than intended and wastes vertical space ahead of visible message content
+- the browser now receives the provider-seen transition for queued user messages at run start so stale queued badges clear without waiting for a later refresh
+`);
+
+CurrentReality.claudeSdkModelCatalog.means(`
+- the current backend now refreshes Claude model options through the Claude Agent SDK initialization handshake rather than a generic vendor model listing
+- the current implementation now normalizes Claude SDK alias values into explicit operator-facing refs such as anthropic/claude-opus-4-6-1m and anthropic/claude-sonnet-4-6 while preserving the SDK alias mapping internally for execution
+- Claude model discovery is cached server-side and falls back to a curated compatible alias set when the SDK probe fails or times out
+- the current discovery path is still global to the server process rather than explicitly varying by the session's selected Claude auth profile
+`);
+
 CurrentReality.verticalSlice.means(`
 - the deployed dashboard frontend and backend were verified at matching revision dashboard-092de11c11 during live browser validation
 `);
@@ -208,6 +257,20 @@ when(CurrentReality.plannedProviders.exists())
 
 when(CurrentReality.genericSessionActivity.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
+
+when(CurrentReality.claudeSdkModelCatalog.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap));
+
+when(CurrentReality.sessionListWorkflowPolishGap.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap))
+  .and(AgentChatBlueprintState.records(Assessment.issue));
+
+when(CurrentReality.threadNavigationGap.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap));
+
+when(CurrentReality.settingsAndMessageStateGap.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap))
+  .and(AgentChatBlueprintState.records(Assessment.issue));
 
 when(CurrentReality.currentChatProviderSettings.exists())
   .then(AgentChatBlueprintState.records("current implementation now exceeds the older V1 cut by supporting in-session provider switching"));

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
+import { resolveClaudeSdkModelValue } from "./model-service.js";
 import type { StoredSession } from "./store.js";
 
 type ProviderInputBlock =
@@ -67,13 +68,7 @@ type ClaudeSdkMessage = {
 const activeClaudeQueries = new Map<string, Query>();
 
 function parseClaudeModel(modelRef: string) {
-  const trimmed = modelRef.trim();
-  if (!trimmed) {
-    return "claude-sonnet-4-5";
-  }
-
-  const parts = trimmed.split("/");
-  return parts.at(-1) || trimmed;
+  return resolveClaudeSdkModelValue(modelRef);
 }
 
 function buildClaudeMessageContent(

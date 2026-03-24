@@ -54,6 +54,7 @@ DevelopmentProcess.enforces(`
 - Relevant blueprint-state documents must describe how current implementation compares to the ideal blueprint.
 - Blueprint changes that alter architecture, workflow, or product requirements must be committed before dependent implementation work begins.
 - Implementation must not continue past blueprint edits until those blueprint edits are committed.
+- When operator feedback materially corrects intended product behavior during implementation, the relevant blueprints and blueprint-state must be updated to capture that correction before more implementation continues.
 - Active implementation plans should live in the ticket system rather than as durable repository design documents.
 - Before installing or reconfiguring local developer tools, check the workspace README and referenced tools/ notes for machine-specific guidance and already-installed utilities.
 - Source is the only editing surface for intended behavior changes.
@@ -146,6 +147,7 @@ when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
   .and(DevelopmentProcess.requires("the Agent Chat blueprint-state document to be updated as the current implementation comparison for Agent Chat work"))
   .and(DevelopmentProcess.requires("the same rollout and verification rules the operator would follow"))
   .and(DevelopmentProcess.requires("the same blueprint-state updates the operator would make"))
+  .and(DevelopmentProcess.requires("user corrections about intended Agent Chat behavior to be reflected in the relevant blueprints before more code changes continue"))
   .and(DevelopmentProcess.requires("the same ticket-plan discipline the operator would follow"));
 
 when(Actor.operator.starts("code-changing implementation on a feature or fix"))

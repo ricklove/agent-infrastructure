@@ -40,6 +40,12 @@ type CodexRunCallbacks = {
     itemId: string;
     delta: string;
   }) => void;
+  onThoughtItem?: (payload: {
+    threadId: string;
+    turnId: string;
+    itemId: string;
+    summaryText: string;
+  }) => void;
 };
 
 type CodexRunResult = {
@@ -58,6 +64,31 @@ const codexTurnIdleTimeoutMs = parseTimeoutMs(
   process.env.AGENT_CHAT_CODEX_TURN_IDLE_TIMEOUT_MS,
   900_000,
 );
+
+function summarizeReasoningItem(item: Record<string, unknown>) {
+  const summary = Array.isArray(item.summary) ? item.summary : [];
+  const entries = summary
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return entry.trim();
+      }
+      if (!entry || typeof entry !== "object") {
+        return "";
+      }
+      return "text" in entry ? String(entry.text ?? "").trim() : "";
+    })
+    .filter(Boolean);
+
+  if (entries.length === 0) {
+    return "";
+  }
+
+  if (entries.length === 1) {
+    return entries[0];
+  }
+
+  return entries.map((entry) => `- ${entry}`).join("\n\n");
+}
 
 let codexStartupPromise: Promise<void> | null = null;
 
@@ -263,6 +294,14 @@ export async function runCodexTurn(
         const item = params.item as Record<string, unknown> | undefined;
         if (item?.type === "agentMessage") {
           assistantText = String(item.text ?? assistantText);
+        }
+        if (item?.type === "reasoning") {
+          callbacks.onThoughtItem?.({
+            threadId: String(params.threadId ?? currentThreadId ?? ""),
+            turnId: String(params.turnId ?? currentTurnId),
+            itemId: String(item.id ?? ""),
+            summaryText: summarizeReasoningItem(item),
+          });
         }
         if (item?.type === "commandExecution") {
           activeCommandIds.delete(String(item.id ?? ""));
