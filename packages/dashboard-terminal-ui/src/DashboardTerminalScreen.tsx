@@ -91,7 +91,11 @@ function readStoredSessionToken(): string {
     return "";
   }
 
-  return window.localStorage.getItem("agent-infrastructure.dashboard.session") ?? "";
+  return (
+    window.sessionStorage.getItem("agent-infrastructure.dashboard.session") ??
+    window.localStorage.getItem("agent-infrastructure.dashboard.session") ??
+    ""
+  );
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
