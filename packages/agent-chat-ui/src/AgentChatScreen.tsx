@@ -574,6 +574,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [activeSessionImageModelRef, setActiveSessionImageModelRef] = useState("")
   const [activeSessionProcessBlueprintId, setActiveSessionProcessBlueprintId] = useState("")
   const [updatingDirectory, setUpdatingDirectory] = useState(false)
+  const [updatingQuickProcessBlueprint, setUpdatingQuickProcessBlueprint] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false)
   const [newChatOpen, setNewChatOpen] = useState(false)
@@ -1254,6 +1255,45 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
   }
 
+  async function updateActiveSessionProcessQuickSet(nextProcessBlueprintId: string) {
+    if (!activeSessionId || !activeSession) {
+      return
+    }
+
+    const normalizedProcessBlueprintId = nextProcessBlueprintId || null
+    if ((activeSession.processBlueprintId ?? null) === normalizedProcessBlueprintId) {
+      return
+    }
+
+    setUpdatingQuickProcessBlueprint(true)
+    setError("")
+
+    try {
+      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          processBlueprintId: normalizedProcessBlueprintId,
+        }),
+      })
+      const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error ?? "Process update failed.")
+      }
+      mergeSession(payload.session)
+      setMessages(payload.messages)
+      setQueuedMessages(payload.queuedMessages)
+      setActivity(payload.activity)
+      setActiveSessionProcessBlueprintId(payload.session.processBlueprintId ?? "")
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Process update failed.")
+    } finally {
+      setUpdatingQuickProcessBlueprint(false)
+    }
+  }
+
   async function renameSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!renamingSessionId || !renameTitle.trim()) {
@@ -1490,6 +1530,23 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             >
               <PlusIcon />
             </IconButton>
+            <label className="min-w-0 flex-1">
+              <span className="sr-only">Quick set active chat process</span>
+              <select
+                value={activeSession?.processBlueprintId ?? ""}
+                onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
+                disabled={!activeSession || updatingQuickProcessBlueprint}
+                title="Quick Set Process"
+                className="w-full rounded-full border border-white/10 bg-slate-900/80 px-3 py-2 text-xs text-slate-200 outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="">Process</option>
+                {processBlueprints.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.title}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="relative">
               <IconButton
                 label={sessionListMenuOpen ? "Hide session list menu" : "Show session list menu"}
@@ -2077,13 +2134,22 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
               {settingsOpen ? (
                 <div className="max-h-[min(34rem,calc(100dvh-15rem))] overflow-y-auto rounded-3xl border border-white/10 bg-white/5 p-4">
                   <form onSubmit={updateCurrentChatSettings} className="space-y-4">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                          Current Chat
-                        </p>
-                        <p className="mt-2 text-sm text-slate-400">
-                          Keep the current thread focused here. Use directory changes when the next turn should work elsewhere.
-                        </p>
+                      <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-start justify-between gap-3 rounded-t-3xl border-b border-white/10 bg-slate-950/95 px-4 py-4 backdrop-blur">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                            Current Chat
+                          </p>
+                          <p className="mt-2 text-sm text-slate-400">
+                            Keep the current thread focused here. Use directory changes when the next turn should work elsewhere.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSettingsOpen(false)}
+                          className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300"
+                        >
+                          Close
+                        </button>
                       </div>
                       <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
                         <p>{activeSession ? `${activeSession.providerKind} · ${activeSession.modelRef}` : "No active chat selected."}</p>
@@ -2127,8 +2193,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         </span>
                         <select
                           value={activeSessionProcessBlueprintId}
-                          onChange={(event) => setActiveSessionProcessBlueprintId(event.target.value)}
-                          disabled={!activeSession}
+                          onChange={(event) => {
+                            setActiveSessionProcessBlueprintId(event.target.value)
+                            void updateActiveSessionProcessQuickSet(event.target.value)
+                          }}
+                          disabled={!activeSession || updatingQuickProcessBlueprint}
                           className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <option value="">none</option>
