@@ -114,6 +114,7 @@ FileBrowserDashboardImplementation.enforces(`
 - Large files, binary files, and unreadable paths must degrade cleanly rather than freezing the browser.
 - Directory listings must respect declared ignore policy so the tree is not flooded by generated noise.
 - The gateway should proxy file-browser traffic and lazy-start the backend on first use.
+- After dashboard bootstrap exchange, file-browser HTTP and WebSocket traffic must use gateway-enforced session auth and must not carry dashboard session tokens in URLs.
 - File-system change propagation should be incremental and event-driven when practical rather than brute-force full-tree polling.
 - Mutations must stay inside the selected workspace root and reject path traversal, symlink escape, and ambiguous overwrite behavior.
 - The feature should emit its own dashboard status items for root, watch health, and last refresh state.
@@ -209,6 +210,7 @@ when(Dashboard.shell.loads(Dashboard.plugin))
 
 when(Dashboard.gateway.proxies(Browser.backend))
   .then(Dashboard.gateway.applies(Runtime.lazyBackend))
+  .and(Dashboard.gateway.validates("dashboard browser-session auth before proxy or upgrade"))
   .and(Dashboard.gateway.starts("the file browser backend on first feature traffic"))
   .and(Dashboard.gateway.routes("dashboard-relative /api/file-browser and /ws/file-browser paths"));
 

@@ -130,6 +130,7 @@ SystemRuntime.enforces(`
 - Quick tunnel replacement should be conservative, cooldown-based, and never eager churn.
 - Temporary dashboard ingress should support a backup tunnel provider when the primary provider cannot issue a URL.
 - Dashboard session issuance should only return a public URL after the manager has verified that the returned URL serves the dashboard.
+- The returned dashboard URL may contain one-time bootstrap session material only for the initial browser redirect; all later dashboard API and WebSocket auth must be enforced by the Bun gateway through headers rather than URL parameters.
 - Workspace durability for canonical app data should be handled by the manager controller's workspace-persistence domain rather than by browser clients or ad hoc cron glue.
 `);
 
@@ -146,6 +147,7 @@ SystemRuntime.defines(`
 - FullManagerUpdateWorkflow means source change, local verification, commit, push, runtime rollout, and post-deploy checks.
 - SwarmMonitorProgram means the worker or manager telemetry path that captures cheap host metrics and sparse process context.
 - ManagerController means one thin always-on manager-host control plane with distinct internal domains for dashboard recovery and workspace persistence.
+- Dashboard bootstrap URL means the one-time access URL returned by session issuance before the browser exchanges bootstrap auth into a session-scoped transport token.
 `);
 
 Host.manager.contains(
@@ -280,8 +282,8 @@ when(AWS.lambda.invokes(Entrypoint.issueDashboardSession))
   .and(Host.manager.runs(Entrypoint.issueDashboardSession))
   .and(SystemRuntime.treats("that script as a valid external boundary"))
   .and(Entrypoint.issueDashboardSession.notifies("the manager controller dashboard-recovery domain"))
-  .and(Entrypoint.issueDashboardSession.returns("the current session URL quickly"))
-  .and(AWS.lambda.continues("dashboard readiness polling against that URL"))
+  .and(Entrypoint.issueDashboardSession.returns("the current bootstrap URL quickly"))
+  .and(AWS.lambda.continues("dashboard readiness polling against that bootstrap URL"))
   .and(Integration.dashboardRecoveryController.detects("dashboard readiness failure during active use"))
   .then(Integration.dashboardRecoveryController.repairs(RuntimeCode.dashboardRuntime))
   .and(Integration.dashboardRecoveryController.classifies("origin failure separately from tunnel failure"))

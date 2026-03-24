@@ -450,7 +450,9 @@ Scope.browserOwnsUi.means(`
 
 Scope.dashboardAuth.means(`
 - dashboard session auth is the only browser auth boundary for V1
-- the chat backend trusts the forwarded dashboard session header through the dashboard gateway
+- the dashboard gateway validates browser session auth before proxying chat HTTP or WebSocket traffic
+- the chat backend trusts gateway-authenticated traffic or derived auth context rather than parsing raw browser session tokens itself
+- browser chat traffic must not carry dashboard session tokens in URLs after bootstrap exchange
 - no separate chat-specific login flow is introduced
 `);
 

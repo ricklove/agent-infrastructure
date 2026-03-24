@@ -159,7 +159,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const sessionToken = readStoredSessionToken()
 
   if (sessionToken) {
-    headers.set("x-dashboard-session", sessionToken)
+    headers.set("Authorization", `Bearer ${sessionToken}`)
   }
 
   return fetch(path, {

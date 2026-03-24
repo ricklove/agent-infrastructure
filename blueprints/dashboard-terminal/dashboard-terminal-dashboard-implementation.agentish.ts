@@ -112,6 +112,7 @@ DashboardTerminalDashboardImplementation.enforces(`
 - The terminal backend must create isolated PTY-backed shell sessions instead of reusing one shared operator shell.
 - V1 execution happens on the manager host only and starts in approved workspace roots.
 - Session attach, input, resize, snapshot, and close operations must all enforce dashboard-session authorization.
+- After the dashboard exchanges the bootstrap URL key for a browser session token, terminal HTTP and WebSocket traffic must not carry auth secrets in query strings or other URL state.
 - Terminal creation UI should make cwd and shell profile explicit rather than silently picking unsafe defaults.
 - Scrollback and transcript retention must be bounded so one noisy session does not exhaust server memory.
 - Idle session cleanup must be conservative and visible rather than silently killing recently active terminals.
@@ -133,6 +134,7 @@ DashboardTerminalDashboardImplementation.defines(`
 - ApprovedWorkspaceRoots means session cwd must belong to an allowlisted workspace root such as /home/ec2-user/workspace.
 - DeclaredShellProfiles means the backend exposes a small explicit set of shells or startup commands such as login bash in workspace mode.
 - Terminal acceptance means Codex CLI auth and Claude CLI auth both work from the dashboard terminal without requiring a separate machine-local terminal.
+- DashboardAuthScopedTerminal means the dashboard gateway validates browser session auth for terminal API and terminal WebSocket upgrade traffic, using Authorization bearer headers for HTTP and upgrade-header transport for browser WebSockets.
 `);
 
 Dashboard.plugin.contains(Dashboard.route, Dashboard.screen, Terminal.backend);
@@ -224,6 +226,7 @@ when(Dashboard.shell.loads(Dashboard.plugin))
 
 when(Dashboard.gateway.proxies(Terminal.backend))
   .then(Dashboard.gateway.applies(Runtime.lazyBackend))
+  .and(Dashboard.gateway.validates("dashboard browser-session auth before proxy or upgrade"))
   .and(Dashboard.gateway.starts("the terminal backend on first feature traffic"))
   .and(Dashboard.gateway.routes("dashboard-relative /api/dashboard-terminal and /ws/dashboard-terminal paths"));
 

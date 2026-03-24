@@ -15,6 +15,7 @@ import type { ClientMessage, ServerMessage } from "@agent-infrastructure/agent-g
 import { nextIntentId, queueIntent, type AgentGraphStore } from "./agent-graph-store.js";
 
 const dashboardSessionStorageKey = "agent-infrastructure.dashboard.session";
+const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1.";
 
 function readStoredSessionToken(): string {
   if (typeof window === "undefined") {
@@ -26,18 +27,40 @@ function readStoredSessionToken(): string {
 
 function buildFeatureUrl(rootUrl: string, pathname = ""): string {
   const baseUrl = rootUrl.endsWith("/") ? rootUrl : `${rootUrl}/`;
-  const url = new URL(pathname.replace(/^\/+/, ""), baseUrl);
+  return new URL(pathname.replace(/^\/+/, ""), baseUrl).toString();
+}
+
+function buildDashboardSessionHeaders(headers?: HeadersInit): Headers {
+  const nextHeaders = new Headers(headers);
   const sessionToken = readStoredSessionToken().trim();
   if (sessionToken) {
-    url.searchParams.set("sessionToken", sessionToken);
+    nextHeaders.set("Authorization", `Bearer ${sessionToken}`);
   }
-  return url.toString();
+  return nextHeaders;
+}
+
+function buildDashboardSessionWebSocketProtocols(): string[] {
+  const sessionToken = readStoredSessionToken().trim();
+  if (!sessionToken) {
+    return [];
+  }
+
+  return [`${dashboardSessionWebSocketProtocolPrefix}${sessionToken}`];
+}
+
+function featureFetch(input: string, init?: RequestInit): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    headers: buildDashboardSessionHeaders(init?.headers),
+  });
 }
 
 function connect(store: AgentGraphStore): WebSocket {
-  const ws = new WebSocket(
-    buildFeatureUrl(store.state$.connection.wsRootUrl.get()),
-  );
+  const protocols = buildDashboardSessionWebSocketProtocols();
+  const ws =
+    protocols.length > 0
+      ? new WebSocket(buildFeatureUrl(store.state$.connection.wsRootUrl.get()), protocols)
+      : new WebSocket(buildFeatureUrl(store.state$.connection.wsRootUrl.get()));
   ws.addEventListener("open", () => {
     ws.send(JSON.stringify({ type: "client/hello" satisfies ClientMessage["type"] }));
   });
@@ -82,7 +105,7 @@ function applySnapshot(
 }
 
 async function fetchBoards(store: AgentGraphStore): Promise<BoardSummary[]> {
-  const response = await fetch(
+  const response = await featureFetch(
     buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "boards"),
   );
   if (!response.ok) {
@@ -94,7 +117,7 @@ async function fetchBoards(store: AgentGraphStore): Promise<BoardSummary[]> {
 }
 
 async function fetchDocuments(store: AgentGraphStore): Promise<DocumentSummary[]> {
-  const response = await fetch(
+  const response = await featureFetch(
     buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "documents"),
   );
   if (!response.ok) {
@@ -147,7 +170,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
       store.state$.connection.status.set("loading");
       store.state$.connection.error.set(null);
       try {
-        const response = await fetch(
+        const response = await featureFetch(
           buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "workspace"),
         );
         if (!response.ok) {
@@ -398,7 +421,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
     },
 
     async openBoard(path: string): Promise<void> {
-      const response = await fetch(
+      const response = await featureFetch(
         buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "open-board"),
         {
           method: "POST",
@@ -418,7 +441,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
     },
 
     async saveBoardAs(path: string, label?: string): Promise<void> {
-      const response = await fetch(
+      const response = await featureFetch(
         buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "save-board-as"),
         {
           method: "POST",
@@ -438,7 +461,7 @@ export function createAgentGraphActions(store: AgentGraphStore) {
     },
 
     async addBoardDocument(path: string): Promise<void> {
-      const response = await fetch(
+      const response = await featureFetch(
         buildFeatureUrl(store.state$.connection.apiRootUrl.get(), "add-board-document"),
         {
           method: "POST",

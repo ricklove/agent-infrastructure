@@ -97,6 +97,7 @@ DashboardTerminal.enforces(`
 - Default working directories must stay inside approved workspace roots and reject path traversal or symlink escape.
 - Environment forwarding must be explicit and filtered rather than inheriting an unbounded host environment.
 - Authentication and authorization remain owned by the dashboard gateway session boundary.
+- No terminal session token or dashboard session token may appear in terminal API or WebSocket URLs after initial dashboard bootstrap.
 - Idle sessions should expire conservatively so abandoned shells do not accumulate forever.
 - Terminal output may be retained as bounded transcript or inspection state, but the running PTY is the live source of truth during a session.
 - SSH-style remote host hopping is out of scope for V1 unless done by the operator inside the shell itself.
@@ -113,6 +114,7 @@ DashboardTerminal.defines(`
 - ReconnectableTerminalSession means the browser may detach and later reattach to the same live PTY within a bounded lifetime.
 - ManagerHostExecutionBoundary means shell processes run only on the manager host runtime that already serves the dashboard.
 - FilteredEnvironmentForwarding means only approved environment variables are injected into new shell processes.
+- DashboardSessionAuthBoundary means terminal traffic is authorized by the dashboard gateway using header-based browser session auth rather than URL token propagation.
 - Human-in-the-loop auth flow means a CLI-driven login or approval sequence that requires a human to read prompts, copy codes, open URLs, or answer password and MFA challenges.
 - Terminal acceptance case means a concrete CLI flow the feature must support before it is considered ready.
 - CopyFirstCtrlC means Ctrl+C copies selected terminal text first instead of immediately sending SIGINT.

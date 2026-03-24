@@ -130,11 +130,13 @@ type ProxyWsData = {
   upstreamUrl: string;
   upstream: WebSocket | null;
   queue: string[];
+  selectedProtocol: string | null;
 };
 
 type DashboardStatusWsData = {
   kind: "dashboard-status";
   heartbeatTimer: ReturnType<typeof setInterval> | null;
+  selectedProtocol: string | null;
 };
 
 type DashboardWsData = ProxyWsData | DashboardStatusWsData;
@@ -180,6 +182,7 @@ const browserSessionRenewIntervalMs =
       10,
     ) || 300,
   ) * 1000;
+const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1.";
 
 if (!Number.isInteger(port) || port <= 0) {
   throw new Error("DASHBOARD_PORT must be a positive integer");
@@ -283,12 +286,17 @@ function dashboardStatusPayload() {
   };
 }
 
-function jsonResponse(payload: unknown, status = 200): Response {
+function jsonResponse(
+  payload: unknown,
+  status = 200,
+  extraHeaders?: Record<string, string>,
+): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      ...extraHeaders,
     },
   });
 }
@@ -430,21 +438,180 @@ async function parseJsonBody<T>(request: Request): Promise<T | null> {
   }
 }
 
+function authorizationInstruction() {
+  return "Send Authorization: Bearer <dashboard-session-token> after exchanging the one-time sessionKey.";
+}
+
+function websocketAuthorizationInstruction() {
+  return "Send the dashboard session token in Sec-WebSocket-Protocol as dashboard-session.v1.<token>, not in the URL.";
+}
+
+function dashboardAuthErrorResponse(input: {
+  error: string;
+  missingHeader?: string;
+  invalidHeader?: string;
+  instructions: string[];
+  wwwAuthenticate?: string;
+}): Response {
+  return jsonResponse(
+    {
+      ok: false,
+      error: input.error,
+      ...(input.missingHeader ? { missingHeader: input.missingHeader } : {}),
+      ...(input.invalidHeader ? { invalidHeader: input.invalidHeader } : {}),
+      instructions: input.instructions,
+    },
+    401,
+    input.wwwAuthenticate
+      ? {
+          "www-authenticate": input.wwwAuthenticate,
+        }
+      : undefined,
+  );
+}
+
+function extractBearerSessionToken(request: Request): { token: string } | { response: Response } {
+  const authorization = request.headers.get("authorization")?.trim() ?? "";
+  if (!authorization) {
+    return {
+      response: dashboardAuthErrorResponse({
+        error: "dashboard session required: missing Authorization header",
+        missingHeader: "Authorization",
+        instructions: [
+          authorizationInstruction(),
+          "Use the bootstrap sessionKey only with POST /api/session/exchange and remove it from the URL immediately after exchange.",
+        ],
+        wwwAuthenticate: 'Bearer realm="dashboard", error="invalid_token"',
+      }),
+    };
+  }
+
+  const match = /^Bearer\s+(.+)$/i.exec(authorization);
+  if (!match || !match[1]?.trim()) {
+    return {
+      response: dashboardAuthErrorResponse({
+        error: "dashboard session required: invalid Authorization header",
+        invalidHeader: "Authorization",
+        instructions: [
+          authorizationInstruction(),
+          "Do not place the dashboard session token in query strings or other URL parameters.",
+        ],
+        wwwAuthenticate:
+          'Bearer realm="dashboard", error="invalid_token", error_description="Expected Bearer token"',
+      }),
+    };
+  }
+
+  return { token: match[1].trim() };
+}
+
+function extractWebSocketSessionToken(
+  request: Request,
+): { token: string; selectedProtocol: string } | { response: Response } {
+  const header = request.headers.get("sec-websocket-protocol")?.trim() ?? "";
+  if (!header) {
+    return {
+      response: dashboardAuthErrorResponse({
+        error: "dashboard session required: missing Sec-WebSocket-Protocol header",
+        missingHeader: "Sec-WebSocket-Protocol",
+        instructions: [
+          websocketAuthorizationInstruction(),
+          "Do not place the dashboard session token in the WebSocket URL.",
+        ],
+      }),
+    };
+  }
+
+  const selectedProtocol = header
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .find((entry) => entry.startsWith(dashboardSessionWebSocketProtocolPrefix));
+
+  if (!selectedProtocol) {
+    return {
+      response: dashboardAuthErrorResponse({
+        error:
+          "dashboard session required: missing dashboard-session auth protocol in Sec-WebSocket-Protocol",
+        missingHeader: "Sec-WebSocket-Protocol",
+        instructions: [
+          websocketAuthorizationInstruction(),
+          "Do not place the dashboard session token in the WebSocket URL.",
+        ],
+      }),
+    };
+  }
+
+  const token = selectedProtocol.slice(dashboardSessionWebSocketProtocolPrefix.length).trim();
+  if (!token) {
+    return {
+      response: dashboardAuthErrorResponse({
+        error: "dashboard session required: invalid Sec-WebSocket-Protocol auth value",
+        invalidHeader: "Sec-WebSocket-Protocol",
+        instructions: [
+          websocketAuthorizationInstruction(),
+          "Do not place the dashboard session token in the WebSocket URL.",
+        ],
+      }),
+    };
+  }
+
+  return { token, selectedProtocol };
+}
+
 function requireDashboardSession(request: Request): Response | null {
   if (isLoopbackRequest(request)) {
     return null;
   }
 
-  const sessionToken =
-    request.headers.get("x-dashboard-session") ??
-    new URL(request.url).searchParams.get("sessionToken") ??
-    "";
+  const sessionToken = extractBearerSessionToken(request);
+  if ("response" in sessionToken) {
+    return sessionToken.response;
+  }
 
-  if (validateBrowserSessionToken(sessionToken)) {
+  if (validateBrowserSessionToken(sessionToken.token)) {
     return null;
   }
 
-  return jsonResponse({ ok: false, error: "dashboard session required" }, 401);
+  return dashboardAuthErrorResponse({
+    error: "dashboard session required: invalid or expired bearer token",
+    invalidHeader: "Authorization",
+    instructions: [
+      authorizationInstruction(),
+      "Request a fresh dashboard access link if the browser session has expired.",
+    ],
+    wwwAuthenticate:
+      'Bearer realm="dashboard", error="invalid_token", error_description="Expired or unknown dashboard session token"',
+  });
+}
+
+function requireDashboardWebSocketSession(
+  request: Request,
+): { selectedProtocol: string | null; response: Response | null } {
+  if (isLoopbackRequest(request)) {
+    return { selectedProtocol: null, response: null };
+  }
+
+  const sessionToken = extractWebSocketSessionToken(request);
+  if ("response" in sessionToken) {
+    return { selectedProtocol: null, response: sessionToken.response };
+  }
+
+  if (validateBrowserSessionToken(sessionToken.token)) {
+    return { selectedProtocol: sessionToken.selectedProtocol, response: null };
+  }
+
+  return {
+    selectedProtocol: null,
+    response: dashboardAuthErrorResponse({
+      error: "dashboard session required: invalid or expired WebSocket auth token",
+      invalidHeader: "Sec-WebSocket-Protocol",
+      instructions: [
+        websocketAuthorizationInstruction(),
+        "Request a fresh dashboard access link if the browser session has expired.",
+      ],
+    }),
+  };
 }
 
 async function fetchAccessJson<T>(
@@ -949,9 +1116,9 @@ const server = Bun.serve<DashboardWsData>({
     const wsBackend = findWsBackend(url.pathname);
 
     if (wsBackend) {
-      const unauthorized = requireDashboardSession(request);
-      if (unauthorized) {
-        return unauthorized;
+      const wsSession = requireDashboardWebSocketSession(request);
+      if (wsSession.response) {
+        return wsSession.response;
       }
 
       if (
@@ -962,7 +1129,11 @@ const server = Bun.serve<DashboardWsData>({
             upstreamUrl: `${wsBackend.wsUrl}${url.search}`,
             upstream: null,
             queue: [],
+            selectedProtocol: wsSession.selectedProtocol,
           },
+          headers: wsSession.selectedProtocol
+            ? { "Sec-WebSocket-Protocol": wsSession.selectedProtocol }
+            : undefined,
         })
       ) {
         return undefined;
@@ -975,14 +1146,21 @@ const server = Bun.serve<DashboardWsData>({
       url.pathname === "/ws/dashboard-status" ||
       url.pathname === "/ws/dashboard-status/"
     ) {
-      const unauthorized = requireDashboardSession(request);
-      if (unauthorized) {
-        return unauthorized;
+      const wsSession = requireDashboardWebSocketSession(request);
+      if (wsSession.response) {
+        return wsSession.response;
       }
 
       if (
         server.upgrade(request, {
-          data: { kind: "dashboard-status", heartbeatTimer: null },
+          data: {
+            kind: "dashboard-status",
+            heartbeatTimer: null,
+            selectedProtocol: wsSession.selectedProtocol,
+          },
+          headers: wsSession.selectedProtocol
+            ? { "Sec-WebSocket-Protocol": wsSession.selectedProtocol }
+            : undefined,
         })
       ) {
         return undefined;

@@ -44,6 +44,7 @@ type FeatureStatusDetail = {
 }
 
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
+const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
 
 function SwarmIcon(props: { className?: string }) {
   return (
@@ -161,6 +162,15 @@ function MenuIcon(props: { className?: string }) {
 
 function readStoredSessionToken(): string {
   return window.sessionStorage.getItem(sessionStorageKey) ?? ""
+}
+
+function dashboardSessionWebSocketProtocols(sessionToken: string): string[] {
+  const trimmed = sessionToken.trim()
+  if (!trimmed) {
+    return []
+  }
+
+  return [`${dashboardSessionWebSocketProtocolPrefix}${trimmed}`]
 }
 
 function featureIdFromPath(pathname: string): FeatureId {
@@ -293,11 +303,11 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
       const wsUrl = new URL(
         `${window.location.origin.replace(/^http/, "ws")}/ws/dashboard-status`,
       )
-      if (sessionToken) {
-        wsUrl.searchParams.set("sessionToken", sessionToken)
-      }
-
-      socket = new WebSocket(wsUrl.toString())
+      const protocols = dashboardSessionWebSocketProtocols(sessionToken)
+      socket =
+        protocols.length > 0
+          ? new WebSocket(wsUrl.toString(), protocols)
+          : new WebSocket(wsUrl.toString())
       socket.addEventListener("message", (event) => {
         try {
           const payload = JSON.parse(String(event.data)) as DashboardGatewayStatusMessage

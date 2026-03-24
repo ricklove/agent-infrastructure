@@ -16,6 +16,9 @@ export type DashboardTerminalScreenProps = {
   appVersion?: string;
 };
 
+const sessionStorageKey = "agent-infrastructure.dashboard.session";
+const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1.";
+
 type SessionSummary = {
   id: string;
   cwd: string;
@@ -46,6 +49,32 @@ type WsMessageOut =
   | { type: "session_closed"; sessionId: string; exitCode?: number }
   | { type: "error"; message: string }
   | { type: "heartbeat_ack" };
+
+function readStoredSessionToken(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.sessionStorage.getItem(sessionStorageKey) ?? "";
+}
+
+function applyDashboardSessionHeaders(headers?: HeadersInit): Headers {
+  const nextHeaders = new Headers(headers);
+  const sessionToken = readStoredSessionToken().trim();
+  if (sessionToken) {
+    nextHeaders.set("Authorization", `Bearer ${sessionToken}`);
+  }
+  return nextHeaders;
+}
+
+function dashboardSessionWebSocketProtocols(): string[] {
+  const sessionToken = readStoredSessionToken().trim();
+  if (!sessionToken) {
+    return [];
+  }
+
+  return [`${dashboardSessionWebSocketProtocolPrefix}${sessionToken}`];
+}
 
 // ---------------------------------------------------------------------------
 // ANSI minimal renderer
@@ -86,41 +115,11 @@ function useTerminalRenderer() {
   return { preRef, append, reset };
 }
 
-function readStoredSessionToken(): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return (
-    window.sessionStorage.getItem("agent-infrastructure.dashboard.session") ??
-    window.localStorage.getItem("agent-infrastructure.dashboard.session") ??
-    ""
-  );
-}
-
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const headers = new Headers(init?.headers);
-  const sessionToken = readStoredSessionToken().trim();
-
-  if (sessionToken) {
-    headers.set("x-dashboard-session", sessionToken);
-  }
-
   return fetch(path, {
     ...init,
-    headers,
+    headers: applyDashboardSessionHeaders(init?.headers),
   });
-}
-
-function withDashboardSessionToken(path: string): string {
-  const sessionToken = readStoredSessionToken().trim();
-  if (!sessionToken) {
-    return path;
-  }
-
-  const url = new URL(path, typeof window === "undefined" ? "http://127.0.0.1" : window.location.href);
-  url.searchParams.set("sessionToken", sessionToken);
-  return url.toString();
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +213,10 @@ export function DashboardTerminalScreen({
       setError(null);
       reset("");
 
-      const ws = new WebSocket(withDashboardSessionToken(wsRootUrl));
+      const wsUrl = `${wsRootUrl}/ws`;
+      const protocols = dashboardSessionWebSocketProtocols();
+      const ws =
+        protocols.length > 0 ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -294,7 +296,7 @@ export function DashboardTerminalScreen({
     try {
       const res = await apiFetch(`${apiRootUrl}/sessions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: applyDashboardSessionHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           cwd: profiles?.defaultCwd || "/home/ec2-user/workspace",
         }),

@@ -195,6 +195,7 @@ export type AgentChatScreenProps = {
 }
 
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
+const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
 const defaultSessionDirectory = "/home/ec2-user/workspace"
 const draftStorageKeyPrefix = "agent-infrastructure.agent-chat.draft."
 const sessionRailWidthStorageKey = "agent-infrastructure.agent-chat.session-rail-width"
@@ -415,6 +416,20 @@ function readStoredSessionToken(): string {
   return window.sessionStorage.getItem(sessionStorageKey) ?? ""
 }
 
+function authorizationHeaderValue(): string {
+  const sessionToken = readStoredSessionToken().trim()
+  return sessionToken ? `Bearer ${sessionToken}` : ""
+}
+
+function dashboardSessionWebSocketProtocols(): string[] {
+  const sessionToken = readStoredSessionToken().trim()
+  if (!sessionToken) {
+    return []
+  }
+
+  return [`${dashboardSessionWebSocketProtocolPrefix}${sessionToken}`]
+}
+
 function draftStorageKey(sessionId: string) {
   return `${draftStorageKeyPrefix}${sessionId}`
 }
@@ -450,10 +465,10 @@ function readSessionRailWidth() {
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers)
-  const sessionToken = readStoredSessionToken().trim()
+  const authorization = authorizationHeaderValue()
 
-  if (sessionToken) {
-    headers.set("x-dashboard-session", sessionToken)
+  if (authorization) {
+    headers.set("Authorization", authorization)
   }
 
   return fetch(path, {
@@ -543,16 +558,6 @@ function watchdogAttentionLabel(watchdogState: SessionWatchdogState) {
   return null
 }
 
-function withDashboardSessionToken(path: string) {
-  const sessionToken = readStoredSessionToken().trim()
-  if (!sessionToken) {
-    return path
-  }
-
-  const separator = path.includes("?") ? "&" : "?"
-  return `${path}${separator}sessionToken=${encodeURIComponent(sessionToken)}`
-}
-
 function mergeMessagesById(current: SessionMessage[], incoming: SessionMessage[]) {
   const next = new Map<string, SessionMessage>()
   for (const message of current) {
@@ -589,6 +594,79 @@ function splitDisplayParagraphs(text: string) {
 
 function summarizeStreamCheckpoint(text: string) {
   return splitDisplayParagraphs(text)[0] ?? "Stream revision"
+}
+
+function MessageImageAsset({ path }: { path: string }) {
+  const [assetUrl, setAssetUrl] = useState("")
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    let active = true
+    let nextObjectUrl = ""
+
+    async function loadAsset() {
+      try {
+        const response = await apiFetch(path)
+        if (!response.ok) {
+          throw new Error(`Image request failed with status ${response.status}.`)
+        }
+
+        const blob = await response.blob()
+        nextObjectUrl = URL.createObjectURL(blob)
+
+        if (!active) {
+          URL.revokeObjectURL(nextObjectUrl)
+          return
+        }
+
+        setAssetUrl(nextObjectUrl)
+        setError("")
+      } catch (nextError) {
+        if (!active) {
+          return
+        }
+
+        setAssetUrl("")
+        setError(nextError instanceof Error ? nextError.message : "Image unavailable.")
+      }
+    }
+
+    void loadAsset()
+
+    return () => {
+      active = false
+      if (nextObjectUrl) {
+        URL.revokeObjectURL(nextObjectUrl)
+      }
+    }
+  }, [path])
+
+  return (
+    <div className="block overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60">
+      <div className="flex max-h-[28rem] min-h-24 items-center justify-center bg-slate-950/80 p-3">
+        {assetUrl ? (
+          <a href={assetUrl} target="_blank" rel="noreferrer">
+            <img
+              src={assetUrl}
+              alt="User supplied"
+              className="max-h-[calc(28rem-1.5rem)] max-w-full object-contain"
+            />
+          </a>
+        ) : (
+          <div className="text-xs text-slate-400">{error || "Loading image..."}</div>
+        )}
+      </div>
+      <div className="border-t border-white/10 px-3 py-2 text-xs text-slate-300">
+        {assetUrl ? (
+          <a href={assetUrl} target="_blank" rel="noreferrer">
+            Open image
+          </a>
+        ) : (
+          "Image preview"
+        )}
+      </div>
+    </div>
+  )
 }
 
 function sessionCardTone(activity: SessionActivity, active: boolean, archived: boolean) {
@@ -725,11 +803,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const archivedSessions = useMemo(
     () => visibleSessions.filter((session) => session.archived),
     [visibleSessions],
-  )
-
-  const messageContentAssetUrl = useCallback(
-    (path: string) => withDashboardSessionToken(path),
-    [],
   )
 
   const loadSessions = useCallback(async () => {
@@ -1183,13 +1256,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
     const socketUrl = new URL(props.wsRootUrl)
     socketUrl.searchParams.set("sessionId", activeSessionId)
-    const sessionToken = readStoredSessionToken().trim()
-    if (sessionToken) {
-      socketUrl.searchParams.set("sessionToken", sessionToken)
-    }
-
     setWsStatus("connecting")
-    const socket = new WebSocket(socketUrl.toString())
+    const protocols = dashboardSessionWebSocketProtocols()
+    const socket =
+      protocols.length > 0
+        ? new WebSocket(socketUrl.toString(), protocols)
+        : new WebSocket(socketUrl.toString())
 
     socket.addEventListener("open", () => {
       setWsStatus("ready")
@@ -2407,24 +2479,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                     {block.text}
                                   </p>
                                 ) : (
-                                  <a
+                                  <MessageImageAsset
                                     key={`${message.id}-${index}`}
-                                    href={messageContentAssetUrl(block.url)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="block overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60"
-                                  >
-                                    <div className="flex max-h-[28rem] min-h-24 items-center justify-center bg-slate-950/80 p-3">
-                                      <img
-                                        src={messageContentAssetUrl(block.url)}
-                                        alt="User supplied"
-                                        className="max-h-[calc(28rem-1.5rem)] max-w-full object-contain"
-                                      />
-                                    </div>
-                                    <div className="border-t border-white/10 px-3 py-2 text-xs text-slate-300">
-                                      Open image
-                                    </div>
-                                  </a>
+                                    path={block.url}
+                                  />
                                 ),
                               )}
                             </div>

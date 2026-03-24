@@ -120,6 +120,7 @@ Tags.role.means("tag:Role = agent-swarm-manager");
 Contract.dashboardIssuer.means(`
 - one repo-owned callable interface on the manager host
 - returns a dashboard access URL
+- returns a one-time bootstrap URL rather than a long-lived authenticated API base URL
 - may reuse an existing dashboard runtime
 - may reuse an existing quick tunnel
 - may notify the manager controller dashboard-recovery domain to keep dashboard access alive during active use
@@ -129,6 +130,7 @@ Contract.dashboardIssuer.means(`
 Contract.dashboardAccessUrl.means(`
 - a public URL for the dashboard
 - includes whatever one-time session material is required for bootstrap
+- that session material is only for initial browser bootstrap and must not be reused as ongoing API or WebSocket URL auth
 `);
 
 when(CDK.provisions(ManagerHost))
