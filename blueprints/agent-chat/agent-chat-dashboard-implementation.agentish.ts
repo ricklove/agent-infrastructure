@@ -159,7 +159,7 @@ AgentChatDashboardImplementation.enforces(`
 - Agent activity should be shown near the composer with explicit working state, elapsed time, and provider-backed background activity count when available.
 - Session list rows should show worker state when the backend can report it, not just a generic session status pill.
 - Session list rows should show the selected process expectation when one is assigned and should surface watchdog attention state when a session goes idle unresolved.
-- The session-list controls should expose a compact quick-set process selector for the active chat near the list-level menu actions.
+- The active-thread controls should expose a compact quick-set process selector for the current chat adjacent to the thread menu button.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - The composer should support a lightweight reply-target reminder so the operator can indicate that the in-progress human message responds to a specific earlier agent message.
 - The browser should preserve unsent per-session message drafts in local storage so transient reloads do not discard typed input.
@@ -316,7 +316,7 @@ Ui.sessionList.means(`
 - the session list should show a condensed worker-state summary such as running, queued, waiting, interrupted, or background worker count when available
 - the session list should show the selected process blueprint title or expectation title when a session has one
 - unresolved watchdog attention should be visible in the list without overwhelming the primary worker-state summary
-- the session-list header should offer a compact active-session process blueprint quick-set control adjacent to the session-list menu actions
+- the active-thread header should offer a compact current-session process blueprint quick-set control adjacent to the thread-scoped menu actions
 - the main session list should stay visually compact so the active thread remains the primary focus
 - the session list should group sessions by optional folders before falling back to an ungrouped collection
 - the main list should exclude archived sessions by default
