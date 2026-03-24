@@ -1530,23 +1530,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             >
               <PlusIcon />
             </IconButton>
-            <label className="min-w-0 flex-1">
-              <span className="sr-only">Quick set active chat process</span>
-              <select
-                value={activeSession?.processBlueprintId ?? ""}
-                onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
-                disabled={!activeSession || updatingQuickProcessBlueprint}
-                title="Quick Set Process"
-                className="w-full rounded-full border border-white/10 bg-slate-900/80 px-3 py-2 text-xs text-slate-200 outline-none disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="">Process</option>
-                {processBlueprints.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.title}
-                  </option>
-                ))}
-              </select>
-            </label>
             <div className="relative">
               <IconButton
                 label={sessionListMenuOpen ? "Hide session list menu" : "Show session list menu"}
@@ -2401,6 +2384,23 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     Paste images directly from the clipboard. Ctrl+Enter sends. Esc interrupts when the provider supports it.
                   </p>
                   <div className="flex items-center gap-2">
+                    <label className="min-w-0">
+                      <span className="sr-only">Quick set current chat process</span>
+                      <select
+                        value={activeSession?.processBlueprintId ?? ""}
+                        onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
+                        disabled={!activeSession || updatingQuickProcessBlueprint}
+                        title="Quick Set Process"
+                        className="max-w-44 rounded-full border border-white/10 bg-slate-900/80 px-3 py-2 text-xs text-slate-200 outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="">Process</option>
+                        {processBlueprints.map((entry) => (
+                          <option key={entry.id} value={entry.id}>
+                            {entry.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <IconButton
                       label={settingsOpen ? "Hide settings menu" : "Show settings menu"}
                       title={settingsOpen ? "Hide Menu" : "Menu"}
