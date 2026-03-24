@@ -2291,7 +2291,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           ref={(element) => setMessageElementRef(message.id, element)}
                           className={`min-w-0 overflow-hidden rounded-3xl border px-4 py-3 md:px-5 md:py-4 ${
                             message.kind === "thought" || message.kind === "streamCheckpoint"
-                              ? "w-full max-w-[72%] border-white/10 bg-slate-950/60 md:max-w-[64%]"
+                              ? "w-full border-white/10 bg-slate-950/60 md:max-w-[64%]"
                               : message.role === "user"
                               ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]"
                               : message.role === "system"
