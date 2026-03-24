@@ -232,7 +232,7 @@ when(Dashboard.screen.disconnects(Transport.websocket))
   .and(Ui.reconnectBanner.explains("that the live session may be reattached"));
 
 DashboardTerminal.prescribes(`
-- Implement the backend around a Bun-managed PTY-capable runtime rather than a polling command API.
+- Implement the backend around Bun's native PTY support rather than a polling command API or helper-process fallback.
 - Keep shell startup, attach, resize, input, output, and close as explicit transport events.
 - Make the browser terminal feature workspace-aware so cwd choice, session labels, and future file-browser integration line up.
 - Prefer a transport contract that can support xterm-style rendering without feature-specific hacks in the dashboard shell.

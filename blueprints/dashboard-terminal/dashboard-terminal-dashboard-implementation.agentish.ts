@@ -64,6 +64,7 @@ const Runtime = {
   lazyUi: define.concept("LazyTerminalUi"),
   lazyBackend: define.concept("LazyTerminalBackend"),
   ptyRuntime: define.concept("BunHostedPtyRuntime"),
+  nativePty: define.concept("BunNativePty"),
   browserTerminal: define.concept("XtermCompatibleBrowserTerminal"),
   authFriendlyUx: define.concept("AuthFriendlyTerminalUx"),
   copyFirstKeyboard: define.concept("CopyFirstKeyboardPolicy"),
@@ -107,7 +108,7 @@ DashboardTerminalDashboardImplementation.enforces(`
 - More general auth workflows such as ssh, sudo, or device-code login are secondary unless they conflict with the primary Codex CLI and Claude CLI auth cases.
 - The gateway should proxy terminal traffic and lazy-start the backend on first terminal use.
 - Transport must support interactive latency expectations for shell typing, resizing, and long-running output.
-- Bun is the host runtime for this feature, but PTY support may come from a dedicated Bun-compatible library or helper process.
+- Bun is the host runtime for this feature and V1 PTY support should use Bun's native terminal support directly.
 - The terminal backend must create isolated PTY-backed shell sessions instead of reusing one shared operator shell.
 - V1 execution happens on the manager host only and starts in approved workspace roots.
 - Session attach, input, resize, snapshot, and close operations must all enforce dashboard-session authorization.
@@ -122,7 +123,8 @@ DashboardTerminalDashboardImplementation.enforces(`
 
 DashboardTerminalDashboardImplementation.defines(`
 - DashboardTerminalBackend means the Bun server that owns terminal session lifecycle, PTY control, authorization, and realtime streaming.
-- BunHostedPtyRuntime means the terminal backend is launched and managed from Bun even if PTY internals rely on a native helper.
+- BunHostedPtyRuntime means the terminal backend is launched and managed from Bun around Bun's built-in terminal primitives.
+- BunNativePty means terminal sessions use Bun's native PTY support directly via the runtime's terminal APIs instead of a helper-process fallback.
 - XtermCompatibleBrowserTerminal means the browser UI uses a terminal rendering model capable of full interactive shell behavior.
 - AuthFriendlyTerminalUx means the viewport and session chrome preserve the fidelity and stability needed for human login prompts and browser-mediated approval steps.
 - CopyFirstKeyboardPolicy means browser copy semantics take precedence on the first Ctrl+C press and terminal interrupt is sent only on immediate repeat after a visible hint.
@@ -175,6 +177,7 @@ Dashboard.screen.contains(
 Dashboard.plugin.contains(Runtime.lazyUi, Runtime.lazyBackend);
 Terminal.backend.contains(
   Runtime.ptyRuntime,
+  Runtime.nativePty,
   Runtime.reconnect,
   Runtime.boundedHistory,
   Runtime.workspaceGuard,
@@ -267,6 +270,7 @@ DashboardTerminalDashboardImplementation.prescribes(`
 - Add a new blueprint-owned feature package pair for UI and backend rather than burying terminal code inside generic dashboard files.
 - Treat terminal transport as websocket-first, with small HTTP endpoints for create, list, close, and initial snapshot.
 - Keep terminal session state feature-owned so tab names, cwd, attachment state, and idle timers are not inferred by the dashboard shell.
+- Choose Bun's native PTY support as the V1 runtime path unless a later production constraint forces a documented change.
 - Start with one strong terminal experience on the manager host before considering multi-host brokering, SSH key management, or collaborative sessions.
 - Make auth flows the acceptance bar for V1: if common CLI login flows are unreliable, the terminal feature is not ready.
 - Test first against the real Codex CLI and Claude CLI auth commands present on the manager host, not only synthetic PTY demos.
