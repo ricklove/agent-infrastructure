@@ -1777,10 +1777,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
   return (
     <div className="flex h-full min-h-0 bg-slate-950 text-slate-100">
+      {mobileSessionsOpen ? (
+        <button
+          type="button"
+          aria-label="Close sessions"
+          onClick={() => setMobileSessionsOpen(false)}
+          className="fixed inset-0 z-10 bg-slate-950/70 backdrop-blur-sm md:hidden"
+        />
+      ) : null}
       <aside
         className={`${
           mobileSessionsOpen ? "translate-x-0" : "-translate-x-full"
-        } relative fixed inset-y-0 left-0 z-20 w-[86vw] max-w-sm border-r border-white/10 bg-slate-950/95 p-3 backdrop-blur transition md:static md:max-w-none md:translate-x-0 md:border-r md:p-4`}
+        } fixed inset-y-0 left-0 z-20 w-[86vw] max-w-sm border-r border-white/10 bg-slate-950/95 p-3 backdrop-blur transition md:static md:max-w-none md:translate-x-0 md:border-r md:p-4`}
         style={!mobileSessionsOpen ? { width: sessionRailWidth } : undefined}
       >
         <div className="flex h-full min-h-0 flex-col gap-3">
