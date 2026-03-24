@@ -23,6 +23,7 @@ const sourceDir = dirname(fileURLToPath(import.meta.url));
 export interface AwsSetupStackProps extends StackProps {
   agentHome: string;
   dashboardEnrollmentSecret: string;
+  cloudflareTunnelConfigParameterName?: string;
   managerInstanceType: string;
   workerInstanceType: string;
   swarmMaxSize: number;
@@ -50,6 +51,11 @@ export class AwsSetupStack extends Stack {
           props.dashboardEnrollmentSecret,
         ),
       },
+    );
+    const cloudflareTunnelTokenSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "CloudflareTunnelToken",
+      `/agent-infrastructure/${this.stackName}/cloudflare/tunnel-token`,
     );
     const runtimeRepoUrl = "https://github.com/ricklove/agent-infrastructure.git";
     const runtimeRepoRef = "development";
@@ -147,6 +153,21 @@ export class AwsSetupStack extends Stack {
       iam.ManagedPolicy.fromAwsManagedPolicyName(
         "AmazonSSMManagedInstanceCore",
       ),
+    );
+    dashboardEnrollmentSecretSecret.grantRead(managerRole);
+    cloudflareTunnelTokenSecret.grantRead(managerRole);
+    managerRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "ReadCloudflareTunnelConfig",
+        actions: ["ssm:GetParameter"],
+        resources: [
+          Stack.of(this).formatArn({
+            service: "ssm",
+            resource: "parameter",
+            resourceName: `agent-infrastructure/${this.stackName}/cloudflare/config`,
+          }),
+        ],
+      }),
     );
     workerRuntimeReleaseBucket.grantReadWrite(managerRole);
     managerRole.addToPolicy(
@@ -423,5 +444,10 @@ export class AwsSetupStack extends Stack {
     new CfnOutput(this, "DashboardEnrollmentSecretArn", {
       value: dashboardEnrollmentSecretSecret.secretArn,
     });
+    if (props.cloudflareTunnelConfigParameterName) {
+      new CfnOutput(this, "CloudflareTunnelConfigParameterName", {
+        value: props.cloudflareTunnelConfigParameterName,
+      });
+    }
   }
 }

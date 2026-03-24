@@ -5,9 +5,10 @@
   "scripts": {
     "build": "tsc --project tsconfig.json --noEmit",
     "check": "tsc --project tsconfig.json --noEmit",
-    "synth": "cdk synth",
-    "diff": "cdk diff",
-    "deploy": "cdk deploy",
+    "prepare-cloudflare-tunnel": "bash ./scripts/prepare-cloudflare-tunnel.sh --stack-name ${STACK_NAME:-AgentSwarmAwsSetup}",
+    "synth": "bash ./scripts/run-cdk.sh synth",
+    "diff": "bash ./scripts/run-cdk.sh diff",
+    "deploy": "bash ./scripts/run-cdk.sh deploy",
     "destroy": "bash ./scripts/destroy-swarm.sh"
   },
   "dependencies": {

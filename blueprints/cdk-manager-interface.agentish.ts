@@ -31,6 +31,8 @@ const Contract = {
   managerDiscovery: define.entity("ManagerDiscoveryContract"),
   dashboardIssuer: define.entity("DashboardSessionIssuerContract"),
   dashboardAccessUrl: define.entity("DashboardAccessUrl"),
+  namedTunnelConfig: define.entity("NamedTunnelConfig"),
+  namedTunnelProvisioning: define.entity("NamedTunnelProvisioning"),
 };
 
 const Paths = {
@@ -39,6 +41,8 @@ const Paths = {
   workspaceRoot: define.entity("WorkspaceRootPath"),
   bootstrapContextPath: define.entity("BootstrapContextPath"),
   setupScriptPath: define.entity("SetupScriptPath"),
+  cloudflareZoneConfigPath: define.entity("CloudflareZoneConfigPath"),
+  cloudflarePreparedTunnelConfigPath: define.entity("CloudflarePreparedTunnelConfigPath"),
 };
 
 const Tags = {
@@ -68,9 +72,12 @@ CdkManagerInterface.enforces(`
 CdkManagerInterface.defines(`
 - The manager host clones the manager repo into a runtime root.
 - CDK writes bootstrap context before setup runs.
+- AWS setup commands automatically run a pre-CDK Cloudflare provisioning step when local Cloudflare zone config exists.
 - The repo exposes one idempotent setup entrypoint.
 - Running setup from repo contents plus bootstrap context is sufficient to provision the manager host.
 - After setup, the manager host provides a monitor service and a dashboard service.
+- CDK may read deploy-machine-only prepared Cloudflare tunnel config from a local file outside the repo and project it into bootstrap context.
+- If named tunnel configuration is present in bootstrap context, the manager host can provide dashboard public ingress through that stack-owned tunnel plus ephemeral session hostnames.
 - Auth can request a dashboard access URL without knowing the repo's internal structure.
 `);
 
@@ -79,6 +86,8 @@ Paths.stateRoot.means("/home/ec2-user/state");
 Paths.workspaceRoot.means("/home/ec2-user/workspace");
 Paths.bootstrapContextPath.means("/home/ec2-user/state/bootstrap-context.json");
 Paths.setupScriptPath.means("/home/ec2-user/runtime/scripts/setup.sh");
+Paths.cloudflareZoneConfigPath.means("~/.cloudflared/zone-config.json");
+Paths.cloudflarePreparedTunnelConfigPath.means("~/.cloudflared/stack-tunnels/<stackName>.json");
 
 Contract.setupEntrypoint.means(`
 - a repo-owned executable entrypoint
@@ -123,8 +132,30 @@ Contract.dashboardIssuer.means(`
 - returns a one-time bootstrap URL rather than a long-lived authenticated API base URL
 - may reuse an existing dashboard runtime
 - may reuse an existing quick tunnel
+- may reuse one configured named cloudflared tunnel and create a fresh session hostname on that tunnel
 - may notify the manager controller dashboard-recovery domain to keep dashboard access alive during active use
 - does not require callers to know internal package paths or helper implementation details
+`);
+
+Contract.namedTunnelConfig.means(`
+- optional bootstrap configuration for a stack-owned named cloudflared tunnel
+- sourced by CDK from ~/.cloudflared/stack-tunnels/<stackName>.json on the machine running cdk deploy
+- manager runtime fetches the stack-owned hostname metadata and tunnel token from deterministic AWS names derived from the stack name
+- manager runtime does not receive named-tunnel metadata through EC2 user data
+- manager runtime does not receive the deploy-machine origin cert
+- absence of this config means the manager falls back to temporary ingress such as quick tunnels
+`);
+
+Contract.namedTunnelProvisioning.means(`
+- a pre-CDK script reads ~/.cloudflared/zone-config.json on the deploy machine
+- that script creates or reuses one named tunnel per deployed stack
+- that script creates or reuses one wildcard DNS route for the deployed stack hostname space
+- that script writes or updates a deterministic AWS Secrets Manager secret for the tunnel runtime token
+- that script writes or updates a deterministic AWS SSM parameter for the stack-owned hostname metadata
+- that script writes ~/.cloudflared/stack-tunnels/<stackName>.json for CDK consumption using the config parameter name, not plaintext token values
+- normal aws-setup synth/diff/deploy commands should invoke this step automatically rather than requiring operators to remember a separate preparatory command
+- CDK grants the manager role read access to those deterministic AWS config locations without embedding the values in EC2 user data
+- manager setup fetches the tunnel token and hostname metadata at runtime
 `);
 
 Contract.dashboardAccessUrl.means(`
@@ -135,6 +166,7 @@ Contract.dashboardAccessUrl.means(`
 
 when(CDK.provisions(ManagerHost))
   .then(CDK.clones(ManagerRepo).to(Paths.runtimeRoot))
+  .and(CDK.mayRead(Contract.namedTunnelConfig).from(Paths.cloudflarePreparedTunnelConfigPath))
   .and(CDK.writes(Contract.bootstrapContext).to(Paths.bootstrapContextPath))
   .and(CDK.executes(Contract.setupEntrypoint).through(Paths.setupScriptPath));
 

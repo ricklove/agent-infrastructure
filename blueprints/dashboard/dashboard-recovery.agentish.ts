@@ -24,6 +24,8 @@ const Manager = {
   recovery: define.entity("DashboardRecoveryAttempt"),
   helpRequest: define.entity("DashboardHelpRequest"),
   tunnel: define.entity("CloudflaredTunnel"),
+  namedTunnel: define.entity("NamedCloudflaredTunnel"),
+  sessionHostname: define.entity("DashboardSessionHostname"),
   backupTunnel: define.entity("BackupTemporaryTunnel"),
   gateway: define.entity("DashboardGatewayProcess"),
 };
@@ -34,6 +36,8 @@ const Policy = {
   oneCanonicalTunnel: define.concept("OneCanonicalTunnel"),
   tunnelCooldown: define.concept("QuickTunnelReplacementCooldown"),
   classifyFailuresSeparately: define.concept("SeparateOriginAndTunnelFailures"),
+  preferNamedTunnelWhenConfigured: define.concept("PreferNamedTunnelWhenConfigured"),
+  sessionHostnameLifecycle: define.concept("SessionHostnameLifecycle"),
   backupTunnelFallback: define.concept("BackupTemporaryTunnelFallback"),
   escalateAfterFailedRepair: define.concept("EscalateAfterFailedRepair"),
   thinAlwaysOnController: define.concept("ThinAlwaysOnController"),
@@ -46,6 +50,7 @@ DashboardRecovery.enforces(`
 - One thin always-on manager controller should own dashboard lifecycle and recovery policy through a dedicated dashboard-recovery domain.
 - One canonical dashboard tunnel should exist after recovery, not a pile of stale tunnels.
 - A thin always-on manager controller may supervise dashboard lifecycle without making the dashboard itself always-on.
+- When named tunnel configuration exists, the manager should use one persistent named tunnel instead of issuing anonymous quick tunnels.
 - Temporary ingress may use a backup tunnel provider when the primary quick tunnel provider cannot issue a URL.
 - If automatic repair still fails, the system should create an explicit ask-help incident for agent follow-up.
 `);
@@ -70,6 +75,25 @@ Policy.repairFirst.means(`
 Policy.oneCanonicalTunnel.means(`
 - dashboard recovery should converge to one live cloudflared process for the active dashboard port
 - stale tunnel processes should be terminated during recovery
+- when a named tunnel is configured, recovery should converge to one persistent named tunnel connector plus the currently active session hostname mapping
+`);
+
+Policy.preferNamedTunnelWhenConfigured.means(`
+- if stack-owned named tunnel runtime credentials and hostname-management capability are configured, the manager should prefer that path over anonymous quick tunnels
+- manager runtime credentials for named tunnel mode should be limited to the tunnel runtime token, not the deploy-machine Cloudflare origin cert
+- stack-owned hostname metadata for named tunnel mode should be fetched from AWS runtime configuration, not embedded in EC2 user data
+- named tunnel mode should keep one persistent cloudflared connector alive for the stack-owned tunnel instead of creating a new tunnel process identity for each access attempt
+- named tunnel mode should issue a fresh random hostname per dashboard session while reusing the same named tunnel connector
+- named tunnel mode should preserve the quick-tunnel-style "fresh public URL per session" behavior without depending on trycloudflare.com
+- quick tunnels remain the fallback path when named tunnel configuration is absent or unusable
+`);
+
+Policy.sessionHostnameLifecycle.means(`
+- when named tunnel mode is active, a dashboard session should receive a random public hostname mapped through the persistent named tunnel
+- session hostname creation is the named-tunnel equivalent of quick tunnel URL issuance
+- the wildcard DNS route is created ahead of time for the stack-owned hostname space
+- expired or abandoned session hostnames are just inactive URLs under that wildcard and do not require per-session DNS cleanup
+- deleting the named tunnel itself is not part of normal session cleanup
 `);
 
 Policy.tunnelCooldown.means(`
@@ -116,6 +140,8 @@ when(Access.lambda.invokes(Manager.sessionIssue).andObserves(Access.attempt))
   .then(DashboardRecovery.requires(Policy.activeAttemptRequired))
   .and(DashboardRecovery.requires(Policy.repairFirst))
   .and(DashboardRecovery.requires(Policy.classifyFailuresSeparately))
+  .and(DashboardRecovery.requires(Policy.preferNamedTunnelWhenConfigured))
+  .and(DashboardRecovery.requires(Policy.sessionHostnameLifecycle))
   .and(DashboardRecovery.requires(Policy.tunnelCooldown))
   .and(DashboardRecovery.requires(Policy.thinAlwaysOnController))
   .and(DashboardRecovery.requires(Policy.backupTunnelFallback))
@@ -132,9 +158,13 @@ when(Manager.dashboardControl.detects(Manager.readinessFailure))
 when(Manager.dashboardControl.repairs(Manager.runtime))
   .then(DashboardRecovery.requires(Policy.oneCanonicalTunnel))
   .and(DashboardRecovery.requires(Policy.classifyFailuresSeparately))
+  .and(DashboardRecovery.requires(Policy.preferNamedTunnelWhenConfigured))
+  .and(DashboardRecovery.requires(Policy.sessionHostnameLifecycle))
   .and(DashboardRecovery.requires(Policy.tunnelCooldown))
   .and(DashboardRecovery.requires(Policy.backupTunnelFallback))
   .and(Manager.dashboardControl.terminates(Manager.tunnel))
+  .and(Manager.dashboardControl.keeps(Manager.namedTunnel))
+  .and(Manager.dashboardControl.rotates(Manager.sessionHostname))
   .and(Manager.dashboardControl.mayReplace(Manager.backupTunnel))
   .and(Manager.dashboardControl.restarts(Manager.gateway))
   .and(Manager.dashboardControl.mayReplace(Manager.tunnel));

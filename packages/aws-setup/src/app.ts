@@ -1,7 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import { App } from "aws-cdk-lib";
 import { AwsSetupStack } from "./aws-setup-stack.js";
+
+type CloudflareZoneConfig = {
+  tunnelConfigParameterName: string;
+};
 
 function awsCliBaseArgs(): string[] {
   const args: string[] = [];
@@ -62,9 +69,27 @@ function resolveDashboardEnrollmentSecret(stackName: string): string {
   return randomBytes(32).toString("hex");
 }
 
+function readManagedTunnelConfig(stackName: string): CloudflareZoneConfig | undefined {
+  const path = resolve(homedir(), ".cloudflared", "stack-tunnels", `${stackName}.json`);
+  if (!existsSync(path)) {
+    return undefined;
+  }
+
+  const parsed = JSON.parse(readFileSync(path, "utf8")) as CloudflareZoneConfig;
+  if (!parsed.tunnelConfigParameterName?.trim()) {
+    throw new Error(
+      `managed cloudflare tunnel config missing tunnelConfigParameterName: ${path}`,
+    );
+  }
+  return {
+    tunnelConfigParameterName: parsed.tunnelConfigParameterName.trim(),
+  };
+}
+
 const app = new App();
 const stackName = app.node.tryGetContext("stackName")?.trim() || "AgentSwarmAwsSetup";
 const agentHome = app.node.tryGetContext("agentHome")?.trim() || "/home/ec2-user";
+const managedTunnel = readManagedTunnelConfig(stackName);
 const dashboardEnrollmentSecret =
   app.node.tryGetContext("dashboardEnrollmentSecret")?.trim() ||
   process.env.DASHBOARD_ENROLLMENT_SECRET?.trim() ||
@@ -91,6 +116,7 @@ new AwsSetupStack(app, stackName, {
   },
   agentHome,
   dashboardEnrollmentSecret,
+  cloudflareTunnelConfigParameterName: managedTunnel?.tunnelConfigParameterName,
   managerInstanceType,
   workerInstanceType,
   swarmMaxSize,

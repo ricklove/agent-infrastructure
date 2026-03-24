@@ -12,6 +12,8 @@ const SYSTEM_EVENT_LOG_PATH =
 
 type BootstrapContext = Record<string, unknown> & {
   managerMonitorPort?: number;
+  managerInstanceId?: string;
+  swarmTagValue?: string;
 };
 
 type SetupHostConfig = {
@@ -99,6 +101,44 @@ function commandOutput(command: string[]): string {
     );
   }
   return result.stdout.toString("utf8").trim();
+}
+
+function getSecretString(secretArn?: string): string {
+  const trimmed = secretArn?.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return commandOutput([
+    "aws",
+    "secretsmanager",
+    "get-secret-value",
+    "--secret-id",
+    trimmed,
+    "--query",
+    "SecretString",
+    "--output",
+    "text",
+  ]);
+}
+
+function getParameterString(parameterName?: string): string {
+  const trimmed = parameterName?.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return commandOutput([
+    "aws",
+    "ssm",
+    "get-parameter",
+    "--name",
+    trimmed,
+    "--query",
+    "Parameter.Value",
+    "--output",
+    "text",
+  ]);
 }
 
 function parseArgs(argv: string[]): SetupHostConfig {
@@ -225,6 +265,7 @@ async function main(): Promise<void> {
     `${JSON.stringify(
       {
         ...bootstrapContext,
+        managerInstanceId: instanceId,
         managerPrivateIp,
         managerMonitorPort: monitorPort,
         swarmSharedToken,
@@ -233,6 +274,27 @@ async function main(): Promise<void> {
       2,
     )}\n`,
   );
+  const stackName =
+    typeof bootstrapContext.swarmTagValue === "string" &&
+    bootstrapContext.swarmTagValue.endsWith("-workers")
+      ? bootstrapContext.swarmTagValue.slice(0, -"-workers".length)
+      : "";
+  const cloudflareConfigParameterName = stackName
+    ? `/agent-infrastructure/${stackName}/cloudflare/config`
+    : "";
+  const cloudflareTunnelTokenSecretName = stackName
+    ? `/agent-infrastructure/${stackName}/cloudflare/tunnel-token`
+    : "";
+  const cloudflareConfigJson = getParameterString(cloudflareConfigParameterName);
+  const cloudflareConfig = cloudflareConfigJson
+    ? (JSON.parse(cloudflareConfigJson) as {
+        zoneName?: string;
+        tunnelId?: string;
+        tunnelName?: string;
+        hostnameBase?: string;
+      })
+    : {};
+  const cloudflareTunnelToken = getSecretString(cloudflareTunnelTokenSecretName);
 
   writeFileSync(
     "/etc/systemd/system/agent-swarm-monitor.service",
@@ -274,6 +336,11 @@ AGENT_GITHUB_CONFIG_ROOT=${config.agentGithubConfigRoot}
 SWARM_BOOTSTRAP_CONTEXT_PATH=${config.bootstrapContextPath}
 GIT_TERMINAL_PROMPT=0
 GIT_ASKPASS=${config.runtimeDir}/scripts/git-askpass.sh
+CLOUDFLARED_ZONE_NAME=${typeof cloudflareConfig.zoneName === "string" ? cloudflareConfig.zoneName : ""}
+CLOUDFLARED_TUNNEL_ID=${typeof cloudflareConfig.tunnelId === "string" ? cloudflareConfig.tunnelId : ""}
+CLOUDFLARED_TUNNEL_NAME=${typeof cloudflareConfig.tunnelName === "string" ? cloudflareConfig.tunnelName : ""}
+CLOUDFLARED_HOSTNAME_BASE=${typeof cloudflareConfig.hostnameBase === "string" ? cloudflareConfig.hostnameBase : ""}
+CLOUDFLARED_TUNNEL_TOKEN=${cloudflareTunnelToken}
 `),
   );
 
@@ -294,6 +361,11 @@ MONITOR_PRIVATE_IP=${managerPrivateIp}
 AGENT_GITHUB_CONFIG_ROOT=${config.agentGithubConfigRoot}
 GIT_ASKPASS=${config.runtimeDir}/scripts/git-askpass.sh
 GIT_TERMINAL_PROMPT=0
+CLOUDFLARED_ZONE_NAME=${typeof cloudflareConfig.zoneName === "string" ? cloudflareConfig.zoneName : ""}
+CLOUDFLARED_TUNNEL_ID=${typeof cloudflareConfig.tunnelId === "string" ? cloudflareConfig.tunnelId : ""}
+CLOUDFLARED_TUNNEL_NAME=${typeof cloudflareConfig.tunnelName === "string" ? cloudflareConfig.tunnelName : ""}
+CLOUDFLARED_HOSTNAME_BASE=${typeof cloudflareConfig.hostnameBase === "string" ? cloudflareConfig.hostnameBase : ""}
+CLOUDFLARED_TUNNEL_TOKEN=${cloudflareTunnelToken}
 `),
   );
 

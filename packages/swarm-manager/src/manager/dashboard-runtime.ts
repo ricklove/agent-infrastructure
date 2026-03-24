@@ -30,12 +30,16 @@ type DashboardRuntimeState = {
   localUrl: string;
   cloudflaredPid?: number;
   cloudflaredLogPath?: string;
+  cloudflaredMode?: "quick" | "named";
   tunnelPid?: number;
   tunnelLogPath?: string;
   tunnelProvider?: "cloudflared" | "localhost-run";
   publicUrl?: string;
   tunnelCreatedAtMs?: number;
   lastTunnelReplaceAtMs?: number;
+  namedTunnelId?: string;
+  namedTunnelName?: string;
+  namedTunnelHostnameBase?: string;
 };
 
 type DashboardSessionRecord = {
@@ -43,6 +47,7 @@ type DashboardSessionRecord = {
   expiresAtMs: number;
   createdAtMs: number;
   kind: "bootstrap" | "browser";
+  publicHostname?: string;
   usedAtMs?: number;
   lastAccessAtMs?: number;
   idleTimeoutMs?: number;
@@ -60,6 +65,7 @@ const runtimeDir = process.env.DASHBOARD_RUNTIME_DIR?.trim() || DEFAULT_DASHBOAR
 const runtimeStatePath = resolve(runtimeDir, "runtime-state.json");
 const dashboardLogPath = resolve(runtimeDir, "dashboard.log");
 const cloudflaredLogPath = resolve(runtimeDir, "cloudflared.log");
+const cloudflaredConfigPath = resolve(runtimeDir, "cloudflared-config.yml");
 const localhostRunLogPath = resolve(runtimeDir, "localhost-run.log");
 const localhostRunPublicUrlPattern = /https:\/\/[a-z0-9-]+\.lhr\.life/gi;
 const bootstrapContextPath =
@@ -110,6 +116,16 @@ const dashboardLifecycleRequestPath = resolve(
   "dashboard-lifecycle-request.json",
 );
 const quickTunnelHostnamePattern = /^[a-z0-9-]+\.trycloudflare\.com$/i;
+const cloudflareZoneName =
+  process.env.CLOUDFLARED_ZONE_NAME?.trim() || readBootstrapContextValue("cloudflareZoneName");
+const cloudflareTunnelId =
+  process.env.CLOUDFLARED_TUNNEL_ID?.trim() || readBootstrapContextValue("cloudflareTunnelId");
+const cloudflareTunnelName =
+  process.env.CLOUDFLARED_TUNNEL_NAME?.trim() || readBootstrapContextValue("cloudflareTunnelName");
+const cloudflareHostnameBase =
+  process.env.CLOUDFLARED_HOSTNAME_BASE?.trim() ||
+  readBootstrapContextValue("cloudflareHostnameBase");
+const cloudflareTunnelToken = process.env.CLOUDFLARED_TUNNEL_TOKEN?.trim() || "";
 const quickTunnelReplacementCooldownMs =
   Math.max(
     300,
@@ -380,9 +396,23 @@ function getRuntimeTunnelProvider(
   return state?.tunnelProvider ?? (state?.cloudflaredPid ? "cloudflared" : undefined);
 }
 
-function getTunnelCommandPattern(provider?: string, port?: number): RegExp {
+function getTunnelCommandPattern(
+  provider?: string,
+  port?: number,
+  state?: DashboardRuntimeState | null,
+): RegExp {
   if (provider === "localhost-run") {
     return /localhost-run-tunnel\.ts/;
+  }
+
+  if (state?.cloudflaredMode === "named") {
+    const namedConfig = getNamedTunnelConfig();
+    if (namedConfig) {
+      return new RegExp(
+        `cloudflared\\s+tunnel\\s+--config\\s+${namedConfig.configPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+run`,
+      );
+    }
+    return /cloudflared\s+tunnel.*\srun/;
   }
 
   return new RegExp(`cloudflared\\s+tunnel\\s+--url\\s+http:\\/\\/127\\.0\\.0\\.1:${port ?? 3000}`);
@@ -415,9 +445,12 @@ async function terminatePids(pids: number[], source: string): Promise<void> {
 
 async function terminateDashboardRuntimeProcesses(port: number): Promise<void> {
   const dashboardPids = listPidsByPattern(/packages\/dashboard\/src\/server\.ts/);
-  const cloudflaredPids = listPidsByPattern(
-    new RegExp(`cloudflared\\s+tunnel\\s+--url\\s+http:\\/\\/127\\.0\\.0\\.1:${port}`),
-  );
+  const cloudflaredPids = [
+    ...new Set([
+      ...listPidsByPattern(getTunnelCommandPattern("cloudflared", port, { cloudflaredMode: "quick" } as DashboardRuntimeState)),
+      ...listPidsByPattern(getTunnelCommandPattern("cloudflared", port, { cloudflaredMode: "named" } as DashboardRuntimeState)),
+    ]),
+  ];
   const localhostRunPids = listPidsByPattern(/ssh .*nokey@localhost\.run/);
 
   await terminatePids(dashboardPids, "dashboard-runtime");
@@ -525,6 +558,35 @@ async function recoverDashboardRuntimeState(
     };
   }
 
+  const namedTunnelConfig = getNamedTunnelConfig();
+  if (namedTunnelConfig) {
+    const tunnelPid =
+      discoverPidByPattern(getTunnelCommandPattern("cloudflared", config.port, {
+        dashboardPid,
+        dashboardLogPath,
+        localUrl,
+        cloudflaredMode: "named",
+      })) ?? 0;
+    const publicUrl = `https://health.${namedTunnelConfig.hostnameBase}`;
+
+    if (tunnelPid > 0 && (await isPublicDashboardReady(publicUrl))) {
+      return {
+        dashboardPid,
+        dashboardLogPath,
+        localUrl,
+        tunnelPid,
+        tunnelLogPath: cloudflaredLogPath,
+        tunnelProvider: "cloudflared",
+        cloudflaredPid: tunnelPid,
+        cloudflaredLogPath,
+        cloudflaredMode: "named",
+        publicUrl,
+        namedTunnelName: namedTunnelConfig.tunnelName,
+        namedTunnelHostnameBase: namedTunnelConfig.hostnameBase,
+      };
+    }
+  }
+
   const tunnelLogs: Array<{
     provider: "cloudflared" | "localhost-run";
     logPath: string;
@@ -571,6 +633,7 @@ async function recoverDashboardRuntimeState(
         cloudflaredPid: candidateLog.provider === "cloudflared" ? tunnelPid : undefined,
         cloudflaredLogPath:
           candidateLog.provider === "cloudflared" ? cloudflaredLogPath : undefined,
+        cloudflaredMode: candidateLog.provider === "cloudflared" ? "quick" : undefined,
         publicUrl: candidateUrl,
       };
     }
@@ -594,6 +657,37 @@ function readBootstrapContextValue(key: string): string {
   } catch {
     return "";
   }
+}
+
+type NamedTunnelConfig = {
+  tunnelId: string;
+  tunnelName: string;
+  hostnameBase: string;
+  configPath: string;
+};
+
+function sanitizeDnsLabel(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function getNamedTunnelConfig(): NamedTunnelConfig | null {
+  if (!cloudflareZoneName || !cloudflareTunnelId || !cloudflareTunnelName || !cloudflareTunnelToken) {
+    return null;
+  }
+
+  const tunnelName = sanitizeDnsLabel(cloudflareTunnelName);
+  const hostnameBase = sanitizeDnsLabel(cloudflareHostnameBase || `${tunnelName}.${cloudflareZoneName}`);
+
+  return {
+    tunnelId: cloudflareTunnelId,
+    tunnelName,
+    hostnameBase,
+    configPath: cloudflaredConfigPath,
+  };
 }
 
 async function waitForHealth(port: number, maxAttempts = 40): Promise<void> {
@@ -741,10 +835,10 @@ async function getDashboardRuntimeStatus(
   const tunnelPid =
     (await isExpectedProcess(
       getRuntimeTunnelPid(state),
-      getTunnelCommandPattern(getRuntimeTunnelProvider(state), port),
+      getTunnelCommandPattern(getRuntimeTunnelProvider(state), port, state),
     ))
       ? getRuntimeTunnelPid(state)
-      : discoverPidByPattern(getTunnelCommandPattern(getRuntimeTunnelProvider(state), port));
+      : discoverPidByPattern(getTunnelCommandPattern(getRuntimeTunnelProvider(state), port, state));
   const tunnelRunning =
     Boolean(state?.publicUrl) &&
     Boolean(tunnelPid);
@@ -907,6 +1001,56 @@ async function waitForUrlInLog(
   throw new Error(`${source} did not return a public URL in time`);
 }
 
+function ensureNamedTunnelConfigFile(config: NamedTunnelConfig, port: number): void {
+  writeFileSync(
+    config.configPath,
+    [
+      `tunnel: ${config.tunnelId}`,
+      "ingress:",
+      `  - hostname: \"*.${config.hostnameBase}\"`,
+      `    service: http://127.0.0.1:${port}`,
+      "  - service: http_status:404",
+      "",
+    ].join("\n"),
+    { mode: 0o600 },
+  );
+}
+
+async function startNamedTunnel(port: number): Promise<{
+  pid: number;
+  url: string;
+  tunnelId: string;
+  tunnelName: string;
+  hostnameBase: string;
+}> {
+  const config = getNamedTunnelConfig();
+  if (!config) {
+    throw new Error("named tunnel config is not available");
+  }
+  if (!cloudflareTunnelToken) {
+    throw new Error("cloudflare tunnel token is not configured");
+  }
+  ensureNamedTunnelConfigFile(config, port);
+
+  const command = ["cloudflared", "tunnel", "--config", config.configPath, "run"]
+    .map(shellQuote)
+    .join(" ");
+
+  const pid = await spawnDetached(command, cloudflaredLogPath, {
+    TUNNEL_TOKEN: cloudflareTunnelToken,
+  });
+  const url = `https://health.${config.hostnameBase}`;
+  await waitForPublicDashboardReady(url, 20, 1000);
+
+  return {
+    pid,
+    url,
+    tunnelId: config.tunnelId,
+    tunnelName: config.tunnelName,
+    hostnameBase: config.hostnameBase,
+  };
+}
+
 async function startCloudflared(port: number): Promise<{ pid: number; url: string }> {
   const command = [
     "cloudflared",
@@ -971,8 +1115,26 @@ async function startTemporaryTunnel(
   url: string;
   provider: "cloudflared" | "localhost-run";
   logPath: string;
+  cloudflaredMode?: "quick" | "named";
+  namedTunnelId?: string;
+  namedTunnelName?: string;
+  namedTunnelHostnameBase?: string;
 }> {
   await terminatePids(listTunnelPids(), "dashboard-runtime");
+
+  if (getNamedTunnelConfig()) {
+    const tunnel = await startNamedTunnel(port);
+    return {
+      pid: tunnel.pid,
+      url: tunnel.url,
+      provider: "cloudflared",
+      logPath: cloudflaredLogPath,
+      cloudflaredMode: "named",
+      namedTunnelId: tunnel.tunnelId,
+      namedTunnelName: tunnel.tunnelName,
+      namedTunnelHostnameBase: tunnel.hostnameBase,
+    };
+  }
 
   try {
     const tunnel = await startCloudflared(port);
@@ -981,6 +1143,7 @@ async function startTemporaryTunnel(
       url: tunnel.url,
       provider: "cloudflared",
       logPath: cloudflaredLogPath,
+      cloudflaredMode: "quick",
     };
   } catch (error) {
     logSystemStep(
@@ -1021,10 +1184,12 @@ export async function ensureDashboardRuntime(
   const tunnelPid =
     (await isExpectedProcess(
       getRuntimeTunnelPid(currentState),
-      getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), config.port),
+      getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), config.port, currentState),
     ))
       ? getRuntimeTunnelPid(currentState)
-      : discoverPidByPattern(getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), config.port));
+      : discoverPidByPattern(
+          getTunnelCommandPattern(getRuntimeTunnelProvider(currentState), config.port, currentState),
+        );
   const cloudflaredRunning = Boolean(tunnelPid);
   const dashboardHealthy = await isDashboardHealthy(config.port);
   const publicDashboardReady =
@@ -1100,9 +1265,13 @@ export async function ensureDashboardRuntime(
         getRuntimeTunnelProvider(currentState) === "cloudflared"
           ? cloudflaredLogPath
           : undefined,
+      cloudflaredMode: currentState.cloudflaredMode,
       publicUrl: currentState.publicUrl,
       tunnelCreatedAtMs: currentState.tunnelCreatedAtMs,
       lastTunnelReplaceAtMs: currentState.lastTunnelReplaceAtMs,
+      namedTunnelId: currentState.namedTunnelId,
+      namedTunnelName: currentState.namedTunnelName,
+      namedTunnelHostnameBase: currentState.namedTunnelHostnameBase,
     };
     logSystemStep("dashboard-runtime", "exit cloudflared=reused");
     writeRuntimeState(nextState);
@@ -1123,9 +1292,13 @@ export async function ensureDashboardRuntime(
           getRuntimeTunnelProvider(currentState) === "cloudflared"
             ? cloudflaredLogPath
             : undefined,
+        cloudflaredMode: currentState.cloudflaredMode,
         publicUrl: currentState.publicUrl,
         tunnelCreatedAtMs: currentState.tunnelCreatedAtMs,
         lastTunnelReplaceAtMs: currentState.lastTunnelReplaceAtMs,
+        namedTunnelId: currentState.namedTunnelId,
+        namedTunnelName: currentState.namedTunnelName,
+        namedTunnelHostnameBase: currentState.namedTunnelHostnameBase,
       };
       logSystemStep("dashboard-runtime", "exit tunnel=reused-after-local-restart");
       writeRuntimeState(nextState);
@@ -1142,9 +1315,13 @@ export async function ensureDashboardRuntime(
     tunnelProvider: tunnel.provider,
     cloudflaredPid: tunnel.provider === "cloudflared" ? tunnel.pid : undefined,
     cloudflaredLogPath: tunnel.provider === "cloudflared" ? cloudflaredLogPath : undefined,
+    cloudflaredMode: tunnel.cloudflaredMode,
     publicUrl: tunnel.url,
     tunnelCreatedAtMs,
     lastTunnelReplaceAtMs: tunnelCreatedAtMs,
+    namedTunnelId: tunnel.namedTunnelId,
+    namedTunnelName: tunnel.namedTunnelName,
+    namedTunnelHostnameBase: tunnel.namedTunnelHostnameBase,
   };
   logSystemStep("dashboard-runtime", `setup.complete public_url=${tunnel.url}`);
   writeRuntimeState(nextState);
@@ -1167,6 +1344,15 @@ function readSessionStore(): DashboardSessionStore {
 function writeSessionStore(store: DashboardSessionStore): void {
   mkdirSync(resolve(sessionStorePath, ".."), { recursive: true });
   writeFileSync(sessionStorePath, JSON.stringify(store, null, 2));
+}
+
+async function pruneExpiredDashboardSessions(now = Date.now()): Promise<void> {
+  const store = readSessionStore();
+  const expired = store.sessions.filter((session) => session.expiresAtMs <= now);
+  const active = store.sessions.filter((session) => session.expiresAtMs > now);
+  if (expired.length > 0) {
+    writeSessionStore({ sessions: active });
+  }
 }
 
 export function countActiveDashboardSessions(now = Date.now()): number {
@@ -1320,10 +1506,12 @@ export async function waitForDashboardLifecycleReady(input?: {
     const tunnelPid =
       (await isExpectedProcess(
         getRuntimeTunnelPid(state),
-        getTunnelCommandPattern(getRuntimeTunnelProvider(state), expectedPort),
+        getTunnelCommandPattern(getRuntimeTunnelProvider(state), expectedPort, state),
       ))
         ? getRuntimeTunnelPid(state)
-        : discoverPidByPattern(getTunnelCommandPattern(getRuntimeTunnelProvider(state), expectedPort));
+        : discoverPidByPattern(
+            getTunnelCommandPattern(getRuntimeTunnelProvider(state), expectedPort, state),
+          );
     if (
       state?.publicUrl &&
       tunnelPid &&
@@ -1393,25 +1581,36 @@ export async function issueDashboardSession(input?: {
   const ttlMs = Math.max(60, input?.ttlSeconds ?? 900) * 1000;
   const token = randomBytes(32).toString("hex");
   const expiresAtMs = currentTime + ttlMs;
+  await pruneExpiredDashboardSessions(currentTime);
   const nextSessions = readSessionStore().sessions.filter(
     (session) => session.expiresAtMs > currentTime,
   );
+
+  let sessionPublicUrl = runtime.publicUrl;
+  let sessionHostname: string | undefined;
+  if (runtime.cloudflaredMode === "named" && runtime.namedTunnelHostnameBase) {
+    const candidateHostname = `${sanitizeDnsLabel(`sess-${token.slice(0, 16)}`)}.${runtime.namedTunnelHostnameBase}`;
+    sessionHostname = candidateHostname;
+    sessionPublicUrl = `https://${candidateHostname}`;
+    await waitForPublicDashboardReady(sessionPublicUrl, 20, 1000);
+  }
 
   nextSessions.push({
     tokenHash: hashSessionToken(token),
     expiresAtMs,
     createdAtMs: currentTime,
     kind: "bootstrap",
+    publicHostname: sessionHostname,
   });
   writeSessionStore({ sessions: nextSessions });
 
-  const sessionUrl = `${runtime.publicUrl}/?sessionKey=${token}`;
+  const sessionUrl = `${sessionPublicUrl}/?sessionKey=${token}`;
   logSystemStep("dashboard-runtime", `exit issue_dashboard_session expires_at_ms=${expiresAtMs}`);
   return {
     token,
     expiresAtMs,
     localUrl: runtime.localUrl,
-    publicUrl: runtime.publicUrl,
+    publicUrl: sessionPublicUrl,
     sessionUrl,
     dashboardPid: runtime.dashboardPid,
     cloudflaredPid: tunnelPid,
@@ -1480,6 +1679,7 @@ export async function runDashboardLifecycleController(input?: {
 
     while (true) {
       const now = Date.now();
+      await pruneExpiredDashboardSessions(now);
       const request = readDashboardLifecycleRequest();
       const currentState = readRuntimeState();
       const port = request?.port ?? getPortFromRuntimeState(currentState) ?? defaultPort;
