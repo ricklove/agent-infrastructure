@@ -11,7 +11,8 @@
     "@agent-infrastructure/agent-chat-ui": "workspace:*",
     "@agent-infrastructure/agent-graph-ui": "workspace:*",
     "@agent-infrastructure/agent-swarm-ui": "workspace:*",
-    "@agent-infrastructure/dashboard-plugin": "workspace:*"
+    "@agent-infrastructure/dashboard-plugin": "workspace:*",
+    "@agent-infrastructure/dashboard-terminal-ui": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
