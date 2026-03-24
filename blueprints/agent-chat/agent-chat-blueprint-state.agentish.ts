@@ -45,7 +45,7 @@ const CurrentReality = {
 AgentChatBlueprintState.defines(`
 - CurrentImplementationStatus means Agent Chat currently exists as a real dashboard feature with a working backend, working UI, canonical file-backed session persistence, realtime updates, clipboard image paste support, and more than one implemented provider path.
 - AssessmentConfidence is medium-high because the current state now has both direct source inspection and direct live-browser verification against the deployed dashboard at matching frontend and backend revisions.
-- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive live-browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-gap-fix/ including live-small-092de11.png, live-medium-092de11.png, and live-wide-092de11.png.
+- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive live-browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-release-af79459/ and /home/ec2-user/state/screenshots/agent-chat-mobile-audit-local-2/.
 - This blueprint-state compares current implementation reality against the ideal Agent Chat product blueprint in agent-chat.agentish.ts, the implementation-resolved dashboard blueprint in agent-chat-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
 - ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
 - ImplementationGap also includes chat durability still stopping at canonical file persistence rather than extending into manager-controlled workspace git commit and push.
@@ -95,6 +95,8 @@ CurrentReality.viewportBoundLayout.means(`
 - the dashboard shell now constrains feature rendering to the browser viewport instead of letting the page grow with sidebar content
 - the Agent Chat sessions list scrolls independently from the active thread and composer
 - short transcripts remain visible with the composer in the same viewport rather than creating a tall dead zone between the first message and the input
+- the dashboard shell main-menu rail is now hidden by default on mobile and opens as an overlay drawer instead of permanently stealing horizontal space from feature content
+- mobile transcript cards that represent assistant stream checkpoints or thought checkpoints now use the full available thread width instead of collapsing into a narrow unreadable column
 - this specific behavior was verified in-browser at small, medium, and wide viewport sizes
 `);
 
@@ -171,7 +173,7 @@ CurrentReality.sessionListWorkflowPolishGap.means(`
 CurrentReality.threadNavigationGap.means(`
 - loading a session now retries scroll-to-latest so the active thread lands near the latest visible content more reliably after the transcript mounts
 - the current custom transcript rail is still not reliable enough to justify its space and should be removed or deferred until a clearly stable design exists
-- the active thread surface can still leak a browser-level horizontal scrollbar in some layouts, so horizontal containment is not fully solved yet
+- the latest mobile audit recorded zero document-level and body-level horizontal overflow on the verified chat viewport, but horizontal containment should still be watched as transcript chrome evolves
 - richer local zoom or lens treatment is still deferred until there is a version that preserves the stability of the thin rail
 `);
 
