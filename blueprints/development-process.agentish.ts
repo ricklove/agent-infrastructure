@@ -59,8 +59,10 @@ DevelopmentProcess.enforces(`
 - Before installing or reconfiguring local developer tools, check the workspace README and referenced tools/ notes for machine-specific guidance and already-installed utilities.
 - Source is the only editing surface for intended behavior changes.
 - The shared repository checkout should remain on the current base branch used for ongoing integration work.
-- Feature and fix implementation should begin from a feature branch created from the current base branch.
+- Feature and fix implementation should begin from a feature branch rooted at the current base branch while leaving the shared checkout on that base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
+- The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
+- If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
 - Completed feature branch work should be committed and merged back into the base branch before release promotion proceeds.
 - Release rollout should start only after the shared base-branch checkout is clean.
 - Release rollout should promote the intended integrated commit onto `main`, create a release git tag from that exact commit, and deploy runtime from that tag.
@@ -81,7 +83,7 @@ DevelopmentProcess.defines(`
 - BlueprintCommitBeforeImplementation means blueprint edits are turned into a committed source revision before dependent implementation work starts.
 - BlueprintStateTracksCurrentReality means blueprint-state records current implementation status, confidence, evidence, gaps, and known issues relative to the ideal blueprint.
 - WorkspaceToolingDiscovery means local machine tooling should be discovered from workspace README guidance and tools/ notes before installing replacements or parallel toolchains.
-- IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout.
+- IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and the normal setup path is to create the worktree and feature branch together from the base branch.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - ReleaseBranch means `main` is the canonical release branch for runtime deployment.
 - ReleaseGitTag means an immutable git tag created from the promoted release commit and used as the runtime deploy target.
@@ -155,6 +157,8 @@ when(Actor.operator.starts("code-changing implementation on a feature or fix"))
   .and(DevelopmentProcess.treats("the shared repository checkout as the base-branch integration surface"))
   .and(DevelopmentProcess.prefers(Artifact.featureBranch))
   .and(DevelopmentProcess.prefers(Artifact.implementationWorktree))
+  .and(DevelopmentProcess.expects("feature-branch creation to leave the shared checkout on the base branch"))
+  .and(DevelopmentProcess.expects("the normal setup command to be `git worktree add -b <feature-branch> <worktree-path> <base-branch>`"))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.baseBranch))
   .and(DevelopmentProcess.associates(Artifact.implementationWorktree).with(Artifact.featureBranch))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.sourceRepo));
