@@ -140,6 +140,25 @@ function CopyIcon(props: { className?: string }) {
   )
 }
 
+function MenuIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
+    </svg>
+  )
+}
+
 function readStoredSessionToken(): string {
   return window.sessionStorage.getItem(sessionStorageKey) ?? ""
 }
@@ -197,6 +216,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
   >("idle")
   const [gatewayBackendVersion, setGatewayBackendVersion] = useState("--")
   const [copiedStatus, setCopiedStatus] = useState(false)
+  const [mobileFeatureMenuOpen, setMobileFeatureMenuOpen] = useState(false)
   const [featureStatuses, setFeatureStatuses] = useState<
     Partial<Record<FeatureId, FeatureStatusItem[]>>
   >({})
@@ -448,6 +468,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
     }
 
     setActiveFeatureId(nextFeature.id)
+    setMobileFeatureMenuOpen(false)
   }
 
   const canRenderFeatures =
@@ -456,7 +477,20 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
 
   return (
     <div className="flex h-dvh overflow-hidden bg-slate-950 text-slate-100">
-      <aside className="flex w-14 shrink-0 flex-col items-center gap-3 border-r border-white/10 bg-[#0a0f17] px-1.5 py-2">
+      {mobileFeatureMenuOpen ? (
+        <button
+          type="button"
+          aria-label="Close main menu"
+          onClick={() => setMobileFeatureMenuOpen(false)}
+          className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm md:hidden"
+        />
+      ) : null}
+      <aside
+        className={[
+          "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:static md:z-auto md:translate-x-0",
+          mobileFeatureMenuOpen ? "translate-x-0" : "-translate-x-full",
+        ].join(" ")}
+      >
         <div className="group relative">
           <button
             type="button"
@@ -546,6 +580,17 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="absolute left-3 top-3 z-20 md:hidden">
+          <button
+            type="button"
+            aria-label={mobileFeatureMenuOpen ? "Close main menu" : "Open main menu"}
+            title={mobileFeatureMenuOpen ? "Close Main Menu" : "Open Main Menu"}
+            onClick={() => setMobileFeatureMenuOpen((current) => !current)}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/85 text-slate-200 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur"
+          >
+            <MenuIcon className="h-4 w-4" />
+          </button>
+        </div>
         <main className="min-h-0 flex-1">
           <Suspense
             fallback={

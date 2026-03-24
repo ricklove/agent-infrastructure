@@ -2231,7 +2231,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 md:px-6">
-          <div className="min-w-0">
+          <div className="min-w-0 pl-12 md:pl-0">
             <p className="truncate text-sm font-semibold text-white">
               {activeSession?.title ?? "Agent Chat"}
             </p>
