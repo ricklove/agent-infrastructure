@@ -55,21 +55,28 @@ function useTerminalRenderer() {
   const preRef = useRef<HTMLPreElement>(null);
   const contentRef = useRef("");
 
+  const normalize = useCallback((text: string) => {
+    return text
+      .replace(/\u001b\][^\u0007]*\u0007/g, "")
+      .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
+      .replace(/\u001b[@-_]/g, "");
+  }, []);
+
   const append = useCallback((text: string) => {
-    contentRef.current += text;
+    contentRef.current += normalize(text);
     if (preRef.current) {
       preRef.current.textContent = contentRef.current;
       preRef.current.scrollTop = preRef.current.scrollHeight;
     }
-  }, []);
+  }, [normalize]);
 
   const reset = useCallback((text: string) => {
-    contentRef.current = text;
+    contentRef.current = normalize(text);
     if (preRef.current) {
-      preRef.current.textContent = text;
+      preRef.current.textContent = contentRef.current;
       preRef.current.scrollTop = preRef.current.scrollHeight;
     }
-  }, []);
+  }, [normalize]);
 
   return { preRef, append, reset };
 }
@@ -143,8 +150,7 @@ export function DashboardTerminalScreen({
       setError(null);
       reset("");
 
-      const wsUrl = `${wsRootUrl}/ws`;
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsRootUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {

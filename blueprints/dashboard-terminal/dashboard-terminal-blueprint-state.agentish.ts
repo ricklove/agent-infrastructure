@@ -18,29 +18,26 @@ const Assessment = {
 };
 
 const CurrentReality = {
-  notYetImplemented: define.concept("NotYetImplemented"),
-  blueprintDefined: define.concept("BlueprintFullyDefined"),
-  conceptLayer: define.concept("ConceptLayerComplete"),
-  implementationPlanLayer: define.concept("ImplementationPlanLayerComplete"),
-  contractsLayerMissing: define.concept("ContractsLayerDeferred"),
-  noDashboardPlugin: define.concept("NoDashboardTerminalPluginExists"),
-  noBackendPackage: define.concept("NoTerminalBackendPackageExists"),
-  noUiPackage: define.concept("NoTerminalUiPackageExists"),
-  noGatewayRoutes: define.concept("NoTerminalGatewayRoutesExist"),
-  noPtyIntegration: define.concept("NoBunPtyIntegrationExists"),
-  noWebSocketTransport: define.concept("NoTerminalWebSocketTransportExists"),
-  noBrowserTerminal: define.concept("NoBrowserTerminalSurfaceExists"),
-  deferredScope: define.concept("DeferredImplementationScope"),
+  implemented: define.concept("DashboardTerminalImplemented"),
+  mobileVerified: define.concept("MobileTerminalVerified"),
+  pluginRegistered: define.concept("DashboardTerminalPluginRegistered"),
+  backendPackagePresent: define.concept("DashboardTerminalBackendPackagePresent"),
+  uiPackagePresent: define.concept("DashboardTerminalUiPackagePresent"),
+  gatewayRoutesPresent: define.concept("DashboardTerminalGatewayRoutesPresent"),
+  bunPtyIntegrated: define.concept("BunPtyIntegrated"),
+  websocketTransportPresent: define.concept("TerminalWebSocketTransportPresent"),
+  mobileReadableOutput: define.concept("MobileReadableTerminalOutput"),
+  shellNoiseRemaining: define.concept("ShellStartupNoiseRemaining"),
   workflowAlignment: define.concept("DevelopmentProcessAlignment"),
 };
 
 DashboardTerminalBlueprintState.defines(`
-- CurrentImplementationStatus means Dashboard Terminal does not yet exist as running code; the feature is fully defined at the blueprint layer only.
-- AssessmentConfidence is high because the feature has zero implementation artifacts to compare against — the assessment is simply that nothing has been built yet.
-- ImplementationEvidence is the absence of any terminal-related packages, routes, components, or backend processes in the current deployed system.
+- CurrentImplementationStatus means Dashboard Terminal exists as running code in the dashboard, gateway, backend, and browser UI.
+- AssessmentConfidence is high because the implementation was verified in local mobile browser testing and then compared directly against the deployed runtime behavior.
+- ImplementationEvidence includes the dashboard terminal plugin, Bun PTY backend, proxied API and WebSocket routes, browser terminal surface, and mobile screenshots showing real command output.
 - This blueprint-state compares current implementation reality against the ideal Dashboard Terminal concept in dashboard-terminal.agentish.ts, the implementation-resolved plan in dashboard-terminal-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
-- ImplementationGap means the entire feature surface described in both blueprint documents remains unbuilt.
-- KnownIssue is that Bun's native PTY API should be verified against the actual installed Bun version before implementation begins.
+- ImplementationGap means remaining polish or scope follow-up rather than missing V1 feature construction.
+- KnownIssue is that interactive shell startup still emits the standard no-job-control noise in the browser terminal because the shell is not attached to a full job-control terminal environment.
 `);
 
 DashboardTerminalBlueprintState.contains(
@@ -49,113 +46,92 @@ DashboardTerminalBlueprintState.contains(
   Assessment.evidence,
   Assessment.gap,
   Assessment.issue,
-  CurrentReality.notYetImplemented,
-  CurrentReality.blueprintDefined,
-  CurrentReality.conceptLayer,
-  CurrentReality.implementationPlanLayer,
-  CurrentReality.contractsLayerMissing,
-  CurrentReality.noDashboardPlugin,
-  CurrentReality.noBackendPackage,
-  CurrentReality.noUiPackage,
-  CurrentReality.noGatewayRoutes,
-  CurrentReality.noPtyIntegration,
-  CurrentReality.noWebSocketTransport,
-  CurrentReality.noBrowserTerminal,
-  CurrentReality.deferredScope,
+  CurrentReality.implemented,
+  CurrentReality.mobileVerified,
+  CurrentReality.pluginRegistered,
+  CurrentReality.backendPackagePresent,
+  CurrentReality.uiPackagePresent,
+  CurrentReality.gatewayRoutesPresent,
+  CurrentReality.bunPtyIntegrated,
+  CurrentReality.websocketTransportPresent,
+  CurrentReality.mobileReadableOutput,
+  CurrentReality.shellNoiseRemaining,
   CurrentReality.workflowAlignment,
 );
 
-CurrentReality.notYetImplemented.means(`
-- no terminal feature code exists anywhere in the current codebase
-- no dashboard plugin registration for terminal exists
-- no terminal-related packages exist under packages/
-- no terminal routes exist in the dashboard gateway
-- the dashboard does not render a Terminal tab or screen
+CurrentReality.implemented.means(`
+- Dashboard Terminal is implemented end to end in the dashboard codebase
+- the dashboard exposes a Terminal route and screen
+- the gateway proxies terminal HTTP and WebSocket traffic
+- the backend creates and manages Bun native PTY terminal sessions
 `);
 
-CurrentReality.blueprintDefined.means(`
-- the concept blueprint defines the terminal system, session model, transport, security, UI, and interaction model
-- the implementation plan blueprint resolves runtime decisions, API surface, UI components, scoping, and plugin integration
-- both documents align on Bun native PTY, WebSocket transport, workspace scoping, copy-first keyboard, and auth-first acceptance
+CurrentReality.mobileVerified.means(`
+- the terminal route loads in a narrow mobile viewport without crashing the app
+- a user can create a terminal session from mobile
+- the mobile terminal viewport remains usable enough to issue basic shell commands and read the results
 `);
 
-CurrentReality.conceptLayer.means(`
-- system purpose, core abstractions, invariants, definitions, and behavioral flows are all specified
-- acceptance criteria are concrete: Codex CLI auth and Claude CLI auth from the browser terminal
+CurrentReality.pluginRegistered.means(`
+- the dashboard plugin registry includes Dashboard Terminal
+- the dashboard shell can navigate to the terminal feature
 `);
 
-CurrentReality.implementationPlanLayer.means(`
-- package structure, API endpoints, UI components, runtime decisions, and scope boundaries are all declared
-- gateway proxy and lazy backend patterns align with the existing dashboard-plugins and system-runtime blueprints
+CurrentReality.backendPackagePresent.means(`
+- packages/dashboard-terminal-server exists
+- the backend provides session lifecycle management and PTY execution
 `);
 
-CurrentReality.contractsLayerMissing.means(`
-- exact WebSocket message types are not yet defined
-- exact API request and response shapes are not yet defined
-- exact session state machine transitions are not yet defined
-- these are expected to form during early implementation
+CurrentReality.uiPackagePresent.means(`
+- packages/dashboard-terminal-ui exists
+- the UI renders terminal sessions, command output, reconnect state, and input affordances
 `);
 
-CurrentReality.noDashboardPlugin.means(`
-- the dashboard plugin registry does not include a terminal feature entry
-- no terminal tab appears in the dashboard shell
+CurrentReality.gatewayRoutesPresent.means(`
+- the dashboard gateway proxies /api/dashboard-terminal and /ws/dashboard-terminal
+- the UI receives a WebSocket root URL that matches the gateway path
 `);
 
-CurrentReality.noBackendPackage.means(`
-- no packages/dashboard-terminal-server or equivalent exists
-- no PTY session management, no terminal API endpoints, no idle reaper
+CurrentReality.bunPtyIntegrated.means(`
+- the implementation uses Bun.Terminal for PTY-backed terminal sessions
+- shell commands execute against the workspace environment
 `);
 
-CurrentReality.noUiPackage.means(`
-- no packages/dashboard-terminal-ui or equivalent exists
-- no terminal viewport, tab strip, session menu, create dialog, or keyboard handling
+CurrentReality.websocketTransportPresent.means(`
+- terminal session data flows through the dashboard WebSocket gateway
+- the mobile fix corrected the client to connect to the provided terminal WebSocket root directly rather than appending an extra path segment
 `);
 
-CurrentReality.noGatewayRoutes.means(`
-- the dashboard gateway does not proxy /api/dashboard-terminal or /ws/dashboard-terminal paths
-- no lazy backend definition for terminal exists in the gateway configuration
+CurrentReality.mobileReadableOutput.means(`
+- the terminal renderer strips common ANSI and OSC control sequences before writing fallback text output into the preformatted mobile view
+- verified mobile command output includes readable results for pwd, echo hi, and uname -s
+- verification screenshot: /home/ec2-user/state/screenshots/terminal-mobile-debug/after-commands-clean.png
 `);
 
-CurrentReality.noPtyIntegration.means(`
-- no code in the repository uses Bun's native PTY APIs
-- Bun PTY API availability and behavior should be verified against the installed runtime version before implementation
-`);
-
-CurrentReality.noWebSocketTransport.means(`
-- no terminal-specific WebSocket handling exists
-- no message framing, session multiplexing, or reconnect snapshot protocol
-`);
-
-CurrentReality.noBrowserTerminal.means(`
-- no xterm-compatible terminal rendering exists in the dashboard UI
-- no terminal keyboard handling, clipboard integration, or reconnect banner
-`);
-
-CurrentReality.deferredScope.means(`
-- file-browser integration is future-facing per the blueprint
-- agent-chat integration is future-facing per the blueprint
-- multi-host terminal brokering is out of scope for V1
-- collaborative or multi-viewer sessions are out of scope for V1
+CurrentReality.shellNoiseRemaining.means(`
+- shell startup currently shows standard bash job-control warnings in the browser terminal
+- the warnings do not block command execution or readability of the command results
+- this is acceptable for now but remains a polish target
 `);
 
 CurrentReality.workflowAlignment.means(`
-- Dashboard Terminal now has a dedicated blueprint-state document as required by the shared development process
-- this document is intended to be the durable current-reality comparison for Dashboard Terminal implementation work
-- implementation work should update this document as features are built and verified
+- Dashboard Terminal has a maintained blueprint-state document as required by the shared development process
+- this document now reflects implemented and verified behavior rather than pre-implementation placeholder text
+- future terminal changes should keep this document aligned with verification results
 `);
 
-when(CurrentReality.notYetImplemented.exists())
-  .then(DashboardTerminalBlueprintState.records(Assessment.gap))
-  .and(DashboardTerminalBlueprintState.treats("the entire blueprint surface as unbuilt implementation gap"));
-
-when(CurrentReality.blueprintDefined.exists())
+when(CurrentReality.implemented.exists())
   .then(DashboardTerminalBlueprintState.records(Assessment.status))
-  .and(DashboardTerminalBlueprintState.treats("the feature as ready for implementation"));
+  .and(DashboardTerminalBlueprintState.treats("Dashboard Terminal V1 as implemented"));
 
-when(CurrentReality.contractsLayerMissing.exists())
-  .then(DashboardTerminalBlueprintState.records(Assessment.gap))
-  .and(DashboardTerminalBlueprintState.treats("contracts as expected to form during early implementation rather than as a blocking gap"));
+when(CurrentReality.mobileVerified.exists())
+  .then(DashboardTerminalBlueprintState.records(Assessment.evidence))
+  .and(DashboardTerminalBlueprintState.treats("mobile terminal usability as verified rather than assumed"));
 
-when(CurrentReality.noPtyIntegration.exists())
+when(CurrentReality.mobileReadableOutput.exists())
+  .then(DashboardTerminalBlueprintState.records(Assessment.evidence))
+  .and(DashboardTerminalBlueprintState.treats("readable command output on mobile as a concrete acceptance milestone"));
+
+when(CurrentReality.shellNoiseRemaining.exists())
   .then(DashboardTerminalBlueprintState.records(Assessment.issue))
-  .and(DashboardTerminalBlueprintState.treats("Bun PTY API verification as a prerequisite for the first implementation step"));
+  .and(DashboardTerminalBlueprintState.treats("shell startup warnings as non-blocking follow-up polish"));
