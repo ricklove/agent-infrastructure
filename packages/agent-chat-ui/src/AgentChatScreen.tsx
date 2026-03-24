@@ -41,10 +41,19 @@ type SessionActivity = {
   canInterrupt: boolean
 }
 
+type SessionWatchdogState = {
+  status: "unconfigured" | "unresolved" | "nudged" | "completed"
+  nudgeCount: number
+  lastNudgedAtMs: number | null
+  completedAtMs: number | null
+}
+
 type SessionSummary = {
   id: string
   title: string
   archived: boolean
+  processBlueprintId: string | null
+  watchdogState: SessionWatchdogState
   providerKind: ProviderKind
   modelRef: string
   cwd: string
@@ -63,7 +72,7 @@ type SessionMessage = {
   id: string
   sessionId: string
   role: "user" | "assistant" | "system"
-  kind: "chat" | "directoryInstruction"
+  kind: "chat" | "directoryInstruction" | "watchdogPrompt"
   replyToMessageId: string | null
   providerSeenAtMs: number | null
   content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>
@@ -92,6 +101,27 @@ type SessionsResponse = {
 type ProvidersResponse = {
   ok: boolean
   providers: ProviderCatalogEntry[]
+}
+
+type ProcessBlueprint = {
+  id: string
+  title: string
+  expectation: string
+  idlePrompt: string
+  completionMode: "exact_reply"
+  completionToken: string
+  stopConditions: string[]
+  watchdog: {
+    enabled: boolean
+    idleTimeoutSeconds: number
+    maxNudgesPerIdleEpisode: number
+  }
+  companionPath: string | null
+}
+
+type ProcessBlueprintsResponse = {
+  ok: boolean
+  processBlueprints: ProcessBlueprint[]
 }
 
 type SessionSnapshotEvent = {
@@ -471,6 +501,26 @@ function summarizeSessionWorkerState(
   return summary
 }
 
+function processBlueprintTitle(
+  processBlueprints: ProcessBlueprint[],
+  processBlueprintId: string | null,
+) {
+  if (!processBlueprintId) {
+    return null
+  }
+  return processBlueprints.find((entry) => entry.id === processBlueprintId)?.title ?? processBlueprintId
+}
+
+function watchdogAttentionLabel(watchdogState: SessionWatchdogState) {
+  if (watchdogState.status === "nudged") {
+    return "Needs reply"
+  }
+  if (watchdogState.status === "completed") {
+    return "Done"
+  }
+  return null
+}
+
 function withDashboardSessionToken(path: string) {
   const sessionToken = readStoredSessionToken().trim()
   if (!sessionToken) {
@@ -486,6 +536,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const pendingSessionOpenScrollRef = useRef<string | null>(null)
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
   const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
+  const [processBlueprints, setProcessBlueprints] = useState<ProcessBlueprint[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeSessionId, setActiveSessionId] = useState("")
   const [messages, setMessages] = useState<SessionMessage[]>([])
@@ -514,12 +565,14 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [directory, setDirectory] = useState(defaultSessionDirectory)
   const [authProfile, setAuthProfile] = useState("")
   const [imageModelRef, setImageModelRef] = useState("")
+  const [processBlueprintId, setProcessBlueprintId] = useState("")
   const [activeSessionDirectory, setActiveSessionDirectory] = useState("")
   const [activeSessionProviderKind, setActiveSessionProviderKind] =
     useState<ProviderKind>("codex-app-server")
   const [activeSessionModelRef, setActiveSessionModelRef] = useState("")
   const [activeSessionAuthProfile, setActiveSessionAuthProfile] = useState("")
   const [activeSessionImageModelRef, setActiveSessionImageModelRef] = useState("")
+  const [activeSessionProcessBlueprintId, setActiveSessionProcessBlueprintId] = useState("")
   const [updatingDirectory, setUpdatingDirectory] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false)
@@ -543,6 +596,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const activeSessionProvider = useMemo(
     () => providers.find((entry) => entry.kind === activeSessionProviderKind) ?? null,
     [activeSessionProviderKind, providers],
+  )
+  const activeSessionProcessBlueprint = useMemo(
+    () =>
+      processBlueprints.find((entry) => entry.id === activeSessionProcessBlueprintId) ?? null,
+    [activeSessionProcessBlueprintId, processBlueprints],
   )
 
   const activeSession = useMemo(
@@ -590,7 +648,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   )
 
   const queuedUserMessages = useMemo(
-    () => queuedMessages.filter((message) => message.role === "user" || message.kind === "directoryInstruction"),
+    () =>
+      queuedMessages.filter(
+        (message) =>
+          message.role === "user" ||
+          (message.role === "system" &&
+            (message.kind === "directoryInstruction" || message.kind === "watchdogPrompt")),
+      ),
     [queuedMessages],
   )
 
@@ -632,6 +696,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setActiveSessionModelRef(activeSession?.modelRef ?? "")
     setActiveSessionAuthProfile(activeSession?.authProfile ?? "")
     setActiveSessionImageModelRef(activeSession?.imageModelRef ?? "")
+    setActiveSessionProcessBlueprintId(activeSession?.processBlueprintId ?? "")
     setReplyTargetMessageId(null)
     if (activeSession && renamingSessionId === activeSession.id) {
       setRenameTitle(activeSession.title)
@@ -726,11 +791,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setError("")
 
       try {
-        const [providersResponse, sessionsResponse] = await Promise.all([
+        const [providersResponse, processBlueprintsResponse, sessionsResponse] = await Promise.all([
           apiFetch(`${props.apiRootUrl}/providers`).then(async (response) => {
             const payload = (await response.json()) as ProvidersResponse & { error?: string }
             if (!response.ok || !payload.ok || !Array.isArray(payload.providers)) {
               throw new Error(payload.error ?? "Agent Chat providers failed to load.")
+            }
+            return payload
+          }),
+          apiFetch(`${props.apiRootUrl}/process-blueprints`).then(async (response) => {
+            const payload = (await response.json()) as ProcessBlueprintsResponse & { error?: string }
+            if (!response.ok || !payload.ok || !Array.isArray(payload.processBlueprints)) {
+              throw new Error(payload.error ?? "Agent Chat process blueprints failed to load.")
             }
             return payload
           }),
@@ -742,6 +814,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         }
 
         setProviders(providersResponse.providers)
+        setProcessBlueprints(processBlueprintsResponse.processBlueprints)
         setSessions(sessionsResponse.sessions)
         const initialSession =
           sessionsResponse.sessions.find((session) => !session.archived) ?? sessionsResponse.sessions[0]
@@ -1082,6 +1155,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           cwd: directory,
           authProfile: authProfile || null,
           imageModelRef: imageModelRef || null,
+          processBlueprintId: processBlueprintId || null,
         }),
       })
       const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
@@ -1162,6 +1236,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           modelRef: activeSessionModelRef,
           authProfile: activeSessionAuthProfile || null,
           imageModelRef: activeSessionImageModelRef || null,
+          processBlueprintId: activeSessionProcessBlueprintId || null,
         }),
       })
       const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
@@ -1547,6 +1622,28 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
                 />
               </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Process
+                </span>
+                <select
+                  value={processBlueprintId}
+                  onChange={(event) => setProcessBlueprintId(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                >
+                  <option value="">none</option>
+                  {processBlueprints.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.title}
+                    </option>
+                  ))}
+                </select>
+                {processBlueprintId ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    {processBlueprints.find((entry) => entry.id === processBlueprintId)?.expectation ?? ""}
+                  </p>
+                ) : null}
+              </label>
               <button
                 type="submit"
                 disabled={creating || !modelRef.trim() || activeProvider?.status !== "ready"}
@@ -1607,6 +1704,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               <p className="mt-1 truncate text-xs text-slate-500">
                                 {session.providerKind} · {session.modelRef}
                               </p>
+                              {processBlueprintTitle(processBlueprints, session.processBlueprintId) ? (
+                                <p className="mt-2 truncate text-xs text-cyan-200/80">
+                                  {processBlueprintTitle(processBlueprints, session.processBlueprintId)}
+                                </p>
+                              ) : null}
                             </button>
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-slate-500">{session.messageCount}</span>
@@ -1656,6 +1758,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               nowMs,
                             ).join(" · ")}
                           </p>
+                          {watchdogAttentionLabel(session.watchdogState) ? (
+                            <p className="mt-2 text-xs text-amber-200">
+                              {watchdogAttentionLabel(session.watchdogState)}
+                            </p>
+                          ) : null}
                           <p className="mt-2 truncate text-xs text-slate-500">
                             {session.cwd}
                           </p>
@@ -1703,6 +1810,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 <p className="mt-1 truncate text-xs text-slate-500">
                                   {session.providerKind} · {session.modelRef}
                                 </p>
+                                {processBlueprintTitle(processBlueprints, session.processBlueprintId) ? (
+                                  <p className="mt-2 truncate text-xs text-cyan-200/80">
+                                    {processBlueprintTitle(processBlueprints, session.processBlueprintId)}
+                                  </p>
+                                ) : null}
                               </button>
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-slate-500">{session.messageCount}</span>
@@ -1726,6 +1838,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 nowMs,
                               ).join(" · ")}
                             </p>
+                            {watchdogAttentionLabel(session.watchdogState) ? (
+                              <p className="mt-2 text-xs text-amber-200">
+                                {watchdogAttentionLabel(session.watchdogState)}
+                              </p>
+                            ) : null}
                             <p className="mt-2 truncate text-xs text-slate-500">
                               {session.cwd}
                             </p>
@@ -1920,8 +2037,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         key={message.id}
                         className="rounded-2xl border border-amber-300/15 bg-black/10 px-3 py-2"
                       >
-                        {message.kind === "directoryInstruction" ? (
+                        {message.role === "system" && message.kind === "directoryInstruction" ? (
                           <p>{clipText(message.content[0]?.type === "text" ? message.content[0].text : "", 120)}</p>
+                        ) : message.role === "system" && message.kind === "watchdogPrompt" ? (
+                          <p>
+                            watchdog ·{" "}
+                            {clipText(message.content[0]?.type === "text" ? message.content[0].text : "", 120)}
+                          </p>
                         ) : (
                           <p>
                             {message.replyToMessageId ? "reply queued · " : ""}
@@ -1965,6 +2087,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       </div>
                       <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
                         <p>{activeSession ? `${activeSession.providerKind} · ${activeSession.modelRef}` : "No active chat selected."}</p>
+                        {activeSessionProcessBlueprint ? (
+                          <p className="mt-2 text-xs text-cyan-200/80">
+                            {activeSessionProcessBlueprint.title}
+                          </p>
+                        ) : null}
                       </div>
                       {activeSession ? (
                         <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3">
@@ -1994,6 +2121,29 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           </button>
                         </div>
                       ) : null}
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Process
+                        </span>
+                        <select
+                          value={activeSessionProcessBlueprintId}
+                          onChange={(event) => setActiveSessionProcessBlueprintId(event.target.value)}
+                          disabled={!activeSession}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <option value="">none</option>
+                          {processBlueprints.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                              {entry.title}
+                            </option>
+                          ))}
+                        </select>
+                        {activeSessionProcessBlueprint ? (
+                          <p className="mt-2 text-xs text-slate-500">
+                            {activeSessionProcessBlueprint.expectation}
+                          </p>
+                        ) : null}
+                      </label>
                       <label className="block">
                         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                           Provider
@@ -2098,7 +2248,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             activeSessionProviderKind === activeSession.providerKind &&
                             activeSessionModelRef === activeSession.modelRef &&
                             activeSessionAuthProfile === (activeSession.authProfile ?? "") &&
-                            activeSessionImageModelRef === (activeSession.imageModelRef ?? "")
+                            activeSessionImageModelRef === (activeSession.imageModelRef ?? "") &&
+                            activeSessionProcessBlueprintId === (activeSession.processBlueprintId ?? "")
                           )
                         }
                         className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
