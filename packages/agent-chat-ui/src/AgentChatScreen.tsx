@@ -2402,9 +2402,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
                         disabled={!activeSession || updatingQuickProcessBlueprint}
                         title="Quick Set Process"
-                        className="max-w-44 rounded-full border border-white/10 bg-slate-900/80 px-3 py-2 text-xs text-slate-200 outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        className={`max-w-44 rounded-full border px-3 py-2 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                          activeSession?.processBlueprintId
+                            ? "border-white/10 bg-slate-900/80 text-slate-200"
+                            : "border-white/10 bg-slate-950/70 text-slate-500"
+                        }`}
                       >
-                        <option value="">Process</option>
+                        <option value="">none</option>
                         {processBlueprints.map((entry) => (
                           <option key={entry.id} value={entry.id}>
                             {entry.title}
