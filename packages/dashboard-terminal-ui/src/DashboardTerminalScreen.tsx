@@ -34,6 +34,11 @@ type ProfilesResponse = {
   allowedRoots: string[];
 };
 
+type ApiErrorResponse = {
+  ok?: boolean;
+  error?: string;
+};
+
 type WsMessageOut =
   | { type: "output"; data: string }
   | { type: "snapshot"; data: string }
@@ -81,6 +86,39 @@ function useTerminalRenderer() {
   return { preRef, append, reset };
 }
 
+function readStoredSessionToken(): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  return window.localStorage.getItem("agent-infrastructure.dashboard.session") ?? "";
+}
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const sessionToken = readStoredSessionToken().trim();
+
+  if (sessionToken) {
+    headers.set("x-dashboard-session", sessionToken);
+  }
+
+  return fetch(path, {
+    ...init,
+    headers,
+  });
+}
+
+function withDashboardSessionToken(path: string): string {
+  const sessionToken = readStoredSessionToken().trim();
+  if (!sessionToken) {
+    return path;
+  }
+
+  const url = new URL(path, typeof window === "undefined" ? "http://127.0.0.1" : window.location.href);
+  url.searchParams.set("sessionToken", sessionToken);
+  return url.toString();
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -110,18 +148,40 @@ export function DashboardTerminalScreen({
 
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch(`${apiRootUrl}/sessions`);
-      const data = (await res.json()) as { sessions: SessionSummary[] };
-      setSessions(data.sessions);
-    } catch {}
+      const res = await apiFetch(`${apiRootUrl}/sessions`);
+      const data = (await res.json()) as { sessions?: SessionSummary[] } & ApiErrorResponse;
+      if (!res.ok) {
+        setSessions([]);
+        setError(data.error ?? "Terminal access requires a valid dashboard session.");
+        return;
+      }
+      setSessions(Array.isArray(data.sessions) ? data.sessions : []);
+    } catch {
+      setSessions([]);
+    }
   }, [apiRootUrl]);
 
   const fetchProfiles = useCallback(async () => {
     try {
-      const res = await fetch(`${apiRootUrl}/profiles`);
-      const data = (await res.json()) as ProfilesResponse;
-      setProfiles(data);
-    } catch {}
+      const res = await apiFetch(`${apiRootUrl}/profiles`);
+      const data = (await res.json()) as Partial<ProfilesResponse> & ApiErrorResponse;
+      if (!res.ok) {
+        setProfiles(null);
+        setError(data.error ?? "Terminal access requires a valid dashboard session.");
+        return;
+      }
+      if (Array.isArray(data.profiles) && typeof data.defaultCwd === "string" && Array.isArray(data.allowedRoots)) {
+        setProfiles({
+          profiles: data.profiles,
+          defaultCwd: data.defaultCwd,
+          allowedRoots: data.allowedRoots,
+        });
+      } else {
+        setProfiles(null);
+      }
+    } catch {
+      setProfiles(null);
+    }
   }, [apiRootUrl]);
 
   // Load sessions and profiles on mount
@@ -150,7 +210,7 @@ export function DashboardTerminalScreen({
       setError(null);
       reset("");
 
-      const ws = new WebSocket(wsRootUrl);
+      const ws = new WebSocket(withDashboardSessionToken(wsRootUrl));
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -228,7 +288,7 @@ export function DashboardTerminalScreen({
     setCreating(true);
     setError(null);
     try {
-      const res = await fetch(`${apiRootUrl}/sessions`, {
+      const res = await apiFetch(`${apiRootUrl}/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -236,6 +296,10 @@ export function DashboardTerminalScreen({
         }),
       });
       const data = (await res.json()) as { session?: SessionSummary; error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Failed to create session");
+        return;
+      }
       if (data.error) {
         setError(data.error);
         return;
@@ -254,7 +318,7 @@ export function DashboardTerminalScreen({
   const closeSession = useCallback(
     async (sessionId: string) => {
       try {
-        await fetch(`${apiRootUrl}/sessions/${sessionId}/close`, { method: "POST" });
+        await apiFetch(`${apiRootUrl}/sessions/${sessionId}/close`, { method: "POST" });
         if (activeSessionId === sessionId) {
           wsRef.current?.close();
           setActiveSessionId(null);

@@ -90,6 +90,7 @@ CurrentReality.uiPackagePresent.means(`
 CurrentReality.gatewayRoutesPresent.means(`
 - the dashboard gateway proxies /api/dashboard-terminal and /ws/dashboard-terminal
 - the UI receives a WebSocket root URL that matches the gateway path
+- the browser terminal now forwards the dashboard browser session token on both terminal HTTP requests and terminal WebSocket connections
 `);
 
 CurrentReality.bunPtyIntegrated.means(`
@@ -106,6 +107,7 @@ CurrentReality.mobileReadableOutput.means(`
 - the terminal renderer strips common ANSI and OSC control sequences before writing fallback text output into the preformatted mobile view
 - verified mobile command output includes readable results for pwd, echo hi, and uname -s
 - verification screenshot: /home/ec2-user/state/screenshots/terminal-mobile-debug/after-commands-clean.png
+- public-dashboard verification also confirms that unauthorized terminal API responses now surface a visible error instead of crashing the React screen
 `);
 
 CurrentReality.shellNoiseRemaining.means(`
