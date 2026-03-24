@@ -162,6 +162,7 @@ AgentChatDashboardImplementation.enforces(`
 - The active-thread controls should expose a compact quick-set process selector for the current chat adjacent to the thread menu button.
 - Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next provider turn without creating an immediate standalone transcript event.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
+- A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
 - The composer should support a lightweight reply-target reminder so the operator can indicate that the in-progress human message responds to a specific earlier agent message.
 - The browser should preserve unsent per-session message drafts in local storage so transient reloads do not discard typed input.
 - Keyboard interrupt should be exposed as Esc when the selected provider supports a real interrupt action.
