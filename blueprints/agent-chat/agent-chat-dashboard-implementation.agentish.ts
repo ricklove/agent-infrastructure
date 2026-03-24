@@ -160,6 +160,7 @@ AgentChatDashboardImplementation.enforces(`
 - Session list rows should show worker state when the backend can report it, not just a generic session status pill.
 - Session list rows should show the selected process expectation when one is assigned and should surface watchdog attention state when a session goes idle unresolved.
 - The active-thread controls should expose a compact quick-set process selector for the current chat adjacent to the thread menu button.
+- The quick-set control should present an explicit unassigned state such as none rather than an imperative placeholder label.
 - Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next provider turn without creating an immediate standalone transcript event.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
