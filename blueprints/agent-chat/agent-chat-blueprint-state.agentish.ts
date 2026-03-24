@@ -147,6 +147,7 @@ CurrentReality.sessionListQuickProcessSet.means(`
 - the active-thread header now exposes a compact process selector for the current chat near the thread menu button
 - the operator can change the assigned process blueprint for the active session without opening the current-chat settings menu
 - the quick-set control uses the same repository-backed process blueprint catalog as new-chat creation and current-chat settings
+- changing the process assignment appends a provider-visible system message so the agent sees the updated expectation
 `);
 
 CurrentReality.verticalSlice.means(`
