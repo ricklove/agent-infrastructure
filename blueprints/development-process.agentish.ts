@@ -24,6 +24,7 @@ const Artifact = {
   temporaryState: define.workspace("TemporaryRuntimeState"),
   appData: define.workspace("DurableAppData"),
   blueprint: define.document("RelevantBlueprint"),
+  processBlueprint: define.document("ProcessBlueprintJson"),
   blueprintState: define.document("RelevantBlueprintState"),
   releaseTag: define.document("ReleaseGitTag"),
   screenshot: define.document("VerificationScreenshot"),
@@ -49,6 +50,7 @@ const Rule = {
 
 DevelopmentProcess.enforces(`
 - Relevant blueprints must be reviewed and updated before implementation changes.
+- Relevant process blueprints under blueprints/ must be reviewed and updated when a feature changes session process behavior, watchdog semantics, or expectation-selection behavior.
 - Relevant blueprint-state documents must describe how current implementation compares to the ideal blueprint.
 - Blueprint changes that alter architecture, workflow, or product requirements must be committed before dependent implementation work begins.
 - Implementation must not continue past blueprint edits until those blueprint edits are committed.
@@ -74,6 +76,7 @@ DevelopmentProcess.enforces(`
 
 DevelopmentProcess.defines(`
 - BlueprintFirstChange means architecture and policy are corrected in blueprints before code is changed.
+- ProcessBlueprintJson means a machine-readable process contract in blueprints/ that the system may assign to a chat session.
 - BlueprintCommitBeforeImplementation means blueprint edits are turned into a committed source revision before dependent implementation work starts.
 - BlueprintStateTracksCurrentReality means blueprint-state records current implementation status, confidence, evidence, gaps, and known issues relative to the ideal blueprint.
 - WorkspaceToolingDiscovery means local machine tooling should be discovered from workspace README guidance and tools/ notes before installing replacements or parallel toolchains.
@@ -99,6 +102,7 @@ DevelopmentProcess.contains(
   Artifact.temporaryState,
   Artifact.appData,
   Artifact.blueprint,
+  Artifact.processBlueprint,
   Artifact.blueprintState,
   Artifact.releaseTag,
   Artifact.screenshot,
@@ -167,6 +171,10 @@ when(Actor.operator.runs("development or local verification for a feature branch
 when(Artifact.blueprint.exists())
   .then(DevelopmentProcess.expects(Artifact.blueprintState))
   .and(DevelopmentProcess.treats("blueprint as ideal and blueprint-state as current comparison"));
+
+when(Artifact.processBlueprint.exists())
+  .then(DevelopmentProcess.treats("process blueprint JSON as a first-class blueprint artifact"))
+  .and(DevelopmentProcess.requires("process-blueprint changes to be committed before dependent implementation"));
 
 when(Actor.operator.starts("substantial unfinished implementation work"))
   .then(DevelopmentProcess.prefers(Artifact.ticketPlan))

@@ -1,0 +1,17 @@
+{
+  "id": "full_development_process",
+  "title": "Full Development Process",
+  "expectation": "Follow the full development-process blueprint through relevant blueprint updates, committed implementation, local verification, release promotion, runtime deploy, and live verification.",
+  "idlePrompt": "If you fully completed the development process, reply only with 'done: full development process complete'. Otherwise continue the work or state what deployment or verification step is still incomplete.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: full development process complete",
+  "stopConditions": [
+    "full development process complete",
+    "blocked on user or environment dependency"
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 120,
+    "maxNudgesPerIdleEpisode": 1
+  }
+}

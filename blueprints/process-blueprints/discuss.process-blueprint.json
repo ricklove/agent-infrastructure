@@ -1,0 +1,17 @@
+{
+  "id": "discuss",
+  "title": "Discuss",
+  "expectation": "Discuss ideas, tradeoffs, and recommendations for the user's request without making implementation changes unless the user explicitly asks for implementation.",
+  "idlePrompt": "If the discussion is complete, reply only with 'done: discussion complete'. Otherwise continue the discussion or state what point still needs to be resolved.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: discussion complete",
+  "stopConditions": [
+    "discussion complete",
+    "waiting for user decision"
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 90,
+    "maxNudgesPerIdleEpisode": 1
+  }
+}

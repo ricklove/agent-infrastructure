@@ -151,6 +151,13 @@ CurrentReality.genericSessionActivity.means(`
 - the current implementation still does not model worker state as a richer explicit backend contract beyond that generic activity object
 `);
 
+CurrentReality.noProcessBlueprintExpectations.means(`
+- sessions do not currently store an assigned process blueprint id
+- the backend does not yet enumerate machine-readable process blueprints from blueprints/
+- the UI does not yet let the operator select process expectations such as discuss, define-blueprint, or full-development-process
+- idle watchdog behavior is not yet expectation-aware and does not currently use completion tokens from process blueprints
+`);
+
 CurrentReality.fixedTurnDeadline.means(`
 - the current Codex adapter still applies its own turn timeout policy in packages/agent-chat-server/src/codex-provider.ts
 - the Claude adapter does not share that exact transport or timeout path
@@ -183,6 +190,7 @@ CurrentReality.deferredScope.means(`
 - native versus Agentish compaction is specified in blueprints but not yet exposed as a real editable session policy
 - session folders are not implemented
 - explicit worker-state summaries in the backend contract are not implemented beyond the generic activity payload
+- process blueprint assignment and expectation-aware idle watchdog behavior are not implemented
 - retained context inspection is still much thinner than the ideal blueprint describes
 `);
 
@@ -197,6 +205,9 @@ when(CurrentReality.plannedProviders.exists())
   .and(AgentChatBlueprintState.records(Assessment.issue));
 
 when(CurrentReality.genericSessionActivity.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap));
+
+when(CurrentReality.noProcessBlueprintExpectations.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
 
 when(CurrentReality.currentChatProviderSettings.exists())

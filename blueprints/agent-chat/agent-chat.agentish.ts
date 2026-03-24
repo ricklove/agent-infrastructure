@@ -35,6 +35,8 @@ const Session = {
   participant: define.entity("SessionParticipant"),
   folder: define.entity("SessionFolder"),
   archive: define.concept("ArchivedSessionState"),
+  processBlueprint: define.document("AssignedProcessBlueprint"),
+  expectation: define.entity("SessionExpectation"),
   title: define.concept("SessionTitle"),
   summary: define.concept("SessionSummary"),
   import: define.entity("ImportedConversation"),
@@ -86,6 +88,7 @@ const Observability = {
   connection: define.entity("ProviderConnectionState"),
   status: define.entity("SessionStatus"),
   workerState: define.entity("WorkerState"),
+  watchdogState: define.entity("IdleWatchdogState"),
   inspection: define.entity("ContextInspection"),
 };
 
@@ -96,6 +99,7 @@ AgentChat.enforces(`
 - Session identity survives provider switching.
 - Provider bindings may change without rewriting canonical session history.
 - Provider-backed chat sessions must inherit the shared development-process blueprint so implementation work inside a chat follows the same blueprint-first workflow.
+- A session may optionally select a process blueprint that defines its expectation contract and idle-watchdog behavior.
 - Chat input must preserve first-class pasted image content rather than flattening clipboard images into text-only prompts.
 - Chat may reference workspace entities.
 - Workspace entities may reference chat.
@@ -124,6 +128,8 @@ Session.conversation.contains(
   Session.participant,
   Session.folder,
   Session.archive,
+  Session.processBlueprint,
+  Session.expectation,
   Session.title,
   Session.summary,
   Session.reference,
@@ -138,6 +144,7 @@ Session.conversation.contains(
   Observability.usage,
   Observability.status,
   Observability.workerState,
+  Observability.watchdogState,
 );
 
 Session.participant.contains(Participant.human, Participant.agent, Participant.system);
@@ -160,13 +167,16 @@ AgentChat.defines(`
 - A workspace reference is a durable pointer between a session and any workspace entity such as a board, layer, document, project, artifact, or run.
 - A session folder is a workspace-owned grouping container used to organize sessions without changing their identity.
 - Archived session state is a workspace-owned visibility flag that removes a session from the default list without deleting its identity or transcript.
+- An assigned process blueprint is the optional machine-readable expectation contract selected for a session.
+- Session expectation means the user-chosen workflow contract that defines what the agent is expected to complete for that session.
 - A hydration context packet is the explicit context AgentChat chooses to provide to a provider binding at run time.
 - An active context artifact is the retained context currently shaping future runs.
 - A context revision identifies which retained artifact a provider binding was last hydrated from.
 - Native compaction means provider-managed retention.
 - Agentish compaction means app-managed retention into a structured Agentish artifact.
 - Worker state is the inspectable provider-backed execution state that explains what the active agent workers are doing for a session.
-- Token usage, compaction events, active context, provider binding state, worker state, and approvals are inspectable session data.
+- Idle watchdog state is the inspectable record of whether expectation-aware idle prompting has been armed, triggered, or resolved for the session.
+- Token usage, compaction events, active context, provider binding state, worker state, idle watchdog state, and approvals are inspectable session data.
 `);
 
 Session.conversation.means(`
@@ -192,11 +202,30 @@ Session.archive.means(`
 - archive state does not delete transcript history, provider metadata, or session identity
 `);
 
+Session.processBlueprint.means(`
+- optional session-scoped process blueprint assignment
+- selected from the repository blueprint catalog rather than invented per run
+- machine-readable expectation contract for the session
+- may have an optional Agentish companion guide for agent reference
+`);
+
+Session.expectation.means(`
+- user-selected statement of what the agent should accomplish in the session
+- derived from the assigned process blueprint rather than guessed from raw transcript text
+- intended to drive idle watchdog prompts and session-list context
+`);
+
 Observability.workerState.means(`
 - active or recent worker status visible from the session list and active session view
 - provider-backed state such as queued work, running work, waiting state, background worker count, and interruption state
 - structured state that must not be reduced to an ambiguous generic status label when richer worker details exist
 - compact enough for session-list display while still preserving a deeper inspectable form in the active session
+`);
+
+Observability.watchdogState.means(`
+- expectation-aware idle watchdog status visible from the session list and active session view when useful
+- records whether the session is unresolved, nudged, completed by completion token, or still waiting
+- should complement worker state rather than replace provider-backed activity details
 `);
 
 Provider.binding.means(`
