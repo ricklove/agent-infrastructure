@@ -10,7 +10,7 @@ import {
 } from "./store.js";
 import {
   getProviderCatalogEntry,
-  providerCatalog,
+  listProviderCatalog,
   type AgentChatProviderKind,
 } from "./catalog.js";
 import {
@@ -26,6 +26,11 @@ import {
   loadProcessBlueprintCatalog,
   type ProcessBlueprint,
 } from "./process-blueprints.js";
+import {
+  normalizeClaudeSessionModelRef,
+  primeClaudeModelCatalogRefresh,
+  refreshClaudeModelCatalog,
+} from "./model-service.js";
 
 const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state";
 const appDataDir =
@@ -97,6 +102,7 @@ type SessionSnapshotPayload = {
 
 type SessionRuntimeState = SessionActivity & {
   interruptRequested: boolean;
+  providerKind: AgentChatProviderKind | null;
 };
 
 type WorkspacePersistenceRequest = {
@@ -160,6 +166,8 @@ const activeSessionRuns = new Set<string>();
 const sessionRuntime = new Map<string, SessionRuntimeState>();
 const sessionWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+primeClaudeModelCatalogRefresh();
+
 function log(message: string) {
   const line = `[${new Date().toISOString()}:agent-chat-server] ${message}\n`;
   mkdirSync(dirname(logPath), { recursive: true });
@@ -194,6 +202,7 @@ function ensureRuntimeState(sessionId: string): SessionRuntimeState {
       currentMessageId: null,
       canInterrupt: false,
       interruptRequested: false,
+      providerKind: null,
     };
     sessionRuntime.set(sessionId, runtime);
   }
@@ -225,8 +234,13 @@ function toSessionActivity(sessionId: string): SessionActivity {
 }
 
 function buildSessionSummary(session: StoredSession): SessionSummaryResponseItem {
+  const modelRef =
+    session.providerKind === "claude-agent-sdk"
+      ? normalizeClaudeSessionModelRef(session.modelRef)
+      : session.modelRef;
   return {
     ...session,
+    modelRef,
     activity: toSessionActivity(session.id),
     queuedMessageCount: store.listQueuedMessages(session.id).length,
   };
@@ -246,6 +260,14 @@ function buildSessionSnapshot(sessionId: string): SessionSnapshotPayload | null 
     queuedMessages: store.listQueuedMessages(sessionId),
     activity,
   };
+}
+
+function normalizeProviderModelRef(providerKind: AgentChatProviderKind, modelRef: string) {
+  const trimmed = modelRef.trim();
+  if (providerKind === "claude-agent-sdk") {
+    return normalizeClaudeSessionModelRef(trimmed);
+  }
+  return trimmed;
 }
 
 function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
@@ -544,8 +566,8 @@ async function processSessionQueue(sessionId: string) {
     return;
   }
 
-  const nextMessage = store.getNextQueuedUserMessage(sessionId);
-  if (!nextMessage) {
+  const queuedMessages = store.listQueuedUserMessages(sessionId);
+  if (queuedMessages.length === 0) {
     const runtime = ensureRuntimeState(sessionId);
     if (runtime.status === "queued") {
       setRuntimeState(sessionId, {
@@ -558,12 +580,12 @@ async function processSessionQueue(sessionId: string) {
     return;
   }
 
-  void runProviderTurnForQueuedMessage(sessionId, nextMessage);
+  void runProviderTurnForQueuedMessages(sessionId, queuedMessages);
 }
 
-async function runProviderTurnForQueuedMessage(
+async function runProviderTurnForQueuedMessages(
   sessionId: string,
-  queuedMessage: StoredMessage,
+  queuedMessages: StoredMessage[],
 ) {
   const session = store.getSession(sessionId);
   if (!session) {
@@ -575,6 +597,12 @@ async function runProviderTurnForQueuedMessage(
   }
 
   activeSessionRuns.add(sessionId);
+  const runProviderSettings = {
+    providerKind: session.providerKind,
+    modelRef: session.modelRef,
+    authProfile: session.authProfile,
+    imageModelRef: session.imageModelRef,
+  };
   setRuntimeState(sessionId, {
     status: "running",
     startedAtMs: Date.now(),
@@ -583,12 +611,44 @@ async function runProviderTurnForQueuedMessage(
     backgroundProcessCount: 0,
     waitingFlags: [],
     lastError: null,
-    currentMessageId: queuedMessage.id,
+    currentMessageId: queuedMessages[0]?.id ?? null,
     canInterrupt: providerSupportsInterrupt(session.providerKind),
     interruptRequested: false,
+    providerKind: session.providerKind,
   });
-  store.markMessagesSeen(sessionId, [queuedMessage.id]);
+  store.markMessagesSeen(
+    sessionId,
+    queuedMessages.map((message) => message.id),
+  );
+  const queuedInstructionMessages = store
+    .listQueuedMessages(sessionId)
+    .filter(
+      (message) =>
+        message.providerSeenAtMs === null &&
+        message.role === "system" &&
+        message.kind !== "watchdogPrompt",
+    )
+    .sort((left, right) => left.createdAtMs - right.createdAtMs);
+  store.markMessagesSeen(
+    sessionId,
+    queuedInstructionMessages.map((message) => message.id),
+  );
   const pendingSystemInstruction = store.consumePendingSystemInstruction(sessionId);
+  const seenThoughtItemIds = new Set<string>();
+  const streamCheckpointMessageIds = new Map<string, string>();
+  const streamCheckpointTexts = new Map<string, string>();
+  const seenQueuedMessages = queuedMessages
+    .map(
+      (queuedMessage) =>
+        store.listMessages(sessionId).find((message) => message.id === queuedMessage.id) ?? queuedMessage,
+    )
+    .sort((left, right) => left.createdAtMs - right.createdAtMs);
+  const seenQueuedInstructionMessages = queuedInstructionMessages
+    .map(
+      (queuedMessage) =>
+        store.listMessages(sessionId).find((message) => message.id === queuedMessage.id) ?? queuedMessage,
+    )
+    .sort((left, right) => left.createdAtMs - right.createdAtMs);
   broadcastActivity(sessionId);
 
   try {
@@ -597,7 +657,9 @@ async function runProviderTurnForQueuedMessage(
       throw new Error("Session disappeared before provider execution started");
     }
 
-    const messageContent = buildProviderInputContent(queuedMessage.content);
+    const messageContent = queuedMessages.flatMap((queuedMessage) =>
+      buildProviderInputContent(queuedMessage.content),
+    );
     const callbacks = {
       onRunStarted(payload: { threadId: string; turnId: string }) {
         setRuntimeState(sessionId, (current) => ({
@@ -611,6 +673,10 @@ async function runProviderTurnForQueuedMessage(
           type: "run.started",
           sessionId,
           providerKind: currentSession.providerKind,
+          messages: [...seenQueuedInstructionMessages, ...seenQueuedMessages].sort(
+            (left, right) => left.createdAtMs - right.createdAtMs,
+          ),
+          queuedMessages: store.listQueuedMessages(sessionId),
           activity: toSessionActivity(sessionId),
         });
       },
@@ -641,6 +707,41 @@ async function runProviderTurnForQueuedMessage(
         itemId: string;
         delta: string;
       }) {
+        if (payload.itemId) {
+          const nextText = `${streamCheckpointTexts.get(payload.itemId) ?? ""}${payload.delta}`;
+          streamCheckpointTexts.set(payload.itemId, nextText);
+
+          const existingMessageId = streamCheckpointMessageIds.get(payload.itemId);
+          const checkpointContent: StoredMessageContentBlock[] = [
+            {
+              type: "text",
+              text: nextText,
+            },
+          ];
+
+          const checkpointMessage = existingMessageId
+            ? store.updateMessageContent(sessionId, existingMessageId, checkpointContent)
+            : store.appendMessage(sessionId, {
+                role: "assistant",
+                kind: "streamCheckpoint",
+                providerSeenAtMs: Date.now(),
+                content: checkpointContent,
+              });
+
+          if (checkpointMessage) {
+            streamCheckpointMessageIds.set(payload.itemId, checkpointMessage.id);
+            broadcastSession(sessionId, {
+              type: "session.updated",
+              session: store.getSession(sessionId)
+                ? buildSessionSummary(store.getSession(sessionId)!)
+                : null,
+              messages: [checkpointMessage],
+              queuedMessages: store.listQueuedMessages(sessionId),
+              activity: toSessionActivity(sessionId),
+            });
+          }
+        }
+
         broadcastSession(sessionId, {
           type: "run.delta",
           sessionId,
@@ -648,6 +749,37 @@ async function runProviderTurnForQueuedMessage(
           turnId: payload.turnId,
           itemId: payload.itemId,
           delta: payload.delta,
+        });
+      },
+      onThoughtItem(payload: {
+        threadId: string;
+        turnId: string;
+        itemId: string;
+        summaryText: string;
+      }) {
+        if (!payload.itemId || seenThoughtItemIds.has(payload.itemId) || !payload.summaryText.trim()) {
+          return;
+        }
+        seenThoughtItemIds.add(payload.itemId);
+        const thoughtMessage = store.appendMessage(sessionId, {
+          role: "assistant",
+          kind: "thought",
+          providerSeenAtMs: Date.now(),
+          content: [
+            {
+              type: "text",
+              text: payload.summaryText,
+            },
+          ],
+        });
+        broadcastSession(sessionId, {
+          type: "session.updated",
+          session: store.getSession(sessionId)
+            ? buildSessionSummary(store.getSession(sessionId)!)
+            : null,
+          messages: [thoughtMessage],
+          queuedMessages: store.listQueuedMessages(sessionId),
+          activity: toSessionActivity(sessionId),
         });
       },
     };
@@ -673,21 +805,58 @@ async function runProviderTurnForQueuedMessage(
       throw new Error(`${currentSession.providerKind} provider adapter is not implemented yet`);
     }
 
-    const updatedSession = store.updateProviderThread(sessionId, {
-      threadId: result.threadId,
-      threadPath: result.threadPath,
-    });
-    const assistantMessage = store.appendMessage(sessionId, {
-      role: "assistant",
-      providerSeenAtMs: Date.now(),
-      content: [
-        {
-          type: "text",
-          text: result.assistantText || "(empty response)",
-        },
-      ],
-    });
-    maybeMarkProcessBlueprintCompletion(sessionId, result.assistantText || "");
+    const latestSession = store.getSession(sessionId);
+    const shouldPersistProviderThread =
+      !!latestSession &&
+      latestSession.providerKind === runProviderSettings.providerKind &&
+      latestSession.modelRef === runProviderSettings.modelRef &&
+      normalizeOptionalValue(latestSession.authProfile) ===
+        normalizeOptionalValue(runProviderSettings.authProfile) &&
+      normalizeOptionalValue(latestSession.imageModelRef) ===
+        normalizeOptionalValue(runProviderSettings.imageModelRef);
+    const updatedSession = shouldPersistProviderThread
+      ? store.updateProviderThread(sessionId, {
+          threadId: result.threadId,
+          threadPath: result.threadPath,
+        })
+      : latestSession;
+    const finalAssistantText = result.assistantText || "(empty response)";
+    const lastStreamItemId = Array.from(streamCheckpointMessageIds.keys()).at(-1) ?? null;
+    const lastStreamMessageId = lastStreamItemId ? streamCheckpointMessageIds.get(lastStreamItemId) ?? null : null;
+    const lastStreamText = lastStreamItemId ? streamCheckpointTexts.get(lastStreamItemId) ?? "" : "";
+    const assistantMessage =
+      lastStreamMessageId && lastStreamText === finalAssistantText
+        ? store.updateMessage(sessionId, lastStreamMessageId, {
+            kind: "chat",
+            content: [
+              {
+                type: "text",
+                text: finalAssistantText,
+              },
+            ],
+            providerSeenAtMs: Date.now(),
+          }) ??
+          store.appendMessage(sessionId, {
+            role: "assistant",
+            providerSeenAtMs: Date.now(),
+            content: [
+              {
+                type: "text",
+                text: finalAssistantText,
+              },
+            ],
+          })
+        : store.appendMessage(sessionId, {
+            role: "assistant",
+            providerSeenAtMs: Date.now(),
+            content: [
+              {
+                type: "text",
+                text: finalAssistantText,
+              },
+            ],
+          });
+    maybeMarkProcessBlueprintCompletion(sessionId, finalAssistantText);
 
     setRuntimeState(sessionId, {
       status: "idle",
@@ -700,6 +869,7 @@ async function runProviderTurnForQueuedMessage(
       currentMessageId: null,
       canInterrupt: false,
       interruptRequested: false,
+      providerKind: null,
     });
     broadcastSession(sessionId, {
       type: "session.updated",
@@ -735,6 +905,7 @@ async function runProviderTurnForQueuedMessage(
         currentMessageId: null,
         canInterrupt: false,
         interruptRequested: false,
+        providerKind: null,
       });
       broadcastSession(sessionId, {
         type: "session.updated",
@@ -766,6 +937,7 @@ async function runProviderTurnForQueuedMessage(
         currentMessageId: null,
         canInterrupt: false,
         interruptRequested: false,
+        providerKind: null,
       });
       broadcastSession(sessionId, {
         type: "session.updated",
@@ -792,7 +964,7 @@ async function runProviderTurnForQueuedMessage(
 
 const server = Bun.serve<ChatSocketData>({
   port,
-  fetch(request, serverInstance) {
+  async fetch(request, serverInstance) {
     const url = new URL(request.url);
 
     const attachment = store.resolveAttachment(url.pathname);
@@ -830,9 +1002,10 @@ const server = Bun.serve<ChatSocketData>({
     }
 
     if (url.pathname === "/api/agent-chat/providers") {
+      await refreshClaudeModelCatalog();
       return jsonResponse({
         ok: true,
-        providers: providerCatalog,
+        providers: listProviderCatalog(),
       });
     }
 
@@ -889,7 +1062,10 @@ const server = Bun.serve<ChatSocketData>({
         const session = store.createSession({
           title: payload.title,
           providerKind: payload.providerKind,
-          modelRef: payload.modelRef?.trim() || provider.defaultModelRef,
+          modelRef: normalizeProviderModelRef(
+            payload.providerKind,
+            payload.modelRef?.trim() || provider.defaultModelRef,
+          ),
           cwd: payload.cwd?.trim() || defaultSessionDirectory,
           authProfile: payload.authProfile?.trim() || provider.authProfiles[0] || null,
           imageModelRef: payload.imageModelRef?.trim() || null,
@@ -965,12 +1141,6 @@ const server = Bun.serve<ChatSocketData>({
                 "directory, title, archive state, process blueprint, or provider settings required",
             },
             400,
-          );
-        }
-        if (activeSessionRuns.has(sessionId) && hasProviderPatch) {
-          return jsonResponse(
-            { ok: false, error: "Cannot change provider settings while a run is active" },
-            409,
           );
         }
         let session = currentSession;
@@ -1052,6 +1222,18 @@ const server = Bun.serve<ChatSocketData>({
           }
           if (previousProcessBlueprintId !== (nextProcessBlueprintId ?? null)) {
             const processBlueprint = getSessionProcessBlueprint(session);
+            store.markQueuedSystemMessagesSeenByPrefix(sessionId, PROCESS_INSTRUCTION_PREFIX);
+            const processMessage = store.appendMessage(sessionId, {
+              role: "system",
+              providerSeenAtMs: null,
+              content: [
+                {
+                  type: "text",
+                  text: buildProcessExpectationInstruction(processBlueprint),
+                },
+              ],
+            });
+            queuedMessages.push(processMessage);
             const instructionSession = store.replacePendingSystemInstructionByPrefix(
               sessionId,
               PROCESS_INSTRUCTION_PREFIX,
@@ -1081,7 +1263,10 @@ const server = Bun.serve<ChatSocketData>({
             );
           }
 
-          const resolvedModelRef = nextModelRef || session.modelRef || provider.defaultModelRef;
+          const resolvedModelRef = normalizeProviderModelRef(
+            resolvedProviderKind,
+            nextModelRef || session.modelRef || provider.defaultModelRef,
+          );
           const resolvedAuthProfile =
             nextAuthProfile !== undefined
               ? nextAuthProfile
@@ -1142,7 +1327,8 @@ const server = Bun.serve<ChatSocketData>({
       if (!session) {
         return notFound();
       }
-      if (!providerSupportsInterrupt(session.providerKind)) {
+      const interruptProviderKind = runtime.providerKind ?? session.providerKind;
+      if (!providerSupportsInterrupt(interruptProviderKind)) {
         return jsonResponse({ ok: false, error: "Interrupt not supported for this provider" }, 400);
       }
       if (runtime.status !== "running") {
@@ -1150,7 +1336,7 @@ const server = Bun.serve<ChatSocketData>({
       }
 
       const interruptPromise =
-        session.providerKind === "codex-app-server"
+        interruptProviderKind === "codex-app-server"
           ? !runtime.turnId || !runtime.threadId
             ? Promise.reject(new Error("No active turn to interrupt"))
             : interruptCodexTurn(session, runtime.threadId, runtime.turnId)
@@ -1162,6 +1348,7 @@ const server = Bun.serve<ChatSocketData>({
             status: "interrupted",
             interruptRequested: true,
             canInterrupt: false,
+            providerKind: interruptProviderKind,
           });
           broadcastActivity(sessionId);
           return jsonResponse({ ok: true, activity: toSessionActivity(sessionId) });

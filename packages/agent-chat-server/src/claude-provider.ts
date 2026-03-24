@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { MessageParam } from "@anthropic-ai/sdk/resources";
 import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
+import { resolveClaudeSdkModelValue } from "./model-service.js";
 import type { StoredSession } from "./store.js";
 
 type ProviderInputBlock =
@@ -67,20 +69,14 @@ type ClaudeSdkMessage = {
 const activeClaudeQueries = new Map<string, Query>();
 
 function parseClaudeModel(modelRef: string) {
-  const trimmed = modelRef.trim();
-  if (!trimmed) {
-    return "claude-sonnet-4-5";
-  }
-
-  const parts = trimmed.split("/");
-  return parts.at(-1) || trimmed;
+  return resolveClaudeSdkModelValue(modelRef);
 }
 
 function buildClaudeMessageContent(
   inputBlocks: ProviderInputBlock[],
   pendingSystemInstruction: string | null,
-) {
-  const content: Array<Record<string, unknown>> = [];
+): MessageParam["content"] {
+  const content: NonNullable<MessageParam["content"]> = [];
   const systemText = pendingSystemInstruction?.trim();
   if (systemText) {
     content.push({
@@ -102,7 +98,7 @@ function buildClaudeMessageContent(
       continue;
     }
 
-    if (block.base64Data && block.mediaType) {
+    if (block.base64Data && isClaudeImageMediaType(block.mediaType)) {
       content.push({
         type: "image",
         source: {
@@ -126,6 +122,17 @@ function buildClaudeMessageContent(
   }
 
   return content
+}
+
+function isClaudeImageMediaType(
+  mediaType: string | null,
+): mediaType is "image/jpeg" | "image/gif" | "image/webp" | "image/png" {
+  return (
+    mediaType === "image/jpeg" ||
+    mediaType === "image/gif" ||
+    mediaType === "image/webp" ||
+    mediaType === "image/png"
+  );
 }
 
 function extractAssistantText(message: ClaudeSdkMessage["message"]) {

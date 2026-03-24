@@ -72,11 +72,16 @@ type SessionMessage = {
   id: string
   sessionId: string
   role: "user" | "assistant" | "system"
-  kind: "chat" | "directoryInstruction" | "watchdogPrompt"
+  kind: "chat" | "directoryInstruction" | "watchdogPrompt" | "thought" | "streamCheckpoint"
   replyToMessageId: string | null
   providerSeenAtMs: number | null
   content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>
   createdAtMs: number
+}
+
+type RenderedTranscriptItem = {
+  message: SessionMessage
+  precedingStreamCheckpoints: SessionMessage[]
 }
 
 type ComposerImageAttachment = {
@@ -144,6 +149,8 @@ type RunStartedEvent = {
   type: "run.started"
   sessionId: string
   providerKind: ProviderKind
+  messages: SessionMessage[]
+  queuedMessages: SessionMessage[]
   activity: SessionActivity
 }
 
@@ -190,6 +197,10 @@ export type AgentChatScreenProps = {
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
 const defaultSessionDirectory = "/home/ec2-user/workspace"
 const draftStorageKeyPrefix = "agent-infrastructure.agent-chat.draft."
+const sessionRailWidthStorageKey = "agent-infrastructure.agent-chat.session-rail-width"
+const defaultSessionRailWidth = 352
+const minSessionRailWidth = 280
+const maxSessionRailWidth = 520
 
 function IconButton(props: {
   label: string
@@ -426,6 +437,17 @@ function writeDraft(sessionId: string, draft: string) {
   window.localStorage.removeItem(draftStorageKey(sessionId))
 }
 
+function readSessionRailWidth() {
+  if (typeof window === "undefined") {
+    return defaultSessionRailWidth
+  }
+  const raw = Number(window.localStorage.getItem(sessionRailWidthStorageKey) ?? "")
+  if (!Number.isFinite(raw)) {
+    return defaultSessionRailWidth
+  }
+  return Math.max(minSessionRailWidth, Math.min(maxSessionRailWidth, raw))
+}
+
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers)
   const sessionToken = readStoredSessionToken().trim()
@@ -531,10 +553,82 @@ function withDashboardSessionToken(path: string) {
   return `${path}${separator}sessionToken=${encodeURIComponent(sessionToken)}`
 }
 
+function mergeMessagesById(current: SessionMessage[], incoming: SessionMessage[]) {
+  const next = new Map<string, SessionMessage>()
+  for (const message of current) {
+    next.set(message.id, message)
+  }
+  for (const message of incoming) {
+    next.set(message.id, message)
+  }
+  return Array.from(next.values()).sort((left, right) => left.createdAtMs - right.createdAtMs)
+}
+
+function threadMessageQueueLabel(message: SessionMessage) {
+  if (message.providerSeenAtMs !== null) {
+    return null
+  }
+  if (message.role === "user") {
+    return "queued"
+  }
+  if (message.role === "system" && message.kind === "watchdogPrompt") {
+    return "watchdog"
+  }
+  if (message.role === "system") {
+    return "next turn"
+  }
+  return "pending"
+}
+
+function splitDisplayParagraphs(text: string) {
+  return text
+    .split(/\n\s*\n/g)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+function summarizeStreamCheckpoint(text: string) {
+  return splitDisplayParagraphs(text)[0] ?? "Stream revision"
+}
+
+function sessionCardTone(activity: SessionActivity, active: boolean, archived: boolean) {
+  if (active) {
+    switch (activity.status) {
+      case "running":
+        return "border-emerald-300/40 bg-emerald-300/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      case "queued":
+        return "border-amber-300/40 bg-amber-300/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      case "error":
+        return "border-rose-300/40 bg-rose-300/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+      default:
+        return archived
+          ? "border-cyan-300/40 bg-cyan-300/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+          : "border-fuchsia-300/40 bg-fuchsia-300/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+    }
+  }
+
+  switch (activity.status) {
+    case "running":
+      return "border-emerald-400/20 bg-emerald-400/5 hover:border-emerald-300/30"
+    case "queued":
+      return "border-amber-400/20 bg-amber-400/5 hover:border-amber-300/30"
+    case "error":
+      return "border-rose-400/20 bg-rose-400/5 hover:border-rose-300/30"
+    case "interrupted":
+      return "border-cyan-400/20 bg-cyan-400/5 hover:border-cyan-300/30"
+    default:
+      return archived
+        ? "border-cyan-400/15 bg-slate-900/65 hover:border-cyan-300/25"
+        : "border-white/10 bg-slate-900/70 hover:border-white/20"
+  }
+}
+
 export function AgentChatScreen(props: AgentChatScreenProps) {
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
   const pendingSessionOpenScrollRef = useRef<string | null>(null)
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const messageElementRefs = useRef(new Map<string, HTMLElement>())
+  const sessionRailResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
   const [processBlueprints, setProcessBlueprints] = useState<ProcessBlueprint[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
@@ -589,6 +683,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null)
   const [composerImages, setComposerImages] = useState<ComposerImageAttachment[]>([])
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const [sessionRailWidth, setSessionRailWidth] = useState(() => readSessionRailWidth())
+  const [expandedReplacedStreamMessageIds, setExpandedReplacedStreamMessageIds] = useState<
+    Record<string, boolean>
+  >({})
+  const [, setThreadViewportMetrics] = useState({
+    scrollTop: 0,
+    scrollHeight: 1,
+    clientHeight: 1,
+  })
 
   const activeProvider = useMemo(
     () => providers.find((entry) => entry.kind === providerKind) ?? null,
@@ -648,16 +751,86 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     [messages],
   )
 
-  const queuedUserMessages = useMemo(
+  const renderedTranscriptItems = useMemo(() => {
+    const items: RenderedTranscriptItem[] = []
+    let pendingStreamCheckpoints: SessionMessage[] = []
+
+    for (const message of messages) {
+      if (message.kind === "streamCheckpoint") {
+        pendingStreamCheckpoints.push(message)
+        continue
+      }
+
+      if (message.role === "assistant" && message.kind === "chat") {
+        items.push({
+          message,
+          precedingStreamCheckpoints: pendingStreamCheckpoints,
+        })
+        pendingStreamCheckpoints = []
+        continue
+      }
+
+      if (pendingStreamCheckpoints.length > 0) {
+        for (const streamMessage of pendingStreamCheckpoints) {
+          items.push({
+            message: streamMessage,
+            precedingStreamCheckpoints: [],
+          })
+        }
+        pendingStreamCheckpoints = []
+      }
+
+      items.push({
+        message,
+        precedingStreamCheckpoints: [],
+      })
+    }
+
+    for (const streamMessage of pendingStreamCheckpoints) {
+      items.push({
+        message: streamMessage,
+        precedingStreamCheckpoints: [],
+      })
+    }
+
+    return items
+  }, [messages])
+
+  const hasVisibleStreamCheckpoint = useMemo(
+    () => renderedTranscriptItems.some(({ message }) => message.kind === "streamCheckpoint"),
+    [renderedTranscriptItems],
+  )
+
+  const queuedSystemMessages = useMemo(
     () =>
       queuedMessages.filter(
         (message) =>
-          message.role === "user" ||
-          (message.role === "system" &&
-            (message.kind === "directoryInstruction" || message.kind === "watchdogPrompt")),
+          message.role === "system" &&
+          message.providerSeenAtMs === null,
       ),
     [queuedMessages],
   )
+
+  const syncCurrentChatSettingsFromSession = useCallback((session: SessionSummary | null) => {
+    setActiveSessionDirectory(session?.cwd ?? "")
+    setActiveSessionProviderKind(session?.providerKind ?? "codex-app-server")
+    setActiveSessionModelRef(session?.modelRef ?? "")
+    setActiveSessionAuthProfile(session?.authProfile ?? "")
+    setActiveSessionImageModelRef(session?.imageModelRef ?? "")
+    setActiveSessionProcessBlueprintId(session?.processBlueprintId ?? "")
+  }, [])
+
+  const updateThreadViewportMetrics = useCallback(() => {
+    const viewport = transcriptViewportRef.current
+    if (!viewport) {
+      return
+    }
+    setThreadViewportMetrics({
+      scrollTop: viewport.scrollTop,
+      scrollHeight: Math.max(1, viewport.scrollHeight),
+      clientHeight: Math.max(1, viewport.clientHeight),
+    })
+  }, [])
 
   const updateActiveSessionRuntime = useCallback(
     (nextActivity: SessionActivity, queuedCount: number) => {
@@ -679,36 +852,53 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     [activeSessionId],
   )
 
+  const setMessageElementRef = useCallback((messageId: string, element: HTMLElement | null) => {
+    if (!element) {
+      messageElementRefs.current.delete(messageId)
+      return
+    }
+    messageElementRefs.current.set(messageId, element)
+  }, [])
+
+  const toggleExpandedReplacedStreams = useCallback((messageId: string) => {
+    setExpandedReplacedStreamMessageIds((current) => ({
+      ...current,
+      [messageId]: !current[messageId],
+    }))
+  }, [])
+
   useEffect(() => {
     if (!activeProvider) {
       return
     }
     const nextModel =
+      (modelRef && activeProvider.modelOptions.includes(modelRef) ? modelRef : null) ??
       activeProvider.modelOptions.find((option) => option === activeProvider.defaultModelRef) ??
       activeProvider.modelOptions[0] ??
       activeProvider.defaultModelRef
     setModelRef(nextModel)
     setAuthProfile(activeProvider.authProfiles[0] ?? "")
-  }, [activeProvider])
+  }, [activeProvider, modelRef])
 
   useEffect(() => {
-    setActiveSessionDirectory(activeSession?.cwd ?? "")
-    setActiveSessionProviderKind(activeSession?.providerKind ?? "codex-app-server")
-    setActiveSessionModelRef(activeSession?.modelRef ?? "")
-    setActiveSessionAuthProfile(activeSession?.authProfile ?? "")
-    setActiveSessionImageModelRef(activeSession?.imageModelRef ?? "")
-    setActiveSessionProcessBlueprintId(activeSession?.processBlueprintId ?? "")
+    syncCurrentChatSettingsFromSession(activeSession)
     setReplyTargetMessageId(null)
+  }, [activeSessionId, syncCurrentChatSettingsFromSession])
+
+  useEffect(() => {
     if (activeSession && renamingSessionId === activeSession.id) {
       setRenameTitle(activeSession.title)
     }
-  }, [activeSession])
+  }, [activeSession?.title, activeSession?.id, renamingSessionId])
 
   useEffect(() => {
     if (!activeSessionProvider) {
       return
     }
     const nextModel =
+      (activeSessionModelRef && activeSessionProvider.modelOptions.includes(activeSessionModelRef)
+        ? activeSessionModelRef
+        : null) ??
       activeSessionProvider.modelOptions.find((option) => option === activeSessionModelRef) ??
       activeSessionProvider.modelOptions.find(
         (option) => option === activeSessionProvider.defaultModelRef,
@@ -771,18 +961,82 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       return
     }
 
-    const frameHandle = window.requestAnimationFrame(() => {
+    let cancelled = false
+    const timerHandles: number[] = []
+
+    const flushScrollToBottom = () => {
+      if (cancelled) {
+        return
+      }
       viewport.scrollTo({
         top: viewport.scrollHeight,
         behavior: "auto",
       })
-      pendingSessionOpenScrollRef.current = null
-    })
+      updateThreadViewportMetrics()
+    }
+
+    timerHandles.push(
+      window.setTimeout(flushScrollToBottom, 0),
+      window.setTimeout(flushScrollToBottom, 80),
+      window.setTimeout(() => {
+        flushScrollToBottom()
+        pendingSessionOpenScrollRef.current = null
+      }, 220),
+    )
 
     return () => {
-      window.cancelAnimationFrame(frameHandle)
+      cancelled = true
+      for (const handle of timerHandles) {
+        window.clearTimeout(handle)
+      }
     }
-  }, [activeSessionId, messages.length])
+  }, [activeSessionId, messages.length, updateThreadViewportMetrics])
+
+  useEffect(() => {
+    updateThreadViewportMetrics()
+    const viewport = transcriptViewportRef.current
+    if (!viewport) {
+      return
+    }
+    const handle = window.requestAnimationFrame(() => {
+      updateThreadViewportMetrics()
+    })
+    return () => {
+      window.cancelAnimationFrame(handle)
+    }
+  }, [activeSessionId, messages.length, streamingAssistantText, updateThreadViewportMetrics])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    window.localStorage.setItem(sessionRailWidthStorageKey, String(sessionRailWidth))
+  }, [sessionRailWidth])
+
+  useEffect(() => {
+    function handlePointerMove(event: MouseEvent) {
+      const resizeState = sessionRailResizeRef.current
+      if (!resizeState) {
+        return
+      }
+      const delta = event.clientX - resizeState.startX
+      setSessionRailWidth(
+        Math.max(minSessionRailWidth, Math.min(maxSessionRailWidth, resizeState.startWidth + delta)),
+      )
+    }
+
+    function handlePointerUp() {
+      sessionRailResizeRef.current = null
+    }
+
+    window.addEventListener("mousemove", handlePointerMove)
+    window.addEventListener("mouseup", handlePointerUp)
+    return () => {
+      window.removeEventListener("mousemove", handlePointerMove)
+      window.removeEventListener("mouseup", handlePointerUp)
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -974,7 +1228,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             ),
           )
         }
-        setMessages((current) => [...current, ...payload.messages])
+        setMessages((current) => mergeMessagesById(current, payload.messages))
         setQueuedMessages(payload.queuedMessages)
         setActivity(payload.activity)
         updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
@@ -985,8 +1239,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       }
 
       if (payload.type === "run.started") {
+        setMessages((current) => mergeMessagesById(current, payload.messages))
+        setQueuedMessages(payload.queuedMessages)
         setActivity(payload.activity)
-        updateActiveSessionRuntime(payload.activity, queuedMessages.length)
+        updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
         setStreamingAssistantText("")
         return
       }
@@ -1095,6 +1351,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         : [session, ...current]
       return [...next].sort((left, right) => right.updatedAtMs - left.updatedAtMs)
     })
+  }, [])
+
+  const activateSessionFromList = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId)
+    setMobileSessionsOpen(false)
   }, [])
 
   async function setSessionArchived(sessionId: string, archived: boolean) {
@@ -1222,6 +1483,30 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       return
     }
 
+    const nextPayload: Record<string, string | null> = {}
+    if (activeSessionDirectory.trim() !== activeSession.cwd) {
+      nextPayload.cwd = activeSessionDirectory.trim()
+    }
+    if (activeSessionProviderKind !== activeSession.providerKind) {
+      nextPayload.providerKind = activeSessionProviderKind
+    }
+    if (activeSessionModelRef !== activeSession.modelRef) {
+      nextPayload.modelRef = activeSessionModelRef
+    }
+    if (activeSessionAuthProfile !== (activeSession.authProfile ?? "")) {
+      nextPayload.authProfile = activeSessionAuthProfile || null
+    }
+    if (activeSessionImageModelRef !== (activeSession.imageModelRef ?? "")) {
+      nextPayload.imageModelRef = activeSessionImageModelRef || null
+    }
+    if (activeSessionProcessBlueprintId !== (activeSession.processBlueprintId ?? "")) {
+      nextPayload.processBlueprintId = activeSessionProcessBlueprintId || null
+    }
+
+    if (Object.keys(nextPayload).length === 0) {
+      return
+    }
+
     setUpdatingDirectory(true)
     setError("")
 
@@ -1231,14 +1516,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          cwd: activeSessionDirectory,
-          providerKind: activeSessionProviderKind,
-          modelRef: activeSessionModelRef,
-          authProfile: activeSessionAuthProfile || null,
-          imageModelRef: activeSessionImageModelRef || null,
-          processBlueprintId: activeSessionProcessBlueprintId || null,
-        }),
+        body: JSON.stringify(nextPayload),
       })
       const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
       if (!response.ok || !payload.ok) {
@@ -1248,6 +1526,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setMessages(payload.messages)
       setQueuedMessages(payload.queuedMessages)
       setActivity(payload.activity)
+      syncCurrentChatSettingsFromSession(payload.session)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Chat settings update failed.")
     } finally {
@@ -1286,7 +1565,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setMessages(payload.messages)
       setQueuedMessages(payload.queuedMessages)
       setActivity(payload.activity)
-      setActiveSessionProcessBlueprintId(payload.session.processBlueprintId ?? "")
+      syncCurrentChatSettingsFromSession(payload.session)
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Process update failed.")
     } finally {
@@ -1501,16 +1780,14 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       <aside
         className={`${
           mobileSessionsOpen ? "translate-x-0" : "-translate-x-full"
-        } fixed inset-y-0 left-0 z-20 w-[86vw] max-w-sm border-r border-white/10 bg-slate-950/95 p-4 backdrop-blur transition md:static md:w-80 md:max-w-none md:translate-x-0 md:border-r md:p-5`}
+        } relative fixed inset-y-0 left-0 z-20 w-[86vw] max-w-sm border-r border-white/10 bg-slate-950/95 p-3 backdrop-blur transition md:static md:max-w-none md:translate-x-0 md:border-r md:p-4`}
+        style={!mobileSessionsOpen ? { width: sessionRailWidth } : undefined}
       >
-        <div className="flex h-full min-h-0 flex-col gap-4">
+        <div className="flex h-full min-h-0 flex-col gap-3">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-fuchsia-300">
                 Agent Chat
-              </p>
-              <p className="mt-2 text-sm text-slate-400">
-                Current thread first. Everything else stays compact.
               </p>
             </div>
             <button
@@ -1548,7 +1825,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     }}
                     className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5"
                   >
-                    <span>{showArchivedSessions ? "Hide archived" : "Show archived"}</span>
+                    <span>{showArchivedSessions ? "Hide archived chats" : "Show archived chats"}</span>
                     <span className="text-xs text-slate-500">{sessions.filter((session) => session.archived).length}</span>
                   </button>
                 </div>
@@ -1570,13 +1847,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           </label>
 
           {newChatOpen ? (
-            <form onSubmit={createSession} className="space-y-4 rounded-3xl border border-white/10 bg-white/5 p-4">
+            <form
+              onSubmit={createSession}
+              className="max-h-[min(34rem,calc(100dvh-15rem))] space-y-4 overflow-y-auto rounded-3xl border border-white/10 bg-white/5 p-4"
+            >
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   New Chat
-                </p>
-                <p className="mt-2 text-sm text-slate-400">
-                  Start another chat from the sessions side.
                 </p>
               </div>
               <label className="block">
@@ -1698,7 +1975,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             </form>
           ) : null}
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             <div className="space-y-3">
               {loading ? (
                 <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-4 text-sm text-slate-400">
@@ -1723,57 +2000,82 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       {mainSessions.map((session) => (
                         <div
                           key={session.id}
-                          className={`rounded-2xl border px-4 py-4 transition ${
-                            session.id === activeSessionId
-                              ? "border-fuchsia-300/40 bg-fuchsia-300/10"
-                              : "border-white/10 bg-slate-900/70 hover:border-white/20"
-                          }`}
+                          className={`relative rounded-2xl border px-3 py-3 transition ${sessionCardTone(
+                            session.activity,
+                            session.id === activeSessionId,
+                            session.archived,
+                          )}`}
                         >
-                          <div className="flex items-start justify-between gap-3">
+                          {renamingSessionId !== session.id ? (
                             <button
                               type="button"
-                              onClick={() => {
-                                setActiveSessionId(session.id)
-                                setMobileSessionsOpen(false)
-                              }}
-                              className="min-w-0 flex-1 text-left"
-                            >
-                              <p className="truncate text-sm font-semibold text-white">
+                              aria-label={`Open chat ${session.title}`}
+                              onClick={() => activateSessionFromList(session.id)}
+                              className="absolute inset-0 z-10 rounded-2xl"
+                            />
+                          ) : null}
+                          <div className="relative flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1 text-left">
+                              <div className="flex items-center gap-2">
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                                  session.activity.status === "running"
+                                    ? "bg-emerald-300/15 text-emerald-100"
+                                    : session.activity.status === "queued"
+                                      ? "bg-amber-300/15 text-amber-100"
+                                      : session.activity.status === "error"
+                                        ? "bg-rose-300/15 text-rose-100"
+                                        : "bg-white/10 text-slate-300"
+                                }`}>
+                                  {activityLabel(session.activity)}
+                                </span>
+                                <span className="text-[11px] text-slate-500">{session.messageCount}</span>
+                              </div>
+                              <p className="mt-2 truncate text-base font-semibold leading-5 text-white">
                                 {session.title}
                               </p>
-                              <p className="mt-1 truncate text-xs text-slate-500">
+                              <p className="mt-1 truncate text-[11px] text-slate-500">
                                 {session.providerKind} · {session.modelRef}
                               </p>
                               {processBlueprintTitle(processBlueprints, session.processBlueprintId) ? (
-                                <p className="mt-2 truncate text-xs text-cyan-200/80">
+                                <p className="mt-2 truncate text-[11px] text-cyan-200/80">
                                   {processBlueprintTitle(processBlueprints, session.processBlueprintId)}
                                 </p>
                               ) : null}
-                            </button>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-500">{session.messageCount}</span>
-                              <IconButton
-                                label="Rename chat"
+                            </div>
+                            <div className="relative z-20 flex items-center gap-1">
+                              <button
+                                type="button"
+                                aria-label="Rename chat"
                                 title="Rename Chat"
-                                onClick={() => {
+                                onClick={(event) => {
+                                  event.stopPropagation()
                                   setRenamingSessionId(session.id)
                                   setRenameTitle(session.title)
                                 }}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300"
                               >
                                 <EditIcon />
-                              </IconButton>
-                              <IconButton
-                                label="Archive chat"
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Archive chat"
                                 title="Archive Chat"
-                                onClick={() => void setSessionArchived(session.id, true)}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void setSessionArchived(session.id, true)
+                                }}
                                 disabled={archivingSessionId === session.id}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <ArchiveIcon />
-                              </IconButton>
+                              </button>
                             </div>
                           </div>
                           {renamingSessionId === session.id ? (
-                            <form onSubmit={renameSession} className="mt-3 flex gap-2">
+                            <form
+                              onSubmit={renameSession}
+                              className="relative z-20 mt-3 flex gap-2"
+                            >
                               <input
                                 value={renameTitle}
                                 onChange={(event) => setRenameTitle(event.target.value)}
@@ -1791,7 +2093,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           <p className="mt-3 truncate text-sm text-slate-300">
                             {session.preview ?? "No messages yet"}
                           </p>
-                          <p className="mt-3 text-xs text-slate-400">
+                          <p className="mt-2 text-xs text-slate-400">
                             {summarizeSessionWorkerState(
                               session.activity,
                               session.queuedMessageCount,
@@ -1803,7 +2105,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               {watchdogAttentionLabel(session.watchdogState)}
                             </p>
                           ) : null}
-                          <p className="mt-2 truncate text-xs text-slate-500">
+                          <p className="mt-2 truncate text-[11px] text-slate-500">
                             {session.cwd}
                           </p>
                         </div>
@@ -1829,43 +2131,52 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         archivedSessions.map((session) => (
                           <div
                             key={session.id}
-                            className={`rounded-2xl border px-4 py-4 transition ${
-                              session.id === activeSessionId
-                                ? "border-cyan-300/40 bg-cyan-300/10"
-                                : "border-white/10 bg-slate-900/70 hover:border-white/20"
-                            }`}
+                            className={`relative rounded-2xl border px-3 py-3 transition ${sessionCardTone(
+                              session.activity,
+                              session.id === activeSessionId,
+                              true,
+                            )}`}
                           >
-                            <div className="flex items-start justify-between gap-3">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveSessionId(session.id)
-                                  setMobileSessionsOpen(false)
-                                }}
-                                className="min-w-0 flex-1 text-left"
-                              >
-                                <p className="truncate text-sm font-semibold text-white">
+                            <button
+                              type="button"
+                              aria-label={`Open chat ${session.title}`}
+                              onClick={() => activateSessionFromList(session.id)}
+                              className="absolute inset-0 z-10 rounded-2xl"
+                            />
+                            <div className="relative flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1 text-left">
+                                <div className="flex items-center gap-2">
+                                  <span className="rounded-full bg-cyan-300/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                                    archived
+                                  </span>
+                                  <span className="text-[11px] text-slate-500">{session.messageCount}</span>
+                                </div>
+                                <p className="mt-2 truncate text-base font-semibold text-white">
                                   {session.title}
                                 </p>
-                                <p className="mt-1 truncate text-xs text-slate-500">
+                                <p className="mt-1 truncate text-[11px] text-slate-500">
                                   {session.providerKind} · {session.modelRef}
                                 </p>
                                 {processBlueprintTitle(processBlueprints, session.processBlueprintId) ? (
-                                  <p className="mt-2 truncate text-xs text-cyan-200/80">
+                                  <p className="mt-2 truncate text-[11px] text-cyan-200/80">
                                     {processBlueprintTitle(processBlueprints, session.processBlueprintId)}
                                   </p>
                                 ) : null}
-                              </button>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs text-slate-500">{session.messageCount}</span>
-                                <IconButton
-                                  label="Restore chat"
+                              </div>
+                              <div className="relative z-20 flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  aria-label="Restore chat"
                                   title="Restore Chat"
-                                  onClick={() => void setSessionArchived(session.id, false)}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    void setSessionArchived(session.id, false)
+                                  }}
                                   disabled={archivingSessionId === session.id}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <RestoreIcon />
-                                </IconButton>
+                                </button>
                               </div>
                             </div>
                             <p className="mt-3 truncate text-sm text-slate-300">
@@ -1883,7 +2194,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 {watchdogAttentionLabel(session.watchdogState)}
                               </p>
                             ) : null}
-                            <p className="mt-2 truncate text-xs text-slate-500">
+                            <p className="mt-2 truncate text-[11px] text-slate-500">
                               {session.cwd}
                             </p>
                           </div>
@@ -1894,6 +2205,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </>
               )}
             </div>
+          </div>
+          <div
+            className="absolute inset-y-0 right-0 hidden w-3 cursor-col-resize md:block"
+            onMouseDown={(event) => {
+              sessionRailResizeRef.current = {
+                startX: event.clientX,
+                startWidth: sessionRailWidth,
+              }
+              event.preventDefault()
+            }}
+          >
+            <div className="absolute inset-y-0 right-0 w-px bg-white/10" />
           </div>
         </div>
       </aside>
@@ -1932,7 +2255,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         <div className="flex min-h-0 flex-1 flex-col">
           <div
             ref={transcriptViewportRef}
-            className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6"
+            onScroll={updateThreadViewportMetrics}
+            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 md:px-6"
           >
             {!activeSession ? (
               <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
@@ -1943,101 +2267,193 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 This chat has no messages yet.
               </div>
             ) : (
-              <div className="mx-auto flex max-w-4xl flex-col gap-4">
-                {messages.map((message) => {
-                  const replyTarget = message.replyToMessageId
-                    ? messageMap.get(message.replyToMessageId) ?? null
-                    : null
+              <div className="mx-auto flex w-full max-w-[78rem] min-w-0 gap-4 overflow-x-hidden">
+                <div className="min-w-0 flex-1">
+                  <div className="mx-auto flex max-w-4xl flex-col gap-4">
+                    {renderedTranscriptItems.map(({ message, precedingStreamCheckpoints }) => {
+                      const replyTarget = message.replyToMessageId
+                        ? messageMap.get(message.replyToMessageId) ?? null
+                        : null
+                      const queueLabel = threadMessageQueueLabel(message)
+                      const replacedStreamsExpanded = !!expandedReplacedStreamMessageIds[message.id]
 
-                  return (
-                    <article
-                      key={message.id}
-                      className={`rounded-3xl border p-4 md:p-5 ${
-                        message.role === "user"
-                          ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]"
-                          : message.role === "system"
-                            ? "w-full border-cyan-300/15 bg-cyan-300/5"
-                            : "w-full border-white/10 bg-white/5 md:max-w-[88%]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                            {message.role}
-                          </p>
-                          {message.kind === "directoryInstruction" ? (
-                            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
-                              directory
-                            </span>
+                      return (
+                        <article
+                          key={message.id}
+                          ref={(element) => setMessageElementRef(message.id, element)}
+                          className={`min-w-0 overflow-hidden rounded-3xl border px-4 py-3 md:px-5 md:py-4 ${
+                            message.kind === "thought" || message.kind === "streamCheckpoint"
+                              ? "w-full max-w-[72%] border-white/10 bg-slate-950/60 md:max-w-[64%]"
+                              : message.role === "user"
+                              ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]"
+                              : message.role === "system"
+                                ? "w-full border-cyan-300/15 bg-cyan-300/5"
+                                : "w-full border-white/10 bg-white/5 md:max-w-[88%]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="relative flex min-w-0 items-center gap-2">
+                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                                {message.role}
+                              </p>
+                              {message.kind === "directoryInstruction" ? (
+                                <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                  directory
+                                </span>
+                              ) : null}
+                              {message.kind === "thought" ? (
+                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-slate-300">
+                                  thought
+                                </span>
+                              ) : null}
+                              {message.kind === "streamCheckpoint" ? (
+                                <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                  stream
+                                </span>
+                              ) : null}
+                              {queueLabel ? (
+                                <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                  {queueLabel}
+                                </span>
+                              ) : null}
+                              {message.role === "assistant" &&
+                              message.kind === "chat" &&
+                              precedingStreamCheckpoints.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpandedReplacedStreams(message.id)}
+                                  className="inline-flex items-center rounded-full border border-cyan-300/15 bg-cyan-300/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100"
+                                  aria-expanded={replacedStreamsExpanded}
+                                >
+                                  Replaced Streams {precedingStreamCheckpoints.length}
+                                </button>
+                              ) : null}
+                            </div>
+                            <p className="text-xs text-slate-500">{formatTime(message.createdAtMs)}</p>
+                          </div>
+
+                          {replyTarget ? (
+                            <div className="mt-2 min-w-0 rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
+                              Replying to {replyTarget.role} ·{" "}
+                              {summarizeMessageContent(replyTarget.content, 72)}
+                            </div>
                           ) : null}
-                        </div>
-                        <p className="text-xs text-slate-500">{formatTime(message.createdAtMs)}</p>
-                      </div>
 
-                      {replyTarget ? (
-                        <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
-                          Replying to {replyTarget.role} ·{" "}
-                          {summarizeMessageContent(replyTarget.content, 72)}
-                        </div>
-                      ) : null}
+                          {message.role === "assistant" &&
+                          message.kind === "chat" &&
+                          precedingStreamCheckpoints.length > 0 &&
+                          replacedStreamsExpanded ? (
+                            <div className="mt-2.5 space-y-2">
+                              {precedingStreamCheckpoints.map((checkpoint, checkpointIndex) => (
+                                <div
+                                  key={checkpoint.id}
+                                  className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                      Replaced Stream {checkpointIndex + 1}
+                                    </span>
+                                    <p className="text-[10px] text-slate-500">
+                                      {formatTime(checkpoint.createdAtMs)}
+                                    </p>
+                                  </div>
+                                  <p className="mt-1.5 break-words text-sm leading-6 text-slate-200 whitespace-pre-wrap">
+                                    {summarizeStreamCheckpoint(
+                                      checkpoint.content[0]?.type === "text"
+                                        ? checkpoint.content[0].text
+                                        : "",
+                                    )}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
 
-                      <div className="mt-3 space-y-3 text-sm leading-6 text-slate-100">
-                        {message.content.map((block, index) =>
-                          block.type === "text" ? (
-                            <p key={`${message.id}-${index}`} className="whitespace-pre-wrap">
-                              {block.text}
-                            </p>
+                          {message.kind === "thought" ? (
+                            <details className="mt-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300">
+                              <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                Collapsed Thought Checkpoint
+                              </summary>
+                              <div className="mt-3 space-y-3 text-sm leading-6 text-slate-200">
+                                {message.content.map((block, index) =>
+                                  block.type === "text" ? (
+                                    <div key={`${message.id}-${index}`} className="space-y-3">
+                                      {splitDisplayParagraphs(block.text).map((paragraph, paragraphIndex) => (
+                                        <p
+                                          key={`${message.id}-${index}-${paragraphIndex}`}
+                                          className="break-words whitespace-pre-wrap"
+                                        >
+                                          {paragraph}
+                                        </p>
+                                      ))}
+                                    </div>
+                                  ) : null,
+                                )}
+                              </div>
+                            </details>
                           ) : (
-                            <a
-                              key={`${message.id}-${index}`}
-                              href={messageContentAssetUrl(block.url)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="block overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60"
-                            >
-                              <div className="flex max-h-[28rem] min-h-24 items-center justify-center bg-slate-950/80 p-3">
-                                <img
-                                  src={messageContentAssetUrl(block.url)}
-                                  alt="User supplied"
-                                  className="max-h-[calc(28rem-1.5rem)] max-w-full object-contain"
-                                />
-                              </div>
-                              <div className="border-t border-white/10 px-3 py-2 text-xs text-slate-300">
-                                Open image
-                              </div>
-                            </a>
-                          ),
-                        )}
-                      </div>
+                            <div className="mt-2.5 space-y-3 text-sm leading-6 text-slate-100">
+                              {message.content.map((block, index) =>
+                                block.type === "text" ? (
+                                  <p key={`${message.id}-${index}`} className="break-words whitespace-pre-wrap">
+                                    {block.text}
+                                  </p>
+                                ) : (
+                                  <a
+                                    key={`${message.id}-${index}`}
+                                    href={messageContentAssetUrl(block.url)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60"
+                                  >
+                                    <div className="flex max-h-[28rem] min-h-24 items-center justify-center bg-slate-950/80 p-3">
+                                      <img
+                                        src={messageContentAssetUrl(block.url)}
+                                        alt="User supplied"
+                                        className="max-h-[calc(28rem-1.5rem)] max-w-full object-contain"
+                                      />
+                                    </div>
+                                    <div className="border-t border-white/10 px-3 py-2 text-xs text-slate-300">
+                                      Open image
+                                    </div>
+                                  </a>
+                                ),
+                              )}
+                            </div>
+                          )}
 
-                      {message.role === "assistant" ? (
-                        <div className="mt-4 flex items-center justify-end">
-                          <button
-                            type="button"
-                            onClick={() => setReplyTargetMessageId(message.id)}
-                            className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:border-white/20"
-                          >
-                            Reply to this
-                          </button>
+                          {message.role === "assistant" &&
+                          message.kind !== "thought" &&
+                          message.kind !== "streamCheckpoint" ? (
+                            <div className="mt-3 flex items-center justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setReplyTargetMessageId(message.id)}
+                                className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:border-white/20"
+                              >
+                                Reply to this
+                              </button>
+                            </div>
+                          ) : null}
+                        </article>
+                      )
+                    })}
+
+                    {streamingAssistantText && !hasVisibleStreamCheckpoint ? (
+                      <article className="w-full max-w-[88%] min-w-0 overflow-hidden rounded-3xl border border-cyan-300/20 bg-cyan-400/5 p-4 md:p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                            assistant
+                          </p>
+                          <p className="text-xs text-cyan-100/70">streaming...</p>
                         </div>
-                      ) : null}
-                    </article>
-                  )
-                })}
-
-                {streamingAssistantText ? (
-                  <article className="w-full max-w-[88%] rounded-3xl border border-cyan-300/20 bg-cyan-400/5 p-4 md:p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
-                        assistant
-                      </p>
-                      <p className="text-xs text-cyan-100/70">streaming...</p>
-                    </div>
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-100">
-                      {streamingAssistantText}
-                    </p>
-                  </article>
-                ) : null}
+                        <p className="mt-3 break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
+                          {streamingAssistantText}
+                        </p>
+                      </article>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -2066,7 +2482,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </div>
               ) : null}
 
-              {activeSession?.pendingSystemInstruction ? (
+              {activeSession?.pendingSystemInstruction && queuedSystemMessages.length === 0 ? (
                 <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
                     Next Turn Instruction
@@ -2077,13 +2493,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </div>
               ) : null}
 
-              {queuedUserMessages.length > 0 ? (
+              {queuedSystemMessages.length > 0 ? (
                 <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
                     Waiting for Agent
                   </p>
                   <div className="mt-3 space-y-2 text-sm text-amber-50">
-                    {queuedUserMessages.map((message) => (
+                    {queuedSystemMessages.map((message) => (
                       <div
                         key={message.id}
                         className="rounded-2xl border border-amber-300/15 bg-black/10 px-3 py-2"

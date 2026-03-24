@@ -109,6 +109,9 @@ AgentChat.enforces(`
 - Native and Agentish compaction are both first-class strategies.
 - Agentish compaction optimizes for decision retention, rationale retention, and active-state clarity over chronology.
 - Provider files, provider thread storage, and provider transcript internals are implementation detail.
+- When more than one human message is queued behind an active run, AgentChat should deliver that queued human batch into the next provider turn together rather than silently serializing them into many one-message follow-up turns.
+- Session process changes should remain queued provider-facing instructions until the next turn consumes them, and that consumption should also become a canonical transcript event so history survives refresh.
+- Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
 `);
 
 Workspace.shell.contains(
@@ -213,6 +216,7 @@ Session.expectation.means(`
 - user-selected statement of what the agent should accomplish in the session
 - derived from the assigned process blueprint rather than guessed from raw transcript text
 - intended to drive idle watchdog prompts and session-list context
+- when expectation changes are queued for the next turn, the transcript should later show that consumed change as a real history event at the point it took effect
 `);
 
 Observability.workerState.means(`
@@ -220,6 +224,7 @@ Observability.workerState.means(`
 - provider-backed state such as queued work, running work, waiting state, background worker count, and interruption state
 - structured state that must not be reduced to an ambiguous generic status label when richer worker details exist
 - compact enough for session-list display while still preserving a deeper inspectable form in the active session
+- queued work should represent the full pending human batch for the next provider turn rather than implying one-message-at-a-time replay when many user messages are waiting
 `);
 
 Observability.watchdogState.means(`

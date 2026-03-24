@@ -1,3 +1,5 @@
+import { getClaudeModelCatalogSnapshot } from "./model-service.js";
+
 export type AgentChatProviderKind =
   | "codex-app-server"
   | "openrouter"
@@ -18,7 +20,7 @@ export type AgentChatProviderCatalogEntry = {
   transport: string;
 };
 
-export const providerCatalog: AgentChatProviderCatalogEntry[] = [
+const baseProviderCatalog: AgentChatProviderCatalogEntry[] = [
   {
     kind: "codex-app-server",
     label: "Codex App Server",
@@ -53,12 +55,8 @@ export const providerCatalog: AgentChatProviderCatalogEntry[] = [
     kind: "claude-agent-sdk",
     label: "Claude Agent SDK",
     description: "Anthropic Claude Agent SDK with tool loop and approvals.",
-    defaultModelRef: "anthropic/claude-sonnet-4-5",
-    modelOptions: [
-      "anthropic/claude-sonnet-4-5",
-      "anthropic/claude-opus-4-1",
-      "anthropic/claude-haiku-4-5",
-    ],
+    defaultModelRef: "anthropic/claude-opus-4-6-1m",
+    modelOptions: [],
     authProfiles: ["api-key", "bedrock", "vertex", "foundry"],
     status: "ready",
     supportsImageInput: true,
@@ -84,6 +82,23 @@ export const providerCatalog: AgentChatProviderCatalogEntry[] = [
   },
 ];
 
+export function listProviderCatalog(): AgentChatProviderCatalogEntry[] {
+  const claudeModelCatalog = getClaudeModelCatalogSnapshot();
+
+  return baseProviderCatalog.map((entry) =>
+    entry.kind === "claude-agent-sdk"
+      ? {
+          ...entry,
+          defaultModelRef: claudeModelCatalog.defaultModelRef,
+          modelOptions: [...claudeModelCatalog.modelOptions],
+        }
+      : {
+          ...entry,
+          modelOptions: [...entry.modelOptions],
+        },
+  );
+}
+
 export function getProviderCatalogEntry(kind: AgentChatProviderKind) {
-  return providerCatalog.find((entry) => entry.kind === kind) ?? null;
+  return listProviderCatalog().find((entry) => entry.kind === kind) ?? null;
 }

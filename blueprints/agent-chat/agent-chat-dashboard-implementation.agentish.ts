@@ -159,14 +159,41 @@ AgentChatDashboardImplementation.enforces(`
 - Agent activity should be shown near the composer with explicit working state, elapsed time, and provider-backed background activity count when available.
 - Session list rows should show worker state when the backend can report it, not just a generic session status pill.
 - Session list rows should show the selected process expectation when one is assigned and should surface watchdog attention state when a session goes idle unresolved.
+- Session list cards should use typography, spacing, and status color more effectively so titles read first, model metadata stays secondary, and icon chrome does not waste row space.
+- Session list cards should behave as one reliable selection target across the whole row except for explicit secondary controls such as rename, archive, or restore buttons.
+- Session-list chrome should stay visually tight and avoid explanatory filler that pushes the actual collection down.
+- Archived-session reveal controls must remain reliable and directly usable from the session-list menu.
+- The chat side rail should be resizable by the operator rather than fixed-width.
 - The active-thread controls should expose a compact quick-set process selector for the current chat adjacent to the thread menu button.
 - The quick-set control should present an explicit unassigned state such as none rather than an imperative placeholder label.
 - Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next provider turn without creating an immediate standalone transcript event.
+- When that queued process-change instruction is actually consumed by the next provider turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
+- When several human messages queue behind an active run, the backend should deliver that queued human batch together into the next provider turn rather than consuming only one queued user message per follow-up run.
+- New-chat controls in the side rail should remain scrollable and usable even when the rail height is constrained.
+- Opening an existing thread should reliably scroll the transcript to the latest visible content, including waiting items and recent assistant output, unless the operator intentionally preserved another position.
+- A custom transcript navigation rail should only ship when it is clearly stable and useful; if it remains visually noisy or misleading, the thread should omit it instead of exposing a broken control.
+- If a custom navigator exists, its markers must stay tiny, non-overlapping, and visually stable as the transcript scroll position changes.
+- If a zoomed inspection treatment exists, it should help local navigation without replacing a stable primary thread layout.
+- The active thread surface must remain horizontally contained; long content should wrap safely and the transcript viewport must not expose a browser-level horizontal scrollbar.
 - The composer should support a lightweight reply-target reminder so the operator can indicate that the in-progress human message responds to a specific earlier agent message.
 - The browser should preserve unsent per-session message drafts in local storage so transient reloads do not discard typed input.
 - Keyboard interrupt should be exposed as Esc when the selected provider supports a real interrupt action.
+- Canonical chat settings should remain editable whenever safe, and provider-setting forms must not reset unsaved selections before the operator decides to save.
+- Thread rendering should use one clear message-state model so pending, queued, and delivered messages are not duplicated or ambiguously split across transcript and waiting UI.
+- When the backend marks a queued user message as provider-seen at run start, that visibility transition should be pushed to the browser immediately so queued badges clear without waiting for a later full refresh or assistant completion.
+- If Agent Chat surfaces provider reasoning checkpoints as collapsed thought entries, those entries must be recorded into canonical message history when the backend receives the provider event.
+- The browser must only render transcript entries that exist in canonical Agent Chat history; it must not reconstruct pseudo-messages by scraping provider-owned files after the fact.
+- If the operator can see live streaming assistant text in the thread, Agent Chat must record that visible stream canonically as transcript checkpoint history rather than dropping it on refresh or replacing it with a final-only message.
+- More generally, provider-originated run events that Agent Chat chooses to surface to the operator should be recorded canonically when received, so the transcript is replayable from Agent Chat history alone without synthetic reconstruction.
+- Replaced stream revisions should render above the final assistant message they preceded, because they are prior observed stream state for that turn rather than footer metadata that comes afterward.
+- Only hidden or secondary content such as thought checkpoints or replaced stream revisions should be collapsed; the current visible assistant stream or final assistant message should remain expanded by default.
+- Transcript UI should avoid debug or internal labels like `Recorded Stream Checkpoint` when simpler operator-facing wording or direct content presentation is sufficient.
+- Internal canonical message kinds such as `streamCheckpoint` may exist in storage, but the operator-facing UI should present them through normal transcript wording rather than surfacing raw implementation names.
+- Replaced-stream history should stay collapsed by default and use a compact inline expander embedded in the main assistant header row rather than creating a second header row above the message body.
+- If that inline replaced-stream expander is opened, the expanded history should appear in normal transcript flow above the final assistant text, because those replaced streams were observed earlier in the turn.
+- Transcript spacing should stay compact around secondary history affordances; replaced-stream and thought chrome should not add large dead padding ahead of the actual message content.
 - Provider adapters must not fail an otherwise active turn on a short fixed wall-clock deadline while the provider is still streaming output or reporting honest activity.
 - Provider timeout policy should be configurable and should treat lost activity or broken transport as failure conditions more strongly than ordinary long-running work.
 - The gateway should proxy Agent Chat traffic and lazy-start the chat backend on first use.
@@ -302,6 +329,15 @@ Ui.queuedMessageList.means(`
 - queued user messages are messages already accepted into canonical history but not yet seen by the provider
 - queued messages render below activity status and above the composer
 - directory-change system instructions should appear in the queued region until the provider consumes them
+- queued and pending state should be visually attached to the relevant thread messages when possible so one logical message does not appear duplicated in confusing ways
+`);
+
+Ui.transcript.means(`
+- loading an existing session should position the transcript at the latest activity by default
+- the transcript should support a compact navigation minimap or custom scrollbar for long threads
+- human messages should be marked distinctly in that navigation surface
+- hovering a navigation marker should preview the corresponding human message content
+- clicking a navigation marker should scroll that message to the top of the transcript viewport
 `);
 
 Ui.composer.means(`
@@ -319,6 +355,10 @@ Ui.sessionList.means(`
 - the session list should show a condensed worker-state summary such as running, queued, waiting, interrupted, or background worker count when available
 - the session list should show the selected process blueprint title or expectation title when a session has one
 - unresolved watchdog attention should be visible in the list without overwhelming the primary worker-state summary
+- titles should be the strongest text in a session card, with provider/model metadata still visible but visually secondary
+- card status should be legible from stronger color/state treatment rather than tiny label text alone
+- row actions should be compact enough that they do not dominate the card layout
+- top-of-rail copy should stay minimal so the session list itself remains the focus
 - the active-thread header should offer a compact current-session process blueprint quick-set control adjacent to the thread-scoped menu actions
 - changing the assigned process blueprint should enqueue or append a system-visible expectation update for the active agent
 - the main session list should stay visually compact so the active thread remains the primary focus
@@ -327,6 +367,8 @@ Ui.sessionList.means(`
 - a compact session-list search field should filter sessions by title, preview, provider, model, and cwd without leaving the session surface
 - archived sessions should remain reachable through a hidden archived section opened from a menu instead of occupying the main list by default
 - archive and restore actions should be available from session-list controls rather than requiring transcript edits
+- side-rail new-chat controls should remain scrollable within the available height
+- the session rail should support direct resize interaction from the dashboard surface
 - the operator should be able to create folders and move sessions between folders from the session-list surface
 - folders are for organization only and must not change session identity, ordering rules within a folder, or canonical history
 - session-list controls may create a new chat because they operate on the chat collection rather than the active thread
@@ -371,6 +413,11 @@ Capability.modelCatalog.means(`
 - provider and model identity should be resolved from a capability-aware catalog
 - model refs should stay provider-qualified like provider/model rather than bare names
 - modality, tool, cache, and context-window metadata should come from cataloged model capabilities rather than hand-waved assumptions
+- dynamic model discovery, when used, should come from the concrete provider adapter's supported transport or provider-native capability source rather than from a loosely related vendor endpoint
+- a provider adapter may intentionally expose only a compatible curated subset of upstream models when the underlying agent runtime does not safely support every model the vendor publishes
+- provider-backed model discovery should be cacheable and refreshable, but startup should not become dependent on a fragile remote model-list fetch when a safe cached or curated fallback is available
+- operator-facing model selection should use explicit stable labels and provider-qualified refs such as anthropic/claude-opus-4-6 rather than opaque adapter aliases like default
+- when an adapter reports alias-style model values, Agent Chat should normalize them into clear app-owned model records while preserving the adapter-native value needed for execution
 `);
 
 Storage.workspaceRepoDurability.means(`
@@ -494,6 +541,7 @@ Decision.providerTransport.means(`
 - Claude Agent SDK should be integrated through the official SDK client/query surfaces, not by parsing ad hoc terminal output
 - Gemini should use the official @google/genai SDK, including its streaming, files, and caches surfaces when useful
 - OpenRouter should use an OpenRouter-native SDK/provider surface so provider metadata and cache hints are preserved instead of flattened away
+- provider model availability should be derived from the same adapter boundary and transport assumptions rather than from an unrelated catalog path that the adapter itself does not prove to support
 `);
 
 Decision.providerRuntime.means(`
@@ -644,7 +692,7 @@ when(Decision.v1Cut.guides(AgentChatDashboardImplementation))
 AgentChatDashboardImplementation.prescribes(`
 - Step 1: create packages/agent-chat-server with SQLite-backed session and message persistence, dashboard-relative API and WebSocket endpoints, and one provider adapter interface implemented by Codex app-server, OpenRouter, Claude Agent SDK, and Gemini.
 - Step 2: before implementing any specific provider adapter, re-research that provider's current docs, transport model, multimodal path, caching path, and one or more relevant open-source reference implementations.
-- Step 3: build a provider-qualified model catalog with modality, context-window, tool, and cache metadata.
+- Step 3: build a provider-qualified model catalog with modality, context-window, tool, and cache metadata, and ensure any dynamic model discovery is grounded in the exact provider adapter contract rather than a generic vendor model listing.
 - Step 4: implement a canonical multimodal content model with text and image blocks plus provider-specific cache-hint mapping.
 - Step 5: persist per-session provider stickiness including provider kind, qualified model ref, auth profile, and optional image-model override.
 - Step 6: extend the chat dashboard plugin so the feature declares backend health, startup, API path, and WebSocket path.

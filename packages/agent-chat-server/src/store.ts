@@ -57,7 +57,7 @@ export type StoredMessage = {
   id: string;
   sessionId: string;
   role: "user" | "assistant" | "system";
-  kind: "chat" | "directoryInstruction" | "watchdogPrompt";
+  kind: "chat" | "directoryInstruction" | "watchdogPrompt" | "thought" | "streamCheckpoint";
   replyToMessageId: string | null;
   providerSeenAtMs: number | null;
   content: StoredMessageContentBlock[];
@@ -297,13 +297,11 @@ export class AgentChatStore {
     };
   }
 
-  getNextQueuedUserMessage(sessionId: string): StoredMessage | null {
-    return (
-      this.listMessages(sessionId).find(
-        (message) =>
-          message.providerSeenAtMs === null &&
-          (message.role === "user" || message.kind === "watchdogPrompt"),
-      ) ?? null
+  listQueuedUserMessages(sessionId: string): StoredMessage[] {
+    return this.listMessages(sessionId).filter(
+      (message) =>
+        message.providerSeenAtMs === null &&
+        (message.role === "user" || message.kind === "watchdogPrompt"),
     );
   }
 
@@ -353,6 +351,69 @@ export class AgentChatStore {
       reason: "message-appended",
     });
     return message;
+  }
+
+  updateMessageContent(
+    sessionId: string,
+    messageId: string,
+    content: StoredMessage["content"],
+  ): StoredMessage | null {
+    return this.updateMessage(sessionId, messageId, { content });
+  }
+
+  updateMessage(
+    sessionId: string,
+    messageId: string,
+    input: {
+      content?: StoredMessage["content"];
+      kind?: StoredMessage["kind"];
+      providerSeenAtMs?: number | null;
+      replyToMessageId?: string | null;
+    },
+  ): StoredMessage | null {
+    const currentMessages = this.messageCache.get(sessionId);
+    const currentSession = this.sessionCache.get(sessionId);
+    if (!currentMessages?.length || !currentSession) {
+      return null;
+    }
+
+    let updatedMessage: StoredMessage | null = null;
+    const nextMessages = currentMessages.map((message) => {
+      if (message.id !== messageId) {
+        return message;
+      }
+      updatedMessage = {
+        ...message,
+        content: input.content ?? message.content,
+        kind: input.kind ?? message.kind,
+        providerSeenAtMs:
+          input.providerSeenAtMs === undefined ? message.providerSeenAtMs : input.providerSeenAtMs,
+        replyToMessageId:
+          input.replyToMessageId === undefined ? message.replyToMessageId : input.replyToMessageId,
+      };
+      return updatedMessage;
+    });
+
+    if (!updatedMessage) {
+      return null;
+    }
+
+    const nextSession: StoredSession = {
+      ...currentSession,
+      updatedAtMs: Date.now(),
+      preview: summarizePreview(nextMessages),
+      messageCount: nextMessages.length,
+    };
+
+    this.messageCache.set(sessionId, nextMessages);
+    this.writeSessionMetadata(nextSession);
+    this.writeMessagesFile(sessionId, nextMessages);
+    this.sessionCache.set(sessionId, nextSession);
+    this.notifyCanonicalWrite({
+      sessionId,
+      reason: "message-visibility-updated",
+    });
+    return updatedMessage;
   }
 
   updateSessionTitle(sessionId: string, title: string): StoredSession | null {
@@ -843,8 +904,12 @@ export class AgentChatStore {
           kind:
             parsed.kind === "directoryInstruction"
               ? "directoryInstruction"
-              : parsed.kind === "watchdogPrompt"
-                ? "watchdogPrompt"
+                : parsed.kind === "watchdogPrompt"
+                  ? "watchdogPrompt"
+                  : parsed.kind === "streamCheckpoint"
+                    ? "streamCheckpoint"
+                  : parsed.kind === "thought"
+                    ? "thought"
                 : "chat",
           replyToMessageId: parsed.replyToMessageId ? String(parsed.replyToMessageId) : null,
           providerSeenAtMs:
