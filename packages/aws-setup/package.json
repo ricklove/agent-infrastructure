@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc --project tsconfig.json --noEmit",
     "check": "tsc --project tsconfig.json --noEmit",
+    "prepare-dashboard-enrollment-secret": "bash ./scripts/prepare-dashboard-enrollment-secret.sh --stack-name ${STACK_NAME:-AgentSwarmAwsSetup}",
     "prepare-cloudflare-tunnel": "bash ./scripts/prepare-cloudflare-tunnel.sh --stack-name ${STACK_NAME:-AgentSwarmAwsSetup}",
     "synth": "bash ./scripts/run-cdk.sh synth",
     "diff": "bash ./scripts/run-cdk.sh diff",

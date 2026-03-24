@@ -6,6 +6,10 @@ import {
   RebootInstancesCommand,
 } from "@aws-sdk/client-ec2";
 import {
+  GetSecretValueCommand,
+  SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
+import {
   DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
 import {
@@ -57,7 +61,8 @@ type JsonBody = Record<string, unknown> | null;
 const config = {
   passkeyTableName: process.env.DASHBOARD_PASSKEY_TABLE_NAME ?? "",
   stateTableName: process.env.DASHBOARD_ACCESS_STATE_TABLE_NAME ?? "",
-  enrollmentSecret: process.env.DASHBOARD_ENROLLMENT_SECRET ?? "",
+  enrollmentSecretSecretName:
+    process.env.DASHBOARD_ENROLLMENT_SECRET_SECRET_NAME ?? "",
   managerSwarmTagValue: process.env.MANAGER_SWARM_TAG_VALUE ?? "",
   agentHome: process.env.AGENT_HOME ?? "",
   dashboardSessionTtlSeconds: Number.parseInt(
@@ -69,7 +74,7 @@ const config = {
 if (
   !config.passkeyTableName ||
   !config.stateTableName ||
-  !config.enrollmentSecret ||
+  !config.enrollmentSecretSecretName ||
   !config.managerSwarmTagValue ||
   !config.agentHome
 ) {
@@ -79,7 +84,9 @@ if (
 const ec2 = new EC2Client({});
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const ssm = new SSMClient({});
+const secrets = new SecretsManagerClient({});
 let resolvedManagerInstanceId: string | null = null;
+let resolvedEnrollmentSecretPromise: Promise<string> | null = null;
 
 function logAuthStep(step: string, detail?: Record<string, unknown>): void {
   if (detail) {
@@ -105,6 +112,25 @@ function errorDetail(error: unknown): Record<string, unknown> {
 
 function nowMs(): number {
   return Date.now();
+}
+
+async function getEnrollmentSecret(): Promise<string> {
+  if (!resolvedEnrollmentSecretPromise) {
+    resolvedEnrollmentSecretPromise = (async () => {
+      const response = await secrets.send(
+        new GetSecretValueCommand({
+          SecretId: config.enrollmentSecretSecretName,
+        }),
+      );
+      const secret = response.SecretString?.trim() || "";
+      if (!secret) {
+        throw new Error("dashboard enrollment secret is empty");
+      }
+      return secret;
+    })();
+  }
+
+  return resolvedEnrollmentSecretPromise;
 }
 
 function jsonResponse(
@@ -924,8 +950,9 @@ async function finishAuthentication(
 async function createEnrollmentTicket(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
+  const enrollmentSecret = await getEnrollmentSecret();
   if (
-    event.headers["x-dashboard-enrollment-secret"] !== config.enrollmentSecret
+    event.headers["x-dashboard-enrollment-secret"] !== enrollmentSecret
   ) {
     logAuthStep("enrollment-ticket.rejected", { reason: "forbidden" });
     return jsonResponse({ ok: false, error: "forbidden" }, 403);

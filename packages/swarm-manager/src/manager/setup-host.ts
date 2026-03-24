@@ -235,6 +235,7 @@ async function main(): Promise<void> {
   mkdirSync(config.workspaceDir, { recursive: true });
   const managerEnvPath = `${config.stateDir}/agent-swarm-monitor.env`;
   const managerNodeEnvPath = `${config.stateDir}/agent-swarm-manager-node.env`;
+  const dashboardEnrollmentSecretPath = `${config.stateDir}/dashboard-enrollment-secret`;
   const metricsDbPath = `${config.stateDir}/metrics.sqlite`;
   const swarmSharedTokenPath = `${config.stateDir}/swarm-shared-token`;
   const workerRuntimeReleaseManifestPath = `${config.stateDir}/worker-runtime-release.json`;
@@ -295,6 +296,15 @@ async function main(): Promise<void> {
       })
     : {};
   const cloudflareTunnelToken = getSecretString(cloudflareTunnelTokenSecretName);
+  const dashboardEnrollmentSecretSecretName = stackName
+    ? `/agent-infrastructure/${stackName}/dashboard/enrollment-secret`
+    : "";
+  const dashboardEnrollmentSecret = getSecretString(dashboardEnrollmentSecretSecretName);
+  writeFileSync(
+    dashboardEnrollmentSecretPath,
+    ensureTrailingNewline(dashboardEnrollmentSecret),
+    { mode: 0o600 },
+  );
 
   writeFileSync(
     "/etc/systemd/system/agent-swarm-monitor.service",
@@ -341,7 +351,9 @@ CLOUDFLARED_TUNNEL_ID=${typeof cloudflareConfig.tunnelId === "string" ? cloudfla
 CLOUDFLARED_TUNNEL_NAME=${typeof cloudflareConfig.tunnelName === "string" ? cloudflareConfig.tunnelName : ""}
 CLOUDFLARED_HOSTNAME_BASE=${typeof cloudflareConfig.hostnameBase === "string" ? cloudflareConfig.hostnameBase : ""}
 CLOUDFLARED_TUNNEL_TOKEN=${cloudflareTunnelToken}
+DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
 `),
+    { mode: 0o600 },
   );
 
   writeFileSync(
@@ -366,7 +378,9 @@ CLOUDFLARED_TUNNEL_ID=${typeof cloudflareConfig.tunnelId === "string" ? cloudfla
 CLOUDFLARED_TUNNEL_NAME=${typeof cloudflareConfig.tunnelName === "string" ? cloudflareConfig.tunnelName : ""}
 CLOUDFLARED_HOSTNAME_BASE=${typeof cloudflareConfig.hostnameBase === "string" ? cloudflareConfig.hostnameBase : ""}
 CLOUDFLARED_TUNNEL_TOKEN=${cloudflareTunnelToken}
+DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
 `),
+    { mode: 0o600 },
   );
 
   if (!existsSync(workerRuntimeReleaseManifestPath)) {

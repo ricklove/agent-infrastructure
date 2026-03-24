@@ -659,6 +659,19 @@ function readBootstrapContextValue(key: string): string {
   }
 }
 
+function readOptionalFile(path?: string): string {
+  const trimmed = path?.trim();
+  if (!trimmed || !existsSync(trimmed)) {
+    return "";
+  }
+
+  try {
+    return readFileSync(trimmed, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
 type NamedTunnelConfig = {
   tunnelId: string;
   tunnelName: string;
@@ -964,7 +977,11 @@ async function startDashboardServer(config: DashboardRuntimeConfig): Promise<num
   const accessApiBaseUrl =
     config.accessApiBaseUrl?.trim() || readBootstrapContextValue("dashboardAccessApiBaseUrl");
   const enrollmentSecret =
-    config.enrollmentSecret?.trim() || readBootstrapContextValue("dashboardEnrollmentSecret");
+    config.enrollmentSecret?.trim() ||
+    readOptionalFile(
+      process.env.DASHBOARD_ENROLLMENT_SECRET_PATH?.trim() ||
+        `${process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"}/dashboard-enrollment-secret`,
+    );
 
   const command = ["bun", dashboardServerEntry].map(shellQuote).join(" ");
 

@@ -52,6 +52,7 @@ DeployManagerRuntime.enforces(`
 - Tunnel token secrets are prepared before CDK deploy and are consumed by reference during runtime rollout.
 - The stack wildcard DNS route is prepared before CDK deploy and is not managed during runtime rollout.
 - Stack-owned hostname metadata is prepared before CDK deploy and fetched by the manager at runtime rather than through EC2 user data.
+- Sensitive dashboard runtime secrets should be consumed from AWS runtime fetch paths rather than refreshed through EC2 user data.
 - Dashboard tunnel lifecycle remains owned by the dashboard controller.
 - Deploy is not complete until the normal development-process post-deploy verification steps run.
 `);

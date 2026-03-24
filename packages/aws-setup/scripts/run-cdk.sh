@@ -35,6 +35,9 @@ if [[ -z "${stack_name}" ]]; then
   stack_name="AgentSwarmAwsSetup"
 fi
 
+dashboard_secret_script="$(dirname "${BASH_SOURCE[0]}")/prepare-dashboard-enrollment-secret.sh"
+bash "${dashboard_secret_script}" --stack-name "${stack_name}" >/dev/null
+
 zone_config_path="${HOME}/.cloudflared/zone-config.json"
 if [[ -f "${zone_config_path}" ]]; then
   bash "$(dirname "${BASH_SOURCE[0]}")/prepare-cloudflare-tunnel.sh" --stack-name "${stack_name}" >/dev/null

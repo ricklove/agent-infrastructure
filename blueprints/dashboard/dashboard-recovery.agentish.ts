@@ -82,6 +82,7 @@ Policy.preferNamedTunnelWhenConfigured.means(`
 - if stack-owned named tunnel runtime credentials and hostname-management capability are configured, the manager should prefer that path over anonymous quick tunnels
 - manager runtime credentials for named tunnel mode should be limited to the tunnel runtime token, not the deploy-machine Cloudflare origin cert
 - stack-owned hostname metadata for named tunnel mode should be fetched from AWS runtime configuration, not embedded in EC2 user data
+- other sensitive dashboard runtime secrets should also prefer AWS runtime fetch paths over bootstrap-context copies
 - named tunnel mode should keep one persistent cloudflared connector alive for the stack-owned tunnel instead of creating a new tunnel process identity for each access attempt
 - named tunnel mode should issue a fresh random hostname per dashboard session while reusing the same named tunnel connector
 - named tunnel mode should preserve the quick-tunnel-style "fresh public URL per session" behavior without depending on trycloudflare.com

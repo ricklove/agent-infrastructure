@@ -52,6 +52,11 @@ export class AwsSetupStack extends Stack {
         ),
       },
     );
+    const dashboardEnrollmentRuntimeSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "DashboardEnrollmentRuntimeSecret",
+      `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
+    );
     const cloudflareTunnelTokenSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       "CloudflareTunnelToken",
@@ -352,6 +357,8 @@ export class AwsSetupStack extends Stack {
           DASHBOARD_PASSKEY_TABLE_NAME: dashboardPasskeyTable.tableName,
           DASHBOARD_ACCESS_STATE_TABLE_NAME: dashboardAccessStateTable.tableName,
           DASHBOARD_ENROLLMENT_SECRET: props.dashboardEnrollmentSecret,
+          DASHBOARD_ENROLLMENT_SECRET_SECRET_NAME:
+            `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
           MANAGER_SWARM_TAG_VALUE: swarmTagValue,
           AGENT_HOME: props.agentHome,
           DASHBOARD_SESSION_TTL_SECONDS: "900",
@@ -363,6 +370,7 @@ export class AwsSetupStack extends Stack {
     });
     dashboardPasskeyTable.grantReadWriteData(dashboardAccessFunction);
     dashboardAccessStateTable.grantReadWriteData(dashboardAccessFunction);
+    dashboardEnrollmentRuntimeSecret.grantRead(dashboardAccessFunction);
     dashboardAccessFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: [

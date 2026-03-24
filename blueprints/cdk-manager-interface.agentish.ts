@@ -208,4 +208,6 @@ CdkManagerInterface.prescribes(`
 - Prefer path and schema contracts over package-path knowledge.
 - Keep CDK and auth coupled to outcomes, not implementation layout.
 - Treat generated wrappers, service unit generation, and helper scripts as replaceable details.
+- Sensitive runtime values should be fetched from AWS at runtime rather than copied through EC2 user data.
+- Deprecated bootstrap copies may remain temporarily for compatibility, but new secure runtime paths should ignore them.
 `);

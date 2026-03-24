@@ -9,6 +9,7 @@
   "dependencies": {
     "@aws-sdk/client-ec2": "^3.798.0",
     "@aws-sdk/client-dynamodb": "^3.798.0",
+    "@aws-sdk/client-secrets-manager": "^3.798.0",
     "@aws-sdk/client-ssm": "^3.798.0",
     "@aws-sdk/lib-dynamodb": "^3.798.0",
     "@simplewebauthn/server": "^11.0.0"
