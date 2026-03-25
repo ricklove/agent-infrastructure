@@ -123,6 +123,7 @@ run_logged "deploy-manager-runtime.sh" "target=runtime-build-dashboard" \
 
 terminate_matching_processes "${RUNTIME_ROOT}/packages/dashboard/src/server.ts" "dashboard-server"
 terminate_matching_processes "${RUNTIME_ROOT}/packages/agent-chat-server/src/index.ts" "agent-chat-server"
+terminate_matching_processes "${RUNTIME_ROOT}/packages/projects-server/src/index.ts" "projects-server"
 
 RUNTIME_REVISION="$(run_runtime_git rev-parse HEAD)"
 printf '{"ok":true,"sourceRepo":"%s","baseBranch":"%s","releaseBranch":"%s","releaseTag":"%s","targetCommit":"%s","runtimeDir":"%s","runtimeRevision":"%s"}\n' \
