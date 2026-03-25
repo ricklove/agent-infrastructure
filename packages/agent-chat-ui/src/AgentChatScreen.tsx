@@ -202,6 +202,7 @@ const sessionRailWidthStorageKey = "agent-infrastructure.agent-chat.session-rail
 const defaultSessionRailWidth = 352
 const minSessionRailWidth = 280
 const maxSessionRailWidth = 520
+const completedProcessResolutionSentinel = "__process_done__"
 
 function IconButton(props: {
   label: string
@@ -792,6 +793,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   )
   const processResolutionRequired =
     activeSession?.watchdogState.status === "completed" && !!activeSession?.processBlueprintId
+  const quickProcessSelectValue = processResolutionRequired
+    ? completedProcessResolutionSentinel
+    : activeSession?.processBlueprintId ?? ""
+  const settingsProcessSelectValue = processResolutionRequired
+    ? completedProcessResolutionSentinel
+    : activeSessionProcessBlueprintId
 
   const visibleSessions = useMemo(
     () => sessions.filter((session) => sessionMatchesSearch(session, sessionSearchQuery)),
@@ -1623,7 +1630,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
 
     const normalizedProcessBlueprintId = nextProcessBlueprintId || null
-    if ((activeSession.processBlueprintId ?? null) === normalizedProcessBlueprintId) {
+    const forceProcessBlueprintReapply =
+      processResolutionRequired &&
+      (activeSession.processBlueprintId ?? null) === normalizedProcessBlueprintId
+    if (
+      (activeSession.processBlueprintId ?? null) === normalizedProcessBlueprintId &&
+      !forceProcessBlueprintReapply
+    ) {
       return
     }
 
@@ -1638,6 +1651,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         },
         body: JSON.stringify({
           processBlueprintId: normalizedProcessBlueprintId,
+          forceProcessBlueprintReapply,
         }),
       })
       const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
@@ -2694,7 +2708,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           Process
                         </span>
                         <select
-                          value={activeSessionProcessBlueprintId}
+                          value={settingsProcessSelectValue}
                           onChange={(event) => {
                             setActiveSessionProcessBlueprintId(event.target.value)
                             void updateActiveSessionProcessQuickSet(event.target.value)
@@ -2706,6 +2720,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               : "border-white/10"
                           }`}
                         >
+                          {processResolutionRequired ? (
+                            <option value={completedProcessResolutionSentinel} disabled>
+                              Done
+                            </option>
+                          ) : null}
                           <option value="">none</option>
                           {processBlueprints.map((entry) => (
                             <option key={entry.id} value={entry.id}>
@@ -2931,7 +2950,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       <div className="relative">
                         <select
                           ref={quickProcessSelectRef}
-                          value={activeSession?.processBlueprintId ?? ""}
+                          value={quickProcessSelectValue}
                           onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
                           disabled={!activeSession || updatingQuickProcessBlueprint}
                           title="Quick Set Process"
@@ -2943,6 +2962,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 : "border-white/10 bg-slate-950/70 text-slate-500"
                           }`}
                         >
+                          {processResolutionRequired ? (
+                            <option value={completedProcessResolutionSentinel} disabled>
+                              Done
+                            </option>
+                          ) : null}
                           <option value="">none</option>
                           {processBlueprints.map((entry) => (
                             <option key={entry.id} value={entry.id}>
