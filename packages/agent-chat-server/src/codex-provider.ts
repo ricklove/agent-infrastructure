@@ -23,6 +23,19 @@ type JsonRpcResponse = {
   params?: Record<string, unknown>;
 };
 
+type CodexRateLimitsPayload = {
+  primary?: Record<string, unknown>;
+  secondary?: Record<string, unknown>;
+  credits?: Record<string, unknown> | null;
+  planType?: string | null;
+};
+
+type CodexTokenUsagePayload = {
+  total?: Record<string, unknown>;
+  last?: Record<string, unknown>;
+  modelContextWindow?: unknown;
+};
+
 type CodexRunCallbacks = {
   onRunStarted?: (payload: { threadId: string; turnId: string }) => void;
   onThreadStatusChanged?: (payload: {
@@ -57,6 +70,7 @@ type CodexRunResult = {
   threadId: string;
   threadPath: string | null;
   assistantText: string;
+  completionIssueText: string | null;
 };
 
 const codexWsUrl = process.env.AGENT_CHAT_CODEX_WS_URL?.trim() || "ws://127.0.0.1:8799";
@@ -153,6 +167,69 @@ function parseTimeoutMs(rawValue: string | undefined, fallbackMs: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs;
 }
 
+function numberFromUnknown(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function booleanFromUnknown(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    if (value === "true") {
+      return true;
+    }
+    if (value === "false") {
+      return false;
+    }
+  }
+  return null;
+}
+
+function describeCodexCompletionIssue(
+  rateLimits: CodexRateLimitsPayload | null,
+  tokenUsage: CodexTokenUsagePayload | null,
+) {
+  const credits = rateLimits?.credits;
+  const hasCredits =
+    credits && typeof credits === "object"
+      ? booleanFromUnknown((credits as Record<string, unknown>).hasCredits)
+      : null;
+  const creditBalance =
+    credits && typeof credits === "object"
+      ? numberFromUnknown((credits as Record<string, unknown>).balance)
+      : null;
+  if (hasCredits === false || creditBalance === 0) {
+    return "Provider credits exhausted; no assistant response was produced.";
+  }
+
+  const secondaryUsedPercent = numberFromUnknown(rateLimits?.secondary?.usedPercent);
+  if (secondaryUsedPercent !== null && secondaryUsedPercent >= 100) {
+    return "Provider token budget exhausted; no assistant response was produced.";
+  }
+
+  const modelContextWindow = numberFromUnknown(tokenUsage?.modelContextWindow);
+  const totalUsage =
+    numberFromUnknown(tokenUsage?.last?.totalTokens) ??
+    numberFromUnknown(tokenUsage?.total?.totalTokens);
+  if (
+    modelContextWindow !== null &&
+    totalUsage !== null &&
+    totalUsage >= modelContextWindow
+  ) {
+    return "Provider context window exhausted; no assistant response was produced.";
+  }
+
+  return null;
+}
+
 async function codexReady() {
   try {
     const response = await fetch(codexReadyzUrl);
@@ -222,6 +299,9 @@ export async function runCodexTurn(
   let currentThreadPath = session.providerThreadPath;
   let currentTurnId = "";
   let assistantText = "";
+  let latestRateLimits: CodexRateLimitsPayload | null = null;
+  let latestTokenUsage: CodexTokenUsagePayload | null = null;
+  let turnCompletedWithError: string | null = null;
   let completed = false;
   const activeCommandIds = new Set<string>();
 
@@ -308,6 +388,18 @@ export async function runCodexTurn(
         return;
       }
 
+      if (message.method === "account/rateLimits/updated") {
+        const params = message.params ?? {};
+        latestRateLimits = (params.rateLimits as CodexRateLimitsPayload | undefined) ?? null;
+        return;
+      }
+
+      if (message.method === "thread/tokenUsage/updated") {
+        const params = message.params ?? {};
+        latestTokenUsage = (params.tokenUsage as CodexTokenUsagePayload | undefined) ?? null;
+        return;
+      }
+
       if (message.method === "item/started") {
         const params = message.params ?? {};
         const item = params.item as Record<string, unknown> | undefined;
@@ -375,6 +467,17 @@ export async function runCodexTurn(
       }
 
       if (message.method === "turn/completed") {
+        const params = message.params ?? {};
+        const turn = params.turn as Record<string, unknown> | undefined;
+        const rawError = turn?.error;
+        turnCompletedWithError =
+          rawError && typeof rawError === "object"
+            ? typeof (rawError as Record<string, unknown>).message === "string"
+              ? String((rawError as Record<string, unknown>).message)
+              : JSON.stringify(rawError)
+            : typeof rawError === "string"
+              ? rawError
+              : null;
         completed = true;
         clearCompletionTimeout();
         resolve();
@@ -407,6 +510,9 @@ export async function runCodexTurn(
         name: "agent-chat-server",
         version: "0.1.0",
       },
+      capabilities: {
+        experimentalApi: true,
+      },
     });
 
     const model = parseCodexModel(session.modelRef);
@@ -437,7 +543,7 @@ export async function runCodexTurn(
         approvalPolicy: "never",
         sandbox: "danger-full-access",
         cwd: sessionCwd,
-        experimentalRawEvents: false,
+        experimentalRawEvents: true,
         persistExtendedHistory: false,
         serviceName: "agent-chat-server",
       });
@@ -487,10 +593,18 @@ export async function runCodexTurn(
 
     await completionPromise;
 
+    if (turnCompletedWithError) {
+      throw new Error(turnCompletedWithError);
+    }
+
     return {
       threadId: currentThreadId,
       threadPath: currentThreadPath,
       assistantText: assistantText.trim(),
+      completionIssueText:
+        assistantText.trim() === ""
+          ? describeCodexCompletionIssue(latestRateLimits, latestTokenUsage)
+          : null,
     };
   } finally {
     closeSocket();

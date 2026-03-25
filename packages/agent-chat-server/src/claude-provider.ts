@@ -45,6 +45,7 @@ type ClaudeRunResult = {
   threadId: string;
   threadPath: string | null;
   assistantText: string;
+  completionIssueText: string | null;
 };
 
 type ClaudeSdkMessage = {
@@ -325,6 +326,7 @@ export async function runClaudeTurn(
       threadId: currentThreadId,
       threadPath: null,
       assistantText: (assistantText || finalResultText).trim(),
+      completionIssueText: null,
     };
   } finally {
     activeClaudeQueries.delete(sessionId);
