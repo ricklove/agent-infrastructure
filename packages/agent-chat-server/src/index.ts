@@ -1070,7 +1070,10 @@ async function runProviderTurnForQueuedMessages(
     sessionId,
     queuedInstructionMessages.map((message) => message.id),
   );
-  const pendingSystemInstruction = store.consumePendingSystemInstruction(sessionId);
+  const hasExplicitHumanMessage = queuedMessages.some((message) => message.role === "user");
+  const pendingSystemInstruction = store.consumePendingSystemInstruction(sessionId, {
+    excludePrefixes: hasExplicitHumanMessage ? [] : [PROCESS_INSTRUCTION_PREFIX],
+  });
   const seenThoughtItemIds = new Set<string>();
   const streamCheckpointMessageIds = new Map<string, string>();
   const streamCheckpointTexts = new Map<string, string>();
