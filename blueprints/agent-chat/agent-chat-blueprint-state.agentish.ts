@@ -266,6 +266,7 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - the main activity status now uses a compact composer-border treatment instead of a separate footer card
 - the bottom composer stack now floats over the thread instead of sitting inside a dedicated footer slab, and the transcript adds measured bottom spacer so the latest message stays visible above the composer
 - the mobile thread and composer now trim their outer gutter and card padding more aggressively on narrow screens so iPhone focus/zoom keeps more horizontal room for transcript and typed text while the working chip sits slightly higher on the composer border
+- on narrow screens the floating composer now goes flat edge-to-edge with no extra side margin, and the active textarea plus quick-process selector use iPhone-safe 16px mobile text sizing to avoid Safari focus zoom
 - when the operator scrolls up away from the latest content, the thread now exposes a compact `scroll to bottom` affordance above the floating composer instead of relying only on manual scrollbar dragging
 - the current bottom-toolbar layout still becomes crowded on narrow widths because the process selector, menu actions, and send controls compete for the same horizontal strip instead of using a cleaner compact or layered treatment
 - the Done or Blocked resolution warning still needs a more compact treatment that preserves clarity without consuming a whole extra line in the mobile composer
