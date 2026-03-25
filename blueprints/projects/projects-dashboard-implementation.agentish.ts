@@ -61,6 +61,7 @@ const Api = {
   createGithubBinding: define.entity("CreateGitHubBindingEndpoint"),
   validateGithubBinding: define.entity("ValidateGitHubBindingEndpoint"),
   listAccessibleRepos: define.entity("ListAccessibleGitHubReposEndpoint"),
+  importExistingProjects: define.entity("ImportExistingProjectsEndpoint"),
   updateIntegrationPolicy: define.entity("UpdateProjectIntegrationPolicyEndpoint"),
 };
 
@@ -111,6 +112,7 @@ ProjectsDashboardImplementation.enforces(`
 - The dashboard must expose a first-party Projects tab rather than relying on ad hoc shell scripts as the primary operator surface.
 - Workspace projects must be explicit dashboard-managed records rather than being inferred only from whichever repos happen to exist on disk.
 - Adding a project must support both cloning a remote repo and registering an already-present local repo.
+- Existing project import must be scoped to repositories already present under the workspace `projects/` folder rather than treating every git checkout in the workspace as a dashboard project candidate.
 - Project repos must stay inside approved workspace roots and must not silently roam arbitrary host paths.
 - Project repo identity must include local path, remote URL, and base branch as explicit stored fields.
 - GitHub access must be configured as an explicit project-to-installation binding rather than being inferred only from repository owner text.
@@ -145,6 +147,7 @@ ProjectsDashboardImplementation.defines(`
 - ProjectScopedIntegrationPolicy means each project carries only the repo-specific integration values needed by the shared development workflow.
 - SharedDevelopmentProcessForAllProjects means agents use the same development-process blueprint across repos while reading base branch and post-merge command from project config.
 - RepoRootBoundary means project paths are validated relative to approved workspace roots so the Projects feature cannot become a generic host filesystem browser.
+- ImportExistingProjectsEndpoint means the dashboard may adopt existing local repos from the workspace `projects/` folder into the managed registry without pulling in system repos such as the workspace root or runtime checkout.
 `);
 
 Dashboard.plugin.contains(Dashboard.route, Dashboard.screen, Projects.backend);
@@ -172,6 +175,7 @@ Project.workspace.contains(
   Api.createGithubBinding,
   Api.validateGithubBinding,
   Api.listAccessibleRepos,
+  Api.importExistingProjects,
   Api.updateIntegrationPolicy,
 );
 Dashboard.screen.contains(

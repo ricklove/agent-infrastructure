@@ -1,5 +1,13 @@
 import { createPrivateKey, createSign, randomUUID } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   installationDir,
@@ -25,6 +33,7 @@ const registryPath =
   process.env.AGENT_PROJECTS_REGISTRY_PATH?.trim() || `${appDataDir}/registry.json`;
 const port = Number.parseInt(process.env.PROJECTS_PORT ?? "8791", 10);
 const githubApiBaseUrl = process.env.GITHUB_API_BASE_URL?.trim() || "https://api.github.com";
+const workspaceProjectsRoot = join(workspaceRoot, "projects");
 
 type GithubRepo = {
   id: number;
@@ -230,6 +239,84 @@ function readdirSafe(pathValue: string) {
   } catch {
     return [];
   }
+}
+
+function remoteDefaultBranch(repoPath: string) {
+  try {
+    const symbolicRef = runGit(["symbolic-ref", "refs/remotes/origin/HEAD"], repoPath);
+    const match = symbolicRef.match(/^refs\/remotes\/origin\/(.+)$/);
+    if (match?.[1]) {
+      return match[1];
+    }
+  } catch {
+    // Fall back to the current branch if the remote HEAD ref is not available locally.
+  }
+
+  try {
+    return runGit(["branch", "--show-current"], repoPath) || "development";
+  } catch {
+    return "development";
+  }
+}
+
+function importableProjectRepos() {
+  if (!existsSync(workspaceProjectsRoot)) {
+    return [];
+  }
+
+  return readdirSync(workspaceProjectsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(workspaceProjectsRoot, entry.name))
+    .filter((repoPath) => existsSync(join(repoPath, ".git")));
+}
+
+function importProjectRecord(
+  repoPath: string,
+  registry: ProjectsRegistry,
+): { project: ProjectRecord | null; reason?: string } {
+  const localPath = ensureAllowedPath(repoPath);
+  const remoteUrl = runGit(["remote", "get-url", "origin"], localPath);
+  const remote = normalizeRemoteInfo(remoteUrl);
+  const installation = registry.installations.find(
+    (entry) => entry.accountLogin.toLowerCase() === remote.owner.toLowerCase(),
+  );
+
+  if (!installation) {
+    return {
+      project: null,
+      reason: `no GitHub App installation matches owner ${remote.owner}`,
+    };
+  }
+
+  if (
+    registry.projects.some(
+      (project) =>
+        project.localPath === localPath ||
+        (project.owner === remote.owner && project.repo === remote.repo),
+    )
+  ) {
+    return {
+      project: null,
+      reason: "already registered",
+    };
+  }
+
+  const now = Date.now();
+  return {
+    project: {
+      id: randomUUID(),
+      name: remote.repo,
+      owner: remote.owner,
+      repo: remote.repo,
+      remoteUrl,
+      localPath,
+      installationId: installation.installationId,
+      baseBranch: remoteDefaultBranch(localPath),
+      postMergeBunCommand: "",
+      createdAtMs: now,
+      updatedAtMs: now,
+    },
+  };
 }
 
 function projectStatus(project: ProjectRecord, registry: ProjectsRegistry) {
@@ -453,6 +540,51 @@ const server = Bun.serve({
         });
       } catch (error) {
         log(`project.create error=${String(error)}`);
+        return textError(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    if (url.pathname === "/api/projects/import-existing" && request.method === "POST") {
+      try {
+        const registry = readRegistry(registryPath, configRoot);
+        const imported: Array<ProjectRecord & { status: ReturnType<typeof projectStatus> }> = [];
+        const skipped: Array<{ localPath: string; reason: string }> = [];
+
+        for (const repoPath of importableProjectRepos()) {
+          try {
+            const candidate = importProjectRecord(repoPath, registry);
+            if (!candidate.project) {
+              skipped.push({
+                localPath: repoPath,
+                reason: candidate.reason ?? "not importable",
+              });
+              continue;
+            }
+
+            registry.projects.push(candidate.project);
+            imported.push({
+              ...candidate.project,
+              status: projectStatus(candidate.project, registry),
+            });
+          } catch (error) {
+            skipped.push({
+              localPath: repoPath,
+              reason: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        if (imported.length > 0) {
+          writeRegistry(registryPath, registry);
+        }
+
+        return jsonResponse({
+          ok: true,
+          imported,
+          skipped,
+        });
+      } catch (error) {
+        log(`project.import_existing error=${String(error)}`);
         return textError(error instanceof Error ? error.message : String(error));
       }
     }

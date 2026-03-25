@@ -98,6 +98,7 @@ export function ProjectsScreen({
   const [success, setSuccess] = useState("");
   const [savingInstallation, setSavingInstallation] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
+  const [importingProjects, setImportingProjects] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState("");
   const [installationForm, setInstallationForm] = useState({
     label: "",
@@ -312,6 +313,44 @@ export function ProjectsScreen({
     }
     await loadAll(selectedInstallationId);
     setSuccess(`Saved integration settings for ${project.name}.`);
+  }
+
+  async function importExistingProjects() {
+    setImportingProjects(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await apiFetch(featurePath(apiRootUrl, "import-existing"), {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const payload = (await response.json()) as {
+        imported: ProjectRecord[];
+        skipped: Array<{ localPath: string; reason: string }>;
+      };
+      await loadAll(selectedInstallationId);
+
+      if (payload.imported.length > 0) {
+        setSuccess(
+          `Imported ${payload.imported.length} existing project${payload.imported.length === 1 ? "" : "s"}.`,
+        );
+        return;
+      }
+
+      if (payload.skipped.length > 0) {
+        setSuccess(`No new projects imported. ${payload.skipped[0]?.reason ?? "All candidates were skipped."}`);
+        return;
+      }
+
+      setSuccess("No local repos found under /home/ec2-user/workspace/projects.");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    } finally {
+      setImportingProjects(false);
+    }
   }
 
   return (
@@ -638,12 +677,26 @@ export function ProjectsScreen({
           ) : null}
 
           <div className="space-y-3">
-            <div>
-              <h2 className="text-lg font-semibold text-stone-100">Managed Projects</h2>
-              <p className="text-sm text-stone-400">
-                Each project shares the same development process and only stores repo-specific
-                integration settings.
-              </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-stone-100">Managed Projects</h2>
+                <p className="text-sm text-stone-400">
+                  Each project shares the same development process and only stores repo-specific
+                  integration settings.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg border border-stone-700 px-3 py-2 text-sm font-medium text-stone-200 hover:border-stone-500 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => {
+                  importExistingProjects().catch((nextError) => {
+                    setError(nextError instanceof Error ? nextError.message : String(nextError));
+                  });
+                }}
+                disabled={importingProjects}
+              >
+                {importingProjects ? "Importing..." : "Import Existing Projects"}
+              </button>
             </div>
 
             {loading ? (
