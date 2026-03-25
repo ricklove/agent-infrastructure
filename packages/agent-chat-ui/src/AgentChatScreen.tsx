@@ -1077,7 +1077,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
       ) : null}
 
       <div
-        className={`relative rounded-2xl border px-1.5 pb-2 pt-2.5 sm:px-2 sm:pb-2.5 sm:pt-3 md:px-3 md:pb-3 md:pt-4 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] ${
+        className={`relative rounded-none border border-x-0 px-1.5 pb-2 pt-2.5 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] sm:rounded-2xl sm:border-x sm:px-2 sm:pb-2.5 sm:pt-3 md:px-3 md:pb-3 md:pt-4 ${
           props.processResolutionRequired
             ? props.processTerminalStatus === "blocked"
               ? "border-rose-400/35 bg-rose-500/[0.04]"
@@ -1124,7 +1124,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
               : "Select or create a chat first."
           }
           disabled={!props.activeSession || props.sending}
-          className="min-h-[5rem] w-full resize-y border-0 bg-transparent px-0 py-0.5 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem] md:px-1 md:py-1"
+          className="min-h-[5rem] w-full resize-y border-0 bg-transparent px-0 py-0.5 text-base text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem] md:px-1 md:py-1 md:text-sm"
         />
         <div className="mt-1.5 flex items-center gap-1.5 md:mt-2 md:gap-2">
           <label className="min-w-0 flex-1">
@@ -1141,7 +1141,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
                 }}
                 disabled={!props.activeSession || props.updatingQuickProcessBlueprint}
                 title="Quick Set Process"
-                className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-base outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-xs ${
                   props.processResolutionRequired
                     ? props.processTerminalStatus === "blocked"
                       ? "border-rose-400/50 bg-rose-500/[0.08] text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.16)]"
@@ -1166,7 +1166,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
               {props.processResolutionRequired ? (
                 <>
                   <span
-                    className={`pointer-events-none absolute inset-y-0 left-0 flex items-center gap-1.5 px-3 text-xs font-semibold ${
+                    className={`pointer-events-none absolute inset-y-0 left-0 flex items-center gap-1.5 px-3 text-sm font-semibold md:text-xs ${
                       props.processTerminalStatus === "blocked" ? "text-rose-200" : "text-amber-100"
                     }`}
                   >
@@ -1179,7 +1179,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
                   </span>
                   <span
                     title={`Choose the next process before sending. The previous process is ${props.processTerminalStatus === "blocked" ? "blocked" : "done"}.`}
-                    className={`pointer-events-none absolute inset-y-0 right-8 flex items-center text-xs ${
+                    className={`pointer-events-none absolute inset-y-0 right-8 flex items-center text-sm md:text-xs ${
                       props.processTerminalStatus === "blocked" ? "text-rose-200" : "text-amber-100"
                     }`}
                   >
@@ -3409,7 +3409,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
           <div
             ref={composerDockRef}
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3 sm:pb-3 md:px-6"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-0 pb-[env(safe-area-inset-bottom)] sm:px-3 sm:pb-3 md:px-6"
           >
             <div className="pointer-events-auto mx-auto flex max-w-4xl flex-col gap-2.5">
               {showScrollToBottomButton ? (
