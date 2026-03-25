@@ -264,6 +264,8 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - transcript text still renders mostly as plain paragraphs, so markdown structure and code blocks are harder to read than intended
 - the main activity status still consumes its own full-height footer card instead of using a condensed bottom-of-thread treatment
 - the composer footer still spends too much vertical space on explanatory copy and wrapped controls, especially on mobile
+- the current bottom-toolbar layout still becomes crowded on narrow widths because the process selector, menu actions, and send controls compete for the same horizontal strip instead of using a cleaner compact or layered treatment
+- the Done or Blocked resolution warning still needs a more compact treatment that preserves clarity without consuming a whole extra line in the mobile composer
 - expanded activity rows still use overly generic wording like command execution started or completed instead of foregrounding the actual task identity
 - collapsed activity-cluster summaries still run long and list too much prior event detail instead of one short recent-task summary
 - adjacent low-signal activity items now collapse into grouped transcript cards, but the collapsed summary copy remains too verbose
