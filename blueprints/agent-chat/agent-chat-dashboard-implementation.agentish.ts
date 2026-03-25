@@ -166,6 +166,7 @@ AgentChatDashboardImplementation.enforces(`
 - The chat side rail should be resizable by the operator rather than fixed-width.
 - The active-thread controls should expose a compact quick-set process selector for the current chat adjacent to the thread menu button.
 - The quick-set control should present an explicit unassigned state such as none rather than an imperative placeholder label.
+- Creating a new session with a selected process blueprint should immediately emit the queued expectation entry for that chat so the operator can see the assigned contract before sending the first human message.
 - Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next provider turn without creating an immediate standalone transcript event.
 - When the current process reaches its completion condition, the quick-set control should enter a required unresolved state before the next send.
 - That unresolved state should show Done as red warning text or placeholder treatment inside the selector, but Done must not become a stored process value or selectable option.

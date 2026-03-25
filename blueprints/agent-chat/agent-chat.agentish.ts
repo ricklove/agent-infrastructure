@@ -221,6 +221,7 @@ Session.expectation.means(`
 - user-selected statement of what the agent should accomplish in the session
 - derived from the assigned process blueprint rather than guessed from raw transcript text
 - intended to drive idle watchdog prompts and session-list context
+- when a new session is created with a process blueprint already selected, the initial expectation should be emitted immediately as a canonical waiting system entry so the operator can see the contract before the first user turn
 - when expectation changes are queued for the next turn, the transcript should later show that consumed change as a real history event at the point it took effect
 - when a completed expectation requires operator resolution, the next outgoing message should stay blocked until the operator chooses the next normal process selection
 - expectation-aware watchdog handling belongs to the backend session runtime rather than to the browser connection and must continue even when no dashboard client is attached

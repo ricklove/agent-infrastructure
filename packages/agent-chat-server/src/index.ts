@@ -349,6 +349,28 @@ function buildProcessExpectationInstruction(processBlueprint: ProcessBlueprint |
   return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}`;
 }
 
+function queueProcessExpectationForSession(sessionId: string) {
+  const session = store.getSession(sessionId);
+  const processBlueprint = getSessionProcessBlueprint(session);
+  if (!session || !processBlueprint) {
+    return { session, processMessage: null as StoredMessage | null };
+  }
+
+  const expectationText = buildProcessExpectationInstruction(processBlueprint);
+  store.markQueuedSystemMessagesSeenByPrefix(sessionId, PROCESS_INSTRUCTION_PREFIX);
+  const processMessage = store.appendMessage(sessionId, {
+    role: "system",
+    providerSeenAtMs: null,
+    content: [{ type: "text", text: expectationText }],
+  });
+  const updatedSession = store.replacePendingSystemInstructionByPrefix(
+    sessionId,
+    PROCESS_INSTRUCTION_PREFIX,
+    expectationText,
+  );
+  return { session: updatedSession ?? session, processMessage };
+}
+
 function runningTurnLooksStalled(runtime: SessionRuntimeState, processBlueprint: ProcessBlueprint) {
   if (runtime.status !== "running") {
     return false;
@@ -1114,7 +1136,7 @@ const server = Bun.serve<ChatSocketData>({
           return jsonResponse({ ok: false, error: "unknown process blueprint" }, 400);
         }
 
-        const session = store.createSession({
+        let session = store.createSession({
           title: payload.title,
           providerKind: payload.providerKind,
           modelRef: normalizeProviderModelRef(
@@ -1126,7 +1148,14 @@ const server = Bun.serve<ChatSocketData>({
           imageModelRef: payload.imageModelRef?.trim() || null,
         });
         if (nextProcessBlueprintId) {
-          store.updateSessionProcessBlueprint(session.id, nextProcessBlueprintId);
+          const updatedSession = store.updateSessionProcessBlueprint(session.id, nextProcessBlueprintId);
+          if (updatedSession) {
+            session = updatedSession;
+          }
+          const queuedExpectation = queueProcessExpectationForSession(session.id);
+          if (queuedExpectation.session) {
+            session = queuedExpectation.session;
+          }
         }
 
         const snapshot = buildSessionSnapshot(session.id);
@@ -1290,26 +1319,12 @@ const server = Bun.serve<ChatSocketData>({
             previousProcessBlueprintId !== (nextProcessBlueprintId ?? null) ||
             shouldReapplyProcessBlueprint
           ) {
-            const processBlueprint = getSessionProcessBlueprint(session);
-            store.markQueuedSystemMessagesSeenByPrefix(sessionId, PROCESS_INSTRUCTION_PREFIX);
-            const processMessage = store.appendMessage(sessionId, {
-              role: "system",
-              providerSeenAtMs: null,
-              content: [
-                {
-                  type: "text",
-                  text: buildProcessExpectationInstruction(processBlueprint),
-                },
-              ],
-            });
-            queuedMessages.push(processMessage);
-            const instructionSession = store.replacePendingSystemInstructionByPrefix(
-              sessionId,
-              PROCESS_INSTRUCTION_PREFIX,
-              buildProcessExpectationInstruction(processBlueprint),
-            );
-            if (instructionSession) {
-              session = instructionSession;
+            const queuedExpectation = queueProcessExpectationForSession(sessionId);
+            if (queuedExpectation.processMessage) {
+              queuedMessages.push(queuedExpectation.processMessage);
+            }
+            if (queuedExpectation.session) {
+              session = queuedExpectation.session;
             }
           }
           cancelSessionWatchdog(sessionId);
