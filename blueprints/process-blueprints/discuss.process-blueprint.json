@@ -1,7 +1,7 @@
 {
   "id": "discuss",
   "title": "Discuss",
-  "expectation": "Discuss ideas, tradeoffs, and recommendations for the user's request without making implementation changes unless the user explicitly asks for implementation.",
+  "expectation": "Discuss ideas, tradeoffs, and recommendations for the user's request without making implementation changes unless the user explicitly asks for implementation. When the request may depend on repository guidance or architecture rules, search for relevant `blueprints` folders in the workspace and in the project repos before concluding what applies.",
   "idlePrompt": "If the discussion is complete, reply only with 'done: discussion complete'. Otherwise continue the discussion or state what point still needs to be resolved.",
   "completionMode": "exact_reply",
   "completionToken": "done: discussion complete",
