@@ -64,6 +64,8 @@ DevelopmentProcess.enforces(`
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
 - The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
+- If an active feature branch falls behind the current base branch or the release branch, it should be refreshed by merging those branches into the feature branch with normal merge commits as needed rather than relying on rebases.
+- Normal merge commits are an acceptable and preferred way to refresh a feature branch during active work; rebasing is optional and never required by this process.
 - Completed feature branch work should be committed and merged back into the base branch before release promotion proceeds.
 - Once a feature branch is merged and no longer needed, the local feature branch should be deleted unless it is explicitly preserved for a recorded reason.
 - Once a merged worktree is clean and no longer needed, that worktree should be removed.
@@ -91,6 +93,7 @@ DevelopmentProcess.defines(`
 - IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and the normal setup path is to create the worktree and feature branch together from the base branch.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
+- FeatureBranchRefreshByMerge means an active feature branch may be updated from development, main, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
 - ReleaseBranch means `main` is the canonical release branch for runtime deployment.
 - ReleaseGitTag means an immutable git tag created from the promoted release commit and used as the runtime deploy target.
 - TemporaryStateOnly means logs, pids, sockets, caches, and controller metadata may live under state/, but durable user or app content may not.
@@ -165,6 +168,7 @@ when(Actor.operator.starts("code-changing implementation on a feature or fix"))
   .and(DevelopmentProcess.prefers(Artifact.implementationWorktree))
   .and(DevelopmentProcess.expects("feature-branch creation to leave the shared checkout on the base branch"))
   .and(DevelopmentProcess.expects("the normal setup command to be `git worktree add -b <feature-branch> <worktree-path> <base-branch>`"))
+  .and(DevelopmentProcess.expects("feature-branch refresh to use normal merges from the relevant base or release branches when the feature branch falls behind"))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.baseBranch))
   .and(DevelopmentProcess.associates(Artifact.implementationWorktree).with(Artifact.featureBranch))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.sourceRepo));
