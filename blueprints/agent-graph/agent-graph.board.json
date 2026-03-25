@@ -6,7 +6,7 @@
     "./agent-graph.agentish.ts",
     "./agent-graph-boards.agentish.ts"
   ],
-  "revision": 3,
+  "revision": 4,
   "layers": [
     {
       "id": "layer-overview",
@@ -359,8 +359,8 @@
         "detail-doc-agent-graph-boards-agentish-ts-agent-graph-boards-uses-files-5"
       ],
       "visible": true,
-      "x": 331,
-      "y": 129,
+      "x": 483.9963651656382,
+      "y": -637.1960826945854,
       "derivedFromLayerId": null
     }
   ],
