@@ -349,6 +349,10 @@ function buildProcessExpectationInstruction(processBlueprint: ProcessBlueprint |
   return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}`;
 }
 
+function persistedIdleWatchdogAnchorMs(session: StoredSession) {
+  return session.updatedAtMs;
+}
+
 function queueProcessExpectationForSession(sessionId: string) {
   const session = store.getSession(sessionId);
   const processBlueprint = getSessionProcessBlueprint(session);
@@ -449,7 +453,11 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
 
   let delayMs: number | null = null;
   if (runtime.status === "idle") {
-    delayMs = processBlueprint.watchdog.idleTimeoutSeconds * 1000;
+    delayMs = Math.max(
+      processBlueprint.watchdog.idleTimeoutSeconds * 1000 -
+        (Date.now() - persistedIdleWatchdogAnchorMs(session)),
+      0,
+    );
   } else if (runtime.status === "running") {
     const anchorMs = runtime.lastVisibleActivityAtMs ?? runtime.startedAtMs;
     if (anchorMs !== null) {
@@ -468,6 +476,23 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
     maybeTriggerSessionWatchdog(sessionId);
   }, delayMs);
   sessionWatchdogTimers.set(sessionId, handle);
+}
+
+function rearmPersistedSessionWatchdogs() {
+  for (const session of store.listSessions()) {
+    const processBlueprint = getSessionProcessBlueprint(session);
+    if (!processBlueprint?.watchdog.enabled) {
+      continue;
+    }
+    if (session.watchdogState.status === "completed") {
+      continue;
+    }
+    if (session.watchdogState.nudgeCount >= processBlueprint.watchdog.maxNudgesPerIdleEpisode) {
+      continue;
+    }
+    ensureRuntimeState(session.id);
+    maybeScheduleSessionWatchdog(session.id);
+  }
 }
 
 function broadcastSession(sessionId: string, event: unknown) {
@@ -1555,3 +1580,4 @@ const server = Bun.serve<ChatSocketData>({
 });
 
 log(`agent-chat server listening on http://127.0.0.1:${server.port}`);
+rearmPersistedSessionWatchdogs();

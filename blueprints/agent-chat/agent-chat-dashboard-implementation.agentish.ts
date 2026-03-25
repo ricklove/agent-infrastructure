@@ -60,7 +60,7 @@ const Scope = {
   canonicalSessions: define.concept("CanonicalSessionOwnership"),
   workspaceRootDefault: define.concept("WorkspaceRootDefault"),
   sessionWorkspaceSelection: define.concept("SessionWorkspaceSelection"),
-  lazyBackend: define.concept("LazyChatBackend"),
+  alwaysBackend: define.concept("AlwaysChatBackend"),
   browserOwnsUi: define.concept("BrowserOwnedChatUi"),
   dashboardAuth: define.concept("DashboardSessionAuthBoundary"),
   deferImports: define.concept("DeferImportsAndCompactionEditing"),
@@ -206,9 +206,10 @@ AgentChatDashboardImplementation.enforces(`
 - Transcript spacing should stay compact around secondary history affordances; replaced-stream and thought chrome should not add large dead padding ahead of the actual message content.
 - Provider adapters must not fail an otherwise active turn on a short fixed wall-clock deadline while the provider is still streaming output or reporting honest activity.
 - Provider timeout policy should be configurable and should treat lost activity or broken transport as failure conditions more strongly than ordinary long-running work.
-- The gateway should proxy Agent Chat traffic and lazy-start the chat backend on first use.
+- The gateway should proxy Agent Chat traffic and the Agent Chat plugin should declare the chat backend as `always` so watchdog and queued-process responsibilities do not wait for a fresh feature request after restart.
 - Once started, the Agent Chat backend must own expectation watchdogs and queued process handling independently of dashboard client connectivity; disconnecting the dashboard must not pause those backend timers.
 - Dashboard lifecycle shutdown may stop the dashboard web process when no dashboard demand remains, but it must not take down an Agent Chat backend that still owns unresolved sessions needing watchdog handling.
+- When the Agent Chat backend restarts, it must re-arm overdue or pending unresolved idle watchdogs from persisted canonical session timestamps instead of starting a brand new full timeout window or waiting for the next chat request.
 - Canonical Agent Chat mutations should signal workspace durability work to the manager controller rather than performing git commit or push inline on the request path.
 - Workspace git commit and push policy should be owned by a manager-side workspace-persistence controller because push is part of persistence for manager-host chat history.
 - V1 should ship only the behaviors needed for real day-to-day chat use and defer broader ambitions that are not required yet.
@@ -446,9 +447,9 @@ when(Chat.backend.persists(Chat.session).or(Chat.backend.persists(Chat.message))
   .and(Manager.workspacePersistence.batches("automatic persistence work"))
   .and(Manager.workspacePersistence.allows("operator-triggered immediate flush"));
 
-Scope.lazyBackend.means(`
+Scope.alwaysBackend.means(`
 - the chat backend is not a permanent systemd service
-- the dashboard gateway starts it on first chat API or WebSocket traffic
+- the dashboard runtime should proactively start it whenever the dashboard service starts because the plugin declares an `always` backend startup policy
 - the chat backend may be restarted by the gateway when unhealthy
 `);
 
@@ -602,7 +603,7 @@ Decision.v1Cut.means(`
 when(Dashboard.plugin.belongsTo(Dashboard.shell))
   .then(Dashboard.plugin.uses(Decision.backendPackage))
   .and(Dashboard.plugin.uses(Decision.port))
-  .and(Dashboard.plugin.requires(Scope.lazyBackend))
+  .and(Dashboard.plugin.requires(Scope.alwaysBackend))
   .and(Dashboard.plugin.requires(Transport.gatewayProxy));
 
 when(Chat.backend.starts())

@@ -240,6 +240,7 @@ Observability.watchdogState.means(`
 - records whether the session is unresolved, nudged, completed by completion token, or still waiting
 - should complement worker state rather than replace provider-backed activity details
 - should treat a long-running turn with no meaningful visible progress as stalled enough to require watchdog attention instead of waiting forever for a provider-level turn completion event
+- should survive backend restarts by re-arming unresolved idle sessions from canonical session state instead of forgetting the pending watchdog episode until a fresh chat request arrives
 `);
 
 Provider.binding.means(`
