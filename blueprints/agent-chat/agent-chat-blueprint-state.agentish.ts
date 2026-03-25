@@ -169,6 +169,7 @@ CurrentReality.sessionListWorkflowPolishGap.means(`
 - button and icon chrome still costs too much row space in the session list
 - the top-of-rail text and new-chat surface still consume space that should be easier to reclaim
 - the archived reveal control still has a known broken path and needs reliability work
+- the session rail is still not operator-resizable even though the ideal dashboard implementation now calls for direct resize interaction
 - the new-chat surface still needs explicit scrollability under constrained rail heights
 `);
 

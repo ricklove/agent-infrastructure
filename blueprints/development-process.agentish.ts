@@ -56,14 +56,18 @@ DevelopmentProcess.enforces(`
 - Implementation must not continue past blueprint edits until those blueprint edits are committed.
 - When operator feedback materially corrects intended product behavior during implementation, the relevant blueprints and blueprint-state must be updated to capture that correction before more implementation continues.
 - Active implementation plans should live in the ticket system rather than as durable repository design documents.
-- Before installing or reconfiguring local developer tools, check the workspace README and referenced tools/ notes for machine-specific guidance and already-installed utilities.
+- Before installing or reconfiguring local developer tools, check `/home/ec2-user/workspace/README.md` and the referenced notes under `/home/ec2-user/workspace/tools/` for machine-specific guidance and already-installed utilities.
 - Source is the only editing surface for intended behavior changes.
 - The shared repository checkout should remain on the current base branch used for ongoing integration work.
 - Feature and fix implementation should begin from a feature branch rooted at the current base branch while leaving the shared checkout on that base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
+- Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
 - The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
 - Completed feature branch work should be committed and merged back into the base branch before release promotion proceeds.
+- Once a feature branch is merged and no longer needed, the local feature branch should be deleted unless it is explicitly preserved for a recorded reason.
+- Once a merged worktree is clean and no longer needed, that worktree should be removed.
+- A merged worktree that still contains local changes must be reconciled deliberately or explicitly recorded as preserved unfinished work rather than being left behind silently.
 - Release rollout should start only after the shared base-branch checkout is clean.
 - Release rollout should promote the intended integrated commit onto `main`, create a release git tag from that exact commit, and deploy runtime from that tag.
 - Runtime is a deployed checkout and not an editing surface.
@@ -72,8 +76,8 @@ DevelopmentProcess.enforces(`
 - Provider-backed agents used for implementation must inherit this same workflow.
 - Runtime rollout should follow the deploy-manager-runtime blueprint as the standard deploy path.
 - Runtime rollout should call `bun run deploy-manager-runtime` from the shared source repository unless a more specific documented operator entrypoint supersedes it.
-- UI-facing changes require real browser verification, screenshots, and deployed frontend-backend version matching.
-- Responsive UI changes must be verified at small, medium, and wide viewport sizes.
+- UI-facing changes require real browser verification with `agent-browser`, visual verification on the rendered UI, saved screenshots, verification at small, medium, and wide viewport sizes, and deployed frontend-backend version matching.
+- Responsive UI changes must be verified with `agent-browser` at small, medium, and wide viewport sizes.
 - A rollout is not complete until post-deploy behavior has been verified on the live system.
 `);
 
@@ -82,8 +86,10 @@ DevelopmentProcess.defines(`
 - ProcessBlueprintJson means a machine-readable process contract in blueprints/ that the system may assign to a chat session.
 - BlueprintCommitBeforeImplementation means blueprint edits are turned into a committed source revision before dependent implementation work starts.
 - BlueprintStateTracksCurrentReality means blueprint-state records current implementation status, confidence, evidence, gaps, and known issues relative to the ideal blueprint.
-- WorkspaceToolingDiscovery means local machine tooling should be discovered from workspace README guidance and tools/ notes before installing replacements or parallel toolchains.
+- WorkspaceToolingDiscovery means local machine tooling should be discovered from `/home/ec2-user/workspace/README.md` and `/home/ec2-user/workspace/tools/` guidance before installing replacements or parallel toolchains.
+- For UI verification on this machine, `agent-browser` is the expected browser tool for both behavior verification and visual verification, including small, medium, and wide viewport checks, unless a more specific documented workspace replacement supersedes it.
 - IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and the normal setup path is to create the worktree and feature branch together from the base branch.
+- CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - ReleaseBranch means `main` is the canonical release branch for runtime deployment.
 - ReleaseGitTag means an immutable git tag created from the promoted release commit and used as the runtime deploy target.
@@ -167,6 +173,8 @@ when(Actor.operator.finishes("code-changing implementation on a feature branch")
   .then(DevelopmentProcess.prefers(Artifact.featureBranch))
   .and(DevelopmentProcess.expects("committed implementation changes on the feature branch"))
   .and(DevelopmentProcess.expects("a normal merge of the feature branch back into the base branch"))
+  .and(DevelopmentProcess.expects("deletion of the merged local feature branch unless it is explicitly preserved for a recorded reason"))
+  .and(DevelopmentProcess.expects("removal of the merged clean implementation worktree once it is no longer needed"))
   .and(DevelopmentProcess.expects("release promotion to main and release-tag creation before runtime deploy"))
   .and(DevelopmentProcess.requires(Rule.mergeIntoBase));
 
@@ -193,7 +201,8 @@ when(Actor.operator.rollsOut("a committed revision to runtime"))
   .and(DevelopmentProcess.expects("a clean shared base-branch checkout before release promotion"))
   .and(DevelopmentProcess.expects("promotion of the intended integrated commit to main"))
   .and(DevelopmentProcess.expects("creation and push of a release git tag before runtime deploy"))
-  .and(DevelopmentProcess.expects("bun run deploy-manager-runtime <release-tag> to be the normal rollout command"));
+  .and(DevelopmentProcess.expects("bun run deploy-manager-runtime <release-tag> to be the normal rollout command"))
+  .and(DevelopmentProcess.expects("post-deploy UI verification on this machine to use agent-browser for behavior and visual verification with saved screenshots at small, medium, and wide viewport sizes"));
 
 when(Artifact.temporaryState.contains("durable app content"))
   .then(DevelopmentProcess.violates(Rule.stateTemporaryOnly));
