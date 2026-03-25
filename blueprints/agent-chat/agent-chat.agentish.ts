@@ -112,6 +112,7 @@ AgentChat.enforces(`
 - When more than one human message is queued behind an active run, AgentChat should deliver that queued human batch into the next provider turn together rather than silently serializing them into many one-message follow-up turns.
 - Session process changes should remain queued provider-facing instructions until the next turn consumes them, and that consumption should also become a canonical transcript event so history survives refresh.
 - When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
+- Expectation-aware watchdog behavior must treat operator-visible stalled turns as unresolved inactivity even when the provider transport still considers the turn open.
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
 `);
 
@@ -213,6 +214,7 @@ Session.processBlueprint.means(`
 - may have an optional Agentish companion guide for agent reference
 - when the previous process has completed, the process selector should enter a required unresolved state before the next send
 - that unresolved state should be shown as Done styling or placeholder treatment rather than as a stored process value
+- that unresolved state should remain distinct from the underlying real process choices so the operator can explicitly re-select the prior process as the next contract
 `);
 
 Session.expectation.means(`
@@ -235,6 +237,7 @@ Observability.watchdogState.means(`
 - expectation-aware idle watchdog status visible from the session list and active session view when useful
 - records whether the session is unresolved, nudged, completed by completion token, or still waiting
 - should complement worker state rather than replace provider-backed activity details
+- should treat a long-running turn with no meaningful visible progress as stalled enough to require watchdog attention instead of waiting forever for a provider-level turn completion event
 `);
 
 Provider.binding.means(`

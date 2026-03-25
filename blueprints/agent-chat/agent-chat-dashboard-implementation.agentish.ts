@@ -169,7 +169,11 @@ AgentChatDashboardImplementation.enforces(`
 - Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next provider turn without creating an immediate standalone transcript event.
 - When the current process reaches its completion condition, the quick-set control should enter a required unresolved state before the next send.
 - That unresolved state should show Done as red warning text or placeholder treatment inside the selector, but Done must not become a stored process value or selectable option.
+- The unresolved Done state must be backed by a distinct UI sentinel rather than by reusing the current real process option, so the operator can explicitly pick the same prior process again and resolve the guard intentionally.
 - While that unresolved state is active, the composer send action should remain disabled until the operator picks one of the normal process selections.
+- Expectation-aware watchdog timing must use operator-visible inactivity, not only provider turn completion, so a long-running turn with no meaningful progress becomes eligible for a watchdog nudge.
+- Visible progress for watchdog purposes should include assistant stream deltas, canonical thought items, background-process changes, waiting-flag changes, and any other surfaced activity that shows the run is still meaningfully advancing.
+- A stalled running turn may still appear as provider-running in worker state, but watchdog behavior should treat it as unresolved inactivity once that visible-activity budget expires.
 - When that queued process-change instruction is actually consumed by the next provider turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
