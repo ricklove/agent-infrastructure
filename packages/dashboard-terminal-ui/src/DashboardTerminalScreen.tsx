@@ -354,6 +354,17 @@ export function DashboardTerminalScreen({
   // Keyboard handling — Copy-first Ctrl+C, Ctrl+V paste
   // -----------------------------------------------------------------------
 
+  // Track what the textarea contained before mobile input so we can diff
+  const lastTextareaValue = useRef("");
+
+  const sendInput = useCallback((data: string) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN && data) {
+      ws.send(JSON.stringify({ type: "input", data }));
+    }
+  }, []);
+
+  // Desktop keyboard handler — fires reliably on desktop, partially on mobile
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
       const ws = wsRef.current;
@@ -363,7 +374,6 @@ export function DashboardTerminalScreen({
       if (e.ctrlKey && e.key === "c") {
         e.preventDefault();
         if (ctrlCPrimed) {
-          // Second Ctrl+C — send interrupt
           ws.send(JSON.stringify({ type: "input", data: "\x03" }));
           setCtrlCPrimed(false);
           if (ctrlCTimerRef.current) {
@@ -371,7 +381,6 @@ export function DashboardTerminalScreen({
             ctrlCTimerRef.current = null;
           }
         } else {
-          // First Ctrl+C — try copy, prime for interrupt
           const selection = window.getSelection()?.toString();
           if (selection) {
             navigator.clipboard.writeText(selection).catch(() => {});
@@ -391,18 +400,21 @@ export function DashboardTerminalScreen({
         navigator.clipboard
           .readText()
           .then((text) => {
-            if (text) {
-              ws.send(JSON.stringify({ type: "input", data: text }));
-            }
+            if (text) sendInput(text);
           })
           .catch(() => {});
         return;
       }
 
-      // Regular keys — send to terminal
+      // Skip if key is Unidentified (mobile) — let beforeinput/input handle it
+      if (e.key === "Unidentified" || e.key === "Process") {
+        return;
+      }
+
+      // Regular printable keys — send directly
       if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
         e.preventDefault();
-        ws.send(JSON.stringify({ type: "input", data: e.key }));
+        sendInput(e.key);
         return;
       }
 
@@ -425,20 +437,73 @@ export function DashboardTerminalScreen({
 
       if (keyMap[e.key]) {
         e.preventDefault();
-        ws.send(JSON.stringify({ type: "input", data: keyMap[e.key] }));
+        sendInput(keyMap[e.key]);
         return;
       }
 
       // Ctrl+key combos (a-z)
       if (e.ctrlKey && e.key.length === 1 && e.key >= "a" && e.key <= "z") {
         e.preventDefault();
-        const code = e.key.charCodeAt(0) - 96; // ctrl+a = 1, ctrl+z = 26
-        ws.send(JSON.stringify({ type: "input", data: String.fromCharCode(code) }));
+        const code = e.key.charCodeAt(0) - 96;
+        sendInput(String.fromCharCode(code));
         return;
       }
     },
-    [ctrlCPrimed],
+    [ctrlCPrimed, sendInput],
   );
+
+  // Mobile beforeinput handler — catches Enter and Backspace on mobile keyboards
+  const handleBeforeInput = useCallback(
+    (e: Event) => {
+      const inputEvent = e as InputEvent;
+      if (inputEvent.inputType === "insertLineBreak" || inputEvent.inputType === "insertParagraph") {
+        e.preventDefault();
+        sendInput("\r");
+        return;
+      }
+      if (inputEvent.inputType === "deleteContentBackward") {
+        e.preventDefault();
+        sendInput("\x7f");
+        return;
+      }
+      if (inputEvent.inputType === "deleteContentForward") {
+        e.preventDefault();
+        sendInput("\x1b[3~");
+        return;
+      }
+    },
+    [sendInput],
+  );
+
+  // Mobile input handler — catches text that the mobile keyboard inserts
+  // This fires after the textarea value has changed, so we diff to find new text
+  const handleInput = useCallback(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    const current = textarea.value;
+    const prev = lastTextareaValue.current;
+
+    if (current.length > prev.length) {
+      // New text was inserted
+      const inserted = current.slice(prev.length);
+      sendInput(inserted);
+    }
+    // Always reset the textarea to empty to prevent accumulation
+    textarea.value = "";
+    lastTextareaValue.current = "";
+  }, [sendInput]);
+
+  // Attach beforeinput and input listeners (React doesn't support onBeforeInput well)
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    textarea.addEventListener("beforeinput", handleBeforeInput);
+    textarea.addEventListener("input", handleInput);
+    return () => {
+      textarea.removeEventListener("beforeinput", handleBeforeInput);
+      textarea.removeEventListener("input", handleInput);
+    };
+  }, [handleBeforeInput, handleInput]);
 
   // -----------------------------------------------------------------------
   // Render
@@ -610,18 +675,30 @@ export function DashboardTerminalScreen({
               />
               <style>{`@keyframes terminal-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
             </div>
-            {/* Hidden input to capture keyboard events */}
+            {/* Input capture — visible enough for mobile to show keyboard */}
             <textarea
               ref={inputRef}
               onKeyDown={handleKeyDown}
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
               style={{
                 position: "absolute",
-                top: 0,
+                bottom: 0,
                 left: 0,
-                width: "1px",
+                width: "100%",
                 height: "1px",
-                opacity: 0,
-                pointerEvents: "none",
+                opacity: 0.01,
+                caretColor: "transparent",
+                border: "none",
+                outline: "none",
+                resize: "none",
+                padding: 0,
+                margin: 0,
+                fontSize: "16px",
+                backgroundColor: "transparent",
+                color: "transparent",
               }}
               autoFocus
               aria-label="Terminal input"
