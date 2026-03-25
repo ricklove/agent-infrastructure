@@ -343,7 +343,9 @@ when(Provider.binding.targets(Provider.openrouter))
 when(Provider.binding.targets(Provider.claudeAgentSdk))
   .then(Provider.binding.mayReuse(Provider.thread))
   .and(AgentChat.treats(Provider.thread).as("provider-owned execution state"))
-  .and(AgentChat.tracks(Context.revision));
+  .and(AgentChat.tracks(Context.revision))
+  .and(AgentChat.uses("Claude plan mode when the session process is Discuss or when no explicit process blueprint is selected"))
+  .and(AgentChat.uses("Claude writable execution mode for blueprint-authoring or implementation-oriented processes"));
 
 when(Provider.binding.targets(Provider.gemini))
   .then(AgentChat.treats(Provider.thread).as("optional provider-side metadata rather than canonical session ownership"))

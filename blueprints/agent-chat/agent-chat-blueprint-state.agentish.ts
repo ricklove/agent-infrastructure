@@ -24,6 +24,7 @@ const CurrentReality = {
   realtime: define.concept("RealtimeSessionUpdates"),
   directoryAndTitleQueueing: define.concept("QueuedDirectoryAndTitleInstructions"),
   codexAndClaudeExecution: define.concept("CodexAndClaudeProviderExecution"),
+  claudeProcessModePolicy: define.concept("ClaudeProcessModePolicy"),
   currentChatProviderSettings: define.concept("CurrentChatProviderSettingsMenu"),
   clipboardImagePaste: define.concept("ClipboardImagePasteSupport"),
   archivedSessionOrganization: define.concept("ArchivedSessionOrganization"),
@@ -69,6 +70,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.realtime,
   CurrentReality.directoryAndTitleQueueing,
   CurrentReality.codexAndClaudeExecution,
+  CurrentReality.claudeProcessModePolicy,
   CurrentReality.currentChatProviderSettings,
   CurrentReality.clipboardImagePaste,
   CurrentReality.archivedSessionOrganization,
@@ -127,6 +129,12 @@ CurrentReality.codexAndClaudeExecution.means(`
 - Codex app-server and Claude Agent SDK both have working execution adapters in the current backend
 - active Codex and Claude turns may be interrupted while a run is active
 - provider thread ids remain metadata attached to the workspace-owned session rather than replacing canonical chat history
+`);
+
+CurrentReality.claudeProcessModePolicy.means(`
+- the current Claude adapter now maps Discuss sessions to Claude SDK plan mode instead of writable execution mode
+- the current Claude adapter also maps sessions with no explicit process blueprint to Claude SDK plan mode so question-first chats do not silently gain edit capability
+- blueprint-authoring and implementation-oriented process selections still use Claude writable execution mode
 `);
 
 CurrentReality.currentChatProviderSettings.means(`

@@ -150,6 +150,7 @@ AgentChatDashboardImplementation.enforces(`
 - Each provider adapter must be re-researched against current provider docs and relevant open-source reference implementations immediately before implementing that adapter.
 - Agent Chat sessions must inherit the development-process blueprint so provider-backed agents use the same blueprint-first workflow rules.
 - The session model should support assignment of a repository process blueprint that defines expectation text and idle-watchdog behavior.
+- Claude Agent SDK sessions should use Claude plan mode when the current session is in Discuss or has no explicit process blueprint, and should use writable execution mode for blueprint-authoring or implementation-oriented processes.
 - The browser should own session list, transcript rendering, composer state, reconnect logic, and streaming UI.
 - Session-list organization must be canonical app data rather than browser-only preference state.
 - The main chat surface should prioritize the active thread and keep secondary controls behind menus or drawers.
