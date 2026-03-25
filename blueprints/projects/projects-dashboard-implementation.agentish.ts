@@ -68,6 +68,7 @@ const Ui = {
   projectList: define.entity("ProjectsListPanel"),
   projectDetail: define.entity("ProjectDetailPanel"),
   createProjectDialog: define.entity("CreateProjectDialog"),
+  mobileSectionTabs: define.entity("ProjectsMobileSectionTabs"),
   githubAccessPanel: define.entity("GitHubAccessPanel"),
   githubInstallationList: define.entity("GitHubInstallationList"),
   accessibleRepoPicker: define.entity("AccessibleRepoPicker"),
@@ -117,6 +118,8 @@ ProjectsDashboardImplementation.enforces(`
 - Private-repo onboarding should support adding GitHub App access before any clone step so the system can discover private repos through that installation.
 - After GitHub App access is added, the operator should be able to list repositories visible to that installation and create a project from that discovered repo catalog.
 - For private repos, selecting from the discovered installation-visible repo list is the preferred add-project path over manually typing a clone URL first.
+- On narrow mobile viewports, GitHub Access and project-management surfaces must not remain scrunched into simultaneous half-height panes.
+- Mobile layout should show one primary section at a time with a compact section switcher such as tabs, segmented controls, or an equivalent single-surface navigator.
 - All projects should share the same development-process blueprint for agentic coding rather than defining bespoke full project workflows.
 - Each project should only define the repo-specific integration settings needed by that shared workflow: the base branch and the post-merge bun command.
 - Continuous integration back into the configured base branch is the default operating model for agent work.
@@ -172,6 +175,7 @@ Dashboard.screen.contains(
   Ui.projectList,
   Ui.projectDetail,
   Ui.createProjectDialog,
+  Ui.mobileSectionTabs,
   Ui.githubAccessPanel,
   Ui.githubInstallationList,
   Ui.accessibleRepoPicker,
@@ -257,6 +261,11 @@ when(User.creates(Project.record))
   .and(Ui.createProjectDialog.mayOffer(Ui.accessibleRepoPicker))
   .and(Project.workspace.requires(Scope.explicitProjects))
   .and(Project.workspace.requires(Scope.repoRootBoundaries));
+
+when(Dashboard.screen.renders("on a narrow viewport"))
+  .then(Dashboard.screen.shows(Ui.mobileSectionTabs))
+  .and(Dashboard.screen.shows("one primary section at a time"))
+  .and(Dashboard.screen.avoids("splitting GitHub access and project management into cramped equal-height panes"));
 
 when(User.configures(Github.installation))
   .then(Ui.githubAccessPanel.shows(Ui.githubInstallationList))

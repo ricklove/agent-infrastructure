@@ -87,6 +87,7 @@ function defaultLocalPath(owner: string, repo: string) {
 export function ProjectsScreen({
   apiRootUrl = "/api/projects",
 }: ProjectsScreenProps) {
+  const [activeMobileSection, setActiveMobileSection] = useState<"github" | "projects">("github");
   const [installations, setInstallations] = useState<InstallationSummary[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [selectedInstallationId, setSelectedInstallationId] = useState("");
@@ -323,8 +324,39 @@ export function ProjectsScreen({
         </p>
       </div>
 
+      <div className="border-b border-stone-800 px-4 py-3 lg:hidden">
+        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-stone-800 bg-stone-900/70 p-1">
+          <button
+            type="button"
+            className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+              activeMobileSection === "github"
+                ? "bg-emerald-400 text-stone-950"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+            onClick={() => setActiveMobileSection("github")}
+          >
+            GitHub Access
+          </button>
+          <button
+            type="button"
+            className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+              activeMobileSection === "projects"
+                ? "bg-sky-400 text-stone-950"
+                : "text-stone-300 hover:bg-stone-800"
+            }`}
+            onClick={() => setActiveMobileSection("projects")}
+          >
+            Projects
+          </button>
+        </div>
+      </div>
+
       <div className="grid min-h-0 flex-1 gap-4 overflow-hidden p-4 lg:grid-cols-[28rem_minmax(0,1fr)]">
-        <section className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-2xl border border-stone-800 bg-stone-900/80 p-4">
+        <section
+          className={`flex min-h-0 flex-col gap-4 overflow-y-auto rounded-2xl border border-stone-800 bg-stone-900/80 p-4 ${
+            activeMobileSection === "github" ? "flex" : "hidden"
+          } lg:flex`}
+        >
           <div>
             <h2 className="text-lg font-semibold text-stone-100">GitHub Access</h2>
             <p className="text-sm text-stone-400">
@@ -457,7 +489,11 @@ export function ProjectsScreen({
           </div>
         </section>
 
-        <section className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-2xl border border-stone-800 bg-stone-900/80 p-4">
+        <section
+          className={`min-h-0 flex-col gap-4 overflow-y-auto rounded-2xl border border-stone-800 bg-stone-900/80 p-4 ${
+            activeMobileSection === "projects" ? "flex" : "hidden"
+          } lg:flex`}
+        >
           <div className="grid gap-4 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
             <div className="space-y-3">
               <div>
