@@ -8,6 +8,7 @@ export type ProcessBlueprint = {
   idlePrompt: string;
   completionMode: "exact_reply";
   completionToken: string;
+  blockedToken: string;
   stopConditions: string[];
   watchdog: {
     enabled: boolean;
@@ -24,6 +25,7 @@ type RawProcessBlueprint = {
   idlePrompt?: unknown;
   completionMode?: unknown;
   completionToken?: unknown;
+  blockedToken?: unknown;
   stopConditions?: unknown;
   watchdog?: {
     enabled?: unknown;
@@ -43,10 +45,11 @@ function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): 
   const idlePrompt = typeof raw.idlePrompt === "string" ? raw.idlePrompt.trim() : "";
   const completionToken =
     typeof raw.completionToken === "string" ? raw.completionToken.trim() : "";
+  const blockedToken = typeof raw.blockedToken === "string" ? raw.blockedToken.trim() : "";
   const completionMode =
     raw.completionMode === "exact_reply" ? "exact_reply" : null;
 
-  if (!id || !title || !expectation || !idlePrompt || !completionToken || !completionMode) {
+  if (!id || !title || !expectation || !idlePrompt || !completionToken || !blockedToken || !completionMode) {
     throw new Error(`Invalid process blueprint: ${jsonPath}`);
   }
 
@@ -63,6 +66,7 @@ function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): 
     idlePrompt,
     completionMode,
     completionToken,
+    blockedToken,
     stopConditions: Array.isArray(raw.stopConditions)
       ? raw.stopConditions
           .map((value) => (typeof value === "string" ? value.trim() : ""))
@@ -73,7 +77,7 @@ function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): 
       idleTimeoutSeconds:
         Number.isFinite(idleTimeoutSeconds) && idleTimeoutSeconds > 0 ? idleTimeoutSeconds : 90,
       maxNudgesPerIdleEpisode:
-        Number.isFinite(maxNudgesPerIdleEpisode) && maxNudgesPerIdleEpisode > 0
+        Number.isFinite(maxNudgesPerIdleEpisode) && maxNudgesPerIdleEpisode >= 0
           ? maxNudgesPerIdleEpisode
           : 1,
     },

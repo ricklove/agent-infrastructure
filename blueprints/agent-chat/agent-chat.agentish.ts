@@ -112,8 +112,16 @@ AgentChat.enforces(`
 - When more than one human message is queued behind an active run, AgentChat should deliver that queued human batch into the next provider turn together rather than silently serializing them into many one-message follow-up turns.
 - Session process changes should remain queued provider-facing instructions until the next turn consumes them, and that consumption should also become a canonical transcript event so history survives refresh.
 - When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
+- Once a session process is active, it remains unresolved until the agent emits that process blueprint's exact done token or exact blocked token.
 - Expectation-aware watchdog behavior must treat operator-visible stalled turns as unresolved inactivity even when the provider transport still considers the turn open.
+- If the provider explicitly reports itself idle while the session process is still unresolved, AgentChat should make the watchdog immediately eligible rather than waiting another full idle timeout window.
+- If the provider explicitly reports an error, AgentChat should enter provider-error handling and retry policy rather than misclassifying that state as ordinary idle.
+- Active human typing should suppress idle-watchdog prompting until typing stops and the short grace period expires.
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
+- Provider quota exhaustion, token-budget exhaustion, and context-window exhaustion should surface as canonical transcript activity when the provider exposes those states, even when no assistant text is produced.
+- All surfaced agent activity must become canonical transcript history, including tool calls, sub-agent work, retries, waiting states, approvals, provider limit status, and future surfaced activity classes.
+- When many adjacent low-signal activity items accumulate in the transcript, AgentChat may collapse that activity cluster by default as long as the underlying canonical history and ordering remain intact.
+- When collapsed activity is expanded, the transcript should foreground the actual task identity or work item rather than generic lifecycle wording such as started or completed without context.
 `);
 
 Workspace.shell.contains(

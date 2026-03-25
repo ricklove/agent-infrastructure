@@ -5,6 +5,7 @@
   "idlePrompt": "If the discussion is complete, reply only with 'done: discussion complete'. Otherwise continue the discussion or state what point still needs to be resolved.",
   "completionMode": "exact_reply",
   "completionToken": "done: discussion complete",
+  "blockedToken": "blocked: discussion needs user input",
   "stopConditions": [
     "discussion complete",
     "waiting for user decision"
@@ -12,6 +13,6 @@
   "watchdog": {
     "enabled": true,
     "idleTimeoutSeconds": 90,
-    "maxNudgesPerIdleEpisode": 1
+    "maxNudgesPerIdleEpisode": 0
   }
 }

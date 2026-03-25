@@ -5,6 +5,7 @@
   "idlePrompt": "If the blueprint work is complete, reply only with 'done: blueprint defined'. Otherwise continue the blueprint work or state what information is missing.",
   "completionMode": "exact_reply",
   "completionToken": "done: blueprint defined",
+  "blockedToken": "blocked: blueprint clarification required",
   "stopConditions": [
     "blueprint work complete",
     "missing information from the user"
@@ -12,6 +13,6 @@
   "watchdog": {
     "enabled": true,
     "idleTimeoutSeconds": 90,
-    "maxNudgesPerIdleEpisode": 1
+    "maxNudgesPerIdleEpisode": 0
   }
 }

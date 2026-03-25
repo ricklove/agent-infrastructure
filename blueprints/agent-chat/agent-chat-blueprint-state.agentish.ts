@@ -31,6 +31,11 @@ const CurrentReality = {
   sessionListSearch: define.concept("SessionListSearch"),
   sessionListQuickProcessSet: define.concept("SessionListQuickProcessSet"),
   processResolutionGuard: define.concept("ProcessResolutionGuard"),
+  stalledTurnWatchdog: define.concept("StalledTurnWatchdog"),
+  providerErrorRetry: define.concept("ProviderErrorRetry"),
+  typingAwareIdleSuppression: define.concept("TypingAwareIdleSuppression"),
+  canonicalActivityHistory: define.concept("CanonicalActivityHistory"),
+  providerLimitActivity: define.concept("ProviderLimitActivity"),
   sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
   threadNavigationGap: define.concept("ThreadNavigationGap"),
   backendOwnedWatchdogContinuity: define.concept("BackendOwnedWatchdogContinuity"),
@@ -77,6 +82,11 @@ AgentChatBlueprintState.contains(
   CurrentReality.sessionListSearch,
   CurrentReality.sessionListQuickProcessSet,
   CurrentReality.processResolutionGuard,
+  CurrentReality.stalledTurnWatchdog,
+  CurrentReality.providerErrorRetry,
+  CurrentReality.typingAwareIdleSuppression,
+  CurrentReality.canonicalActivityHistory,
+  CurrentReality.providerLimitActivity,
   CurrentReality.sessionListWorkflowPolishGap,
   CurrentReality.threadNavigationGap,
   CurrentReality.backendOwnedWatchdogContinuity,
@@ -178,6 +188,7 @@ CurrentReality.sessionListQuickProcessSet.means(`
 
 CurrentReality.processResolutionGuard.means(`
 - when the active session process reaches its completion token, the quick-set control enters a required unresolved state instead of silently reusing the completed process contract
+- when the active session process reaches its blocked token, the same guard enters a Blocked unresolved state instead of silently reusing the blocked process contract
 - that unresolved state is shown as red Done warning text in the quick-set selector rather than as a stored process value or selectable option
 - the current-chat settings surface also highlights that completed-process state and keeps normal process options available for resolution
 - the composer send path is blocked until the operator chooses the next normal process selection
@@ -189,6 +200,31 @@ CurrentReality.stalledTurnWatchdog.means(`
 - watchdog scheduling now tracks the last meaningful visible progress time even while a provider turn remains in running state
 - a stalled running turn can now flip watchdog state to nudged and append a watchdog prompt before the provider emits turn completion
 - local verification confirmed that a long-running shell command session stayed provider-running, then received its Full Development Process watchdog prompt after the configured inactivity budget expired
+- when the provider finishes a turn and reports itself idle before the process is done or blocked, the watchdog becomes immediately eligible instead of waiting a second idle timeout
+`);
+
+CurrentReality.providerErrorRetry.means(`
+- provider failures now record canonical activity history instead of silently vanishing into transient runtime state
+- retryable provider errors enter bounded retry with backoff rather than immediately collapsing the process into dead stop
+- non-retryable or exhausted failures still surface as explicit run failure state instead of idle-watchdog wording
+`);
+
+CurrentReality.typingAwareIdleSuppression.means(`
+- active human typing now sends ephemeral typing presence to the backend
+- while that typing grace window is active, idle-watchdog prompting is deferred
+- once typing stops and the grace window expires, normal watchdog scheduling resumes
+`);
+
+CurrentReality.canonicalActivityHistory.means(`
+- surfaced provider activity such as tool execution and background-task transitions now enters canonical transcript history as activity messages
+- those activity records survive refresh and backend restart instead of existing only as transient browser state
+- canonical activity coverage is still incomplete across every possible surfaced event class, so this area remains partial rather than finished
+`);
+
+CurrentReality.providerLimitActivity.means(`
+- the Codex adapter now opts into supported app-server raw status events through the experimental API capability
+- when Codex exposes token-budget, quota, or context-window exhaustion without assistant text, Agent Chat now converts that provider status into canonical transcript activity instead of falling back to an empty assistant response
+- local verification with an isolated fake Codex app-server confirmed that an exhausted-provider completion now records a concrete provider-limit activity message in canonical history
 `);
 
 CurrentReality.backendOwnedWatchdogContinuity.means(`
@@ -224,6 +260,8 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - when queued system instructions such as process changes are consumed at run start, they now become canonical transcript history at that moment and survive refresh
 - Codex reasoning checkpoints are not yet recorded canonically at receipt time, so the current thought-entry behavior is not aligned with the intended canonical-only transcript model
 - live assistant streaming text is still only an in-memory UI buffer and is not yet recorded canonically as transcript checkpoint history
+- expanded activity rows still use overly generic wording like command execution started or completed instead of foregrounding the actual task identity
+- adjacent low-signal activity items still render as many full-height transcript cards instead of collapsing into a compact default summary when they accumulate
 - provider-originated run events are still not consistently persisted into canonical Agent Chat history, so the transcript cannot yet be replayed solely from app-owned records for every surfaced provider event
 - the current stream-history presentation still mislabels observed provider text as draft semantics and needs cleaner stream-specific wording
 - internal stream checkpoint storage still leaks too directly into operator-facing transcript concepts and needs cleaner presentation boundaries

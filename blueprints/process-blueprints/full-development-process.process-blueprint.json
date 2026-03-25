@@ -5,6 +5,7 @@
   "idlePrompt": "If you fully completed the development process, reply only with 'done: full development process complete'. Otherwise continue the work or state what deployment or verification step is still incomplete.",
   "completionMode": "exact_reply",
   "completionToken": "done: full development process complete",
+  "blockedToken": "blocked: full development process blocked",
   "stopConditions": [
     "full development process complete",
     "blocked on user or environment dependency"
@@ -12,6 +13,6 @@
   "watchdog": {
     "enabled": true,
     "idleTimeoutSeconds": 120,
-    "maxNudgesPerIdleEpisode": 1
+    "maxNudgesPerIdleEpisode": 0
   }
 }

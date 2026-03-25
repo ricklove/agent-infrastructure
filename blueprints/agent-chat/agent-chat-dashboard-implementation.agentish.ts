@@ -173,9 +173,16 @@ AgentChatDashboardImplementation.enforces(`
 - That unresolved state should show Done as red warning text or placeholder treatment inside the selector, but Done must not become a stored process value or selectable option.
 - The unresolved Done state must be backed by a distinct UI sentinel rather than by reusing the current real process option, so the operator can explicitly pick the same prior process again and resolve the guard intentionally.
 - While that unresolved state is active, the composer send action should remain disabled until the operator picks one of the normal process selections.
+- The unresolved sentinel may show either Done or Blocked warning text depending on the terminal process outcome, but neither label becomes a stored process value.
 - Expectation-aware watchdog timing must use operator-visible inactivity, not only provider turn completion, so a long-running turn with no meaningful progress becomes eligible for a watchdog nudge.
 - Visible progress for watchdog purposes should include assistant stream deltas, canonical thought items, background-process changes, waiting-flag changes, and any other surfaced activity that shows the run is still meaningfully advancing.
 - A stalled running turn may still appear as provider-running in worker state, but watchdog behavior should treat it as unresolved inactivity once that visible-activity budget expires.
+- If the provider reports itself idle while the process is still unresolved, the watchdog should become immediately eligible instead of waiting a second timeout window.
+- If the provider reports an error, the backend should record that canonical failure activity immediately, apply retry policy for retryable cases, and avoid using idle-prompt wording for that state.
+- If the provider exposes quota exhaustion, token-budget exhaustion, or context-window exhaustion through supported provider status events rather than ordinary assistant text, the backend should turn that surfaced provider status into canonical transcript activity instead of falling back to a blank or `(empty response)` assistant message.
+- Human typing in the composer should suppress idle-watchdog prompting until the typing grace period ends.
+- When adjacent execution-activity entries become numerous and low-signal, the transcript may collapse that consecutive activity block by default so conversation remains visually dominant.
+- Expanded activity rows should lead with the actual command, task title, sub-agent name, approval target, retry target, or wait reason instead of generic labels like command execution started or completed when richer task identity exists.
 - When that queued process-change instruction is actually consumed by the next provider turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
@@ -198,6 +205,7 @@ AgentChatDashboardImplementation.enforces(`
 - The browser must only render transcript entries that exist in canonical Agent Chat history; it must not reconstruct pseudo-messages by scraping provider-owned files after the fact.
 - If the operator can see live streaming assistant text in the thread, Agent Chat must record that visible stream canonically as transcript checkpoint history rather than dropping it on refresh or replacing it with a final-only message.
 - More generally, provider-originated run events that Agent Chat chooses to surface to the operator should be recorded canonically when received, so the transcript is replayable from Agent Chat history alone without synthetic reconstruction.
+- Tool calls, tool completion notices, sub-agent work, retry attempts, waiting-state transitions, and future surfaced activity types all inherit that same canonical-history rule.
 - Replaced stream revisions should render above the final assistant message they preceded, because they are prior observed stream state for that turn rather than footer metadata that comes afterward.
 - Only hidden or secondary content such as thought checkpoints or replaced stream revisions should be collapsed; the current visible assistant stream or final assistant message should remain expanded by default.
 - Transcript UI should avoid debug or internal labels like `Recorded Stream Checkpoint` when simpler operator-facing wording or direct content presentation is sufficient.
@@ -337,6 +345,7 @@ Ui.activityStatus.means(`
 - it should show idle, queued, running, interrupted, or failed state
 - when a run is active, it should show elapsed time and any honest provider-backed activity details the backend can supply
 - provider-backed activity details must not be fabricated; absent data should stay absent rather than guessed
+- if activity details are collapsed in the main transcript, the expanded view should still reveal the concrete underlying task or work item for each entry
 `);
 
 Ui.queuedMessageList.means(`

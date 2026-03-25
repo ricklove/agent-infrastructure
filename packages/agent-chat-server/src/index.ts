@@ -83,6 +83,7 @@ type ProcessBlueprintResponseItem = {
   idlePrompt: string;
   completionMode: "exact_reply";
   completionToken: string;
+  blockedToken: string;
   stopConditions: string[];
   watchdog: {
     enabled: boolean;
@@ -104,6 +105,8 @@ type SessionRuntimeState = SessionActivity & {
   lastVisibleActivityAtMs: number | null;
   interruptRequested: boolean;
   providerKind: AgentChatProviderKind | null;
+  providerIdleSinceAtMs: number | null;
+  userTypingUntilAtMs: number | null;
 };
 
 type WorkspacePersistenceRequest = {
@@ -166,6 +169,8 @@ const sessionSockets = new Map<string, Set<Bun.ServerWebSocket<ChatSocketData>>>
 const activeSessionRuns = new Set<string>();
 const sessionRuntime = new Map<string, SessionRuntimeState>();
 const sessionWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const retryBackoffMs = [2_000, 5_000, 15_000] as const;
+const typingGraceMs = 5_000;
 
 primeClaudeModelCatalogRefresh();
 
@@ -205,6 +210,8 @@ function ensureRuntimeState(sessionId: string): SessionRuntimeState {
       lastVisibleActivityAtMs: null,
       interruptRequested: false,
       providerKind: null,
+      providerIdleSinceAtMs: null,
+      userTypingUntilAtMs: null,
     };
     sessionRuntime.set(sessionId, runtime);
   }
@@ -280,6 +287,7 @@ function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
     idlePrompt: entry.idlePrompt,
     completionMode: entry.completionMode,
     completionToken: entry.completionToken,
+    blockedToken: entry.blockedToken,
     stopConditions: [...entry.stopConditions],
     watchdog: {
       enabled: entry.watchdog.enabled,
@@ -322,23 +330,38 @@ function resetSessionWatchdogState(sessionId: string) {
   return updated;
 }
 
-function maybeMarkProcessBlueprintCompletion(sessionId: string, assistantText: string) {
+function maybeMarkProcessBlueprintTerminal(
+  sessionId: string,
+  assistantText: string,
+): "completed" | "blocked" | null {
   const session = store.getSession(sessionId);
   const processBlueprint = getSessionProcessBlueprint(session);
   if (!session || !processBlueprint) {
-    return;
+    return null;
   }
 
-  if (assistantText.trim() !== processBlueprint.completionToken) {
-    return;
+  const normalizedText = assistantText.trim();
+  if (normalizedText === processBlueprint.completionToken) {
+    setSessionWatchdogState(sessionId, {
+      status: "completed",
+      nudgeCount: session.watchdogState.nudgeCount,
+      lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
+      completedAtMs: Date.now(),
+    });
+    return "completed";
   }
 
-  setSessionWatchdogState(sessionId, {
-    status: "completed",
-    nudgeCount: session.watchdogState.nudgeCount,
-    lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
-    completedAtMs: Date.now(),
-  });
+  if (normalizedText === processBlueprint.blockedToken) {
+    setSessionWatchdogState(sessionId, {
+      status: "blocked",
+      nudgeCount: session.watchdogState.nudgeCount,
+      lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
+      completedAtMs: Date.now(),
+    });
+    return "blocked";
+  }
+
+  return null;
 }
 
 function buildProcessExpectationInstruction(processBlueprint: ProcessBlueprint | null) {
@@ -351,6 +374,54 @@ function buildProcessExpectationInstruction(processBlueprint: ProcessBlueprint |
 
 function persistedIdleWatchdogAnchorMs(session: StoredSession) {
   return session.updatedAtMs;
+}
+
+function processBlueprintNudgeLimitReached(
+  session: StoredSession,
+  processBlueprint: ProcessBlueprint,
+) {
+  return (
+    processBlueprint.watchdog.maxNudgesPerIdleEpisode > 0 &&
+    session.watchdogState.nudgeCount >= processBlueprint.watchdog.maxNudgesPerIdleEpisode
+  );
+}
+
+function sessionTerminalWatchdogState(session: StoredSession) {
+  return (
+    session.watchdogState.status === "completed" || session.watchdogState.status === "blocked"
+  );
+}
+
+function operatorTypingActive(runtime: SessionRuntimeState) {
+  return runtime.userTypingUntilAtMs !== null && runtime.userTypingUntilAtMs > Date.now();
+}
+
+function isRetryableProviderError(errorText: string) {
+  const normalized = errorText.toLowerCase();
+  return [
+    "timed out",
+    "timeout",
+    "websocket",
+    "closed unexpectedly",
+    "failed to connect",
+    "connection refused",
+    "econnreset",
+    "econnrefused",
+    "temporarily unavailable",
+    "503",
+    "502",
+    "504",
+    "rate limit",
+  ].some((fragment) => normalized.includes(fragment));
+}
+
+function appendActivityMessage(sessionId: string, text: string) {
+  return store.appendMessage(sessionId, {
+    role: "system",
+    kind: "activity",
+    providerSeenAtMs: Date.now(),
+    content: [{ type: "text", text }],
+  });
 }
 
 function queueProcessExpectationForSession(sessionId: string) {
@@ -405,11 +476,15 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
     return;
   }
 
-  if (session.watchdogState.status === "completed") {
+  if (sessionTerminalWatchdogState(session)) {
     return;
   }
 
-  if (session.watchdogState.nudgeCount >= processBlueprint.watchdog.maxNudgesPerIdleEpisode) {
+  if (processBlueprintNudgeLimitReached(session, processBlueprint)) {
+    return;
+  }
+
+  if (operatorTypingActive(runtime)) {
     return;
   }
 
@@ -426,6 +501,11 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
     lastNudgedAtMs: Date.now(),
     completedAtMs: null,
   });
+  setRuntimeState(sessionId, (current) => ({
+    ...current,
+    providerIdleSinceAtMs: null,
+    lastVisibleActivityAtMs: current.status === "running" ? Date.now() : current.lastVisibleActivityAtMs,
+  }));
 
   broadcastSession(sessionId, {
     type: "session.updated",
@@ -436,6 +516,7 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
   });
 
   void processSessionQueue(sessionId);
+  maybeScheduleSessionWatchdog(sessionId);
 }
 
 function maybeScheduleSessionWatchdog(sessionId: string) {
@@ -447,17 +528,27 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
   }
 
   const runtime = ensureRuntimeState(sessionId);
-  if (session.watchdogState.status === "completed") {
+  if (sessionTerminalWatchdogState(session)) {
+    return;
+  }
+
+  if (processBlueprintNudgeLimitReached(session, processBlueprint)) {
     return;
   }
 
   let delayMs: number | null = null;
-  if (runtime.status === "idle") {
-    delayMs = Math.max(
-      processBlueprint.watchdog.idleTimeoutSeconds * 1000 -
-        (Date.now() - persistedIdleWatchdogAnchorMs(session)),
-      0,
-    );
+  if (operatorTypingActive(runtime)) {
+    delayMs = Math.max((runtime.userTypingUntilAtMs ?? Date.now()) - Date.now(), 0);
+  } else if (runtime.status === "idle") {
+    if (runtime.providerIdleSinceAtMs !== null && session.watchdogState.nudgeCount === 0) {
+      delayMs = 0;
+    } else {
+      delayMs = Math.max(
+        processBlueprint.watchdog.idleTimeoutSeconds * 1000 -
+          (Date.now() - persistedIdleWatchdogAnchorMs(session)),
+        0,
+      );
+    }
   } else if (runtime.status === "running") {
     const anchorMs = runtime.lastVisibleActivityAtMs ?? runtime.startedAtMs;
     if (anchorMs !== null) {
@@ -478,21 +569,278 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
   sessionWatchdogTimers.set(sessionId, handle);
 }
 
+function setUserTypingState(sessionId: string, active: boolean) {
+  const session = store.getSession(sessionId);
+  if (!session) {
+    return null;
+  }
+
+  const runtime = setRuntimeState(sessionId, (current) => ({
+    ...current,
+    userTypingUntilAtMs: active ? Date.now() + typingGraceMs : null,
+  }));
+  if (!active && runtime.status !== "idle" && runtime.status !== "running") {
+    cancelSessionWatchdog(sessionId);
+  }
+  return runtime;
+}
+
 function rearmPersistedSessionWatchdogs() {
   for (const session of store.listSessions()) {
     const processBlueprint = getSessionProcessBlueprint(session);
     if (!processBlueprint?.watchdog.enabled) {
       continue;
     }
-    if (session.watchdogState.status === "completed") {
+    if (sessionTerminalWatchdogState(session)) {
       continue;
     }
-    if (session.watchdogState.nudgeCount >= processBlueprint.watchdog.maxNudgesPerIdleEpisode) {
+    if (processBlueprintNudgeLimitReached(session, processBlueprint)) {
       continue;
     }
     ensureRuntimeState(session.id);
     maybeScheduleSessionWatchdog(session.id);
   }
+}
+
+function buildRetryWaitingFlag(delayMs: number) {
+  return `retrying in ${Math.max(1, Math.ceil(delayMs / 1000))}s`;
+}
+
+function shouldRetryProviderError(errorText: string, attempt: number) {
+  return isRetryableProviderError(errorText) && attempt < retryBackoffMs.length + 1;
+}
+
+function providerActivityCallbacks(
+  sessionId: string,
+  currentSession: StoredSession,
+  seenQueuedInstructionMessages: StoredMessage[],
+  seenQueuedMessages: StoredMessage[],
+  seenThoughtItemIds: Set<string>,
+  streamCheckpointMessageIds: Map<string, string>,
+  streamCheckpointTexts: Map<string, string>,
+) {
+  return {
+    onRunStarted(payload: { threadId: string; turnId: string }) {
+      const startedActivity = appendActivityMessage(sessionId, "Provider turn started.");
+      setRuntimeState(sessionId, (current) => ({
+        ...current,
+        status: "running",
+        startedAtMs: current.startedAtMs ?? Date.now(),
+        lastVisibleActivityAtMs: Date.now(),
+        providerIdleSinceAtMs: null,
+        threadId: payload.threadId,
+        turnId: payload.turnId,
+      }));
+      broadcastSession(sessionId, {
+        type: "run.started",
+        sessionId,
+        providerKind: currentSession.providerKind,
+        messages: [...seenQueuedInstructionMessages, ...seenQueuedMessages].sort(
+          (left, right) => left.createdAtMs - right.createdAtMs,
+        ),
+        queuedMessages: store.listQueuedMessages(sessionId),
+        activity: toSessionActivity(sessionId),
+      });
+      broadcastSingleMessageUpdate(sessionId, startedActivity);
+    },
+    onThreadStatusChanged(payload: { threadId: string; flags: string[] }) {
+      let statusMessage: StoredMessage | null = null;
+      setRuntimeState(sessionId, (current) => {
+        const changed = current.waitingFlags.join("\u0000") !== payload.flags.join("\u0000");
+        if (changed) {
+          statusMessage = appendActivityMessage(
+            sessionId,
+            payload.flags.length > 0
+              ? `Agent waiting: ${payload.flags.join(", ")}.`
+              : "Agent resumed.",
+          );
+        }
+        return {
+          ...current,
+          threadId: payload.threadId || current.threadId,
+          waitingFlags: payload.flags,
+          lastVisibleActivityAtMs: changed ? Date.now() : current.lastVisibleActivityAtMs,
+          providerIdleSinceAtMs: null,
+        };
+      });
+      if (statusMessage) {
+        broadcastSingleMessageUpdate(sessionId, statusMessage);
+      }
+      broadcastActivity(sessionId);
+    },
+    onBackgroundProcessCountChanged(payload: {
+      threadId: string;
+      turnId: string;
+      backgroundProcessCount: number;
+    }) {
+      setRuntimeState(sessionId, (current) => ({
+        ...current,
+        threadId: payload.threadId || current.threadId,
+        turnId: payload.turnId || current.turnId,
+        backgroundProcessCount: payload.backgroundProcessCount,
+        lastVisibleActivityAtMs:
+          current.backgroundProcessCount === payload.backgroundProcessCount
+            ? current.lastVisibleActivityAtMs
+            : Date.now(),
+        providerIdleSinceAtMs: null,
+      }));
+      broadcastActivity(sessionId);
+    },
+    onAssistantDelta(payload: {
+      threadId: string;
+      turnId: string;
+      itemId: string;
+      delta: string;
+    }) {
+      if (payload.delta) {
+        markSessionVisibleActivity(sessionId);
+      }
+      if (payload.itemId) {
+        const nextText = `${streamCheckpointTexts.get(payload.itemId) ?? ""}${payload.delta}`;
+        streamCheckpointTexts.set(payload.itemId, nextText);
+
+        const existingMessageId = streamCheckpointMessageIds.get(payload.itemId);
+        const checkpointContent: StoredMessageContentBlock[] = [
+          {
+            type: "text",
+            text: nextText,
+          },
+        ];
+
+        const checkpointMessage = existingMessageId
+          ? store.updateMessageContent(sessionId, existingMessageId, checkpointContent)
+          : store.appendMessage(sessionId, {
+              role: "assistant",
+              kind: "streamCheckpoint",
+              providerSeenAtMs: Date.now(),
+              content: checkpointContent,
+            });
+
+        if (checkpointMessage) {
+          streamCheckpointMessageIds.set(payload.itemId, checkpointMessage.id);
+          broadcastSession(sessionId, {
+            type: "session.updated",
+            session: store.getSession(sessionId)
+              ? buildSessionSummary(store.getSession(sessionId)!)
+              : null,
+            messages: [checkpointMessage],
+            queuedMessages: store.listQueuedMessages(sessionId),
+            activity: toSessionActivity(sessionId),
+          });
+        }
+      }
+
+      broadcastSession(sessionId, {
+        type: "run.delta",
+        sessionId,
+        threadId: payload.threadId,
+        turnId: payload.turnId,
+        itemId: payload.itemId,
+        delta: payload.delta,
+      });
+    },
+    onThoughtItem(payload: {
+      threadId: string;
+      turnId: string;
+      itemId: string;
+      summaryText: string;
+    }) {
+      if (!payload.itemId || seenThoughtItemIds.has(payload.itemId) || !payload.summaryText.trim()) {
+        return;
+      }
+      markSessionVisibleActivity(sessionId);
+      seenThoughtItemIds.add(payload.itemId);
+      const thoughtMessage = store.appendMessage(sessionId, {
+        role: "assistant",
+        kind: "thought",
+        providerSeenAtMs: Date.now(),
+        content: [
+          {
+            type: "text",
+            text: payload.summaryText,
+          },
+        ],
+      });
+      broadcastSession(sessionId, {
+        type: "session.updated",
+        session: store.getSession(sessionId)
+          ? buildSessionSummary(store.getSession(sessionId)!)
+          : null,
+        messages: [thoughtMessage],
+        queuedMessages: store.listQueuedMessages(sessionId),
+        activity: toSessionActivity(sessionId),
+      });
+    },
+    onActivity(payload: { threadId: string; turnId: string; text: string }) {
+      const activityMessage = appendActivityMessage(sessionId, payload.text);
+      setRuntimeState(sessionId, (current) => ({
+        ...current,
+        threadId: payload.threadId || current.threadId,
+        turnId: payload.turnId || current.turnId,
+        lastVisibleActivityAtMs: Date.now(),
+        providerIdleSinceAtMs: null,
+      }));
+      broadcastSession(sessionId, {
+        type: "session.updated",
+        session: store.getSession(sessionId)
+          ? buildSessionSummary(store.getSession(sessionId)!)
+          : null,
+        messages: [activityMessage],
+        queuedMessages: store.listQueuedMessages(sessionId),
+        activity: toSessionActivity(sessionId),
+      });
+    },
+  };
+}
+
+function finalizeIdleRuntimeState(sessionId: string, threadId: string | null) {
+  setRuntimeState(sessionId, {
+    status: "idle",
+    startedAtMs: null,
+    threadId,
+    turnId: null,
+    backgroundProcessCount: 0,
+    waitingFlags: [],
+    lastError: null,
+    currentMessageId: null,
+    canInterrupt: false,
+    lastVisibleActivityAtMs: null,
+    interruptRequested: false,
+    providerKind: null,
+    providerIdleSinceAtMs: Date.now(),
+  });
+}
+
+function finalizeNonIdleRuntimeState(
+  sessionId: string,
+  status: "interrupted" | "error",
+  lastError: string | null,
+  providerKind: AgentChatProviderKind | null = null,
+) {
+  setRuntimeState(sessionId, {
+    status,
+    startedAtMs: null,
+    turnId: null,
+    backgroundProcessCount: 0,
+    waitingFlags: [],
+    lastError,
+    currentMessageId: null,
+    canInterrupt: false,
+    lastVisibleActivityAtMs: null,
+    interruptRequested: false,
+    providerKind,
+    providerIdleSinceAtMs: null,
+  });
+}
+
+function broadcastSingleMessageUpdate(sessionId: string, message: StoredMessage) {
+  broadcastSession(sessionId, {
+    type: "session.updated",
+    session: store.getSession(sessionId) ? buildSessionSummary(store.getSession(sessionId)!) : null,
+    messages: [message],
+    queuedMessages: store.listQueuedMessages(sessionId),
+    activity: toSessionActivity(sessionId),
+  });
 }
 
 function broadcastSession(sessionId: string, event: unknown) {
@@ -643,6 +991,7 @@ function setRuntimeState(
 function markSessionVisibleActivity(sessionId: string, atMs = Date.now()) {
   return setRuntimeState(sessionId, {
     lastVisibleActivityAtMs: atMs,
+    providerIdleSinceAtMs: null,
   });
 }
 
@@ -659,6 +1008,7 @@ async function processSessionQueue(sessionId: string) {
         status: "idle",
         currentMessageId: null,
         lastError: null,
+        providerIdleSinceAtMs: null,
       });
       broadcastActivity(sessionId);
     }
@@ -701,6 +1051,7 @@ async function runProviderTurnForQueuedMessages(
     lastVisibleActivityAtMs: Date.now(),
     interruptRequested: false,
     providerKind: session.providerKind,
+    providerIdleSinceAtMs: null,
   });
   store.markMessagesSeen(
     sessionId,
@@ -746,162 +1097,89 @@ async function runProviderTurnForQueuedMessages(
     const messageContent = queuedMessages.flatMap((queuedMessage) =>
       buildProviderInputContent(queuedMessage.content),
     );
-    const callbacks = {
-      onRunStarted(payload: { threadId: string; turnId: string }) {
+    const callbacks = providerActivityCallbacks(
+      sessionId,
+      currentSession,
+      seenQueuedInstructionMessages,
+      seenQueuedMessages,
+      seenThoughtItemIds,
+      streamCheckpointMessageIds,
+      streamCheckpointTexts,
+    );
+
+    let result: Awaited<ReturnType<typeof runCodexTurn>> | Awaited<ReturnType<typeof runClaudeTurn>>;
+    let attempt = 1;
+    while (true) {
+      try {
+        if (currentSession.providerKind === "codex-app-server") {
+          await ensureCodexAppServer(log);
+          result = await runCodexTurn(
+            currentSession,
+            messageContent,
+            pendingSystemInstruction,
+            callbacks,
+          );
+        } else if (currentSession.providerKind === "claude-agent-sdk") {
+          result = await runClaudeTurn(
+            sessionId,
+            currentSession,
+            messageContent,
+            pendingSystemInstruction,
+            callbacks,
+          );
+        } else {
+          throw new Error(`${currentSession.providerKind} provider adapter is not implemented yet`);
+        }
+        break;
+      } catch (error) {
+        const runtime = ensureRuntimeState(sessionId);
+        if (runtime.interruptRequested) {
+          throw error;
+        }
+        const errorText =
+          error instanceof Error ? error.message : "Provider run failed unexpectedly.";
+        if (!shouldRetryProviderError(errorText, attempt)) {
+          throw error;
+        }
+        const delayMs = retryBackoffMs[attempt - 1] ?? retryBackoffMs.at(-1) ?? 15000;
+        const failureActivity = appendActivityMessage(sessionId, `Provider error: ${errorText}`);
+        const retryActivity = appendActivityMessage(
+          sessionId,
+          `Retrying in ${Math.max(1, Math.ceil(delayMs / 1000))}s (attempt ${attempt + 1} of ${retryBackoffMs.length + 1}).`,
+        );
         setRuntimeState(sessionId, (current) => ({
           ...current,
           status: "running",
-          startedAtMs: current.startedAtMs ?? Date.now(),
+          waitingFlags: [buildRetryWaitingFlag(delayMs)],
+          lastError: errorText,
           lastVisibleActivityAtMs: Date.now(),
-          threadId: payload.threadId,
-          turnId: payload.turnId,
+          providerIdleSinceAtMs: null,
         }));
-        broadcastSession(sessionId, {
-          type: "run.started",
-          sessionId,
-          providerKind: currentSession.providerKind,
-          messages: [...seenQueuedInstructionMessages, ...seenQueuedMessages].sort(
-            (left, right) => left.createdAtMs - right.createdAtMs,
-          ),
-          queuedMessages: store.listQueuedMessages(sessionId),
-          activity: toSessionActivity(sessionId),
-        });
-      },
-      onThreadStatusChanged(payload: { threadId: string; flags: string[] }) {
-        setRuntimeState(sessionId, (current) => ({
-          ...current,
-          threadId: payload.threadId || current.threadId,
-          waitingFlags: payload.flags,
-          lastVisibleActivityAtMs:
-            current.waitingFlags.join("\u0000") === payload.flags.join("\u0000")
-              ? current.lastVisibleActivityAtMs
-              : Date.now(),
-        }));
-        broadcastActivity(sessionId);
-      },
-      onBackgroundProcessCountChanged(payload: {
-        threadId: string;
-        turnId: string;
-        backgroundProcessCount: number;
-      }) {
-        setRuntimeState(sessionId, (current) => ({
-          ...current,
-          threadId: payload.threadId || current.threadId,
-          turnId: payload.turnId || current.turnId,
-          backgroundProcessCount: payload.backgroundProcessCount,
-          lastVisibleActivityAtMs:
-            current.backgroundProcessCount === payload.backgroundProcessCount
-              ? current.lastVisibleActivityAtMs
-              : Date.now(),
-        }));
-        broadcastActivity(sessionId);
-      },
-      onAssistantDelta(payload: {
-        threadId: string;
-        turnId: string;
-        itemId: string;
-        delta: string;
-      }) {
-        if (payload.delta) {
-          markSessionVisibleActivity(sessionId)
-        }
-        if (payload.itemId) {
-          const nextText = `${streamCheckpointTexts.get(payload.itemId) ?? ""}${payload.delta}`;
-          streamCheckpointTexts.set(payload.itemId, nextText);
-
-          const existingMessageId = streamCheckpointMessageIds.get(payload.itemId);
-          const checkpointContent: StoredMessageContentBlock[] = [
-            {
-              type: "text",
-              text: nextText,
-            },
-          ];
-
-          const checkpointMessage = existingMessageId
-            ? store.updateMessageContent(sessionId, existingMessageId, checkpointContent)
-            : store.appendMessage(sessionId, {
-                role: "assistant",
-                kind: "streamCheckpoint",
-                providerSeenAtMs: Date.now(),
-                content: checkpointContent,
-              });
-
-          if (checkpointMessage) {
-            streamCheckpointMessageIds.set(payload.itemId, checkpointMessage.id);
-            broadcastSession(sessionId, {
-              type: "session.updated",
-              session: store.getSession(sessionId)
-                ? buildSessionSummary(store.getSession(sessionId)!)
-                : null,
-              messages: [checkpointMessage],
-              queuedMessages: store.listQueuedMessages(sessionId),
-              activity: toSessionActivity(sessionId),
-            });
-          }
-        }
-
-        broadcastSession(sessionId, {
-          type: "run.delta",
-          sessionId,
-          threadId: payload.threadId,
-          turnId: payload.turnId,
-          itemId: payload.itemId,
-          delta: payload.delta,
-        });
-      },
-      onThoughtItem(payload: {
-        threadId: string;
-        turnId: string;
-        itemId: string;
-        summaryText: string;
-      }) {
-        if (!payload.itemId || seenThoughtItemIds.has(payload.itemId) || !payload.summaryText.trim()) {
-          return;
-        }
-        markSessionVisibleActivity(sessionId)
-        seenThoughtItemIds.add(payload.itemId);
-        const thoughtMessage = store.appendMessage(sessionId, {
-          role: "assistant",
-          kind: "thought",
-          providerSeenAtMs: Date.now(),
-          content: [
-            {
-              type: "text",
-              text: payload.summaryText,
-            },
-          ],
-        });
         broadcastSession(sessionId, {
           type: "session.updated",
           session: store.getSession(sessionId)
             ? buildSessionSummary(store.getSession(sessionId)!)
             : null,
-          messages: [thoughtMessage],
+          messages: [failureActivity, retryActivity],
           queuedMessages: store.listQueuedMessages(sessionId),
           activity: toSessionActivity(sessionId),
         });
-      },
-    };
-
-    let result;
-    if (currentSession.providerKind === "codex-app-server") {
-      await ensureCodexAppServer(log);
-      result = await runCodexTurn(
-        currentSession,
-        messageContent,
-        pendingSystemInstruction,
-        callbacks,
-      );
-    } else if (currentSession.providerKind === "claude-agent-sdk") {
-      result = await runClaudeTurn(
-        sessionId,
-        currentSession,
-        messageContent,
-        pendingSystemInstruction,
-        callbacks,
-      );
-    } else {
-      throw new Error(`${currentSession.providerKind} provider adapter is not implemented yet`);
+        await Bun.sleep(delayMs);
+        const retryStartActivity = appendActivityMessage(
+          sessionId,
+          `Retry attempt ${attempt + 1} starting.`,
+        );
+        setRuntimeState(sessionId, (current) => ({
+          ...current,
+          status: "running",
+          waitingFlags: [],
+          lastError: null,
+          lastVisibleActivityAtMs: Date.now(),
+          providerIdleSinceAtMs: null,
+        }));
+        broadcastSingleMessageUpdate(sessionId, retryStartActivity);
+        attempt += 1;
+      }
     }
 
     const latestSession = store.getSession(sessionId);
@@ -919,62 +1197,67 @@ async function runProviderTurnForQueuedMessages(
           threadPath: result.threadPath,
         })
       : latestSession;
-    const finalAssistantText = result.assistantText || "(empty response)";
+    const finalAssistantText = result.assistantText.trim();
     const lastStreamItemId = Array.from(streamCheckpointMessageIds.keys()).at(-1) ?? null;
     const lastStreamMessageId = lastStreamItemId ? streamCheckpointMessageIds.get(lastStreamItemId) ?? null : null;
     const lastStreamText = lastStreamItemId ? streamCheckpointTexts.get(lastStreamItemId) ?? "" : "";
+    const providerCompletionIssueMessage =
+      !finalAssistantText && result.completionIssueText
+        ? appendActivityMessage(sessionId, result.completionIssueText)
+        : null;
     const assistantMessage =
-      lastStreamMessageId && lastStreamText === finalAssistantText
-        ? store.updateMessage(sessionId, lastStreamMessageId, {
-            kind: "chat",
-            content: [
-              {
-                type: "text",
-                text: finalAssistantText,
-              },
-            ],
-            providerSeenAtMs: Date.now(),
-          }) ??
-          store.appendMessage(sessionId, {
-            role: "assistant",
-            providerSeenAtMs: Date.now(),
-            content: [
-              {
-                type: "text",
-                text: finalAssistantText,
-              },
-            ],
-          })
-        : store.appendMessage(sessionId, {
-            role: "assistant",
-            providerSeenAtMs: Date.now(),
-            content: [
-              {
-                type: "text",
-                text: finalAssistantText,
-              },
-            ],
-          });
-    maybeMarkProcessBlueprintCompletion(sessionId, finalAssistantText);
-
-    setRuntimeState(sessionId, {
-      status: "idle",
-      startedAtMs: null,
-      threadId: result.threadId,
-      turnId: null,
-      backgroundProcessCount: 0,
-      waitingFlags: [],
-      lastError: null,
-      currentMessageId: null,
-      canInterrupt: false,
-      lastVisibleActivityAtMs: null,
-      interruptRequested: false,
-      providerKind: null,
-    });
+      finalAssistantText
+        ? lastStreamMessageId && lastStreamText === finalAssistantText
+          ? store.updateMessage(sessionId, lastStreamMessageId, {
+              kind: "chat",
+              content: [
+                {
+                  type: "text",
+                  text: finalAssistantText,
+                },
+              ],
+              providerSeenAtMs: Date.now(),
+            }) ??
+            store.appendMessage(sessionId, {
+              role: "assistant",
+              providerSeenAtMs: Date.now(),
+              content: [
+                {
+                  type: "text",
+                  text: finalAssistantText,
+                },
+              ],
+            })
+          : store.appendMessage(sessionId, {
+              role: "assistant",
+              providerSeenAtMs: Date.now(),
+              content: [
+                {
+                  type: "text",
+                  text: finalAssistantText,
+                },
+              ],
+            })
+        : !providerCompletionIssueMessage
+          ? store.appendMessage(sessionId, {
+              role: "assistant",
+              providerSeenAtMs: Date.now(),
+              content: [
+                {
+                  type: "text",
+                  text: "(empty response)",
+                },
+              ],
+            })
+          : null;
+    if (finalAssistantText) {
+      maybeMarkProcessBlueprintTerminal(sessionId, finalAssistantText);
+    }
+    finalizeIdleRuntimeState(sessionId, result.threadId);
     broadcastSession(sessionId, {
       type: "session.updated",
       session: updatedSession ? buildSessionSummary(updatedSession) : null,
-      messages: [assistantMessage],
+      messages: [providerCompletionIssueMessage, assistantMessage].filter(Boolean),
       queuedMessages: store.listQueuedMessages(sessionId),
       activity: toSessionActivity(sessionId),
     });
@@ -990,66 +1273,18 @@ async function runProviderTurnForQueuedMessages(
       error instanceof Error ? error.message : "Provider run failed unexpectedly.";
 
     if (interrupted) {
-      const systemMessage = store.appendMessage(sessionId, {
-        role: "system",
-        providerSeenAtMs: Date.now(),
-        content: [{ type: "text", text: "Agent run interrupted." }],
-      });
-      setRuntimeState(sessionId, {
-        status: "interrupted",
-        startedAtMs: null,
-        turnId: null,
-        backgroundProcessCount: 0,
-        waitingFlags: [],
-        lastError: null,
-        currentMessageId: null,
-        canInterrupt: false,
-        lastVisibleActivityAtMs: null,
-        interruptRequested: false,
-        providerKind: null,
-      });
-      broadcastSession(sessionId, {
-        type: "session.updated",
-        session: store.getSession(sessionId)
-          ? buildSessionSummary(store.getSession(sessionId)!)
-          : null,
-        messages: [systemMessage],
-        queuedMessages: store.listQueuedMessages(sessionId),
-        activity: toSessionActivity(sessionId),
-      });
+      const systemMessage = appendActivityMessage(sessionId, "Agent run interrupted.");
+      finalizeNonIdleRuntimeState(sessionId, "interrupted", null);
+      broadcastSingleMessageUpdate(sessionId, systemMessage);
       broadcastSession(sessionId, {
         type: "run.interrupted",
         sessionId,
         activity: toSessionActivity(sessionId),
       });
     } else {
-      const failureMessage = store.appendMessage(sessionId, {
-        role: "system",
-        providerSeenAtMs: Date.now(),
-        content: [{ type: "text", text: `Provider run failed: ${errorText}` }],
-      });
-      setRuntimeState(sessionId, {
-        status: "error",
-        startedAtMs: null,
-        turnId: null,
-        backgroundProcessCount: 0,
-        waitingFlags: [],
-        lastError: errorText,
-        currentMessageId: null,
-        canInterrupt: false,
-        lastVisibleActivityAtMs: null,
-        interruptRequested: false,
-        providerKind: null,
-      });
-      broadcastSession(sessionId, {
-        type: "session.updated",
-        session: store.getSession(sessionId)
-          ? buildSessionSummary(store.getSession(sessionId)!)
-          : null,
-        messages: [failureMessage],
-        queuedMessages: store.listQueuedMessages(sessionId),
-        activity: toSessionActivity(sessionId),
-      });
+      const failureMessage = appendActivityMessage(sessionId, `Provider run failed: ${errorText}`);
+      finalizeNonIdleRuntimeState(sessionId, "error", errorText);
+      broadcastSingleMessageUpdate(sessionId, failureMessage);
       broadcastSession(sessionId, {
         type: "run.failed",
         sessionId,
@@ -1458,6 +1693,7 @@ const server = Bun.serve<ChatSocketData>({
             interruptRequested: true,
             canInterrupt: false,
             providerKind: interruptProviderKind,
+            providerIdleSinceAtMs: null,
           });
           broadcastActivity(sessionId);
           return jsonResponse({ ok: true, activity: toSessionActivity(sessionId) });
@@ -1470,6 +1706,19 @@ const server = Bun.serve<ChatSocketData>({
     }
 
     const messagesMatch = /^\/api\/agent-chat\/sessions\/([^/]+)\/messages$/.exec(url.pathname);
+    const typingMatch = /^\/api\/agent-chat\/sessions\/([^/]+)\/typing$/.exec(url.pathname);
+    if (typingMatch && request.method === "POST") {
+      const sessionId = decodeURIComponent(typingMatch[1]!);
+      if (!store.getSession(sessionId)) {
+        return notFound();
+      }
+      return request.json().then((body: unknown) => {
+        const payload = body as { active?: boolean };
+        setUserTypingState(sessionId, payload.active !== false);
+        return jsonResponse({ ok: true, activity: toSessionActivity(sessionId) });
+      });
+    }
+
     if (messagesMatch && request.method === "GET") {
       const sessionId = decodeURIComponent(messagesMatch[1]!);
       const snapshot = buildSessionSnapshot(sessionId);
@@ -1522,6 +1771,7 @@ const server = Bun.serve<ChatSocketData>({
             status: "queued",
             currentMessageId: userMessage.id,
             lastError: null,
+            providerIdleSinceAtMs: null,
           });
         }
 

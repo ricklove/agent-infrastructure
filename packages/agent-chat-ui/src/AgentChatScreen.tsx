@@ -42,7 +42,7 @@ type SessionActivity = {
 }
 
 type SessionWatchdogState = {
-  status: "unconfigured" | "unresolved" | "nudged" | "completed"
+  status: "unconfigured" | "unresolved" | "nudged" | "completed" | "blocked"
   nudgeCount: number
   lastNudgedAtMs: number | null
   completedAtMs: number | null
@@ -72,17 +72,29 @@ type SessionMessage = {
   id: string
   sessionId: string
   role: "user" | "assistant" | "system"
-  kind: "chat" | "directoryInstruction" | "watchdogPrompt" | "thought" | "streamCheckpoint"
+  kind:
+    | "chat"
+    | "directoryInstruction"
+    | "watchdogPrompt"
+    | "thought"
+    | "streamCheckpoint"
+    | "activity"
   replyToMessageId: string | null
   providerSeenAtMs: number | null
   content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>
   createdAtMs: number
 }
 
-type RenderedTranscriptItem = {
-  message: SessionMessage
-  precedingStreamCheckpoints: SessionMessage[]
-}
+type RenderedTranscriptItem =
+  | {
+      type: "message"
+      message: SessionMessage
+      precedingStreamCheckpoints: SessionMessage[]
+    }
+  | {
+      type: "activityCluster"
+      messages: SessionMessage[]
+    }
 
 type ComposerImageAttachment = {
   id: string
@@ -115,6 +127,7 @@ type ProcessBlueprint = {
   idlePrompt: string
   completionMode: "exact_reply"
   completionToken: string
+  blockedToken: string
   stopConditions: string[]
   watchdog: {
     enabled: boolean
@@ -203,6 +216,8 @@ const defaultSessionRailWidth = 352
 const minSessionRailWidth = 280
 const maxSessionRailWidth = 520
 const completedProcessResolutionSentinel = "__process_done__"
+const typingHeartbeatMs = 1000
+const minCollapsedActivityClusterSize = 3
 
 function IconButton(props: {
   label: string
@@ -556,6 +571,9 @@ function watchdogAttentionLabel(watchdogState: SessionWatchdogState) {
   if (watchdogState.status === "completed") {
     return "Done"
   }
+  if (watchdogState.status === "blocked") {
+    return "Blocked"
+  }
   return null
 }
 
@@ -595,6 +613,32 @@ function splitDisplayParagraphs(text: string) {
 
 function summarizeStreamCheckpoint(text: string) {
   return splitDisplayParagraphs(text)[0] ?? "Stream revision"
+}
+
+function firstTextBlock(message: SessionMessage) {
+  const firstText = message.content.find((block) => block.type === "text")
+  return firstText?.type === "text" ? firstText.text.trim() : ""
+}
+
+function activityClusterKey(messages: SessionMessage[]) {
+  const firstId = messages[0]?.id ?? "first"
+  const lastId = messages.at(-1)?.id ?? "last"
+  return `${firstId}:${lastId}`
+}
+
+function summarizeActivityCluster(messages: SessionMessage[]) {
+  const labels = messages
+    .map((message) => firstTextBlock(message))
+    .filter(Boolean)
+    .slice(0, 2)
+
+  if (labels.length === 0) {
+    return `${messages.length} activity events`
+  }
+  if (labels.length === 1) {
+    return `${messages.length} activity events · ${labels[0]}`
+  }
+  return `${messages.length} activity events · ${labels[0]} · ${labels[1]}`
 }
 
 function MessageImageAsset({ path }: { path: string }) {
@@ -707,6 +751,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const pendingSessionOpenScrollRef = useRef<string | null>(null)
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
   const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
+  const typingStateRef = useRef<{ sessionId: string; lastSentAt: number; active: boolean } | null>(null)
   const messageElementRefs = useRef(new Map<string, HTMLElement>())
   const sessionRailResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
@@ -767,6 +812,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [expandedReplacedStreamMessageIds, setExpandedReplacedStreamMessageIds] = useState<
     Record<string, boolean>
   >({})
+  const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] = useState<Record<string, boolean>>({})
   const [, setThreadViewportMetrics] = useState({
     scrollTop: 0,
     scrollHeight: 1,
@@ -791,8 +837,14 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
     [activeSessionId, sessions],
   )
+  const processTerminalStatus =
+    activeSession?.processBlueprintId &&
+    (activeSession.watchdogState.status === "completed" ||
+      activeSession.watchdogState.status === "blocked")
+      ? activeSession.watchdogState.status
+      : null
   const processResolutionRequired =
-    activeSession?.watchdogState.status === "completed" && !!activeSession?.processBlueprintId
+    processTerminalStatus !== null
   const quickProcessSelectValue = processResolutionRequired
     ? completedProcessResolutionSentinel
     : activeSession?.processBlueprintId ?? ""
@@ -837,15 +889,56 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const renderedTranscriptItems = useMemo(() => {
     const items: RenderedTranscriptItem[] = []
     let pendingStreamCheckpoints: SessionMessage[] = []
+    let pendingActivityMessages: SessionMessage[] = []
+
+    const flushActivityMessages = () => {
+      if (pendingActivityMessages.length === 0) {
+        return
+      }
+      if (pendingActivityMessages.length >= minCollapsedActivityClusterSize) {
+        items.push({
+          type: "activityCluster",
+          messages: pendingActivityMessages,
+        })
+      } else {
+        for (const activityMessage of pendingActivityMessages) {
+          items.push({
+            type: "message",
+            message: activityMessage,
+            precedingStreamCheckpoints: [],
+          })
+        }
+      }
+      pendingActivityMessages = []
+    }
 
     for (const message of messages) {
       if (message.kind === "streamCheckpoint") {
+        flushActivityMessages()
         pendingStreamCheckpoints.push(message)
         continue
       }
 
+      if (message.kind === "activity") {
+        if (pendingStreamCheckpoints.length > 0) {
+          for (const streamMessage of pendingStreamCheckpoints) {
+            items.push({
+              type: "message",
+              message: streamMessage,
+              precedingStreamCheckpoints: [],
+            })
+          }
+          pendingStreamCheckpoints = []
+        }
+        pendingActivityMessages.push(message)
+        continue
+      }
+
+      flushActivityMessages()
+
       if (message.role === "assistant" && message.kind === "chat") {
         items.push({
+          type: "message",
           message,
           precedingStreamCheckpoints: pendingStreamCheckpoints,
         })
@@ -856,6 +949,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       if (pendingStreamCheckpoints.length > 0) {
         for (const streamMessage of pendingStreamCheckpoints) {
           items.push({
+            type: "message",
             message: streamMessage,
             precedingStreamCheckpoints: [],
           })
@@ -864,13 +958,17 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       }
 
       items.push({
+        type: "message",
         message,
         precedingStreamCheckpoints: [],
       })
     }
 
+    flushActivityMessages()
+
     for (const streamMessage of pendingStreamCheckpoints) {
       items.push({
+        type: "message",
         message: streamMessage,
         precedingStreamCheckpoints: [],
       })
@@ -880,7 +978,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [messages])
 
   const hasVisibleStreamCheckpoint = useMemo(
-    () => renderedTranscriptItems.some(({ message }) => message.kind === "streamCheckpoint"),
+    () =>
+      renderedTranscriptItems.some(
+        (item) => item.type === "message" && item.message.kind === "streamCheckpoint",
+      ),
     [renderedTranscriptItems],
   )
 
@@ -950,6 +1051,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }))
   }, [])
 
+  const toggleExpandedActivityCluster = useCallback((clusterKey: string) => {
+    setExpandedActivityClusterKeys((current) => ({
+      ...current,
+      [clusterKey]: !current[clusterKey],
+    }))
+  }, [])
+
   useEffect(() => {
     if (!activeProvider) {
       return
@@ -964,6 +1072,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [activeProvider, modelRef])
 
   useEffect(() => {
+    const previousTypingState = typingStateRef.current
+    if (
+      previousTypingState &&
+      previousTypingState.sessionId &&
+      previousTypingState.sessionId !== activeSessionId &&
+      previousTypingState.active
+    ) {
+      void reportTyping(false, { force: true, sessionId: previousTypingState.sessionId })
+    }
     syncCurrentChatSettingsFromSession(activeSession)
     setReplyTargetMessageId(null)
   }, [activeSessionId, syncCurrentChatSettingsFromSession])
@@ -1005,11 +1122,22 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     if (!activeSessionId) {
       setComposerText("")
       setComposerImages([])
+      if (typingStateRef.current?.active) {
+        void reportTyping(false, { force: true, sessionId: typingStateRef.current.sessionId })
+      }
       return
     }
     setComposerText(readDraft(activeSessionId))
     setComposerImages([])
   }, [activeSessionId])
+
+  useEffect(() => {
+    return () => {
+      if (typingStateRef.current?.active) {
+        void reportTyping(false, { force: true, sessionId: typingStateRef.current.sessionId })
+      }
+    }
+  }, [])
 
   useEffect(() => {
     pendingSessionOpenScrollRef.current = activeSessionId || null
@@ -1565,7 +1693,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       return
     }
 
-    const nextPayload: Record<string, string | null> = {}
+    const nextPayload: Record<string, string | null | boolean> = {}
     if (activeSessionDirectory.trim() !== activeSession.cwd) {
       nextPayload.cwd = activeSessionDirectory.trim()
     }
@@ -1583,6 +1711,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
     if (activeSessionProcessBlueprintId !== (activeSession.processBlueprintId ?? "")) {
       nextPayload.processBlueprintId = activeSessionProcessBlueprintId || null
+    } else if (processResolutionRequired) {
+      nextPayload.processBlueprintId = activeSessionProcessBlueprintId || null
+      nextPayload.forceProcessBlueprintReapply = true
     }
 
     if (Object.keys(nextPayload).length === 0) {
@@ -1670,6 +1801,43 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
   }
 
+  async function reportTyping(active: boolean, options?: { force?: boolean; sessionId?: string }) {
+    const targetSessionId = options?.sessionId ?? activeSessionId
+    if (!targetSessionId) {
+      return
+    }
+
+    const now = Date.now()
+    const currentState = typingStateRef.current
+    if (
+      !options?.force &&
+      active &&
+      currentState?.sessionId === targetSessionId &&
+      currentState.active &&
+      now - currentState.lastSentAt < typingHeartbeatMs
+    ) {
+      return
+    }
+
+    typingStateRef.current = {
+      sessionId: targetSessionId,
+      lastSentAt: now,
+      active,
+    }
+
+    try {
+      await apiFetch(`${props.apiRootUrl}/sessions/${targetSessionId}/typing`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ active }),
+      })
+    } catch {
+      // Best-effort presence signal only.
+    }
+  }
+
   async function renameSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!renamingSessionId || !renameTitle.trim()) {
@@ -1752,6 +1920,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setComposerText("")
       setComposerImages([])
       setReplyTargetMessageId(null)
+      await reportTyping(false, { force: true })
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Message send failed.")
     } finally {
@@ -1997,7 +2166,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
                 >
                   {providers.map((provider) => (
-                    <option key={provider.kind} value={provider.kind}>
+                    <option className="text-slate-950" key={provider.kind} value={provider.kind}>
                       {provider.label}
                     </option>
                   ))}
@@ -2014,7 +2183,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
                   >
                     {activeProvider.modelOptions.map((model) => (
-                      <option key={model} value={model}>
+                      <option className="text-slate-950" key={model} value={model}>
                         {model}
                       </option>
                     ))}
@@ -2068,9 +2237,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   onChange={(event) => setProcessBlueprintId(event.target.value)}
                   className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
                 >
-                  <option value="">none</option>
+                  <option className="text-slate-950" value="">none</option>
                   {processBlueprints.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
+                    <option className="text-slate-950" key={entry.id} value={entry.id}>
                       {entry.title}
                     </option>
                   ))}
@@ -2390,7 +2559,60 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
               <div className="mx-auto flex w-full max-w-[78rem] min-w-0 gap-4 overflow-x-hidden">
                 <div className="min-w-0 flex-1">
                   <div className="mx-auto flex max-w-4xl flex-col gap-4">
-                    {renderedTranscriptItems.map(({ message, precedingStreamCheckpoints }) => {
+                    {renderedTranscriptItems.map((item) => {
+                      if (item.type === "activityCluster") {
+                        const clusterKey = activityClusterKey(item.messages)
+                        const expanded = !!expandedActivityClusterKeys[clusterKey]
+                        return (
+                          <article
+                            key={clusterKey}
+                            className="w-full overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 px-4 py-3 md:max-w-[64%] md:px-5 md:py-4"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                                  system
+                                </p>
+                                <p className="mt-2 break-words text-sm text-slate-200">
+                                  {summarizeActivityCluster(item.messages)}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandedActivityCluster(clusterKey)}
+                                className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-100"
+                              >
+                                {expanded ? "Collapse" : `Show ${item.messages.length}`}
+                              </button>
+                            </div>
+
+                            {expanded ? (
+                              <div className="mt-3 space-y-2">
+                                {item.messages.map((message) => (
+                                  <div
+                                    key={message.id}
+                                    className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                        activity
+                                      </span>
+                                      <p className="text-[10px] text-slate-500">
+                                        {formatTime(message.createdAtMs)}
+                                      </p>
+                                    </div>
+                                    <p className="mt-2 break-words whitespace-pre-wrap text-sm leading-6 text-slate-200">
+                                      {firstTextBlock(message) || "Activity"}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </article>
+                        )
+                      }
+
+                      const { message, precedingStreamCheckpoints } = item
                       const replyTarget = message.replyToMessageId
                         ? messageMap.get(message.replyToMessageId) ?? null
                         : null
@@ -2402,7 +2624,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           key={message.id}
                           ref={(element) => setMessageElementRef(message.id, element)}
                           className={`min-w-0 overflow-hidden rounded-3xl border px-4 py-3 md:px-5 md:py-4 ${
-                            message.kind === "thought" || message.kind === "streamCheckpoint"
+                            message.kind === "thought" ||
+                            message.kind === "streamCheckpoint" ||
+                            message.kind === "activity"
                               ? "w-full border-white/10 bg-slate-950/60 md:max-w-[64%]"
                               : message.role === "user"
                               ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]"
@@ -2429,6 +2653,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               {message.kind === "streamCheckpoint" ? (
                                 <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
                                   stream
+                                </span>
+                              ) : null}
+                              {message.kind === "activity" ? (
+                                <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                  activity
                                 </span>
                               ) : null}
                               {queueLabel ? (
@@ -2515,7 +2744,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             <div className="mt-2.5 space-y-3 text-sm leading-6 text-slate-100">
                               {message.content.map((block, index) =>
                                 block.type === "text" ? (
-                                  <p key={`${message.id}-${index}`} className="break-words whitespace-pre-wrap">
+                                  <p
+                                    key={`${message.id}-${index}`}
+                                    className={`break-words whitespace-pre-wrap ${
+                                      message.kind === "activity" ? "text-slate-300" : ""
+                                    }`}
+                                  >
                                     {block.text}
                                   </p>
                                 ) : (
@@ -2530,7 +2764,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
                           {message.role === "assistant" &&
                           message.kind !== "thought" &&
-                          message.kind !== "streamCheckpoint" ? (
+                          message.kind !== "streamCheckpoint" &&
+                          message.kind !== "activity" ? (
                             <div className="mt-3 flex items-center justify-end">
                               <button
                                 type="button"
@@ -2721,13 +2956,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           }`}
                         >
                           {processResolutionRequired ? (
-                            <option value={completedProcessResolutionSentinel} disabled>
-                              Done
+                            <option className="text-slate-950" value={completedProcessResolutionSentinel} disabled>
+                              {processTerminalStatus === "blocked" ? "Blocked" : "Done"}
                             </option>
                           ) : null}
-                          <option value="">none</option>
+                          <option className="text-slate-950" value="">none</option>
                           {processBlueprints.map((entry) => (
-                            <option key={entry.id} value={entry.id}>
+                            <option className="text-slate-950" key={entry.id} value={entry.id}>
                               {entry.title}
                             </option>
                           ))}
@@ -2739,7 +2974,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         ) : null}
                         {processResolutionRequired ? (
                           <p className="mt-2 text-xs font-semibold text-rose-200">
-                            Done. Choose the next process before sending the next message.
+                            {processTerminalStatus === "blocked" ? "Blocked" : "Done"}. Choose the next process before sending the next message.
                           </p>
                         ) : null}
                       </label>
@@ -2754,7 +2989,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {providers.map((provider) => (
-                            <option key={provider.kind} value={provider.kind}>
+                            <option className="text-slate-950" key={provider.kind} value={provider.kind}>
                               {provider.label}
                             </option>
                           ))}
@@ -2772,7 +3007,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {activeSessionProvider.modelOptions.map((model) => (
-                              <option key={model} value={model}>
+                              <option className="text-slate-950" key={model} value={model}>
                                 {model}
                               </option>
                             ))}
@@ -2798,7 +3033,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {activeSessionProvider.authProfiles.map((profile) => (
-                              <option key={profile} value={profile}>
+                              <option className="text-slate-950" key={profile} value={profile}>
                                 {profile}
                               </option>
                             ))}
@@ -2859,7 +3094,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               activeSessionModelRef === activeSession.modelRef &&
                               activeSessionAuthProfile === (activeSession.authProfile ?? "") &&
                               activeSessionImageModelRef === (activeSession.imageModelRef ?? "") &&
-                              activeSessionProcessBlueprintId === (activeSession.processBlueprintId ?? "")
+                              activeSessionProcessBlueprintId === (activeSession.processBlueprintId ?? "") &&
+                              !processResolutionRequired
                             )
                           }
                           className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
@@ -2924,7 +3160,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 <textarea
                   ref={composerInputRef}
                   value={composerText}
-                  onChange={(event) => setComposerText(event.target.value)}
+                  onChange={(event) => {
+                    setComposerText(event.target.value)
+                    void reportTyping(true)
+                  }}
+                  onFocus={() => void reportTyping(true, { force: true })}
+                  onBlur={() => void reportTyping(false, { force: true })}
                   onKeyDown={handleComposerKeyDown}
                   onPaste={(event) => {
                     void handleComposerPaste(event)
@@ -2941,7 +3182,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-slate-500">
                     {processResolutionRequired
-                      ? "This process is done. Choose the next process before sending."
+                      ? `This process is ${processTerminalStatus === "blocked" ? "blocked" : "done"}. Choose the next process before sending.`
                       : "Paste images directly from the clipboard. Ctrl+Enter sends. Esc interrupts when the provider supports it."}
                   </p>
                   <div className="flex items-center gap-2">
@@ -2963,20 +3204,20 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           }`}
                         >
                           {processResolutionRequired ? (
-                            <option value={completedProcessResolutionSentinel} disabled>
-                              Done
+                            <option className="text-slate-950" value={completedProcessResolutionSentinel} disabled>
+                              {processTerminalStatus === "blocked" ? "Blocked" : "Done"}
                             </option>
                           ) : null}
-                          <option value="">none</option>
+                          <option className="text-slate-950" value="">none</option>
                           {processBlueprints.map((entry) => (
-                            <option key={entry.id} value={entry.id}>
+                            <option className="text-slate-950" key={entry.id} value={entry.id}>
                               {entry.title}
                             </option>
                           ))}
                         </select>
                         {processResolutionRequired ? (
                           <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3 text-xs font-semibold text-rose-200">
-                            Done
+                            {processTerminalStatus === "blocked" ? "Blocked" : "Done"}
                           </span>
                         ) : null}
                       </div>
