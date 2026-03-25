@@ -401,6 +401,12 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
   }, [activeFeatureId])
 
   useEffect(() => {
+    if (!mobileFeatureMenuOpen) {
+      setVersionPopupOpen(false)
+    }
+  }, [mobileFeatureMenuOpen])
+
+  useEffect(() => {
     let cancelled = false
 
     async function initialize() {
