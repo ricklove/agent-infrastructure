@@ -264,7 +264,7 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - live assistant streaming text is still only an in-memory UI buffer and is not yet recorded canonically as transcript checkpoint history
 - transcript text still renders mostly as plain paragraphs, so markdown structure and code blocks are harder to read than intended
 - the main activity status now uses a compact composer-border treatment instead of a separate footer card
-- the mobile composer still needs one more spacing pass so the working chip sits slightly higher and the input padding wastes less space on narrow screens
+- the mobile thread and composer now trim their outer gutter and card padding more aggressively on narrow screens so iPhone focus/zoom keeps more horizontal room for transcript and typed text while the working chip sits slightly higher on the composer border
 - the current bottom-toolbar layout still becomes crowded on narrow widths because the process selector, menu actions, and send controls compete for the same horizontal strip instead of using a cleaner compact or layered treatment
 - the Done or Blocked resolution warning still needs a more compact treatment that preserves clarity without consuming a whole extra line in the mobile composer
 - the unresolved Done state can linger visually even after the worker resumes under a fresh process, so terminal selector chrome is not yet clearing tightly enough with active runtime state
