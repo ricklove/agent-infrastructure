@@ -540,7 +540,7 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
   if (operatorTypingActive(runtime)) {
     delayMs = Math.max((runtime.userTypingUntilAtMs ?? Date.now()) - Date.now(), 0);
   } else if (runtime.status === "idle") {
-    if (runtime.providerIdleSinceAtMs !== null) {
+    if (runtime.providerIdleSinceAtMs !== null && session.watchdogState.nudgeCount === 0) {
       delayMs = 0;
     } else {
       delayMs = Math.max(
