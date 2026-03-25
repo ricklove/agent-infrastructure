@@ -1,14 +1,17 @@
 import { createPrivateKey, createSign, randomUUID } from "node:crypto";
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import {
+  installationDir,
+  installationEnvPath,
+  installationPemPath,
+  readRegistry,
+  type InstallationRecord,
+  type ProjectRecord,
+  type ProjectsRegistry,
+  persistInstallationEnv,
+  writeRegistry,
+} from "./registry.js";
 
 const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state";
 const workspaceRoot = process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
@@ -22,36 +25,6 @@ const registryPath =
   process.env.AGENT_PROJECTS_REGISTRY_PATH?.trim() || `${appDataDir}/registry.json`;
 const port = Number.parseInt(process.env.PROJECTS_PORT ?? "8791", 10);
 const githubApiBaseUrl = process.env.GITHUB_API_BASE_URL?.trim() || "https://api.github.com";
-
-type InstallationRecord = {
-  id: string;
-  label: string;
-  accountLogin: string;
-  appId: string;
-  installationId: string;
-  pemPath: string;
-  createdAtMs: number;
-  updatedAtMs: number;
-};
-
-type ProjectRecord = {
-  id: string;
-  name: string;
-  owner: string;
-  repo: string;
-  remoteUrl: string;
-  localPath: string;
-  installationId: string;
-  baseBranch: string;
-  postMergeBunCommand: string;
-  createdAtMs: number;
-  updatedAtMs: number;
-};
-
-type ProjectsRegistry = {
-  installations: InstallationRecord[];
-  projects: ProjectRecord[];
-};
 
 type GithubRepo = {
   id: number;
@@ -87,141 +60,6 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 function textError(message: string, status = 400): Response {
   return new Response(message, { status });
-}
-
-function readRegistryFile(): ProjectsRegistry {
-  if (!existsSync(registryPath)) {
-    return { installations: [], projects: [] };
-  }
-  try {
-    return JSON.parse(readFileSync(registryPath, "utf8")) as ProjectsRegistry;
-  } catch {
-    return { installations: [], projects: [] };
-  }
-}
-
-function writeRegistry(registry: ProjectsRegistry) {
-  mkdirSync(dirname(registryPath), { recursive: true });
-  writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
-}
-
-function parseEnvFile(envPath: string) {
-  const values: Record<string, string> = {};
-  for (const rawLine of readFileSync(envPath, "utf8").split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#")) {
-      continue;
-    }
-    const separatorIndex = line.indexOf("=");
-    if (separatorIndex < 0) {
-      continue;
-    }
-    const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 1).trim();
-    if (key) {
-      values[key] = value;
-    }
-  }
-  return values;
-}
-
-function persistInstallationEnv(installation: InstallationRecord) {
-  mkdirSync(installationDir(installation.installationId), { recursive: true });
-  writeFileSync(
-    installationEnvPath(installation.installationId),
-    [
-      `GITHUB_APP_ID=${installation.appId}`,
-      `GITHUB_INSTALLATION_ID=${installation.installationId}`,
-      `GITHUB_APP_PEM=${installation.pemPath}`,
-      `GITHUB_ACCOUNT_LOGIN=${installation.accountLogin}`,
-      "",
-    ].join("\n"),
-    { mode: 0o600 },
-  );
-}
-
-function importLegacyInstallations(registry: ProjectsRegistry) {
-  if (!existsSync(configRoot)) {
-    return { registry, changed: false };
-  }
-
-  const installationsById = new Map(
-    registry.installations.map((installation) => [installation.installationId, installation]),
-  );
-  let changed = false;
-
-  for (const entry of readdirSync(configRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.startsWith("@")) {
-      continue;
-    }
-
-    const envPath = join(configRoot, entry.name, "env");
-    if (!existsSync(envPath)) {
-      continue;
-    }
-
-    const env = parseEnvFile(envPath);
-    const appId = env.GITHUB_APP_ID?.trim();
-    const installationId = env.GITHUB_INSTALLATION_ID?.trim();
-    const pemPath = env.GITHUB_APP_PEM?.trim() || join(configRoot, entry.name, "github-app.pem");
-    const accountLogin =
-      env.GITHUB_ACCOUNT_LOGIN?.trim() || entry.name.replace(/^@/, "").trim();
-
-    if (!appId || !installationId || !accountLogin || !existsSync(pemPath)) {
-      continue;
-    }
-
-    const existing = installationsById.get(installationId);
-    const now = Date.now();
-    const installation: InstallationRecord = {
-      id: existing?.id ?? randomUUID(),
-      label: existing?.label || `${accountLogin} GitHub App`,
-      accountLogin,
-      appId,
-      installationId,
-      pemPath,
-      createdAtMs: existing?.createdAtMs ?? now,
-      updatedAtMs: existing?.updatedAtMs ?? now,
-    };
-
-    const envMirrorPath = installationEnvPath(installationId);
-    if (!existsSync(envMirrorPath)) {
-      persistInstallationEnv(installation);
-      changed = true;
-    }
-
-    if (!existing) {
-      registry.installations.push(installation);
-      installationsById.set(installationId, installation);
-      changed = true;
-    }
-  }
-
-  if (changed) {
-    registry.installations.sort((left, right) => left.label.localeCompare(right.label));
-  }
-
-  return { registry, changed };
-}
-
-function readRegistry(): ProjectsRegistry {
-  const imported = importLegacyInstallations(readRegistryFile());
-  if (imported.changed) {
-    writeRegistry(imported.registry);
-  }
-  return imported.registry;
-}
-
-function installationDir(installationId: string) {
-  return join(configRoot, "installations", installationId);
-}
-
-function installationEnvPath(installationId: string) {
-  return join(installationDir(installationId), "env");
-}
-
-function installationPemPath(installationId: string) {
-  return join(installationDir(installationId), "github-app.pem");
 }
 
 function base64UrlFromBuffer(input: Buffer) {
@@ -410,7 +248,9 @@ function projectStatus(project: ProjectRecord, registry: ProjectsRegistry) {
 
   return {
     localRepoExists,
-    authConfigured: Boolean(installation && existsSync(installationEnvPath(installation.installationId))),
+    authConfigured: Boolean(
+      installation && existsSync(installationEnvPath(configRoot, installation.installationId)),
+    ),
     localPathAllowed,
   };
 }
@@ -433,7 +273,7 @@ const server = Bun.serve({
     }
 
     if (url.pathname === "/api/projects/installations" && request.method === "GET") {
-      const registry = readRegistry();
+      const registry = readRegistry(registryPath, configRoot);
       return jsonResponse({
         installations: registry.installations.map((installation) =>
           installationSummary(installation, registry),
@@ -459,7 +299,7 @@ const server = Bun.serve({
           return textError("label, accountLogin, appId, installationId, and pemText are required");
         }
 
-        const registry = readRegistry();
+        const registry = readRegistry(registryPath, configRoot);
         const now = Date.now();
         const installation: InstallationRecord = {
           id:
@@ -469,16 +309,16 @@ const server = Bun.serve({
           accountLogin,
           appId,
           installationId,
-          pemPath: installationPemPath(installationId),
+          pemPath: installationPemPath(configRoot, installationId),
           createdAtMs:
             registry.installations.find((entry) => entry.installationId === installationId)?.createdAtMs ??
             now,
           updatedAtMs: now,
         };
 
-        mkdirSync(installationDir(installationId), { recursive: true });
+        mkdirSync(installationDir(configRoot, installationId), { recursive: true });
         writeFileSync(installation.pemPath, `${pemText}\n`, { mode: 0o600 });
-        persistInstallationEnv(installation);
+        persistInstallationEnv(configRoot, installation);
 
         await validateInstallationAccess(installation);
 
@@ -486,7 +326,7 @@ const server = Bun.serve({
           ...registry.installations.filter((entry) => entry.installationId !== installation.installationId),
           installation,
         ].sort((left, right) => left.label.localeCompare(right.label));
-        writeRegistry(registry);
+        writeRegistry(registryPath, registry);
 
         return jsonResponse({
           ok: true,
@@ -502,7 +342,7 @@ const server = Bun.serve({
     if (installationReposMatch && request.method === "GET") {
       try {
         const installationId = decodeURIComponent(installationReposMatch[1]!);
-        const registry = readRegistry();
+        const registry = readRegistry(registryPath, configRoot);
         const installation = registry.installations.find((entry) => entry.id === installationId);
         if (!installation) {
           return textError("installation not found", 404);
@@ -534,7 +374,7 @@ const server = Bun.serve({
     }
 
     if (url.pathname === "/api/projects" && request.method === "GET") {
-      const registry = readRegistry();
+      const registry = readRegistry(registryPath, configRoot);
       return jsonResponse({
         projects: registry.projects
           .map((project) => ({
@@ -574,7 +414,7 @@ const server = Bun.serve({
         ensureAllowedPath(localPath);
         normalizeRemoteInfo(remoteUrl);
 
-        const registry = readRegistry();
+        const registry = readRegistry(registryPath, configRoot);
         const installation = registry.installations.find((entry) => entry.id === installationId);
         if (!installation) {
           return textError("installation not found", 404);
@@ -602,7 +442,7 @@ const server = Bun.serve({
         }
 
         registry.projects = [...registry.projects, project];
-        writeRegistry(registry);
+        writeRegistry(registryPath, registry);
 
         return jsonResponse({
           ok: true,
@@ -625,7 +465,7 @@ const server = Bun.serve({
           baseBranch?: string;
           postMergeBunCommand?: string;
         };
-        const registry = readRegistry();
+        const registry = readRegistry(registryPath, configRoot);
         const current = registry.projects.find((entry) => entry.id === projectId);
         if (!current) {
           return textError("project not found", 404);
@@ -644,7 +484,7 @@ const server = Bun.serve({
         registry.projects = registry.projects.map((entry) =>
           entry.id === projectId ? next : entry,
         );
-        writeRegistry(registry);
+        writeRegistry(registryPath, registry);
 
         return jsonResponse({
           ok: true,
