@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -626,19 +627,161 @@ function activityClusterKey(messages: SessionMessage[]) {
   return `${firstId}:${lastId}`
 }
 
-function summarizeActivityCluster(messages: SessionMessage[]) {
-  const labels = messages
-    .map((message) => firstTextBlock(message))
-    .filter(Boolean)
-    .slice(0, 2)
+function normalizeActivitySummaryText(text: string) {
+  return text
+    .replace(/^Command (started|completed):\s*/i, "")
+    .replace(/^Sub-agent (started|completed):\s*/i, "")
+    .replace(/^Provider turn (started|completed)\.?\s*/i, "Provider ")
+    .trim()
+}
 
-  if (labels.length === 0) {
+function summarizeActivityCluster(messages: SessionMessage[]) {
+  const latestLabel = [...messages]
+    .reverse()
+    .map((message) => firstTextBlock(message))
+    .find(Boolean)
+
+  if (!latestLabel) {
     return `${messages.length} activity events`
   }
-  if (labels.length === 1) {
-    return `${messages.length} activity events · ${labels[0]}`
+
+  return `${messages.length} events · ${clipText(normalizeActivitySummaryText(latestLabel), 72)}`
+}
+
+function renderInlineMarkdown(text: string, keyPrefix: string) {
+  return text.split(/(`[^`]+`)/g).filter(Boolean).map((segment, index) => {
+    if (segment.startsWith("`") && segment.endsWith("`") && segment.length >= 2) {
+      return (
+        <code
+          key={`${keyPrefix}-code-${index}`}
+          className="rounded-md bg-slate-950/90 px-1.5 py-0.5 font-mono text-[0.92em] text-cyan-100"
+        >
+          {segment.slice(1, -1)}
+        </code>
+      )
+    }
+    return <Fragment key={`${keyPrefix}-text-${index}`}>{segment}</Fragment>
+  })
+}
+
+function renderMarkdownParagraph(lines: string[], keyPrefix: string) {
+  return lines.map((line, index) => (
+    <Fragment key={`${keyPrefix}-line-${index}`}>
+      {index > 0 ? <br /> : null}
+      {renderInlineMarkdown(line, `${keyPrefix}-${index}`)}
+    </Fragment>
+  ))
+}
+
+function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
+  const normalized = text.replace(/\r\n/g, "\n").trim()
+  if (!normalized) {
+    return []
   }
-  return `${messages.length} activity events · ${labels[0]} · ${labels[1]}`
+
+  const nodes: ReactNode[] = []
+  const codeBlockPattern = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null = null
+  let blockIndex = 0
+
+  const pushTextBlocks = (chunk: string) => {
+    const trimmed = chunk.trim()
+    if (!trimmed) {
+      return
+    }
+    const blocks = trimmed.split(/\n\s*\n/g).filter(Boolean)
+    for (const block of blocks) {
+      const lines = block.split("\n")
+      const headingMatch = /^(#{1,3})\s+(.*)$/.exec(lines[0] ?? "")
+      if (headingMatch && lines.length === 1) {
+        const level = headingMatch[1].length
+        const headingClass =
+          level === 1
+            ? "text-lg font-semibold text-white"
+            : level === 2
+              ? "text-base font-semibold text-slate-100"
+              : "text-sm font-semibold uppercase tracking-[0.12em] text-slate-300"
+        nodes.push(
+          <p key={`${keyPrefix}-heading-${blockIndex}`} className={headingClass}>
+            {renderInlineMarkdown(headingMatch[2], `${keyPrefix}-heading-${blockIndex}`)}
+          </p>,
+        )
+        blockIndex += 1
+        continue
+      }
+
+      if (lines.every((line) => /^[-*]\s+/.test(line))) {
+        nodes.push(
+          <ul
+            key={`${keyPrefix}-ul-${blockIndex}`}
+            className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-disc"
+          >
+            {lines.map((line, lineIndex) => (
+              <li key={`${keyPrefix}-ul-${blockIndex}-${lineIndex}`}>
+                {renderInlineMarkdown(line.replace(/^[-*]\s+/, ""), `${keyPrefix}-ul-${blockIndex}-${lineIndex}`)}
+              </li>
+            ))}
+          </ul>,
+        )
+        blockIndex += 1
+        continue
+      }
+
+      if (lines.every((line) => /^\d+\.\s+/.test(line))) {
+        nodes.push(
+          <ol
+            key={`${keyPrefix}-ol-${blockIndex}`}
+            className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-decimal"
+          >
+            {lines.map((line, lineIndex) => (
+              <li key={`${keyPrefix}-ol-${blockIndex}-${lineIndex}`}>
+                {renderInlineMarkdown(line.replace(/^\d+\.\s+/, ""), `${keyPrefix}-ol-${blockIndex}-${lineIndex}`)}
+              </li>
+            ))}
+          </ol>,
+        )
+        blockIndex += 1
+        continue
+      }
+
+      nodes.push(
+        <p
+          key={`${keyPrefix}-p-${blockIndex}`}
+          className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100"
+        >
+          {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
+        </p>,
+      )
+      blockIndex += 1
+    }
+  }
+
+  while ((match = codeBlockPattern.exec(normalized))) {
+    pushTextBlocks(normalized.slice(lastIndex, match.index))
+    const language = match[1]?.trim() ?? ""
+    const code = match[2]?.replace(/\n$/, "") ?? ""
+    nodes.push(
+      <div
+        key={`${keyPrefix}-codeblock-${blockIndex}`}
+        className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/85"
+      >
+        {language ? (
+          <div className="border-b border-white/10 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            {language}
+          </div>
+        ) : null}
+        <pre className="overflow-x-auto px-3 py-3 text-[13px] leading-6 text-slate-100">
+          <code className="font-mono">{code}</code>
+        </pre>
+      </div>,
+    )
+    blockIndex += 1
+    lastIndex = codeBlockPattern.lastIndex
+  }
+
+  pushTextBlocks(normalized.slice(lastIndex))
+  return nodes
 }
 
 function MessageImageAsset({ path }: { path: string }) {
@@ -748,7 +891,10 @@ function sessionCardTone(activity: SessionActivity, active: boolean, archived: b
 
 export function AgentChatScreen(props: AgentChatScreenProps) {
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
+  const transcriptContentRef = useRef<HTMLDivElement | null>(null)
+  const transcriptBottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const pendingSessionOpenScrollRef = useRef<string | null>(null)
+  const transcriptPinnedToBottomRef = useRef(true)
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
   const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
   const typingStateRef = useRef<{ sessionId: string; lastSentAt: number; active: boolean } | null>(null)
@@ -1016,6 +1162,45 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     })
   }, [])
 
+  const isViewportNearBottom = useCallback((viewport: HTMLDivElement) => {
+    const distanceFromBottom =
+      viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop
+    return distanceFromBottom <= 48
+  }, [])
+
+  const scrollTranscriptToBottom = useCallback(() => {
+    const viewport = transcriptViewportRef.current
+    if (!viewport) {
+      return
+    }
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior: "auto",
+    })
+    transcriptPinnedToBottomRef.current = true
+    updateThreadViewportMetrics()
+    if (
+      activeSessionId &&
+      pendingSessionOpenScrollRef.current === activeSessionId &&
+      isViewportNearBottom(viewport)
+    ) {
+      pendingSessionOpenScrollRef.current = null
+    }
+  }, [activeSessionId, isViewportNearBottom, updateThreadViewportMetrics])
+
+  const handleTranscriptViewportScroll = useCallback(() => {
+    const viewport = transcriptViewportRef.current
+    if (!viewport) {
+      return
+    }
+    const nearBottom = isViewportNearBottom(viewport)
+    transcriptPinnedToBottomRef.current = nearBottom
+    if (nearBottom && activeSessionId && pendingSessionOpenScrollRef.current === activeSessionId) {
+      pendingSessionOpenScrollRef.current = null
+    }
+    updateThreadViewportMetrics()
+  }, [activeSessionId, isViewportNearBottom, updateThreadViewportMetrics])
+
   const updateActiveSessionRuntime = useCallback(
     (nextActivity: SessionActivity, queuedCount: number) => {
       if (!activeSessionId) {
@@ -1141,6 +1326,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
   useEffect(() => {
     pendingSessionOpenScrollRef.current = activeSessionId || null
+    transcriptPinnedToBottomRef.current = true
   }, [activeSessionId])
 
   useEffect(() => {
@@ -1163,45 +1349,67 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [activity.status])
 
   useEffect(() => {
-    if (!activeSessionId || pendingSessionOpenScrollRef.current !== activeSessionId) {
+    if (
+      !activeSessionId ||
+      (pendingSessionOpenScrollRef.current !== activeSessionId &&
+        !transcriptPinnedToBottomRef.current)
+    ) {
+      return
+    }
+    const handle = window.requestAnimationFrame(() => {
+      scrollTranscriptToBottom()
+    })
+    return () => {
+      window.cancelAnimationFrame(handle)
+    }
+  }, [
+    activeSessionId,
+    queuedMessages.length,
+    renderedTranscriptItems.length,
+    scrollTranscriptToBottom,
+    streamingAssistantText,
+  ])
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      return
+    }
+    const content = transcriptContentRef.current
+    if (!content || typeof ResizeObserver === "undefined") {
       return
     }
 
-    const viewport = transcriptViewportRef.current
-    if (!viewport) {
-      return
-    }
-
-    let cancelled = false
-    const timerHandles: number[] = []
-
-    const flushScrollToBottom = () => {
-      if (cancelled) {
-        return
+    let frameHandle: number | null = null
+    const scheduleFollow = () => {
+      if (frameHandle !== null) {
+        window.cancelAnimationFrame(frameHandle)
       }
-      viewport.scrollTo({
-        top: viewport.scrollHeight,
-        behavior: "auto",
+      frameHandle = window.requestAnimationFrame(() => {
+        frameHandle = null
+        if (
+          pendingSessionOpenScrollRef.current === activeSessionId ||
+          transcriptPinnedToBottomRef.current
+        ) {
+          scrollTranscriptToBottom()
+        } else {
+          updateThreadViewportMetrics()
+        }
       })
-      updateThreadViewportMetrics()
     }
 
-    timerHandles.push(
-      window.setTimeout(flushScrollToBottom, 0),
-      window.setTimeout(flushScrollToBottom, 80),
-      window.setTimeout(() => {
-        flushScrollToBottom()
-        pendingSessionOpenScrollRef.current = null
-      }, 220),
-    )
+    const observer = new ResizeObserver(() => {
+      scheduleFollow()
+    })
+    observer.observe(content)
+    scheduleFollow()
 
     return () => {
-      cancelled = true
-      for (const handle of timerHandles) {
-        window.clearTimeout(handle)
+      observer.disconnect()
+      if (frameHandle !== null) {
+        window.cancelAnimationFrame(frameHandle)
       }
     }
-  }, [activeSessionId, messages.length, updateThreadViewportMetrics])
+  }, [activeSessionId, scrollTranscriptToBottom, updateThreadViewportMetrics])
 
   useEffect(() => {
     updateThreadViewportMetrics()
@@ -2055,6 +2263,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [activeSessionId, activity.canInterrupt, activity.status, interrupting])
 
   const elapsedLabel = formatElapsed(activity.startedAtMs, nowMs)
+  const threadStatusSummary = summarizeSessionWorkerState(activity, queuedMessages.length, nowMs)
 
   return (
     <div className="flex h-full min-h-0 bg-slate-950 text-slate-100">
@@ -2541,24 +2750,26 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           </div>
         ) : null}
 
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 flex-1 flex-col">
           <div
             ref={transcriptViewportRef}
-            onScroll={updateThreadViewportMetrics}
+            onScroll={handleTranscriptViewportScroll}
+            data-agent-chat-transcript-viewport="true"
             className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 md:px-6"
           >
-            {!activeSession ? (
-              <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
-                Start or select a chat to see the thread.
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
-                This chat has no messages yet.
-              </div>
-            ) : (
-              <div className="mx-auto flex w-full max-w-[78rem] min-w-0 gap-4 overflow-x-hidden">
-                <div className="min-w-0 flex-1">
-                  <div className="mx-auto flex max-w-4xl flex-col gap-4">
+            <div ref={transcriptContentRef} className="min-h-full">
+              {!activeSession ? (
+                <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
+                  Start or select a chat to see the thread.
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
+                  This chat has no messages yet.
+                </div>
+              ) : (
+                <div className="mx-auto flex w-full max-w-[78rem] min-w-0 gap-4 overflow-x-hidden">
+                  <div className="min-w-0 flex-1">
+                    <div className="mx-auto flex max-w-4xl flex-col gap-4">
                     {renderedTranscriptItems.map((item) => {
                       if (item.type === "activityCluster") {
                         const clusterKey = activityClusterKey(item.messages)
@@ -2727,14 +2938,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 {message.content.map((block, index) =>
                                   block.type === "text" ? (
                                     <div key={`${message.id}-${index}`} className="space-y-3">
-                                      {splitDisplayParagraphs(block.text).map((paragraph, paragraphIndex) => (
-                                        <p
-                                          key={`${message.id}-${index}-${paragraphIndex}`}
-                                          className="break-words whitespace-pre-wrap"
-                                        >
-                                          {paragraph}
-                                        </p>
-                                      ))}
+                                      {renderMarkdownBlocks(block.text, `${message.id}-${index}`)}
                                     </div>
                                   ) : null,
                                 )}
@@ -2744,14 +2948,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             <div className="mt-2.5 space-y-3 text-sm leading-6 text-slate-100">
                               {message.content.map((block, index) =>
                                 block.type === "text" ? (
-                                  <p
+                                  <div
                                     key={`${message.id}-${index}`}
-                                    className={`break-words whitespace-pre-wrap ${
-                                      message.kind === "activity" ? "text-slate-300" : ""
-                                    }`}
+                                    className={message.kind === "activity" ? "text-slate-300" : ""}
                                   >
-                                    {block.text}
-                                  </p>
+                                    {renderMarkdownBlocks(block.text, `${message.id}-${index}`)}
+                                  </div>
                                 ) : (
                                   <MessageImageAsset
                                     key={`${message.id}-${index}`}
@@ -2780,49 +2982,47 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       )
                     })}
 
-                    {streamingAssistantText && !hasVisibleStreamCheckpoint ? (
-                      <article className="w-full max-w-[88%] min-w-0 overflow-hidden rounded-3xl border border-cyan-300/20 bg-cyan-400/5 p-4 md:p-5">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
-                            assistant
-                          </p>
-                          <p className="text-xs text-cyan-100/70">streaming...</p>
-                        </div>
-                        <p className="mt-3 break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
-                          {streamingAssistantText}
-                        </p>
-                      </article>
-                    ) : null}
+                      {streamingAssistantText && !hasVisibleStreamCheckpoint ? (
+                        <article className="w-full max-w-[88%] min-w-0 overflow-hidden rounded-3xl border border-cyan-300/20 bg-cyan-400/5 p-4 md:p-5">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                              assistant
+                            </p>
+                            <p className="text-xs text-cyan-100/70">streaming...</p>
+                          </div>
+                          <div className="mt-3 space-y-3">
+                            {renderMarkdownBlocks(streamingAssistantText, "streaming")}
+                          </div>
+                        </article>
+                      ) : null}
+                      <div ref={transcriptBottomSentinelRef} className="h-px w-full" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
+
+          {activeSession ? (
+            <div className="pointer-events-none absolute bottom-3 left-4 right-4 z-10 md:left-6 md:right-6">
+              <div className="mx-auto flex max-w-4xl justify-end">
+                <div
+                  className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] ${activityTone(activity)}`}
+                >
+                  <span className="font-semibold">{threadStatusSummary[0] ?? activityLabel(activity)}</span>
+                  {threadStatusSummary.slice(1).map((item) => (
+                    <span key={item} className="truncate">
+                      {item}
+                    </span>
+                  ))}
+                  {interrupting ? <span>interrupting...</span> : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="border-t border-white/10 bg-slate-950/95 px-4 py-4 md:px-6">
             <div className="mx-auto flex max-w-4xl flex-col gap-3">
-              {activeSession ? (
-                <div className={`rounded-2xl border px-4 py-3 text-sm ${activityTone(activity)}`}>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <span className="font-semibold">{activityLabel(activity)}</span>
-                    {elapsedLabel ? <span>time {elapsedLabel}</span> : null}
-                    {activity.backgroundProcessCount > 0 ? (
-                      <span>background {activity.backgroundProcessCount}</span>
-                    ) : null}
-                    {activity.waitingFlags.length > 0 ? (
-                      <span>{activity.waitingFlags.join(", ")}</span>
-                    ) : null}
-                    {activity.canInterrupt && activity.status === "running" ? (
-                      <span>Esc to interrupt</span>
-                    ) : null}
-                    {interrupting ? <span>interrupting...</span> : null}
-                  </div>
-                  {activity.lastError ? (
-                    <p className="mt-2 text-xs text-rose-100">{activity.lastError}</p>
-                  ) : null}
-                </div>
-              ) : null}
-
               {activeSession?.pendingSystemInstruction && queuedSystemMessages.length === 0 ? (
                 <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
@@ -3156,7 +3356,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </div>
               ) : null}
 
-              <form onSubmit={submitMessage} className="space-y-3">
+              <form onSubmit={submitMessage} className="space-y-2">
                 <textarea
                   ref={composerInputRef}
                   value={composerText}
@@ -3170,23 +3370,22 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   onPaste={(event) => {
                     void handleComposerPaste(event)
                   }}
-                  rows={4}
+                  rows={3}
                   placeholder={
                     activeSession
                       ? "Write the next message..."
                       : "Select or create a chat first."
                   }
                   disabled={!activeSession || sending}
-                  className="w-full rounded-3xl border border-white/10 bg-slate-900/90 px-4 py-4 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full rounded-2xl border border-white/10 bg-slate-900/90 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 />
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-slate-500">
-                    {processResolutionRequired
-                      ? `This process is ${processTerminalStatus === "blocked" ? "blocked" : "done"}. Choose the next process before sending.`
-                      : "Paste images directly from the clipboard. Ctrl+Enter sends. Esc interrupts when the provider supports it."}
+                {processResolutionRequired ? (
+                  <p className="text-xs font-semibold text-rose-200">
+                    This process is {processTerminalStatus === "blocked" ? "blocked" : "done"}. Choose the next process before sending.
                   </p>
-                  <div className="flex items-center gap-2">
-                    <label className="min-w-0">
+                ) : null}
+                <div className="flex items-center gap-2">
+                    <label className="min-w-0 flex-1">
                       <span className="sr-only">Quick set current chat process</span>
                       <div className="relative">
                         <select
@@ -3195,7 +3394,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
                           disabled={!activeSession || updatingQuickProcessBlueprint}
                           title="Quick Set Process"
-                          className={`max-w-44 rounded-full border px-3 py-2 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                          className={`w-full min-w-0 rounded-full border px-3 py-2 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
                             processResolutionRequired
                               ? "border-rose-400/70 bg-rose-400/10 text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.18)]"
                               : activeSession?.processBlueprintId
@@ -3254,7 +3453,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     >
                       <SendIcon />
                     </button>
-                  </div>
                 </div>
               </form>
             </div>
