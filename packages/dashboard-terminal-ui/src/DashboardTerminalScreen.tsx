@@ -91,7 +91,7 @@ function useTerminalRenderer() {
   const cursorRef = useRef<HTMLSpanElement>(null);
   const contentRef = useRef("");
 
-  const normalize = useCallback((text: string) => {
+  const stripEscapes = useCallback((text: string) => {
     return text
       // Strip OSC sequences (title sets, etc.)
       .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
@@ -103,27 +103,44 @@ function useTerminalRenderer() {
       .replace(/\r(?!\n)/g, "");
   }, []);
 
+  // Process backspace (\b = \x08) by removing the preceding character.
+  // PTY sends \b \b (back, space, back) to erase visually — we interpret
+  // each \b as "delete last visible char" in our simple text buffer.
+  const processBackspaces = useCallback((buf: string): string => {
+    const out: string[] = [];
+    for (let i = 0; i < buf.length; i++) {
+      if (buf[i] === "\x08") {
+        out.pop();
+      } else {
+        out.push(buf[i]);
+      }
+    }
+    return out.join("");
+  }, []);
+
   const scrollToBottom = useCallback(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
   }, []);
 
-  const append = useCallback((text: string) => {
-    contentRef.current += normalize(text);
+  const render = useCallback(() => {
     if (preRef.current) {
       preRef.current.textContent = contentRef.current;
       scrollToBottom();
     }
-  }, [normalize, scrollToBottom]);
+  }, [scrollToBottom]);
+
+  const append = useCallback((text: string) => {
+    const cleaned = stripEscapes(text);
+    contentRef.current = processBackspaces(contentRef.current + cleaned);
+    render();
+  }, [stripEscapes, processBackspaces, render]);
 
   const reset = useCallback((text: string) => {
-    contentRef.current = normalize(text);
-    if (preRef.current) {
-      preRef.current.textContent = contentRef.current;
-      scrollToBottom();
-    }
-  }, [normalize, scrollToBottom]);
+    contentRef.current = processBackspaces(stripEscapes(text));
+    render();
+  }, [stripEscapes, processBackspaces, render]);
 
   return { containerRef, preRef, cursorRef, append, reset };
 }
@@ -452,11 +469,17 @@ export function DashboardTerminalScreen({
     [ctrlCPrimed, sendInput],
   );
 
-  // Mobile beforeinput handler — catches Enter and Backspace on mobile keyboards
+  // Mobile beforeinput handler — catches Enter, Go/Check/Done, and Backspace
   const handleBeforeInput = useCallback(
     (e: Event) => {
       const inputEvent = e as InputEvent;
       if (inputEvent.inputType === "insertLineBreak" || inputEvent.inputType === "insertParagraph") {
+        e.preventDefault();
+        sendInput("\r");
+        return;
+      }
+      // Mobile "Go" / "Check" / "Done" button sends insertText with "\n"
+      if (inputEvent.inputType === "insertText" && inputEvent.data === "\n") {
         e.preventDefault();
         sendInput("\r");
         return;
