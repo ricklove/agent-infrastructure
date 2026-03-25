@@ -1,10 +1,12 @@
 import {
   Fragment,
+  memo,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -101,6 +103,11 @@ type ComposerImageAttachment = {
   id: string
   dataUrl: string
   mediaType: string
+}
+
+type ComposerSubmitPayload = {
+  text: string
+  images: ComposerImageAttachment[]
 }
 
 type SessionSnapshotResponse = {
@@ -219,6 +226,8 @@ const maxSessionRailWidth = 520
 const completedProcessResolutionSentinel = "__process_done__"
 const typingHeartbeatMs = 1000
 const minCollapsedActivityClusterSize = 3
+const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
+const websocketWarningDelayMs = 5_000
 
 function IconButton(props: {
   label: string
@@ -857,6 +866,319 @@ function MessageImageAsset({ path }: { path: string }) {
   )
 }
 
+const ComposerPanel = memo(function ComposerPanel(props: {
+  activeSession: SessionSummary | null
+  sending: boolean
+  interrupting: boolean
+  activity: SessionActivity
+  threadStatusSummary: string[]
+  processResolutionRequired: boolean
+  processTerminalStatus: "completed" | "blocked" | null
+  quickProcessSelectValue: string
+  processBlueprints: ProcessBlueprint[]
+  activeProcessBlueprintId: string | null
+  updatingQuickProcessBlueprint: boolean
+  settingsOpen: boolean
+  onToggleSettings: () => void
+  onQuickProcessChange: (nextProcessBlueprintId: string) => void
+  onInterrupt: () => void
+  onSubmitMessage: (payload: ComposerSubmitPayload) => Promise<boolean>
+  onReportTyping: (
+    active: boolean,
+    options?: { force?: boolean; sessionId?: string },
+  ) => Promise<void>
+  onSetError: (message: string) => void
+}) {
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
+  const [composerText, setComposerText] = useState("")
+  const [composerImages, setComposerImages] = useState<ComposerImageAttachment[]>([])
+
+  useEffect(() => {
+    if (!props.activeSession?.id) {
+      setComposerText("")
+      setComposerImages([])
+      return
+    }
+    setComposerText(readDraft(props.activeSession.id))
+    setComposerImages([])
+  }, [props.activeSession?.id])
+
+  useEffect(() => {
+    if (!props.activeSession?.id) {
+      return
+    }
+    writeDraft(props.activeSession.id, composerText)
+  }, [composerText, props.activeSession?.id])
+
+  const hasComposerContent = composerText.trim().length > 0 || composerImages.length > 0
+
+  const submitComposer = useCallback(async () => {
+    if (!props.activeSession || !hasComposerContent) {
+      return
+    }
+    if (props.processResolutionRequired) {
+      props.onSetError("Choose the next process before sending.")
+      quickProcessSelectRef.current?.focus()
+      return
+    }
+
+    const didSend = await props.onSubmitMessage({
+      text: composerText,
+      images: composerImages,
+    })
+    if (!didSend) {
+      return
+    }
+    setComposerText("")
+    setComposerImages([])
+    await props.onReportTyping(false, { force: true })
+  }, [
+    composerImages,
+    composerText,
+    hasComposerContent,
+    props.activeSession,
+    props.onReportTyping,
+    props.onSetError,
+    props.onSubmitMessage,
+    props.processResolutionRequired,
+  ])
+
+  const handleComposerKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault()
+        void submitComposer()
+        return
+      }
+
+      if (
+        event.key === "Escape" &&
+        props.activity.canInterrupt &&
+        props.activity.status === "running" &&
+        !props.interrupting
+      ) {
+        event.preventDefault()
+        props.onInterrupt()
+      }
+    },
+    [props.activity.canInterrupt, props.activity.status, props.interrupting, props.onInterrupt, submitComposer],
+  )
+
+  const handleComposerPaste = useCallback(
+    async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+      const clipboardItems = Array.from(event.clipboardData.items || [])
+      const imageItems = clipboardItems.filter((item) => item.type.startsWith("image/"))
+      if (imageItems.length === 0) {
+        return
+      }
+
+      event.preventDefault()
+      try {
+        const nextImages = await Promise.all(
+          imageItems.map((item, index) =>
+            readClipboardImage(item.getAsFile() as File).then((attachment) => ({
+              ...attachment,
+              id: attachment.id || `${Date.now()}-${index}`,
+            })),
+          ),
+        )
+        setComposerImages((current) => [...current, ...nextImages])
+      } catch (error) {
+        props.onSetError(error instanceof Error ? error.message : "Image paste failed.")
+      }
+    },
+    [props.onSetError],
+  )
+
+  return (
+    <>
+      {composerImages.length > 0 ? (
+        <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+              Pasted Images
+            </p>
+            <button
+              type="button"
+              onClick={() => setComposerImages([])}
+              className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-100"
+            >
+              Clear all
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {composerImages.map((image) => (
+              <div
+                key={image.id}
+                className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70"
+              >
+                <div className="flex min-h-28 min-w-28 items-center justify-center bg-slate-950/80 p-3">
+                  <img
+                    src={image.dataUrl}
+                    alt="Pasted attachment"
+                    className="max-h-28 max-w-28 object-contain"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
+                  <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                    image
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setComposerImages((current) =>
+                        current.filter((attachment) => attachment.id !== image.id),
+                      )
+                    }
+                    className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        className={`relative rounded-2xl border px-2.5 pb-2.5 pt-3 md:px-3 md:pb-3 md:pt-4 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] ${
+          props.processResolutionRequired
+            ? "border-rose-400/45 bg-rose-500/[0.05]"
+            : "border-white/10 bg-slate-900/90"
+        }`}
+      >
+        {props.activeSession ? (
+          <div className="pointer-events-none absolute -top-3 left-2.5 z-10 md:-top-2 md:left-3">
+            <div
+              className={`inline-flex max-w-[calc(100vw-7rem)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur ${activityTone(props.activity)}`}
+            >
+              <span className="truncate">
+                {props.threadStatusSummary[0] ?? activityLabel(props.activity)}
+              </span>
+              {props.threadStatusSummary.slice(1, 2).map((item) => (
+                <span key={item} className="truncate normal-case tracking-normal">
+                  {item}
+                </span>
+              ))}
+              {props.interrupting ? (
+                <span className="normal-case tracking-normal">interrupting...</span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <textarea
+          ref={composerInputRef}
+          value={composerText}
+          onChange={(event) => {
+            setComposerText(event.target.value)
+            void props.onReportTyping(true)
+          }}
+          onFocus={() => void props.onReportTyping(true, { force: true })}
+          onBlur={() => void props.onReportTyping(false, { force: true })}
+          onKeyDown={handleComposerKeyDown}
+          onPaste={(event) => {
+            void handleComposerPaste(event)
+          }}
+          rows={2}
+          placeholder={
+            props.activeSession
+              ? "Write the next message..."
+              : "Select or create a chat first."
+          }
+          disabled={!props.activeSession || props.sending}
+          className="min-h-[5rem] w-full resize-y border-0 bg-transparent px-0.5 py-0.5 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem] md:px-1 md:py-1"
+        />
+        <div className="mt-1.5 flex items-center gap-1.5 md:mt-2 md:gap-2">
+          <label className="min-w-0 flex-1">
+            <span className="sr-only">Quick set current chat process</span>
+            <div className="relative">
+              <select
+                ref={quickProcessSelectRef}
+                value={props.quickProcessSelectValue}
+                onChange={(event) => props.onQuickProcessChange(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                  }
+                }}
+                disabled={!props.activeSession || props.updatingQuickProcessBlueprint}
+                title="Quick Set Process"
+                className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                  props.processResolutionRequired
+                    ? "border-rose-400/70 bg-rose-400/10 text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.18)]"
+                    : props.activeProcessBlueprintId
+                      ? "border-white/10 bg-slate-900/80 text-slate-200"
+                      : "border-white/10 bg-slate-950/70 text-slate-500"
+                }`}
+              >
+                {props.processResolutionRequired ? (
+                  <option className="text-slate-950" value={completedProcessResolutionSentinel} disabled>
+                    {props.processTerminalStatus === "blocked" ? "Blocked" : "Done"}
+                  </option>
+                ) : null}
+                <option className="text-slate-950" value="">none</option>
+                {props.processBlueprints.map((entry) => (
+                  <option className="text-slate-950" key={entry.id} value={entry.id}>
+                    {entry.title}
+                  </option>
+                ))}
+              </select>
+              {props.processResolutionRequired ? (
+                <>
+                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3 text-xs font-semibold text-rose-200">
+                    {props.processTerminalStatus === "blocked" ? "Blocked" : "Done"}
+                  </span>
+                  <span
+                    title={`Choose the next process before sending. The previous process is ${props.processTerminalStatus === "blocked" ? "blocked" : "done"}.`}
+                    className="pointer-events-none absolute inset-y-0 right-8 flex items-center text-rose-200"
+                  >
+                    !
+                  </span>
+                </>
+              ) : null}
+            </div>
+          </label>
+          <IconButton
+            label={props.settingsOpen ? "Hide settings menu" : "Show settings menu"}
+            title={props.settingsOpen ? "Hide Menu" : "Menu"}
+            onClick={props.onToggleSettings}
+          >
+            <MenuIcon />
+          </IconButton>
+          {props.activity.canInterrupt && props.activity.status === "running" ? (
+            <IconButton
+              label={props.interrupting ? "Interrupting run" : "Interrupt run"}
+              title={props.interrupting ? "Interrupting..." : "Interrupt"}
+              onClick={props.onInterrupt}
+              disabled={props.interrupting}
+              tone="danger"
+            >
+              <StopIcon />
+            </IconButton>
+          ) : null}
+          <button
+            type="button"
+            aria-label={props.sending ? "Sending message" : "Send message"}
+            title={props.sending ? "Sending..." : "Send"}
+            onClick={() => void submitComposer()}
+            disabled={
+              !props.activeSession ||
+              props.sending ||
+              props.processResolutionRequired ||
+              !hasComposerContent
+            }
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300 text-slate-950 disabled:cursor-not-allowed disabled:border-cyan-300/20 disabled:bg-cyan-300/40"
+          >
+            <SendIcon />
+          </button>
+        </div>
+      </div>
+    </>
+  )
+})
+
 function sessionCardTone(activity: SessionActivity, active: boolean, archived: boolean) {
   if (active) {
     switch (activity.status) {
@@ -895,11 +1217,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const transcriptBottomSentinelRef = useRef<HTMLDivElement | null>(null)
   const pendingSessionOpenScrollRef = useRef<string | null>(null)
   const transcriptPinnedToBottomRef = useRef(true)
-  const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
-  const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
   const typingStateRef = useRef<{ sessionId: string; lastSentAt: number; active: boolean } | null>(null)
   const messageElementRefs = useRef(new Map<string, HTMLElement>())
   const sessionRailResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const queuedMessageCountRef = useRef(0)
   const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
   const [processBlueprints, setProcessBlueprints] = useState<ProcessBlueprint[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
@@ -922,8 +1243,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [sending, setSending] = useState(false)
   const [interrupting, setInterrupting] = useState(false)
   const [error, setError] = useState("")
+  const [wsWarning, setWsWarning] = useState("")
   const [streamingAssistantText, setStreamingAssistantText] = useState("")
-  const [composerText, setComposerText] = useState("")
   const [providerKind, setProviderKind] = useState<ProviderKind>("codex-app-server")
   const [newChatTitle, setNewChatTitle] = useState("")
   const [modelRef, setModelRef] = useState("")
@@ -952,7 +1273,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [archivingSessionId, setArchivingSessionId] = useState<string | null>(null)
   const [wsStatus, setWsStatus] = useState<"idle" | "connecting" | "ready" | "error">("idle")
   const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null)
-  const [composerImages, setComposerImages] = useState<ComposerImageAttachment[]>([])
   const [nowMs, setNowMs] = useState(() => Date.now())
   const [sessionRailWidth, setSessionRailWidth] = useState(() => readSessionRailWidth())
   const [expandedReplacedStreamMessageIds, setExpandedReplacedStreamMessageIds] = useState<
@@ -1304,19 +1624,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [activeSessionAuthProfile, activeSessionModelRef, activeSessionProvider])
 
   useEffect(() => {
-    if (!activeSessionId) {
-      setComposerText("")
-      setComposerImages([])
-      if (typingStateRef.current?.active) {
-        void reportTyping(false, { force: true, sessionId: typingStateRef.current.sessionId })
-      }
-      return
-    }
-    setComposerText(readDraft(activeSessionId))
-    setComposerImages([])
-  }, [activeSessionId])
-
-  useEffect(() => {
     return () => {
       if (typingStateRef.current?.active) {
         void reportTyping(false, { force: true, sessionId: typingStateRef.current.sessionId })
@@ -1330,13 +1637,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [activeSessionId])
 
   useEffect(() => {
-    if (!activeSessionId) {
-      return
-    }
-    writeDraft(activeSessionId, composerText)
-  }, [activeSessionId, composerText])
-
-  useEffect(() => {
     if (activity.status !== "running") {
       return
     }
@@ -1347,6 +1647,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       window.clearInterval(handle)
     }
   }, [activity.status])
+
+  useEffect(() => {
+    queuedMessageCountRef.current = queuedMessages.length
+  }, [queuedMessages.length])
 
   useEffect(() => {
     if (
@@ -1597,124 +1901,183 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   useEffect(() => {
     if (!activeSessionId) {
       setWsStatus("idle")
+      setWsWarning("")
       return
     }
 
     const socketUrl = new URL(props.wsRootUrl)
     socketUrl.searchParams.set("sessionId", activeSessionId)
-    setWsStatus("connecting")
     const protocols = dashboardSessionWebSocketProtocols()
-    const socket =
-      protocols.length > 0
-        ? new WebSocket(socketUrl.toString(), protocols)
-        : new WebSocket(socketUrl.toString())
+    let socket: WebSocket | null = null
+    let disposed = false
+    let reconnectAttempt = 0
+    let reconnectTimer: number | null = null
+    let warningTimer: number | null = null
 
-    socket.addEventListener("open", () => {
-      setWsStatus("ready")
-    })
+    const clearReconnectTimer = () => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+    }
 
-    socket.addEventListener("message", (event) => {
-      const payload = JSON.parse(String(event.data)) as
-        | SessionSnapshotEvent
-        | SessionUpdatedEvent
-        | RunStartedEvent
-        | RunDeltaEvent
-        | RunCompletedEvent
-        | RunFailedEvent
-        | RunInterruptedEvent
-        | RunActivityEvent
+    const clearWarningTimer = () => {
+      if (warningTimer !== null) {
+        window.clearTimeout(warningTimer)
+        warningTimer = null
+      }
+    }
 
-      if (payload.type === "session.snapshot") {
-        setMessages(payload.messages)
-        setQueuedMessages(payload.queuedMessages)
-        setActivity(payload.activity)
-        updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
-        setStreamingAssistantText("")
-        setSessions((current) =>
-          current.map((session) =>
-            session.id === payload.session.id ? payload.session : session,
-          ),
-        )
+    const scheduleDisconnectWarning = () => {
+      if (warningTimer !== null) {
+        return
+      }
+      warningTimer = window.setTimeout(() => {
+        warningTimer = null
+        setWsStatus("error")
+        setWsWarning("Agent Chat WebSocket disconnected. Retrying…")
+      }, websocketWarningDelayMs)
+    }
+
+    const connect = () => {
+      if (disposed) {
         return
       }
 
-      if (payload.type === "session.updated") {
-        if (payload.session) {
+      setWsStatus("connecting")
+      socket =
+        protocols.length > 0
+          ? new WebSocket(socketUrl.toString(), protocols)
+          : new WebSocket(socketUrl.toString())
+
+      socket.addEventListener("open", () => {
+        reconnectAttempt = 0
+        clearReconnectTimer()
+        clearWarningTimer()
+        setWsWarning("")
+        setWsStatus("ready")
+      })
+
+      socket.addEventListener("message", (event) => {
+        const payload = JSON.parse(String(event.data)) as
+          | SessionSnapshotEvent
+          | SessionUpdatedEvent
+          | RunStartedEvent
+          | RunDeltaEvent
+          | RunCompletedEvent
+          | RunFailedEvent
+          | RunInterruptedEvent
+          | RunActivityEvent
+
+        if (payload.type === "session.snapshot") {
+          setMessages(payload.messages)
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+          updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
+          setStreamingAssistantText("")
           setSessions((current) =>
             current.map((session) =>
-              session.id === payload.session!.id ? payload.session! : session,
+              session.id === payload.session.id ? payload.session : session,
             ),
           )
+          return
         }
-        setMessages((current) => mergeMessagesById(current, payload.messages))
-        setQueuedMessages(payload.queuedMessages)
-        setActivity(payload.activity)
-        updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
-        if (payload.messages.some((message) => message.role === "assistant")) {
+
+        if (payload.type === "session.updated") {
+          if (payload.session) {
+            setSessions((current) =>
+              current.map((session) =>
+                session.id === payload.session!.id ? payload.session! : session,
+              ),
+            )
+          }
+          setMessages((current) => mergeMessagesById(current, payload.messages))
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+          updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
+          if (payload.messages.some((message) => message.role === "assistant")) {
+            setStreamingAssistantText("")
+          }
+          return
+        }
+
+        if (payload.type === "run.started") {
+          setMessages((current) => mergeMessagesById(current, payload.messages))
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+          updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
           setStreamingAssistantText("")
+          return
         }
-        return
-      }
 
-      if (payload.type === "run.started") {
-        setMessages((current) => mergeMessagesById(current, payload.messages))
-        setQueuedMessages(payload.queuedMessages)
-        setActivity(payload.activity)
-        updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
-        setStreamingAssistantText("")
-        return
-      }
+        if (payload.type === "run.activity") {
+          setActivity(payload.activity)
+          setQueuedMessages(payload.queuedMessages)
+          updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
+          return
+        }
 
-      if (payload.type === "run.activity") {
-        setActivity(payload.activity)
-        setQueuedMessages(payload.queuedMessages)
-        updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
-        return
-      }
+        if (payload.type === "run.delta") {
+          setActivity((current) => ({
+            ...current,
+            status: "running",
+          }))
+          setStreamingAssistantText((current) => current + payload.delta)
+          return
+        }
 
-      if (payload.type === "run.delta") {
-        setActivity((current) => ({
-          ...current,
-          status: "running",
-        }))
-        setStreamingAssistantText((current) => current + payload.delta)
-        return
-      }
+        if (payload.type === "run.completed") {
+          setActivity(payload.activity)
+          updateActiveSessionRuntime(payload.activity, queuedMessageCountRef.current)
+          return
+        }
 
-      if (payload.type === "run.completed") {
-        setActivity(payload.activity)
-        updateActiveSessionRuntime(payload.activity, queuedMessages.length)
-        return
-      }
+        if (payload.type === "run.interrupted") {
+          setActivity(payload.activity)
+          updateActiveSessionRuntime(payload.activity, queuedMessageCountRef.current)
+          setStreamingAssistantText("")
+          return
+        }
 
-      if (payload.type === "run.interrupted") {
-        setActivity(payload.activity)
-        updateActiveSessionRuntime(payload.activity, queuedMessages.length)
-        setStreamingAssistantText("")
-        return
-      }
+        if (payload.type === "run.failed") {
+          setActivity(payload.activity)
+          updateActiveSessionRuntime(payload.activity, queuedMessageCountRef.current)
+          setStreamingAssistantText("")
+          setError(payload.error)
+        }
+      })
 
-      if (payload.type === "run.failed") {
-        setActivity(payload.activity)
-        updateActiveSessionRuntime(payload.activity, queuedMessages.length)
-        setStreamingAssistantText("")
-        setError(payload.error)
-      }
-    })
+      socket.addEventListener("error", () => {
+        scheduleDisconnectWarning()
+      })
 
-    socket.addEventListener("error", () => {
-      setWsStatus("error")
-      setError("Agent Chat WebSocket disconnected.")
-    })
+      socket.addEventListener("close", () => {
+        if (disposed) {
+          return
+        }
+        scheduleDisconnectWarning()
+        const delayMs =
+          websocketRetryBackoffMs[Math.min(reconnectAttempt, websocketRetryBackoffMs.length - 1)] ??
+          websocketRetryBackoffMs.at(-1) ??
+          8000
+        reconnectAttempt += 1
+        clearReconnectTimer()
+        reconnectTimer = window.setTimeout(() => {
+          reconnectTimer = null
+          connect()
+        }, delayMs)
+      })
+    }
 
-    socket.addEventListener("close", () => {
-      setWsStatus((current) => (current === "error" ? current : "idle"))
-    })
+    connect()
 
     return () => {
-      socket.close()
+      disposed = true
+      clearReconnectTimer()
+      clearWarningTimer()
+      socket?.close()
     }
-  }, [activeSessionId, props.wsRootUrl, queuedMessages.length, updateActiveSessionRuntime])
+  }, [activeSessionId, props.wsRootUrl, updateActiveSessionRuntime])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1847,8 +2210,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setMessages(payload.messages)
       setQueuedMessages(payload.queuedMessages)
       setActivity(payload.activity)
-      setComposerText("")
-      setComposerImages([])
       setReplyTargetMessageId(null)
       setNewChatTitle("")
       setSettingsOpen(false)
@@ -1963,7 +2324,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     event.currentTarget.form?.requestSubmit()
   }
 
-  async function updateActiveSessionProcessQuickSet(nextProcessBlueprintId: string) {
+  const updateActiveSessionProcessQuickSet = useCallback(async (nextProcessBlueprintId: string) => {
     if (!activeSessionId || !activeSession) {
       return
     }
@@ -2007,9 +2368,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     } finally {
       setUpdatingQuickProcessBlueprint(false)
     }
-  }
+  }, [activeSession, activeSessionId, mergeSession, processResolutionRequired, props.apiRootUrl, syncCurrentChatSettingsFromSession])
 
-  async function reportTyping(active: boolean, options?: { force?: boolean; sessionId?: string }) {
+  const reportTyping = useCallback(async (active: boolean, options?: { force?: boolean; sessionId?: string }) => {
     const targetSessionId = options?.sessionId ?? activeSessionId
     if (!targetSessionId) {
       return
@@ -2044,7 +2405,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     } catch {
       // Best-effort presence signal only.
     }
-  }
+  }, [activeSessionId, props.apiRootUrl])
 
   async function renameSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -2083,14 +2444,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
   }
 
-  async function sendMessage() {
-    if (!activeSessionId || (!composerText.trim() && composerImages.length === 0)) {
-      return
+  const sendMessage = useCallback(async (payload: ComposerSubmitPayload) => {
+    if (!activeSessionId) {
+      return false
+    }
+    if (!payload.text.trim() && payload.images.length === 0) {
+      return false
     }
     if (processResolutionRequired) {
       setError("Choose the next process before sending.")
-      quickProcessSelectRef.current?.focus()
-      return
+      return false
     }
 
     setSending(true)
@@ -2103,17 +2466,17 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          text: composerText,
+          text: payload.text,
           content: [
-            ...(composerText.trim()
+            ...(payload.text.trim()
               ? [
                   {
                     type: "text" as const,
-                    text: composerText,
+                    text: payload.text,
                   },
                 ]
               : []),
-            ...composerImages.map((image) => ({
+            ...payload.images.map((image) => ({
               type: "image" as const,
               dataUrl: image.dataUrl,
             })),
@@ -2121,22 +2484,21 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           replyToMessageId: replyTargetMessageId,
         }),
       })
-      const payload = (await response.json()) as { error?: string }
+      const responsePayload = (await response.json()) as { error?: string }
       if (!response.ok) {
-        throw new Error(payload.error ?? "Message send failed.")
+        throw new Error(responsePayload.error ?? "Message send failed.")
       }
-      setComposerText("")
-      setComposerImages([])
       setReplyTargetMessageId(null)
-      await reportTyping(false, { force: true })
+      return true
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Message send failed.")
+      return false
     } finally {
       setSending(false)
     }
-  }
+  }, [activeSessionId, processResolutionRequired, props.apiRootUrl, replyTargetMessageId])
 
-  async function interruptRun() {
+  const interruptRun = useCallback(async () => {
     if (!activeSessionId || !activity.canInterrupt || !activity.turnId) {
       return
     }
@@ -2158,86 +2520,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     } finally {
       setInterrupting(false)
     }
-  }
+  }, [activeSessionId, activity.canInterrupt, activity.turnId, props.apiRootUrl])
 
-  async function submitMessage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    await sendMessage()
-  }
-
-  const handleComposerKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-        event.preventDefault()
-        if (
-          !activeSession ||
-          sending ||
-          processResolutionRequired ||
-          (!composerText.trim() && composerImages.length === 0)
-        ) {
-          if (processResolutionRequired) {
-            setError("Choose the next process before sending.")
-            quickProcessSelectRef.current?.focus()
-          }
-          return
-        }
-        void sendMessage()
-        return
-      }
-
-      if (
-        event.key === "Escape" &&
-        activity.canInterrupt &&
-        activity.status === "running" &&
-        !interrupting
-      ) {
-        event.preventDefault()
-        void interruptRun()
-      }
-    },
-    [
-      activeSession,
-      activity.canInterrupt,
-      activity.status,
-      composerImages.length,
-      composerText,
-      interrupting,
-      processResolutionRequired,
-      sending,
-    ],
-  )
-
-  const handleComposerPaste = useCallback(
-    async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-      const imageFiles = Array.from(event.clipboardData.items)
-        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
-        .map((item) => item.getAsFile())
-        .filter((file): file is File => file !== null)
-
-      if (imageFiles.length === 0) {
-        return
-      }
-
-      event.preventDefault()
-
-      const pastedText = event.clipboardData.getData("text/plain")
-      if (pastedText && composerInputRef.current) {
-        setComposerText((current) =>
-          insertTextAtSelection(composerInputRef.current!, current, pastedText),
-        )
-      }
-
-      try {
-        const nextImages = await Promise.all(imageFiles.map((file) => readClipboardImage(file)))
-        setComposerImages((current) => [...current, ...nextImages])
-      } catch (nextError) {
-        setError(
-          nextError instanceof Error ? nextError.message : "Clipboard image paste failed.",
-        )
-      }
-    },
-    [],
-  )
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -2747,6 +3031,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         {error ? (
           <div className="border-b border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200 md:px-6">
             {error}
+          </div>
+        ) : null}
+        {wsWarning ? (
+          <div className="border-b border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100 md:px-6">
+            {wsWarning}
           </div>
         ) : null}
 
@@ -3289,179 +3578,28 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </div>
               ) : null}
 
-              {composerImages.length > 0 ? (
-                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
-                      Pasted Images
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setComposerImages([])}
-                      className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-100"
-                    >
-                      Clear all
-                    </button>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    {composerImages.map((image) => (
-                      <div
-                        key={image.id}
-                        className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70"
-                      >
-                        <div className="flex min-h-28 min-w-28 items-center justify-center bg-slate-950/80 p-3">
-                          <img
-                            src={image.dataUrl}
-                            alt="Pasted attachment"
-                            className="max-h-28 max-w-28 object-contain"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
-                          <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                            image
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setComposerImages((current) =>
-                                current.filter((attachment) => attachment.id !== image.id),
-                              )
-                            }
-                            className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <form
-                onSubmit={submitMessage}
-                className={`relative rounded-2xl border px-2.5 pb-2.5 pt-3 md:px-3 md:pb-3 md:pt-4 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] ${
-                  processResolutionRequired
-                    ? "border-rose-400/45 bg-rose-500/[0.05]"
-                    : "border-white/10 bg-slate-900/90"
-                }`}
-              >
-                {activeSession ? (
-                  <div className="pointer-events-none absolute -top-3 left-2.5 z-10 md:-top-2 md:left-3">
-                    <div
-                      className={`inline-flex max-w-[calc(100vw-7rem)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur ${activityTone(activity)}`}
-                    >
-                      <span className="truncate">{threadStatusSummary[0] ?? activityLabel(activity)}</span>
-                      {threadStatusSummary.slice(1, 2).map((item) => (
-                        <span key={item} className="truncate normal-case tracking-normal">
-                          {item}
-                        </span>
-                      ))}
-                      {interrupting ? <span className="normal-case tracking-normal">interrupting...</span> : null}
-                    </div>
-                  </div>
-                ) : null}
-                <textarea
-                  ref={composerInputRef}
-                  value={composerText}
-                  onChange={(event) => {
-                    setComposerText(event.target.value)
-                    void reportTyping(true)
-                  }}
-                  onFocus={() => void reportTyping(true, { force: true })}
-                  onBlur={() => void reportTyping(false, { force: true })}
-                  onKeyDown={handleComposerKeyDown}
-                  onPaste={(event) => {
-                    void handleComposerPaste(event)
-                  }}
-                  rows={2}
-                  placeholder={
-                    activeSession
-                      ? "Write the next message..."
-                      : "Select or create a chat first."
-                  }
-                  disabled={!activeSession || sending}
-                  className="min-h-[5rem] w-full resize-y border-0 bg-transparent px-0.5 py-0.5 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem] md:px-1 md:py-1"
-                />
-                <div className="mt-1.5 flex items-center gap-1.5 md:mt-2 md:gap-2">
-                    <label className="min-w-0 flex-1">
-                      <span className="sr-only">Quick set current chat process</span>
-                      <div className="relative">
-                        <select
-                          ref={quickProcessSelectRef}
-                          value={quickProcessSelectValue}
-                          onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
-                          disabled={!activeSession || updatingQuickProcessBlueprint}
-                          title="Quick Set Process"
-                          className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
-                            processResolutionRequired
-                              ? "border-rose-400/70 bg-rose-400/10 text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.18)]"
-                              : activeSession?.processBlueprintId
-                                ? "border-white/10 bg-slate-900/80 text-slate-200"
-                                : "border-white/10 bg-slate-950/70 text-slate-500"
-                          }`}
-                        >
-                          {processResolutionRequired ? (
-                            <option className="text-slate-950" value={completedProcessResolutionSentinel} disabled>
-                              {processTerminalStatus === "blocked" ? "Blocked" : "Done"}
-                            </option>
-                          ) : null}
-                          <option className="text-slate-950" value="">none</option>
-                          {processBlueprints.map((entry) => (
-                            <option className="text-slate-950" key={entry.id} value={entry.id}>
-                              {entry.title}
-                            </option>
-                          ))}
-                        </select>
-                        {processResolutionRequired ? (
-                          <>
-                            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3 text-xs font-semibold text-rose-200">
-                              {processTerminalStatus === "blocked" ? "Blocked" : "Done"}
-                            </span>
-                            <span
-                              title={`Choose the next process before sending. The previous process is ${processTerminalStatus === "blocked" ? "blocked" : "done"}.`}
-                              className="pointer-events-none absolute inset-y-0 right-8 flex items-center text-rose-200"
-                            >
-                              !
-                            </span>
-                          </>
-                        ) : null}
-                      </div>
-                    </label>
-                    <IconButton
-                      label={settingsOpen ? "Hide settings menu" : "Show settings menu"}
-                      title={settingsOpen ? "Hide Menu" : "Menu"}
-                      onClick={() => setSettingsOpen((current) => !current)}
-                    >
-                      <MenuIcon />
-                    </IconButton>
-                    {activity.canInterrupt && activity.status === "running" ? (
-                      <IconButton
-                        label={interrupting ? "Interrupting run" : "Interrupt run"}
-                        title={interrupting ? "Interrupting..." : "Interrupt"}
-                        onClick={() => void interruptRun()}
-                        disabled={interrupting}
-                        tone="danger"
-                      >
-                        <StopIcon />
-                      </IconButton>
-                    ) : null}
-                    <button
-                      type="submit"
-                      aria-label={sending ? "Sending message" : "Send message"}
-                      title={sending ? "Sending..." : "Send"}
-                      disabled={
-                        !activeSession ||
-                        sending ||
-                        processResolutionRequired ||
-                        (!composerText.trim() && composerImages.length === 0)
-                      }
-                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300 text-slate-950 disabled:cursor-not-allowed disabled:border-cyan-300/20 disabled:bg-cyan-300/40"
-                    >
-                      <SendIcon />
-                    </button>
-                </div>
-              </form>
+              <ComposerPanel
+                activeSession={activeSession}
+                sending={sending}
+                interrupting={interrupting}
+                activity={activity}
+                threadStatusSummary={threadStatusSummary}
+                processResolutionRequired={processResolutionRequired}
+                processTerminalStatus={processTerminalStatus}
+                quickProcessSelectValue={quickProcessSelectValue}
+                processBlueprints={processBlueprints}
+                activeProcessBlueprintId={activeSession?.processBlueprintId ?? null}
+                updatingQuickProcessBlueprint={updatingQuickProcessBlueprint}
+                settingsOpen={settingsOpen}
+                onToggleSettings={() => setSettingsOpen((current) => !current)}
+                onQuickProcessChange={(nextProcessBlueprintId) =>
+                  void updateActiveSessionProcessQuickSet(nextProcessBlueprintId)
+                }
+                onInterrupt={() => void interruptRun()}
+                onSubmitMessage={sendMessage}
+                onReportTyping={reportTyping}
+                onSetError={setError}
+              />
             </div>
           </div>
         </div>
