@@ -36,11 +36,10 @@ properly defined, lazy-loaded, and integrated with both shell and gateway.
   classes to enable proper vertical scrolling when content exceeds viewport height.
 
 ### Known Gaps
-- **Dashboard Version Popup Not Working (2026-03-25)**: The dashboard shell has an "AI" button that
-  should show a version/status popup on hover using `group-hover:block`, but the popup is not
-  appearing for users. The hover-only interaction doesn't work on mobile/touch devices and may have
-  CSS specificity or z-index issues. The fix is to make the popup clickable (toggle on click)
-  ensuring it works on all devices and is more discoverable.
+- **Dashboard Version Popup Mobile Menu Interaction (2026-03-25)**: The version popup now works with
+  click-to-toggle, but when opened on mobile and then the mobile menu is closed, the popup remains
+  open creating orphaned UI. The popup should automatically close when the mobile menu closes to
+  maintain clean UI state.
 
 ### Recently Fixed Issues (Continued)
 - **Agent Swarm Process Color Distribution (2026-03-23)**: Colors are keyed by PID with preset
