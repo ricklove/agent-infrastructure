@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { MessageParam } from "@anthropic-ai/sdk/resources";
 import { query, type Query } from "@anthropic-ai/claude-agent-sdk";
 import { resolveClaudeSdkModelValue } from "./model-service.js";
 import type { StoredSession } from "./store.js";
@@ -13,6 +12,26 @@ type ProviderInputBlock =
       filePath: string | null;
       base64Data: string | null;
     };
+
+type ClaudeMessageContent = Array<
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "image";
+      source:
+        | {
+            type: "base64";
+            media_type: "image/jpeg" | "image/gif" | "image/webp" | "image/png";
+            data: string;
+          }
+        | {
+            type: "url";
+            url: string;
+          };
+    }
+>;
 
 const defaultSessionCwd =
   process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
@@ -75,8 +94,8 @@ function parseClaudeModel(modelRef: string) {
 function buildClaudeMessageContent(
   inputBlocks: ProviderInputBlock[],
   pendingSystemInstruction: string | null,
-): MessageParam["content"] {
-  const content: NonNullable<MessageParam["content"]> = [];
+): ClaudeMessageContent {
+  const content: ClaudeMessageContent = [];
   const systemText = pendingSystemInstruction?.trim();
   if (systemText) {
     content.push({
@@ -162,6 +181,20 @@ function buildClaudeEnv(session: StoredSession) {
   return env;
 }
 
+function resolveClaudePermissionOptions(session: StoredSession) {
+  if (!session.processBlueprintId || session.processBlueprintId === "discuss") {
+    return {
+      permissionMode: "plan" as const,
+      allowDangerouslySkipPermissions: undefined,
+    };
+  }
+
+  return {
+    permissionMode: "bypassPermissions" as const,
+    allowDangerouslySkipPermissions: true,
+  };
+}
+
 export async function runClaudeTurn(
   sessionId: string,
   session: StoredSession,
@@ -188,6 +221,7 @@ export async function runClaudeTurn(
   let assistantText = "";
   let finalResultText = "";
   let started = false;
+  const permissionOptions = resolveClaudePermissionOptions(session);
 
   const runQuery = query({
     prompt,
@@ -196,8 +230,8 @@ export async function runClaudeTurn(
       model,
       resume: session.providerThreadId || undefined,
       includePartialMessages: true,
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
+      permissionMode: permissionOptions.permissionMode,
+      allowDangerouslySkipPermissions: permissionOptions.allowDangerouslySkipPermissions,
       env: buildClaudeEnv(session),
     },
   });
