@@ -170,6 +170,13 @@ CurrentReality.processResolutionGuard.means(`
 - that unresolved state is shown as red Done warning text in the quick-set selector rather than as a stored process value or selectable option
 - the current-chat settings surface also highlights that completed-process state and keeps normal process options available for resolution
 - the composer send path is blocked until the operator chooses the next normal process selection
+- the current quick-set implementation still layers the Done warning over the previously selected real process value, so re-selecting that same prior process is not yet modeled as an explicit fresh resolution choice
+`);
+
+CurrentReality.stalledTurnWatchdogGap.means(`
+- watchdog nudging is currently armed only when runtime state becomes idle after a provider turn completes
+- a turn that stays provider-running while producing no meaningful visible progress can therefore sit silent well past the intended watchdog timeout
+- Full Development Process sessions can currently appear idle to the operator while remaining invisible to the watchdog until the provider eventually completes or the runtime state changes some other way
 `);
 
 CurrentReality.sessionListWorkflowPolishGap.means(`
