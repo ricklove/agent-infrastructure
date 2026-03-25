@@ -34,6 +34,11 @@ type ClaudeRunCallbacks = {
     itemId: string;
     delta: string;
   }) => void;
+  onActivity?: (payload: {
+    threadId: string;
+    turnId: string;
+    text: string;
+  }) => void;
 };
 
 type ClaudeRunResult = {
@@ -231,6 +236,11 @@ export async function runClaudeTurn(
       if (message.type === "system" && message.subtype === "task_started") {
         if (message.task_id) {
           activeTaskIds.add(message.task_id);
+          callbacks.onActivity?.({
+            threadId: currentThreadId,
+            turnId: currentTurnId || currentThreadId,
+            text: "Background task started.",
+          });
           callbacks.onBackgroundProcessCountChanged?.({
             threadId: currentThreadId,
             turnId: currentTurnId || currentThreadId,
@@ -243,6 +253,11 @@ export async function runClaudeTurn(
       if (message.type === "system" && message.subtype === "task_notification") {
         if (message.task_id) {
           activeTaskIds.delete(message.task_id);
+          callbacks.onActivity?.({
+            threadId: currentThreadId,
+            turnId: currentTurnId || currentThreadId,
+            text: "Background task completed.",
+          });
           callbacks.onBackgroundProcessCountChanged?.({
             threadId: currentThreadId,
             turnId: currentTurnId || currentThreadId,

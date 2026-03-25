@@ -112,8 +112,13 @@ AgentChat.enforces(`
 - When more than one human message is queued behind an active run, AgentChat should deliver that queued human batch into the next provider turn together rather than silently serializing them into many one-message follow-up turns.
 - Session process changes should remain queued provider-facing instructions until the next turn consumes them, and that consumption should also become a canonical transcript event so history survives refresh.
 - When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
+- Once a session process is active, it remains unresolved until the agent emits that process blueprint's exact done token or exact blocked token.
 - Expectation-aware watchdog behavior must treat operator-visible stalled turns as unresolved inactivity even when the provider transport still considers the turn open.
+- If the provider explicitly reports itself idle while the session process is still unresolved, AgentChat should make the watchdog immediately eligible rather than waiting another full idle timeout window.
+- If the provider explicitly reports an error, AgentChat should enter provider-error handling and retry policy rather than misclassifying that state as ordinary idle.
+- Active human typing should suppress idle-watchdog prompting until typing stops and the short grace period expires.
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
+- All surfaced agent activity must become canonical transcript history, including tool calls, sub-agent work, retries, waiting states, approvals, and future surfaced activity classes.
 `);
 
 Workspace.shell.contains(

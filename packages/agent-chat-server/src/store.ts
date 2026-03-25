@@ -27,7 +27,7 @@ export type StoredAttachment = {
 };
 
 export type SessionWatchdogState = {
-  status: "unconfigured" | "unresolved" | "nudged" | "completed";
+  status: "unconfigured" | "unresolved" | "nudged" | "completed" | "blocked";
   nudgeCount: number;
   lastNudgedAtMs: number | null;
   completedAtMs: number | null;
@@ -57,7 +57,13 @@ export type StoredMessage = {
   id: string;
   sessionId: string;
   role: "user" | "assistant" | "system";
-  kind: "chat" | "directoryInstruction" | "watchdogPrompt" | "thought" | "streamCheckpoint";
+  kind:
+    | "chat"
+    | "activity"
+    | "directoryInstruction"
+    | "watchdogPrompt"
+    | "thought"
+    | "streamCheckpoint";
   replyToMessageId: string | null;
   providerSeenAtMs: number | null;
   content: StoredMessageContentBlock[];
@@ -105,6 +111,9 @@ function safeJsonParse<T>(raw: string): T {
 function summarizePreview(messages: StoredMessage[]): string | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
+    if (message.kind === "activity") {
+      continue;
+    }
     const textBlock = message?.content.find((block) => block.type === "text");
     const preview = textBlock?.type === "text" ? textBlock.text.trim() : "";
     if (preview) {
@@ -847,6 +856,7 @@ export class AgentChatStore {
       processBlueprintId: parsed.processBlueprintId ? String(parsed.processBlueprintId) : null,
       watchdogState: {
         status:
+          parsed.watchdogState?.status === "blocked" ||
           parsed.watchdogState?.status === "completed" ||
           parsed.watchdogState?.status === "nudged" ||
           parsed.watchdogState?.status === "unresolved"
@@ -904,6 +914,8 @@ export class AgentChatStore {
           kind:
             parsed.kind === "directoryInstruction"
               ? "directoryInstruction"
+                : parsed.kind === "activity"
+                  ? "activity"
                 : parsed.kind === "watchdogPrompt"
                   ? "watchdogPrompt"
                   : parsed.kind === "streamCheckpoint"

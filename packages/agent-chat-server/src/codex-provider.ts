@@ -46,6 +46,11 @@ type CodexRunCallbacks = {
     itemId: string;
     summaryText: string;
   }) => void;
+  onActivity?: (payload: {
+    threadId: string;
+    turnId: string;
+    text: string;
+  }) => void;
 };
 
 type CodexRunResult = {
@@ -267,6 +272,11 @@ export async function runCodexTurn(
         const item = params.item as Record<string, unknown> | undefined;
         if (item?.type === "commandExecution") {
           activeCommandIds.add(String(item.id ?? ""));
+          callbacks.onActivity?.({
+            threadId: String(params.threadId ?? currentThreadId ?? ""),
+            turnId: String(params.turnId ?? currentTurnId),
+            text: "Command execution started.",
+          });
           callbacks.onBackgroundProcessCountChanged?.({
             threadId: String(params.threadId ?? currentThreadId ?? ""),
             turnId: String(params.turnId ?? currentTurnId),
@@ -305,6 +315,11 @@ export async function runCodexTurn(
         }
         if (item?.type === "commandExecution") {
           activeCommandIds.delete(String(item.id ?? ""));
+          callbacks.onActivity?.({
+            threadId: String(params.threadId ?? currentThreadId ?? ""),
+            turnId: String(params.turnId ?? currentTurnId),
+            text: "Command execution completed.",
+          });
           callbacks.onBackgroundProcessCountChanged?.({
             threadId: String(params.threadId ?? currentThreadId ?? ""),
             turnId: String(params.turnId ?? currentTurnId),
