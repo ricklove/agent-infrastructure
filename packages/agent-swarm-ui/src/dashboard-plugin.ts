@@ -17,5 +17,6 @@ export const agentSwarmDashboardPlugin: DashboardFeaturePlugin = {
     upstreamBaseUrlEnv: "MANAGER_INTERNAL_URL",
     defaultBaseUrl: "http://127.0.0.1:8787",
     healthPath: "/health",
+    startupPolicy: "always",
   },
 };

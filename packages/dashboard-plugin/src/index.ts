@@ -22,6 +22,8 @@ export type DashboardFeatureStartupDefinition = {
   logFileName?: string;
 };
 
+export type DashboardFeatureBackendStartupPolicy = "lazy" | "always";
+
 export type DashboardFeatureBackendDefinition = {
   id: string;
   apiBasePath?: string;
@@ -30,6 +32,7 @@ export type DashboardFeatureBackendDefinition = {
   upstreamBaseUrlEnv?: string;
   defaultBaseUrl?: string;
   healthPath: string;
+  startupPolicy: DashboardFeatureBackendStartupPolicy;
   startup?: DashboardFeatureStartupDefinition;
 };
 

@@ -20,6 +20,7 @@ export const agentGraphDashboardPlugin: DashboardFeaturePlugin = {
     upstreamBaseUrlEnv: "AGENT_GRAPH_SERVER_URL",
     defaultBaseUrl: "http://127.0.0.1:8788",
     healthPath: "/api/agent-graph/workspace",
+    startupPolicy: "lazy",
     startup: {
       kind: "bun-entry",
       entry: "packages/agent-graph-server/src/index.ts",

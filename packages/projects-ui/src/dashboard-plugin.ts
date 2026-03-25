@@ -16,6 +16,7 @@ export const projectsDashboardPlugin: DashboardFeaturePlugin = {
     apiBasePath: "/api/projects",
     defaultBaseUrl: "http://127.0.0.1:8791",
     healthPath: "/api/projects/health",
+    startupPolicy: "lazy",
     startup: {
       kind: "bun-entry",
       entry: "packages/projects-server/src/index.ts",

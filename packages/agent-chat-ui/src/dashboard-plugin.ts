@@ -19,6 +19,7 @@ export const agentChatDashboardPlugin: DashboardFeaturePlugin = {
     upstreamWsPath: "/api/agent-chat/ws",
     defaultBaseUrl: "http://127.0.0.1:8789",
     healthPath: "/api/agent-chat/health",
+    startupPolicy: "always",
     startup: {
       kind: "bun-entry",
       entry: "packages/agent-chat-server/src/index.ts",

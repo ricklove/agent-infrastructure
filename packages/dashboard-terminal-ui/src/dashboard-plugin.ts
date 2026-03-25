@@ -19,6 +19,7 @@ export const dashboardTerminalPlugin: DashboardFeaturePlugin = {
     upstreamWsPath: "/api/dashboard-terminal/ws",
     defaultBaseUrl: "http://127.0.0.1:8790",
     healthPath: "/api/dashboard-terminal/health",
+    startupPolicy: "lazy",
     startup: {
       kind: "bun-entry",
       entry: "packages/dashboard-terminal-server/src/index.ts",

@@ -148,6 +148,7 @@ type GatewayBackendDefinition = {
   baseUrl: string;
   wsUrl?: string;
   healthPath: string;
+  startupPolicy: "lazy" | "always";
   startCommand?: string[];
   logPath?: string;
 };
@@ -266,6 +267,7 @@ function createGatewayBackend(
         ? `${wsBaseUrlFromHttpOrigin(baseUrl)}${definition.upstreamWsPath}`
         : undefined,
     healthPath: definition.healthPath,
+    startupPolicy: definition.startupPolicy,
     startCommand:
       definition.startup?.kind === "bun-entry"
         ? ["bun", resolve(repoRoot, definition.startup.entry)]
@@ -738,6 +740,20 @@ async function ensureBackend(backend: GatewayBackendDefinition): Promise<void> {
   }
 
   await backendEnsurePromises.get(backend.id);
+}
+
+async function ensureAlwaysBackends(): Promise<void> {
+  const backends = gatewayBackends.filter((backend) => backend.startupPolicy === "always");
+  await Promise.all(
+    backends.map(async (backend) => {
+      try {
+        await ensureBackend(backend);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        logSystemStep("dashboard-server", `error ${backend.id} ensure_always_failed=${detail}`);
+      }
+    }),
+  );
 }
 
 function findApiBackend(pathname: string): GatewayBackendDefinition | undefined {
@@ -1271,6 +1287,8 @@ const server = Bun.serve<DashboardWsData>({
     },
   },
 });
+
+void ensureAlwaysBackends();
 
 console.log(
   JSON.stringify({
