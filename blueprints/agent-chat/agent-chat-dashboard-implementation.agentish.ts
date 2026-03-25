@@ -181,6 +181,8 @@ AgentChatDashboardImplementation.enforces(`
 - The browser should preserve unsent per-session message drafts in local storage so transient reloads do not discard typed input.
 - Keyboard interrupt should be exposed as Esc when the selected provider supports a real interrupt action.
 - Canonical chat settings should remain editable whenever safe, and provider-setting forms must not reset unsaved selections before the operator decides to save.
+- The current-chat settings surface must remain saveable on mobile; when the menu is open in a constrained viewport, the save action must stay reachable within the settings surface instead of disappearing below off-screen chrome.
+- Text-entry fields inside the current-chat settings form should allow an operator to commit the pending settings directly from the mobile keyboard action, including the iOS confirmation key, rather than requiring a separate desktop-style click path.
 - Thread rendering should use one clear message-state model so pending, queued, and delivered messages are not duplicated or ambiguously split across transcript and waiting UI.
 - When the backend marks a queued user message as provider-seen at run start, that visibility transition should be pushed to the browser immediately so queued badges clear without waiting for a later full refresh or assistant completion.
 - If Agent Chat surfaces provider reasoning checkpoints as collapsed thought entries, those entries must be recorded into canonical message history when the backend receives the provider event.
@@ -446,6 +448,7 @@ Scope.browserOwnsUi.means(`
 - the active transcript is the visual priority on mobile, tablet, and desktop layouts
 - create-session and session-settings controls should be collapsed behind bottom-of-composer menus when not actively being edited
 - activity and queued-message state should stay anchored immediately above the composer so the operator can understand what the agent is doing before sending the next message
+- when those menus are open on mobile, their internal content should scroll independently and keep primary actions reachable above the safe-area inset and keyboard-constrained viewport
 `);
 
 Scope.dashboardAuth.means(`
