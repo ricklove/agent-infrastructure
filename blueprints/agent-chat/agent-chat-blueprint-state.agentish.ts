@@ -170,13 +170,14 @@ CurrentReality.processResolutionGuard.means(`
 - that unresolved state is shown as red Done warning text in the quick-set selector rather than as a stored process value or selectable option
 - the current-chat settings surface also highlights that completed-process state and keeps normal process options available for resolution
 - the composer send path is blocked until the operator chooses the next normal process selection
-- the current quick-set implementation still layers the Done warning over the previously selected real process value, so re-selecting that same prior process is not yet modeled as an explicit fresh resolution choice
+- the unresolved Done state is now backed by a distinct selector sentinel value, so the operator can explicitly choose the same previous process again and have that count as a fresh re-application of the contract
+- reapplying the same completed process now resets the completed watchdog state and queues the next-turn process instruction again instead of being ignored as a no-op
 `);
 
-CurrentReality.stalledTurnWatchdogGap.means(`
-- watchdog nudging is currently armed only when runtime state becomes idle after a provider turn completes
-- a turn that stays provider-running while producing no meaningful visible progress can therefore sit silent well past the intended watchdog timeout
-- Full Development Process sessions can currently appear idle to the operator while remaining invisible to the watchdog until the provider eventually completes or the runtime state changes some other way
+CurrentReality.stalledTurnWatchdog.means(`
+- watchdog scheduling now tracks the last meaningful visible progress time even while a provider turn remains in running state
+- a stalled running turn can now flip watchdog state to nudged and append a watchdog prompt before the provider emits turn completion
+- local verification confirmed that a long-running shell command session stayed provider-running, then received its Full Development Process watchdog prompt after the configured inactivity budget expired
 `);
 
 CurrentReality.sessionListWorkflowPolishGap.means(`

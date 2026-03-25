@@ -101,6 +101,7 @@ type SessionSnapshotPayload = {
 };
 
 type SessionRuntimeState = SessionActivity & {
+  lastVisibleActivityAtMs: number | null;
   interruptRequested: boolean;
   providerKind: AgentChatProviderKind | null;
 };
@@ -201,6 +202,7 @@ function ensureRuntimeState(sessionId: string): SessionRuntimeState {
       lastError: null,
       currentMessageId: null,
       canInterrupt: false,
+      lastVisibleActivityAtMs: null,
       interruptRequested: false,
       providerKind: null,
     };
@@ -347,6 +349,19 @@ function buildProcessExpectationInstruction(processBlueprint: ProcessBlueprint |
   return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}`;
 }
 
+function runningTurnLooksStalled(runtime: SessionRuntimeState, processBlueprint: ProcessBlueprint) {
+  if (runtime.status !== "running") {
+    return false;
+  }
+
+  const anchorMs = runtime.lastVisibleActivityAtMs ?? runtime.startedAtMs;
+  if (anchorMs === null) {
+    return false;
+  }
+
+  return Date.now() - anchorMs >= processBlueprint.watchdog.idleTimeoutSeconds * 1000;
+}
+
 function maybeTriggerSessionWatchdog(sessionId: string) {
   sessionWatchdogTimers.delete(sessionId);
   const session = store.getSession(sessionId);
@@ -360,7 +375,7 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
   }
 
   const runtime = ensureRuntimeState(sessionId);
-  if (runtime.status !== "idle") {
+  if (runtime.status !== "idle" && !runningTurnLooksStalled(runtime, processBlueprint)) {
     return;
   }
 
@@ -406,13 +421,30 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
   }
 
   const runtime = ensureRuntimeState(sessionId);
-  if (runtime.status !== "idle" || session.watchdogState.status === "completed") {
+  if (session.watchdogState.status === "completed") {
+    return;
+  }
+
+  let delayMs: number | null = null;
+  if (runtime.status === "idle") {
+    delayMs = processBlueprint.watchdog.idleTimeoutSeconds * 1000;
+  } else if (runtime.status === "running") {
+    const anchorMs = runtime.lastVisibleActivityAtMs ?? runtime.startedAtMs;
+    if (anchorMs !== null) {
+      delayMs = Math.max(
+        processBlueprint.watchdog.idleTimeoutSeconds * 1000 - (Date.now() - anchorMs),
+        0,
+      );
+    }
+  }
+
+  if (delayMs === null) {
     return;
   }
 
   const handle = setTimeout(() => {
     maybeTriggerSessionWatchdog(sessionId);
-  }, processBlueprint.watchdog.idleTimeoutSeconds * 1000);
+  }, delayMs);
   sessionWatchdogTimers.set(sessionId, handle);
 }
 
@@ -553,12 +585,18 @@ function setRuntimeState(
       ? update({ ...current, waitingFlags: [...current.waitingFlags] })
       : { ...current, ...update };
   sessionRuntime.set(sessionId, next);
-  if (next.status === "idle") {
+  if (next.status === "idle" || next.status === "running") {
     maybeScheduleSessionWatchdog(sessionId);
   } else {
     cancelSessionWatchdog(sessionId);
   }
   return next;
+}
+
+function markSessionVisibleActivity(sessionId: string, atMs = Date.now()) {
+  return setRuntimeState(sessionId, {
+    lastVisibleActivityAtMs: atMs,
+  });
 }
 
 async function processSessionQueue(sessionId: string) {
@@ -613,6 +651,7 @@ async function runProviderTurnForQueuedMessages(
     lastError: null,
     currentMessageId: queuedMessages[0]?.id ?? null,
     canInterrupt: providerSupportsInterrupt(session.providerKind),
+    lastVisibleActivityAtMs: Date.now(),
     interruptRequested: false,
     providerKind: session.providerKind,
   });
@@ -666,6 +705,7 @@ async function runProviderTurnForQueuedMessages(
           ...current,
           status: "running",
           startedAtMs: current.startedAtMs ?? Date.now(),
+          lastVisibleActivityAtMs: Date.now(),
           threadId: payload.threadId,
           turnId: payload.turnId,
         }));
@@ -685,6 +725,10 @@ async function runProviderTurnForQueuedMessages(
           ...current,
           threadId: payload.threadId || current.threadId,
           waitingFlags: payload.flags,
+          lastVisibleActivityAtMs:
+            current.waitingFlags.join("\u0000") === payload.flags.join("\u0000")
+              ? current.lastVisibleActivityAtMs
+              : Date.now(),
         }));
         broadcastActivity(sessionId);
       },
@@ -698,6 +742,10 @@ async function runProviderTurnForQueuedMessages(
           threadId: payload.threadId || current.threadId,
           turnId: payload.turnId || current.turnId,
           backgroundProcessCount: payload.backgroundProcessCount,
+          lastVisibleActivityAtMs:
+            current.backgroundProcessCount === payload.backgroundProcessCount
+              ? current.lastVisibleActivityAtMs
+              : Date.now(),
         }));
         broadcastActivity(sessionId);
       },
@@ -707,6 +755,9 @@ async function runProviderTurnForQueuedMessages(
         itemId: string;
         delta: string;
       }) {
+        if (payload.delta) {
+          markSessionVisibleActivity(sessionId)
+        }
         if (payload.itemId) {
           const nextText = `${streamCheckpointTexts.get(payload.itemId) ?? ""}${payload.delta}`;
           streamCheckpointTexts.set(payload.itemId, nextText);
@@ -760,6 +811,7 @@ async function runProviderTurnForQueuedMessages(
         if (!payload.itemId || seenThoughtItemIds.has(payload.itemId) || !payload.summaryText.trim()) {
           return;
         }
+        markSessionVisibleActivity(sessionId)
         seenThoughtItemIds.add(payload.itemId);
         const thoughtMessage = store.appendMessage(sessionId, {
           role: "assistant",
@@ -868,6 +920,7 @@ async function runProviderTurnForQueuedMessages(
       lastError: null,
       currentMessageId: null,
       canInterrupt: false,
+      lastVisibleActivityAtMs: null,
       interruptRequested: false,
       providerKind: null,
     });
@@ -904,6 +957,7 @@ async function runProviderTurnForQueuedMessages(
         lastError: null,
         currentMessageId: null,
         canInterrupt: false,
+        lastVisibleActivityAtMs: null,
         interruptRequested: false,
         providerKind: null,
       });
@@ -936,6 +990,7 @@ async function runProviderTurnForQueuedMessages(
         lastError: errorText,
         currentMessageId: null,
         canInterrupt: false,
+        lastVisibleActivityAtMs: null,
         interruptRequested: false,
         providerKind: null,
       });
@@ -1098,6 +1153,7 @@ const server = Bun.serve<ChatSocketData>({
           title?: string;
           archived?: boolean;
           processBlueprintId?: string | null;
+          forceProcessBlueprintReapply?: boolean;
           providerKind?: AgentChatProviderKind;
           modelRef?: string;
           authProfile?: string | null;
@@ -1114,6 +1170,7 @@ const server = Bun.serve<ChatSocketData>({
           typeof payload.archived === "boolean" ? payload.archived : undefined;
         const nextProcessBlueprintId =
           payload.processBlueprintId === undefined ? undefined : payload.processBlueprintId?.trim() || null;
+        const forceProcessBlueprintReapply = payload.forceProcessBlueprintReapply === true;
         const nextProviderKind = payload.providerKind?.trim() as AgentChatProviderKind | undefined;
         const nextModelRef = payload.modelRef?.trim();
         const nextAuthProfile =
@@ -1213,6 +1270,9 @@ const server = Bun.serve<ChatSocketData>({
             return jsonResponse({ ok: false, error: "unknown process blueprint" }, 400);
           }
           const previousProcessBlueprintId = session.processBlueprintId;
+          const shouldReapplyProcessBlueprint =
+            previousProcessBlueprintId === (nextProcessBlueprintId ?? null) &&
+            forceProcessBlueprintReapply;
           const updatedSession = store.updateSessionProcessBlueprint(
             sessionId,
             nextProcessBlueprintId ?? null,
@@ -1220,7 +1280,16 @@ const server = Bun.serve<ChatSocketData>({
           if (updatedSession) {
             session = updatedSession;
           }
-          if (previousProcessBlueprintId !== (nextProcessBlueprintId ?? null)) {
+          if (shouldReapplyProcessBlueprint) {
+            const resetSession = resetSessionWatchdogState(sessionId);
+            if (resetSession) {
+              session = resetSession;
+            }
+          }
+          if (
+            previousProcessBlueprintId !== (nextProcessBlueprintId ?? null) ||
+            shouldReapplyProcessBlueprint
+          ) {
             const processBlueprint = getSessionProcessBlueprint(session);
             store.markQueuedSystemMessagesSeenByPrefix(sessionId, PROCESS_INSTRUCTION_PREFIX);
             const processMessage = store.appendMessage(sessionId, {
