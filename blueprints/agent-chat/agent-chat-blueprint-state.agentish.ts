@@ -266,6 +266,9 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - the mobile composer still needs one more spacing pass so the working chip sits slightly higher and the input padding wastes less space on narrow screens
 - the current bottom-toolbar layout still becomes crowded on narrow widths because the process selector, menu actions, and send controls compete for the same horizontal strip instead of using a cleaner compact or layered treatment
 - the Done or Blocked resolution warning still needs a more compact treatment that preserves clarity without consuming a whole extra line in the mobile composer
+- the unresolved Done state can linger visually even after the worker resumes under a fresh process, so terminal selector chrome is not yet clearing tightly enough with active runtime state
+- the current Waiting for Agent panel is too large, too top-heavy, and too willing to surface raw process-change or watchdog text as the waiting summary instead of keeping that waiting explanation compact and bottom-oriented
+- system-injected transcript items and execution-activity items still read too much like ordinary assistant chat, so the thread does not yet separate assistant prose, system history, and agent activity clearly enough
 - changing the quick-set process selector now patches only the queued next-turn process state and does not flush the current draft or submit the message composer
 - the browser now retries transient Agent Chat websocket disconnects with backoff, delays the disconnect warning until the socket stays down beyond the short grace window, and clears that warning promptly after reconnect
 - composer draft text and pasted-image state now live in an isolated memoized composer panel so ordinary typing no longer requires the main thread surface to own those keystroke updates
