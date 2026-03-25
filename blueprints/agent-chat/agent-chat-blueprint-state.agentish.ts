@@ -32,6 +32,7 @@ const CurrentReality = {
   processResolutionGuard: define.concept("ProcessResolutionGuard"),
   sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
   threadNavigationGap: define.concept("ThreadNavigationGap"),
+  backendOwnedWatchdogContinuity: define.concept("BackendOwnedWatchdogContinuity"),
   settingsAndMessageStateGap: define.concept("SettingsAndMessageStateGap"),
   genericSessionActivity: define.concept("GenericSessionActivityOnly"),
   claudeSdkModelCatalog: define.concept("ClaudeSdkModelCatalog"),
@@ -76,6 +77,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.processResolutionGuard,
   CurrentReality.sessionListWorkflowPolishGap,
   CurrentReality.threadNavigationGap,
+  CurrentReality.backendOwnedWatchdogContinuity,
   CurrentReality.settingsAndMessageStateGap,
   CurrentReality.genericSessionActivity,
   CurrentReality.claudeSdkModelCatalog,
@@ -178,6 +180,12 @@ CurrentReality.stalledTurnWatchdog.means(`
 - watchdog scheduling now tracks the last meaningful visible progress time even while a provider turn remains in running state
 - a stalled running turn can now flip watchdog state to nudged and append a watchdog prompt before the provider emits turn completion
 - local verification confirmed that a long-running shell command session stayed provider-running, then received its Full Development Process watchdog prompt after the configured inactivity budget expired
+`);
+
+CurrentReality.backendOwnedWatchdogContinuity.means(`
+- the Agent Chat backend runs as a detached server process separate from the dashboard web process
+- disconnected dashboard clients do not pause process handling or watchdog timers once the Agent Chat backend is already running
+- direct verification confirmed that after the dashboard process on :3000 was stopped, agent-chat-server on :8789 remained alive and still emitted a Full Development Process watchdog prompt for a stalled running turn
 `);
 
 CurrentReality.sessionListWorkflowPolishGap.means(`

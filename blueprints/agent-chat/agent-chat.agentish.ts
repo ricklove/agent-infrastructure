@@ -223,6 +223,7 @@ Session.expectation.means(`
 - intended to drive idle watchdog prompts and session-list context
 - when expectation changes are queued for the next turn, the transcript should later show that consumed change as a real history event at the point it took effect
 - when a completed expectation requires operator resolution, the next outgoing message should stay blocked until the operator chooses the next normal process selection
+- expectation-aware watchdog handling belongs to the backend session runtime rather than to the browser connection and must continue even when no dashboard client is attached
 `);
 
 Observability.workerState.means(`
@@ -245,6 +246,7 @@ Provider.binding.means(`
 - resumable when useful
 - disposable when stale
 - subordinate to the workspace session
+- backend-owned enough that session watchdogs and process handling continue without a live dashboard websocket or browser tab
 `);
 
 Context.packet.means(`

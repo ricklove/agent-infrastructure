@@ -206,6 +206,8 @@ AgentChatDashboardImplementation.enforces(`
 - Provider adapters must not fail an otherwise active turn on a short fixed wall-clock deadline while the provider is still streaming output or reporting honest activity.
 - Provider timeout policy should be configurable and should treat lost activity or broken transport as failure conditions more strongly than ordinary long-running work.
 - The gateway should proxy Agent Chat traffic and lazy-start the chat backend on first use.
+- Once started, the Agent Chat backend must own expectation watchdogs and queued process handling independently of dashboard client connectivity; disconnecting the dashboard must not pause those backend timers.
+- Dashboard lifecycle shutdown may stop the dashboard web process when no dashboard demand remains, but it must not take down an Agent Chat backend that still owns unresolved sessions needing watchdog handling.
 - Canonical Agent Chat mutations should signal workspace durability work to the manager controller rather than performing git commit or push inline on the request path.
 - Workspace git commit and push policy should be owned by a manager-side workspace-persistence controller because push is part of persistence for manager-host chat history.
 - V1 should ship only the behaviors needed for real day-to-day chat use and defer broader ambitions that are not required yet.
