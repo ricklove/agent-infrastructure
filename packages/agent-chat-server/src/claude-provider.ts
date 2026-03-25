@@ -152,6 +152,24 @@ function extractAssistantText(message: ClaudeSdkMessage["message"]) {
     .join("\n\n");
 }
 
+function extractClaudeTaskLabel(message: ClaudeSdkMessage) {
+  const messageText = extractAssistantText(message.message);
+  if (messageText) {
+    return messageText;
+  }
+
+  const resultText = String(message.result ?? "").trim();
+  if (resultText) {
+    return resultText;
+  }
+
+  if (message.task_id?.trim()) {
+    return message.task_id.trim();
+  }
+
+  return "";
+}
+
 function buildClaudeEnv(session: StoredSession) {
   const env = {
     ...process.env,
@@ -236,10 +254,11 @@ export async function runClaudeTurn(
       if (message.type === "system" && message.subtype === "task_started") {
         if (message.task_id) {
           activeTaskIds.add(message.task_id);
+          const taskLabel = extractClaudeTaskLabel(message);
           callbacks.onActivity?.({
             threadId: currentThreadId,
             turnId: currentTurnId || currentThreadId,
-            text: "Background task started.",
+            text: taskLabel ? `Task started: ${taskLabel}` : "Background task started.",
           });
           callbacks.onBackgroundProcessCountChanged?.({
             threadId: currentThreadId,
@@ -253,10 +272,11 @@ export async function runClaudeTurn(
       if (message.type === "system" && message.subtype === "task_notification") {
         if (message.task_id) {
           activeTaskIds.delete(message.task_id);
+          const taskLabel = extractClaudeTaskLabel(message);
           callbacks.onActivity?.({
             threadId: currentThreadId,
             turnId: currentTurnId || currentThreadId,
-            text: "Background task completed.",
+            text: taskLabel ? `Task completed: ${taskLabel}` : "Background task completed.",
           });
           callbacks.onBackgroundProcessCountChanged?.({
             threadId: currentThreadId,

@@ -85,10 +85,16 @@ type SessionMessage = {
   createdAtMs: number
 }
 
-type RenderedTranscriptItem = {
-  message: SessionMessage
-  precedingStreamCheckpoints: SessionMessage[]
-}
+type RenderedTranscriptItem =
+  | {
+      type: "message"
+      message: SessionMessage
+      precedingStreamCheckpoints: SessionMessage[]
+    }
+  | {
+      type: "activityCluster"
+      messages: SessionMessage[]
+    }
 
 type ComposerImageAttachment = {
   id: string
@@ -211,6 +217,7 @@ const minSessionRailWidth = 280
 const maxSessionRailWidth = 520
 const completedProcessResolutionSentinel = "__process_done__"
 const typingHeartbeatMs = 1000
+const minCollapsedActivityClusterSize = 3
 
 function IconButton(props: {
   label: string
@@ -608,6 +615,32 @@ function summarizeStreamCheckpoint(text: string) {
   return splitDisplayParagraphs(text)[0] ?? "Stream revision"
 }
 
+function firstTextBlock(message: SessionMessage) {
+  const firstText = message.content.find((block) => block.type === "text")
+  return firstText?.type === "text" ? firstText.text.trim() : ""
+}
+
+function activityClusterKey(messages: SessionMessage[]) {
+  const firstId = messages[0]?.id ?? "first"
+  const lastId = messages.at(-1)?.id ?? "last"
+  return `${firstId}:${lastId}`
+}
+
+function summarizeActivityCluster(messages: SessionMessage[]) {
+  const labels = messages
+    .map((message) => firstTextBlock(message))
+    .filter(Boolean)
+    .slice(0, 2)
+
+  if (labels.length === 0) {
+    return `${messages.length} activity events`
+  }
+  if (labels.length === 1) {
+    return `${messages.length} activity events · ${labels[0]}`
+  }
+  return `${messages.length} activity events · ${labels[0]} · ${labels[1]}`
+}
+
 function MessageImageAsset({ path }: { path: string }) {
   const [assetUrl, setAssetUrl] = useState("")
   const [error, setError] = useState("")
@@ -779,6 +812,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [expandedReplacedStreamMessageIds, setExpandedReplacedStreamMessageIds] = useState<
     Record<string, boolean>
   >({})
+  const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] = useState<Record<string, boolean>>({})
   const [, setThreadViewportMetrics] = useState({
     scrollTop: 0,
     scrollHeight: 1,
@@ -855,15 +889,56 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const renderedTranscriptItems = useMemo(() => {
     const items: RenderedTranscriptItem[] = []
     let pendingStreamCheckpoints: SessionMessage[] = []
+    let pendingActivityMessages: SessionMessage[] = []
+
+    const flushActivityMessages = () => {
+      if (pendingActivityMessages.length === 0) {
+        return
+      }
+      if (pendingActivityMessages.length >= minCollapsedActivityClusterSize) {
+        items.push({
+          type: "activityCluster",
+          messages: pendingActivityMessages,
+        })
+      } else {
+        for (const activityMessage of pendingActivityMessages) {
+          items.push({
+            type: "message",
+            message: activityMessage,
+            precedingStreamCheckpoints: [],
+          })
+        }
+      }
+      pendingActivityMessages = []
+    }
 
     for (const message of messages) {
       if (message.kind === "streamCheckpoint") {
+        flushActivityMessages()
         pendingStreamCheckpoints.push(message)
         continue
       }
 
+      if (message.kind === "activity") {
+        if (pendingStreamCheckpoints.length > 0) {
+          for (const streamMessage of pendingStreamCheckpoints) {
+            items.push({
+              type: "message",
+              message: streamMessage,
+              precedingStreamCheckpoints: [],
+            })
+          }
+          pendingStreamCheckpoints = []
+        }
+        pendingActivityMessages.push(message)
+        continue
+      }
+
+      flushActivityMessages()
+
       if (message.role === "assistant" && message.kind === "chat") {
         items.push({
+          type: "message",
           message,
           precedingStreamCheckpoints: pendingStreamCheckpoints,
         })
@@ -874,6 +949,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       if (pendingStreamCheckpoints.length > 0) {
         for (const streamMessage of pendingStreamCheckpoints) {
           items.push({
+            type: "message",
             message: streamMessage,
             precedingStreamCheckpoints: [],
           })
@@ -882,13 +958,17 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       }
 
       items.push({
+        type: "message",
         message,
         precedingStreamCheckpoints: [],
       })
     }
 
+    flushActivityMessages()
+
     for (const streamMessage of pendingStreamCheckpoints) {
       items.push({
+        type: "message",
         message: streamMessage,
         precedingStreamCheckpoints: [],
       })
@@ -898,7 +978,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [messages])
 
   const hasVisibleStreamCheckpoint = useMemo(
-    () => renderedTranscriptItems.some(({ message }) => message.kind === "streamCheckpoint"),
+    () =>
+      renderedTranscriptItems.some(
+        (item) => item.type === "message" && item.message.kind === "streamCheckpoint",
+      ),
     [renderedTranscriptItems],
   )
 
@@ -965,6 +1048,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setExpandedReplacedStreamMessageIds((current) => ({
       ...current,
       [messageId]: !current[messageId],
+    }))
+  }, [])
+
+  const toggleExpandedActivityCluster = useCallback((clusterKey: string) => {
+    setExpandedActivityClusterKeys((current) => ({
+      ...current,
+      [clusterKey]: !current[clusterKey],
     }))
   }, [])
 
@@ -2469,7 +2559,60 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
               <div className="mx-auto flex w-full max-w-[78rem] min-w-0 gap-4 overflow-x-hidden">
                 <div className="min-w-0 flex-1">
                   <div className="mx-auto flex max-w-4xl flex-col gap-4">
-                    {renderedTranscriptItems.map(({ message, precedingStreamCheckpoints }) => {
+                    {renderedTranscriptItems.map((item) => {
+                      if (item.type === "activityCluster") {
+                        const clusterKey = activityClusterKey(item.messages)
+                        const expanded = !!expandedActivityClusterKeys[clusterKey]
+                        return (
+                          <article
+                            key={clusterKey}
+                            className="w-full overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 px-4 py-3 md:max-w-[64%] md:px-5 md:py-4"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                                  system
+                                </p>
+                                <p className="mt-2 break-words text-sm text-slate-200">
+                                  {summarizeActivityCluster(item.messages)}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandedActivityCluster(clusterKey)}
+                                className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-100"
+                              >
+                                {expanded ? "Collapse" : `Show ${item.messages.length}`}
+                              </button>
+                            </div>
+
+                            {expanded ? (
+                              <div className="mt-3 space-y-2">
+                                {item.messages.map((message) => (
+                                  <div
+                                    key={message.id}
+                                    className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                        activity
+                                      </span>
+                                      <p className="text-[10px] text-slate-500">
+                                        {formatTime(message.createdAtMs)}
+                                      </p>
+                                    </div>
+                                    <p className="mt-2 break-words whitespace-pre-wrap text-sm leading-6 text-slate-200">
+                                      {firstTextBlock(message) || "Activity"}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </article>
+                        )
+                      }
+
+                      const { message, precedingStreamCheckpoints } = item
                       const replyTarget = message.replyToMessageId
                         ? messageMap.get(message.replyToMessageId) ?? null
                         : null

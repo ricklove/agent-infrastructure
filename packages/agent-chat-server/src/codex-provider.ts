@@ -95,6 +95,47 @@ function summarizeReasoningItem(item: Record<string, unknown>) {
   return entries.map((entry) => `- ${entry}`).join("\n\n");
 }
 
+function describeCodexCommandExecution(item: Record<string, unknown> | undefined) {
+  if (!item) {
+    return "";
+  }
+
+  const directTextFields = ["command", "commandLine", "cmd", "title", "summary"];
+  for (const field of directTextFields) {
+    const value = item[field];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  const commandValue = item.command;
+  if (Array.isArray(commandValue)) {
+    const parts = commandValue.map((entry) => String(entry ?? "").trim()).filter(Boolean);
+    if (parts.length > 0) {
+      return parts.join(" ");
+    }
+  }
+
+  if (commandValue && typeof commandValue === "object") {
+    const commandObject = commandValue as Record<string, unknown>;
+    const executable =
+      typeof commandObject.executable === "string" && commandObject.executable.trim()
+        ? commandObject.executable.trim()
+        : typeof commandObject.program === "string" && commandObject.program.trim()
+          ? commandObject.program.trim()
+          : "";
+    const args = Array.isArray(commandObject.args)
+      ? commandObject.args.map((entry) => String(entry ?? "").trim()).filter(Boolean)
+      : [];
+    const joined = [executable, ...args].filter(Boolean).join(" ").trim();
+    if (joined) {
+      return joined;
+    }
+  }
+
+  return "";
+}
+
 let codexStartupPromise: Promise<void> | null = null;
 
 function parseCodexModel(modelRef: string) {
@@ -272,10 +313,11 @@ export async function runCodexTurn(
         const item = params.item as Record<string, unknown> | undefined;
         if (item?.type === "commandExecution") {
           activeCommandIds.add(String(item.id ?? ""));
+          const commandLabel = describeCodexCommandExecution(item);
           callbacks.onActivity?.({
             threadId: String(params.threadId ?? currentThreadId ?? ""),
             turnId: String(params.turnId ?? currentTurnId),
-            text: "Command execution started.",
+            text: commandLabel ? `Command started: ${commandLabel}` : "Command execution started.",
           });
           callbacks.onBackgroundProcessCountChanged?.({
             threadId: String(params.threadId ?? currentThreadId ?? ""),
@@ -315,10 +357,13 @@ export async function runCodexTurn(
         }
         if (item?.type === "commandExecution") {
           activeCommandIds.delete(String(item.id ?? ""));
+          const commandLabel = describeCodexCommandExecution(item);
           callbacks.onActivity?.({
             threadId: String(params.threadId ?? currentThreadId ?? ""),
             turnId: String(params.turnId ?? currentTurnId),
-            text: "Command execution completed.",
+            text: commandLabel
+              ? `Command completed: ${commandLabel}`
+              : "Command execution completed.",
           });
           callbacks.onBackgroundProcessCountChanged?.({
             threadId: String(params.threadId ?? currentThreadId ?? ""),
