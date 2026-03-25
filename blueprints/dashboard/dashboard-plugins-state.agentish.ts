@@ -36,7 +36,10 @@ properly defined, lazy-loaded, and integrated with both shell and gateway.
   classes to enable proper vertical scrolling when content exceeds viewport height.
 
 ### Known Gaps
-- None currently identified
+- **Dashboard Terminal WebSocket Path (2026-03-25)**: The DashboardTerminalScreen constructs the
+  WebSocket URL by appending `/ws` to `wsRootUrl`, but if `wsRootUrl` already includes `/ws`, this
+  creates a double path like `ws://host/ws/ws`. The fix is to use `wsRootUrl` directly without
+  appending the path, as the root URL should already point to the correct WebSocket endpoint.
 
 ### Recently Fixed Issues (Continued)
 - **Agent Swarm Process Color Distribution (2026-03-23)**: Colors are keyed by PID with preset

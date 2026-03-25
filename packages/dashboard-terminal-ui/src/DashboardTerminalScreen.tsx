@@ -213,7 +213,7 @@ export function DashboardTerminalScreen({
       setError(null);
       reset("");
 
-      const wsUrl = `${wsRootUrl}/ws`;
+      const wsUrl = wsRootUrl;
       const protocols = dashboardSessionWebSocketProtocols();
       const ws =
         protocols.length > 0 ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl);
