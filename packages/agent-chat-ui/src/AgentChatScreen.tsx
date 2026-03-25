@@ -705,6 +705,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
   const pendingSessionOpenScrollRef = useRef<string | null>(null)
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
   const messageElementRefs = useRef(new Map<string, HTMLElement>())
   const sessionRailResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
@@ -789,6 +790,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
     [activeSessionId, sessions],
   )
+  const processResolutionRequired =
+    activeSession?.watchdogState.status === "completed" && !!activeSession?.processBlueprintId
 
   const visibleSessions = useMemo(
     () => sessions.filter((session) => sessionMatchesSearch(session, sessionSearchQuery)),
@@ -1694,6 +1697,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     if (!activeSessionId || (!composerText.trim() && composerImages.length === 0)) {
       return
     }
+    if (processResolutionRequired) {
+      setError("Choose the next process before sending.")
+      quickProcessSelectRef.current?.focus()
+      return
+    }
 
     setSending(true)
     setError("")
@@ -1770,7 +1778,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault()
-        if (!activeSession || sending || (!composerText.trim() && composerImages.length === 0)) {
+        if (
+          !activeSession ||
+          sending ||
+          processResolutionRequired ||
+          (!composerText.trim() && composerImages.length === 0)
+        ) {
+          if (processResolutionRequired) {
+            setError("Choose the next process before sending.")
+            quickProcessSelectRef.current?.focus()
+          }
           return
         }
         void sendMessage()
@@ -1794,6 +1811,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       composerImages.length,
       composerText,
       interrupting,
+      processResolutionRequired,
       sending,
     ],
   )
@@ -2682,7 +2700,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             void updateActiveSessionProcessQuickSet(event.target.value)
                           }}
                           disabled={!activeSession || updatingQuickProcessBlueprint}
-                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          className={`mt-2 w-full rounded-2xl border bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                            processResolutionRequired
+                              ? "border-rose-400/60 text-rose-100"
+                              : "border-white/10"
+                          }`}
                         >
                           <option value="">none</option>
                           {processBlueprints.map((entry) => (
@@ -2694,6 +2716,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         {activeSessionProcessBlueprint ? (
                           <p className="mt-2 text-xs text-slate-500">
                             {activeSessionProcessBlueprint.expectation}
+                          </p>
+                        ) : null}
+                        {processResolutionRequired ? (
+                          <p className="mt-2 text-xs font-semibold text-rose-200">
+                            Done. Choose the next process before sending the next message.
                           </p>
                         ) : null}
                       </label>
@@ -2894,29 +2921,41 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 />
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-slate-500">
-                    Paste images directly from the clipboard. Ctrl+Enter sends. Esc interrupts when the provider supports it.
+                    {processResolutionRequired
+                      ? "This process is done. Choose the next process before sending."
+                      : "Paste images directly from the clipboard. Ctrl+Enter sends. Esc interrupts when the provider supports it."}
                   </p>
                   <div className="flex items-center gap-2">
                     <label className="min-w-0">
                       <span className="sr-only">Quick set current chat process</span>
-                      <select
-                        value={activeSession?.processBlueprintId ?? ""}
-                        onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
-                        disabled={!activeSession || updatingQuickProcessBlueprint}
-                        title="Quick Set Process"
-                        className={`max-w-44 rounded-full border px-3 py-2 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
-                          activeSession?.processBlueprintId
-                            ? "border-white/10 bg-slate-900/80 text-slate-200"
-                            : "border-white/10 bg-slate-950/70 text-slate-500"
-                        }`}
-                      >
-                        <option value="">none</option>
-                        {processBlueprints.map((entry) => (
-                          <option key={entry.id} value={entry.id}>
-                            {entry.title}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <select
+                          ref={quickProcessSelectRef}
+                          value={activeSession?.processBlueprintId ?? ""}
+                          onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
+                          disabled={!activeSession || updatingQuickProcessBlueprint}
+                          title="Quick Set Process"
+                          className={`max-w-44 rounded-full border px-3 py-2 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                            processResolutionRequired
+                              ? "border-rose-400/70 bg-rose-400/10 text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.18)]"
+                              : activeSession?.processBlueprintId
+                                ? "border-white/10 bg-slate-900/80 text-slate-200"
+                                : "border-white/10 bg-slate-950/70 text-slate-500"
+                          }`}
+                        >
+                          <option value="">none</option>
+                          {processBlueprints.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                              {entry.title}
+                            </option>
+                          ))}
+                        </select>
+                        {processResolutionRequired ? (
+                          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3 text-xs font-semibold text-rose-200">
+                            Done
+                          </span>
+                        ) : null}
+                      </div>
                     </label>
                     <IconButton
                       label={settingsOpen ? "Hide settings menu" : "Show settings menu"}
@@ -2941,7 +2980,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       aria-label={sending ? "Sending message" : "Send message"}
                       title={sending ? "Sending..." : "Send"}
                       disabled={
-                        !activeSession || sending || (!composerText.trim() && composerImages.length === 0)
+                        !activeSession ||
+                        sending ||
+                        processResolutionRequired ||
+                        (!composerText.trim() && composerImages.length === 0)
                       }
                       className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300 text-slate-950 disabled:cursor-not-allowed disabled:border-cyan-300/20 disabled:bg-cyan-300/40"
                     >

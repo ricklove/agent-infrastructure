@@ -29,7 +29,7 @@ const CurrentReality = {
   archivedSessionOrganization: define.concept("ArchivedSessionOrganization"),
   sessionListSearch: define.concept("SessionListSearch"),
   sessionListQuickProcessSet: define.concept("SessionListQuickProcessSet"),
-  processResolutionGap: define.concept("ProcessResolutionGap"),
+  processResolutionGuard: define.concept("ProcessResolutionGuard"),
   sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
   threadNavigationGap: define.concept("ThreadNavigationGap"),
   settingsAndMessageStateGap: define.concept("SettingsAndMessageStateGap"),
@@ -73,7 +73,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.archivedSessionOrganization,
   CurrentReality.sessionListSearch,
   CurrentReality.sessionListQuickProcessSet,
-  CurrentReality.processResolutionGap,
+  CurrentReality.processResolutionGuard,
   CurrentReality.sessionListWorkflowPolishGap,
   CurrentReality.threadNavigationGap,
   CurrentReality.settingsAndMessageStateGap,
@@ -165,11 +165,11 @@ CurrentReality.sessionListQuickProcessSet.means(`
 - changing the process assignment updates the queued next-turn system instruction so the agent sees the updated expectation on the next provider turn
 `);
 
-CurrentReality.processResolutionGap.means(`
-- once a session process has delivered its first value, the current quick-set model loses force because the operator can continue sending without explicitly resolving the next process state
-- the quick-set control does not yet expose a required unresolved Done state that marks the previous process as complete and demands a fresh normal process selection
-- the selector does not yet use red warning styling or placeholder treatment to distinguish that completed-process state from ordinary process values
-- the composer send path is not yet blocked on resolving that completed-process state before the next human message
+CurrentReality.processResolutionGuard.means(`
+- when the active session process reaches its completion token, the quick-set control enters a required unresolved state instead of silently reusing the completed process contract
+- that unresolved state is shown as red Done warning text in the quick-set selector rather than as a stored process value or selectable option
+- the current-chat settings surface also highlights that completed-process state and keeps normal process options available for resolution
+- the composer send path is blocked until the operator chooses the next normal process selection
 `);
 
 CurrentReality.sessionListWorkflowPolishGap.means(`
@@ -178,7 +178,6 @@ CurrentReality.sessionListWorkflowPolishGap.means(`
 - button and icon chrome still costs too much row space in the session list
 - the top-of-rail text and new-chat surface still consume space that should be easier to reclaim
 - the archived reveal control still has a known broken path and needs reliability work
-- the session rail is still not operator-resizable even though the ideal dashboard implementation now calls for direct resize interaction
 - the new-chat surface still needs explicit scrollability under constrained rail heights
 `);
 
@@ -271,10 +270,6 @@ when(CurrentReality.plannedProviders.exists())
 
 when(CurrentReality.genericSessionActivity.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
-
-when(CurrentReality.processResolutionGap.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap))
-  .and(AgentChatBlueprintState.records(Assessment.issue));
 
 when(CurrentReality.claudeSdkModelCatalog.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
