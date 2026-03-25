@@ -167,6 +167,9 @@ AgentChatDashboardImplementation.enforces(`
 - The active-thread controls should expose a compact quick-set process selector for the current chat adjacent to the thread menu button.
 - The quick-set control should present an explicit unassigned state such as none rather than an imperative placeholder label.
 - Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next provider turn without creating an immediate standalone transcript event.
+- When the current process reaches its completion condition, the quick-set control should enter a required unresolved state before the next send.
+- That unresolved state should show Done as red warning text or placeholder treatment inside the selector, but Done must not become a stored process value or selectable option.
+- While that unresolved state is active, the composer send action should remain disabled until the operator picks one of the normal process selections.
 - When that queued process-change instruction is actually consumed by the next provider turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
@@ -363,6 +366,7 @@ Ui.sessionList.means(`
 - top-of-rail copy should stay minimal so the session list itself remains the focus
 - the active-thread header should offer a compact current-session process blueprint quick-set control adjacent to the thread-scoped menu actions
 - changing the assigned process blueprint should enqueue or append a system-visible expectation update for the active agent
+- when the previous process is complete and the next turn needs a fresh process selection, that same quick-set control should surface a red Done unresolved state until the operator resolves it
 - the main session list should stay visually compact so the active thread remains the primary focus
 - the session list should group sessions by optional folders before falling back to an ungrouped collection
 - the main list should exclude archived sessions by default

@@ -29,6 +29,7 @@ const CurrentReality = {
   archivedSessionOrganization: define.concept("ArchivedSessionOrganization"),
   sessionListSearch: define.concept("SessionListSearch"),
   sessionListQuickProcessSet: define.concept("SessionListQuickProcessSet"),
+  processResolutionGap: define.concept("ProcessResolutionGap"),
   sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
   threadNavigationGap: define.concept("ThreadNavigationGap"),
   settingsAndMessageStateGap: define.concept("SettingsAndMessageStateGap"),
@@ -72,6 +73,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.archivedSessionOrganization,
   CurrentReality.sessionListSearch,
   CurrentReality.sessionListQuickProcessSet,
+  CurrentReality.processResolutionGap,
   CurrentReality.sessionListWorkflowPolishGap,
   CurrentReality.threadNavigationGap,
   CurrentReality.settingsAndMessageStateGap,
@@ -161,6 +163,13 @@ CurrentReality.sessionListQuickProcessSet.means(`
 - the quick-set control uses the same repository-backed process blueprint catalog as new-chat creation and current-chat settings
 - the unassigned quick-set state is shown explicitly rather than as an imperative placeholder action label
 - changing the process assignment updates the queued next-turn system instruction so the agent sees the updated expectation on the next provider turn
+`);
+
+CurrentReality.processResolutionGap.means(`
+- once a session process has delivered its first value, the current quick-set model loses force because the operator can continue sending without explicitly resolving the next process state
+- the quick-set control does not yet expose a required unresolved Done state that marks the previous process as complete and demands a fresh normal process selection
+- the selector does not yet use red warning styling or placeholder treatment to distinguish that completed-process state from ordinary process values
+- the composer send path is not yet blocked on resolving that completed-process state before the next human message
 `);
 
 CurrentReality.sessionListWorkflowPolishGap.means(`
@@ -262,6 +271,10 @@ when(CurrentReality.plannedProviders.exists())
 
 when(CurrentReality.genericSessionActivity.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
+
+when(CurrentReality.processResolutionGap.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap))
+  .and(AgentChatBlueprintState.records(Assessment.issue));
 
 when(CurrentReality.claudeSdkModelCatalog.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));

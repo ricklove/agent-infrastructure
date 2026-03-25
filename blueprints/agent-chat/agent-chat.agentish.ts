@@ -111,6 +111,7 @@ AgentChat.enforces(`
 - Provider files, provider thread storage, and provider transcript internals are implementation detail.
 - When more than one human message is queued behind an active run, AgentChat should deliver that queued human batch into the next provider turn together rather than silently serializing them into many one-message follow-up turns.
 - Session process changes should remain queued provider-facing instructions until the next turn consumes them, and that consumption should also become a canonical transcript event so history survives refresh.
+- When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
 `);
 
@@ -210,6 +211,8 @@ Session.processBlueprint.means(`
 - selected from the repository blueprint catalog rather than invented per run
 - machine-readable expectation contract for the session
 - may have an optional Agentish companion guide for agent reference
+- when the previous process has completed, the process selector should enter a required unresolved state before the next send
+- that unresolved state should be shown as Done styling or placeholder treatment rather than as a stored process value
 `);
 
 Session.expectation.means(`
@@ -217,6 +220,7 @@ Session.expectation.means(`
 - derived from the assigned process blueprint rather than guessed from raw transcript text
 - intended to drive idle watchdog prompts and session-list context
 - when expectation changes are queued for the next turn, the transcript should later show that consumed change as a real history event at the point it took effect
+- when a completed expectation requires operator resolution, the next outgoing message should stay blocked until the operator chooses the next normal process selection
 `);
 
 Observability.workerState.means(`
