@@ -196,6 +196,7 @@ AgentChatDashboardImplementation.enforces(`
 - New-chat controls in the side rail should remain scrollable and usable even when the rail height is constrained.
 - Opening an existing thread should reliably scroll the transcript to the latest visible content, including waiting items and recent assistant output, unless the operator intentionally preserved another position.
 - If the transcript viewport is already pinned at the bottom, subsequent transcript growth should continue auto-following the latest content instead of drifting upward after load or during streaming.
+- When the operator is scrolled away from the latest content, the thread should expose a compact explicit `scroll to bottom` affordance near the composer overlay rather than forcing manual thumb dragging on long threads.
 - Canonical text transcript blocks should render with readable markdown treatment, including formatted code fences and inline code, instead of flattening everything into plain paragraphs.
 - A custom transcript navigation rail should only ship when it is clearly stable and useful; if it remains visually noisy or misleading, the thread should omit it instead of exposing a broken control.
 - If a custom navigator exists, its markers must stay tiny, non-overlapping, and visually stable as the transcript scroll position changes.

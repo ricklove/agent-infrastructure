@@ -341,6 +341,16 @@ function SearchIcon() {
   )
 }
 
+function ScrollToBottomIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+      <path d="M12 4v12" />
+      <path d="m7 12 5 5 5-5" />
+      <path d="M6 20h12" />
+    </svg>
+  )
+}
+
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
     month: "short",
@@ -1320,7 +1330,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   >({})
   const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] = useState<Record<string, boolean>>({})
   const [composerDockHeight, setComposerDockHeight] = useState(0)
-  const [, setThreadViewportMetrics] = useState({
+  const [threadViewportMetrics, setThreadViewportMetrics] = useState({
     scrollTop: 0,
     scrollHeight: 1,
     clientHeight: 1,
@@ -1509,6 +1519,14 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     () => waitingSummaryLabel(activeSession?.pendingSystemInstruction, queuedSystemMessages),
     [activeSession?.pendingSystemInstruction, queuedSystemMessages],
   )
+  const showScrollToBottomButton = useMemo(() => {
+    return (
+      threadViewportMetrics.scrollHeight -
+        threadViewportMetrics.clientHeight -
+        threadViewportMetrics.scrollTop >
+      96
+    )
+  }, [threadViewportMetrics])
 
   const syncCurrentChatSettingsFromSession = useCallback((session: SessionSummary | null) => {
     setActiveSessionDirectory(session?.cwd ?? "")
@@ -3394,6 +3412,19 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3 sm:pb-3 md:px-6"
           >
             <div className="pointer-events-auto mx-auto flex max-w-4xl flex-col gap-2.5">
+              {showScrollToBottomButton ? (
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => scrollTranscriptToBottom()}
+                    className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-cyan-100 shadow-lg backdrop-blur"
+                  >
+                    <ScrollToBottomIcon />
+                    <span>Scroll to bottom</span>
+                  </button>
+                </div>
+              ) : null}
+
               {activeReplyTarget ? (
                 <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
                   <div className="flex items-center justify-between gap-3">
