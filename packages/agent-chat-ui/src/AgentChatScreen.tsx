@@ -1254,6 +1254,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
   const transcriptBottomSentinelRef = useRef<HTMLDivElement | null>(null)
+  const composerDockRef = useRef<HTMLDivElement | null>(null)
   const pendingSessionOpenScrollRef = useRef<string | null>(null)
   const transcriptPinnedToBottomRef = useRef(true)
   const typingStateRef = useRef<{ sessionId: string; lastSentAt: number; active: boolean } | null>(null)
@@ -1318,6 +1319,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     Record<string, boolean>
   >({})
   const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] = useState<Record<string, boolean>>({})
+  const [composerDockHeight, setComposerDockHeight] = useState(0)
   const [, setThreadViewportMetrics] = useState({
     scrollTop: 0,
     scrollHeight: 1,
@@ -1775,6 +1777,27 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       window.cancelAnimationFrame(handle)
     }
   }, [activeSessionId, messages.length, streamingAssistantText, updateThreadViewportMetrics])
+
+  useEffect(() => {
+    const composerDock = composerDockRef.current
+    if (!composerDock || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    const updateHeight = () => {
+      setComposerDockHeight(Math.ceil(composerDock.getBoundingClientRect().height))
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateHeight()
+    })
+    observer.observe(composerDock)
+    updateHeight()
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [activeSessionId, settingsOpen, replyTargetMessageId, compactWaitingSummary])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -3092,6 +3115,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             onScroll={handleTranscriptViewportScroll}
             data-agent-chat-transcript-viewport="true"
             className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 py-3 sm:px-3 sm:py-4 md:px-6"
+            style={{
+              paddingBottom: `${Math.max(
+                composerDockHeight + 12,
+                104,
+              )}px`,
+            }}
           >
             <div ref={transcriptContentRef} className="min-h-full">
               {!activeSession ? (
@@ -3360,8 +3389,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             </div>
           </div>
 
-          <div className="border-t border-white/10 bg-slate-950/95 px-2 py-3 sm:px-3 sm:py-4 md:px-6">
-            <div className="mx-auto flex max-w-4xl flex-col gap-3">
+          <div
+            ref={composerDockRef}
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3 sm:pb-3 md:px-6"
+          >
+            <div className="pointer-events-auto mx-auto flex max-w-4xl flex-col gap-2.5">
               {activeReplyTarget ? (
                 <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
                   <div className="flex items-center justify-between gap-3">
