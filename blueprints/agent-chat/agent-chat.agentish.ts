@@ -119,6 +119,8 @@ AgentChat.enforces(`
 - Active human typing should suppress idle-watchdog prompting until typing stops and the short grace period expires.
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
 - All surfaced agent activity must become canonical transcript history, including tool calls, sub-agent work, retries, waiting states, approvals, and future surfaced activity classes.
+- When many adjacent low-signal activity items accumulate in the transcript, AgentChat may collapse that activity cluster by default as long as the underlying canonical history and ordering remain intact.
+- When collapsed activity is expanded, the transcript should foreground the actual task identity or work item rather than generic lifecycle wording such as started or completed without context.
 `);
 
 Workspace.shell.contains(

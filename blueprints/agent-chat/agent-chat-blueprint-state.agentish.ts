@@ -244,6 +244,8 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - when queued system instructions such as process changes are consumed at run start, they now become canonical transcript history at that moment and survive refresh
 - Codex reasoning checkpoints are not yet recorded canonically at receipt time, so the current thought-entry behavior is not aligned with the intended canonical-only transcript model
 - live assistant streaming text is still only an in-memory UI buffer and is not yet recorded canonically as transcript checkpoint history
+- expanded activity rows still use overly generic wording like command execution started or completed instead of foregrounding the actual task identity
+- adjacent low-signal activity items still render as many full-height transcript cards instead of collapsing into a compact default summary when they accumulate
 - provider-originated run events are still not consistently persisted into canonical Agent Chat history, so the transcript cannot yet be replayed solely from app-owned records for every surfaced provider event
 - the current stream-history presentation still mislabels observed provider text as draft semantics and needs cleaner stream-specific wording
 - internal stream checkpoint storage still leaks too directly into operator-facing transcript concepts and needs cleaner presentation boundaries

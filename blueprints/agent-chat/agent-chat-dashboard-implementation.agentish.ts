@@ -179,6 +179,8 @@ AgentChatDashboardImplementation.enforces(`
 - If the provider reports itself idle while the process is still unresolved, the watchdog should become immediately eligible instead of waiting a second timeout window.
 - If the provider reports an error, the backend should record that canonical failure activity immediately, apply retry policy for retryable cases, and avoid using idle-prompt wording for that state.
 - Human typing in the composer should suppress idle-watchdog prompting until the typing grace period ends.
+- When adjacent execution-activity entries become numerous and low-signal, the transcript may collapse that consecutive activity block by default so conversation remains visually dominant.
+- Expanded activity rows should lead with the actual command, task title, sub-agent name, approval target, retry target, or wait reason instead of generic labels like command execution started or completed when richer task identity exists.
 - When that queued process-change instruction is actually consumed by the next provider turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
@@ -341,6 +343,7 @@ Ui.activityStatus.means(`
 - it should show idle, queued, running, interrupted, or failed state
 - when a run is active, it should show elapsed time and any honest provider-backed activity details the backend can supply
 - provider-backed activity details must not be fabricated; absent data should stay absent rather than guessed
+- if activity details are collapsed in the main transcript, the expanded view should still reveal the concrete underlying task or work item for each entry
 `);
 
 Ui.queuedMessageList.means(`
