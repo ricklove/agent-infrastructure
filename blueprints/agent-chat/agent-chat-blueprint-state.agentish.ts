@@ -34,7 +34,7 @@ const CurrentReality = {
   providerErrorRetry: define.concept("ProviderErrorRetry"),
   typingAwareIdleSuppression: define.concept("TypingAwareIdleSuppression"),
   canonicalActivityHistory: define.concept("CanonicalActivityHistory"),
-  providerLimitVisibilityGap: define.concept("ProviderLimitVisibilityGap"),
+  providerLimitActivity: define.concept("ProviderLimitActivity"),
   sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
   threadNavigationGap: define.concept("ThreadNavigationGap"),
   backendOwnedWatchdogContinuity: define.concept("BackendOwnedWatchdogContinuity"),
@@ -84,7 +84,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.providerErrorRetry,
   CurrentReality.typingAwareIdleSuppression,
   CurrentReality.canonicalActivityHistory,
-  CurrentReality.providerLimitVisibilityGap,
+  CurrentReality.providerLimitActivity,
   CurrentReality.sessionListWorkflowPolishGap,
   CurrentReality.threadNavigationGap,
   CurrentReality.backendOwnedWatchdogContinuity,
@@ -213,10 +213,10 @@ CurrentReality.canonicalActivityHistory.means(`
 - canonical activity coverage is still incomplete across every possible surfaced event class, so this area remains partial rather than finished
 `);
 
-CurrentReality.providerLimitVisibilityGap.means(`
-- the Codex provider can expose token-budget, quota, and context-window status over app-server events
-- the current Agent Chat Codex adapter does not yet translate those provider status events into canonical transcript activity
-- when Codex completes a turn without assistant text under those exhausted-provider conditions, the current server still falls back to an empty assistant response rather than surfacing the concrete provider limit reason in history
+CurrentReality.providerLimitActivity.means(`
+- the Codex adapter now opts into supported app-server raw status events through the experimental API capability
+- when Codex exposes token-budget, quota, or context-window exhaustion without assistant text, Agent Chat now converts that provider status into canonical transcript activity instead of falling back to an empty assistant response
+- local verification with an isolated fake Codex app-server confirmed that an exhausted-provider completion now records a concrete provider-limit activity message in canonical history
 `);
 
 CurrentReality.backendOwnedWatchdogContinuity.means(`

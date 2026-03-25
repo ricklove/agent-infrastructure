@@ -1197,48 +1197,67 @@ async function runProviderTurnForQueuedMessages(
           threadPath: result.threadPath,
         })
       : latestSession;
-    const finalAssistantText = result.assistantText || "(empty response)";
+    const finalAssistantText = result.assistantText.trim();
     const lastStreamItemId = Array.from(streamCheckpointMessageIds.keys()).at(-1) ?? null;
     const lastStreamMessageId = lastStreamItemId ? streamCheckpointMessageIds.get(lastStreamItemId) ?? null : null;
     const lastStreamText = lastStreamItemId ? streamCheckpointTexts.get(lastStreamItemId) ?? "" : "";
+    const providerCompletionIssueMessage =
+      !finalAssistantText && result.completionIssueText
+        ? appendActivityMessage(sessionId, result.completionIssueText)
+        : null;
     const assistantMessage =
-      lastStreamMessageId && lastStreamText === finalAssistantText
-        ? store.updateMessage(sessionId, lastStreamMessageId, {
-            kind: "chat",
-            content: [
-              {
-                type: "text",
-                text: finalAssistantText,
-              },
-            ],
-            providerSeenAtMs: Date.now(),
-          }) ??
-          store.appendMessage(sessionId, {
-            role: "assistant",
-            providerSeenAtMs: Date.now(),
-            content: [
-              {
-                type: "text",
-                text: finalAssistantText,
-              },
-            ],
-          })
-        : store.appendMessage(sessionId, {
-            role: "assistant",
-            providerSeenAtMs: Date.now(),
-            content: [
-              {
-                type: "text",
-                text: finalAssistantText,
-              },
-            ],
-          });
-    maybeMarkProcessBlueprintTerminal(sessionId, finalAssistantText);
+      finalAssistantText
+        ? lastStreamMessageId && lastStreamText === finalAssistantText
+          ? store.updateMessage(sessionId, lastStreamMessageId, {
+              kind: "chat",
+              content: [
+                {
+                  type: "text",
+                  text: finalAssistantText,
+                },
+              ],
+              providerSeenAtMs: Date.now(),
+            }) ??
+            store.appendMessage(sessionId, {
+              role: "assistant",
+              providerSeenAtMs: Date.now(),
+              content: [
+                {
+                  type: "text",
+                  text: finalAssistantText,
+                },
+              ],
+            })
+          : store.appendMessage(sessionId, {
+              role: "assistant",
+              providerSeenAtMs: Date.now(),
+              content: [
+                {
+                  type: "text",
+                  text: finalAssistantText,
+                },
+              ],
+            })
+        : !providerCompletionIssueMessage
+          ? store.appendMessage(sessionId, {
+              role: "assistant",
+              providerSeenAtMs: Date.now(),
+              content: [
+                {
+                  type: "text",
+                  text: "(empty response)",
+                },
+              ],
+            })
+          : null;
+    if (finalAssistantText) {
+      maybeMarkProcessBlueprintTerminal(sessionId, finalAssistantText);
+    }
     finalizeIdleRuntimeState(sessionId, result.threadId);
     broadcastSession(sessionId, {
       type: "session.updated",
       session: updatedSession ? buildSessionSummary(updatedSession) : null,
-      messages: [assistantMessage],
+      messages: [providerCompletionIssueMessage, assistantMessage].filter(Boolean),
       queuedMessages: store.listQueuedMessages(sessionId),
       activity: toSessionActivity(sessionId),
     });
