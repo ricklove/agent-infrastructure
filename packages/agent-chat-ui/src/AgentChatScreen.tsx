@@ -1606,6 +1606,14 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
   }
 
+  function handleCurrentChatSettingsFieldKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+      return
+    }
+    event.preventDefault()
+    event.currentTarget.form?.requestSubmit()
+  }
+
   async function updateActiveSessionProcessQuickSet(nextProcessBlueprintId: string) {
     if (!activeSessionId || !activeSession) {
       return
@@ -2765,7 +2773,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         <input
                           value={activeSessionDirectory}
                           onChange={(event) => setActiveSessionDirectory(event.target.value)}
+                          onKeyDown={handleCurrentChatSettingsFieldKeyDown}
                           placeholder={defaultSessionDirectory}
+                          enterKeyHint="done"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
                           disabled={!activeSession}
                           className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         />
@@ -2777,30 +2790,37 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         <input
                           value={activeSessionImageModelRef}
                           onChange={(event) => setActiveSessionImageModelRef(event.target.value)}
+                          onKeyDown={handleCurrentChatSettingsFieldKeyDown}
                           placeholder="optional provider/model"
+                          enterKeyHint="done"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
                           disabled={!activeSession}
                           className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </label>
-                      <button
-                        type="submit"
-                        disabled={
-                          !activeSession ||
-                          updatingDirectory ||
-                          !activeSessionDirectory.trim() ||
-                          (
-                            activeSessionDirectory.trim() === activeSession.cwd &&
-                            activeSessionProviderKind === activeSession.providerKind &&
-                            activeSessionModelRef === activeSession.modelRef &&
-                            activeSessionAuthProfile === (activeSession.authProfile ?? "") &&
-                            activeSessionImageModelRef === (activeSession.imageModelRef ?? "") &&
-                            activeSessionProcessBlueprintId === (activeSession.processBlueprintId ?? "")
-                          )
-                        }
-                        className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
-                      >
-                        {updatingDirectory ? "Saving..." : "Save Chat Settings"}
-                      </button>
+                      <div className="sticky bottom-0 -mx-4 -mb-4 border-t border-white/10 bg-slate-950/95 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur">
+                        <button
+                          type="submit"
+                          disabled={
+                            !activeSession ||
+                            updatingDirectory ||
+                            !activeSessionDirectory.trim() ||
+                            (
+                              activeSessionDirectory.trim() === activeSession.cwd &&
+                              activeSessionProviderKind === activeSession.providerKind &&
+                              activeSessionModelRef === activeSession.modelRef &&
+                              activeSessionAuthProfile === (activeSession.authProfile ?? "") &&
+                              activeSessionImageModelRef === (activeSession.imageModelRef ?? "") &&
+                              activeSessionProcessBlueprintId === (activeSession.processBlueprintId ?? "")
+                            )
+                          }
+                          className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                        >
+                          {updatingDirectory ? "Saving..." : "Save Chat Settings"}
+                        </button>
+                      </div>
                   </form>
                 </div>
               ) : null}
