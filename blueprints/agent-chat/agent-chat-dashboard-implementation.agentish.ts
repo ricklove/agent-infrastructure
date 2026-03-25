@@ -175,6 +175,7 @@ AgentChatDashboardImplementation.enforces(`
 - The unresolved Done state must be backed by a distinct UI sentinel rather than by reusing the current real process option, so the operator can explicitly pick the same prior process again and resolve the guard intentionally.
 - While that unresolved state is active, the composer send action should remain disabled until the operator picks one of the normal process selections.
 - The unresolved sentinel may show either Done or Blocked warning text depending on the terminal process outcome, but neither label becomes a stored process value.
+- When the operator picks a new real process or the worker resumes active non-terminal work, the unresolved Done or Blocked selector state must clear immediately instead of lingering as stale status chrome.
 - Expectation-aware watchdog timing must use operator-visible inactivity, not only provider turn completion, so a long-running turn with no meaningful progress becomes eligible for a watchdog nudge.
 - Visible progress for watchdog purposes should include assistant stream deltas, canonical thought items, background-process changes, waiting-flag changes, and any other surfaced activity that shows the run is still meaningfully advancing.
 - A stalled running turn may still appear as provider-running in worker state, but watchdog behavior should treat it as unresolved inactivity once that visible-activity budget expires.
@@ -189,6 +190,8 @@ AgentChatDashboardImplementation.enforces(`
 - When that queued process-change instruction is actually consumed by the next provider turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
+- Waiting-for-agent chrome should stay compact and bottom-oriented near the thread end or composer edge instead of becoming a large warning box above the composer.
+- The compact waiting summary should describe useful waiting state such as queued work, running work, or process-resolution need; raw process-change or watchdog text should remain transcript items instead of becoming the main waiting explanation.
 - When several human messages queue behind an active run, the backend should deliver that queued human batch together into the next provider turn rather than consuming only one queued user message per follow-up run.
 - New-chat controls in the side rail should remain scrollable and usable even when the rail height is constrained.
 - Opening an existing thread should reliably scroll the transcript to the latest visible content, including waiting items and recent assistant output, unless the operator intentionally preserved another position.
@@ -212,6 +215,8 @@ AgentChatDashboardImplementation.enforces(`
 - If the operator can see live streaming assistant text in the thread, Agent Chat must record that visible stream canonically as transcript checkpoint history rather than dropping it on refresh or replacing it with a final-only message.
 - More generally, provider-originated run events that Agent Chat chooses to surface to the operator should be recorded canonically when received, so the transcript is replayable from Agent Chat history alone without synthetic reconstruction.
 - Tool calls, tool completion notices, sub-agent work, retry attempts, waiting-state transitions, and future surfaced activity types all inherit that same canonical-history rule.
+- System-injected transcript items such as process-change history and watchdog prompts should render with a subdued system style distinct from assistant prose.
+- Agent execution activity items such as tool calls, command lifecycle, retries, and sub-agent work should render with a separate activity style instead of reading like generic system or assistant chat.
 - Replaced stream revisions should render above the final assistant message they preceded, because they are prior observed stream state for that turn rather than footer metadata that comes afterward.
 - Only hidden or secondary content such as thought checkpoints or replaced stream revisions should be collapsed; the current visible assistant stream or final assistant message should remain expanded by default.
 - Transcript UI should avoid debug or internal labels like `Recorded Stream Checkpoint` when simpler operator-facing wording or direct content presentation is sufficient.
@@ -220,11 +225,13 @@ AgentChatDashboardImplementation.enforces(`
 - If that inline replaced-stream expander is opened, the expanded history should appear in normal transcript flow above the final assistant text, because those replaced streams were observed earlier in the turn.
 - Transcript spacing should stay compact around secondary history affordances; replaced-stream and thought chrome should not add large dead padding ahead of the actual message content.
 - The active-run status indicator should stay visually attached to the bottom edge of the thread or top border of the composer as a condensed inline treatment so mobile keeps transcript height and composer height focused on message content rather than a separate status card.
+- The compact working-status chip should sit high enough on the composer border to read as border-attached chrome rather than drooping into the textarea area.
 - Composer-adjacent status and warning affordances may float on or hug the input border area when that preserves space, but they must not overlap the operator's typed text, primary actions, or focus targets.
 - The composer area should stay vertically compact, especially on mobile: explanatory filler text should be omitted, warning and working chrome should prefer compact inline or border-integrated treatments over spending a dedicated extra row, and the bottom control area must remain readable and non-overlapping.
 - On narrow widths, the composer footer should reserve stable space for the thread menu, interrupt action, and send action instead of forcing every control into one crowded row.
 - The quick-process selector should remain in its existing composer-toolbar position; mobile compaction should come from denser status and warning chrome around it rather than relocating the selector away from that control cluster.
 - Completion or blocked warnings such as Done should not consume a full-width extra line by default; they should prefer compact iconography, border-state styling, inline warning text, or tooltip-style explanation, and the explicit blocking explanation may appear when the operator tries to send without resolving the next process.
+- The unresolved Done state should use toned-down compact selector chrome with iconography rather than reading like a major error banner.
 - Provider adapters must not fail an otherwise active turn on a short fixed wall-clock deadline while the provider is still streaming output or reporting honest activity.
 - Provider timeout policy should be configurable and should treat lost activity or broken transport as failure conditions more strongly than ordinary long-running work.
 - The gateway should proxy Agent Chat traffic and the Agent Chat plugin should declare the chat backend as `always` so watchdog and queued-process responsibilities do not wait for a fresh feature request after restart.

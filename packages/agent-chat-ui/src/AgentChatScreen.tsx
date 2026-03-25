@@ -657,6 +657,30 @@ function summarizeActivityCluster(messages: SessionMessage[]) {
   return clipText(normalizeActivitySummaryText(latestLabel), 64)
 }
 
+function waitingSummaryLabel(
+  pendingSystemInstruction: string | null | undefined,
+  queuedSystemMessages: SessionMessage[],
+) {
+  const latestQueued = queuedSystemMessages.at(-1) ?? null
+  if (latestQueued?.kind === "watchdogPrompt") {
+    return queuedSystemMessages.length > 1
+      ? `${queuedSystemMessages.length} waiting items, latest is a watchdog prompt`
+      : "Watchdog prompt queued"
+  }
+  if (latestQueued?.kind === "directoryInstruction") {
+    return queuedSystemMessages.length > 1
+      ? `${queuedSystemMessages.length} waiting items, latest is a next-turn instruction`
+      : "Next-turn instruction queued"
+  }
+  if (queuedSystemMessages.length > 0) {
+    return `${queuedSystemMessages.length} waiting item${queuedSystemMessages.length === 1 ? "" : "s"} queued`
+  }
+  if (pendingSystemInstruction) {
+    return "Next-turn instruction queued"
+  }
+  return null
+}
+
 function renderInlineMarkdown(text: string, keyPrefix: string) {
   return text.split(/(`[^`]+`)/g).filter(Boolean).map((segment, index) => {
     if (segment.startsWith("`") && segment.endsWith("`") && segment.length >= 2) {
@@ -1045,12 +1069,14 @@ const ComposerPanel = memo(function ComposerPanel(props: {
       <div
         className={`relative rounded-2xl border px-2.5 pb-2.5 pt-3 md:px-3 md:pb-3 md:pt-4 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] ${
           props.processResolutionRequired
-            ? "border-rose-400/45 bg-rose-500/[0.05]"
+            ? props.processTerminalStatus === "blocked"
+              ? "border-rose-400/35 bg-rose-500/[0.04]"
+              : "border-amber-300/30 bg-slate-900/90"
             : "border-white/10 bg-slate-900/90"
         }`}
       >
         {props.activeSession ? (
-          <div className="pointer-events-none absolute -top-3 left-2.5 z-10 md:-top-2 md:left-3">
+          <div className="pointer-events-none absolute -top-4 left-2.5 z-10 md:-top-3 md:left-3">
             <div
               className={`inline-flex max-w-[calc(100vw-7rem)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur ${activityTone(props.activity)}`}
             >
@@ -1107,7 +1133,9 @@ const ComposerPanel = memo(function ComposerPanel(props: {
                 title="Quick Set Process"
                 className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
                   props.processResolutionRequired
-                    ? "border-rose-400/70 bg-rose-400/10 text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.18)]"
+                    ? props.processTerminalStatus === "blocked"
+                      ? "border-rose-400/50 bg-rose-500/[0.08] text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.16)]"
+                      : "border-amber-300/45 bg-amber-300/[0.08] text-transparent shadow-[0_0_0_1px_rgba(252,211,77,0.12)]"
                     : props.activeProcessBlueprintId
                       ? "border-white/10 bg-slate-900/80 text-slate-200"
                       : "border-white/10 bg-slate-950/70 text-slate-500"
@@ -1127,12 +1155,23 @@ const ComposerPanel = memo(function ComposerPanel(props: {
               </select>
               {props.processResolutionRequired ? (
                 <>
-                  <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3 text-xs font-semibold text-rose-200">
+                  <span
+                    className={`pointer-events-none absolute inset-y-0 left-0 flex items-center gap-1.5 px-3 text-xs font-semibold ${
+                      props.processTerminalStatus === "blocked" ? "text-rose-200" : "text-amber-100"
+                    }`}
+                  >
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        props.processTerminalStatus === "blocked" ? "bg-rose-300" : "bg-amber-200"
+                      }`}
+                    />
                     {props.processTerminalStatus === "blocked" ? "Blocked" : "Done"}
                   </span>
                   <span
                     title={`Choose the next process before sending. The previous process is ${props.processTerminalStatus === "blocked" ? "blocked" : "done"}.`}
-                    className="pointer-events-none absolute inset-y-0 right-8 flex items-center text-rose-200"
+                    className={`pointer-events-none absolute inset-y-0 right-8 flex items-center text-xs ${
+                      props.processTerminalStatus === "blocked" ? "text-rose-200" : "text-amber-100"
+                    }`}
                   >
                     !
                   </span>
@@ -1305,6 +1344,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   )
   const processTerminalStatus =
     activeSession?.processBlueprintId &&
+    activeSession.activity.status !== "running" &&
+    activeSession.activity.status !== "queued" &&
+    !activeSession.pendingSystemInstruction &&
+    activeSession.queuedMessageCount === 0 &&
     (activeSession.watchdogState.status === "completed" ||
       activeSession.watchdogState.status === "blocked")
       ? activeSession.watchdogState.status
@@ -1459,6 +1502,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           message.providerSeenAtMs === null,
       ),
     [queuedMessages],
+  )
+  const compactWaitingSummary = useMemo(
+    () => waitingSummaryLabel(activeSession?.pendingSystemInstruction, queuedSystemMessages),
+    [activeSession?.pendingSystemInstruction, queuedSystemMessages],
   )
 
   const syncCurrentChatSettingsFromSession = useCallback((session: SessionSummary | null) => {
@@ -3066,14 +3113,19 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         return (
                           <article
                             key={clusterKey}
-                            className="w-full overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 px-4 py-3 md:max-w-[64%] md:px-5 md:py-4"
+                            className="w-full overflow-hidden rounded-3xl border border-amber-300/15 bg-amber-300/[0.06] px-4 py-3 md:max-w-[64%] md:px-5 md:py-4"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                                  system
-                                </p>
-                                <p className="mt-2 break-words text-sm text-slate-200">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
+                                    assistant
+                                  </p>
+                                  <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                    activity
+                                  </span>
+                                </div>
+                                <p className="mt-2 break-words text-sm text-slate-100">
                                   {summarizeActivityCluster(item.messages)}
                                 </p>
                               </div>
@@ -3127,18 +3179,28 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             message.kind === "thought" ||
                             message.kind === "streamCheckpoint" ||
                             message.kind === "activity"
-                              ? "w-full border-white/10 bg-slate-950/60 md:max-w-[64%]"
+                              ? message.kind === "activity"
+                                ? "w-full border-amber-300/15 bg-amber-300/[0.06] md:max-w-[64%]"
+                                : "w-full border-white/10 bg-slate-950/60 md:max-w-[64%]"
                               : message.role === "user"
                               ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]"
                               : message.role === "system"
-                                ? "w-full border-cyan-300/15 bg-cyan-300/5"
+                                ? "w-full border-slate-300/15 bg-slate-300/[0.04]"
                                 : "w-full border-white/10 bg-white/5 md:max-w-[88%]"
                           }`}
                         >
                           <div className="flex items-center justify-between gap-3">
                             <div className="relative flex min-w-0 items-center gap-2">
-                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                                {message.role}
+                              <p
+                                className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+                                  message.kind === "activity"
+                                    ? "text-amber-100"
+                                    : message.role === "system"
+                                      ? "text-slate-300"
+                                      : "text-slate-400"
+                                }`}
+                              >
+                                {message.kind === "activity" ? "assistant" : message.role}
                               </p>
                               {message.kind === "directoryInstruction" ? (
                                 <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
@@ -3239,7 +3301,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 block.type === "text" ? (
                                   <div
                                     key={`${message.id}-${index}`}
-                                    className={message.kind === "activity" ? "text-slate-300" : ""}
+                                    className={
+                                      message.kind === "activity"
+                                        ? "text-slate-100"
+                                        : message.role === "system"
+                                          ? "text-slate-200"
+                                          : ""
+                                    }
                                   >
                                     {renderMarkdownBlocks(block.text, `${message.id}-${index}`)}
                                   </div>
@@ -3294,47 +3362,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
           <div className="border-t border-white/10 bg-slate-950/95 px-4 py-4 md:px-6">
             <div className="mx-auto flex max-w-4xl flex-col gap-3">
-              {activeSession?.pendingSystemInstruction && queuedSystemMessages.length === 0 ? (
-                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
-                    Next Turn Instruction
-                  </p>
-                  <p className="mt-3 text-sm text-cyan-50">
-                    {clipText(activeSession.pendingSystemInstruction, 240)}
-                  </p>
-                </div>
-              ) : null}
-
-              {queuedSystemMessages.length > 0 ? (
-                <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
-                    Waiting for Agent
-                  </p>
-                  <div className="mt-3 space-y-2 text-sm text-amber-50">
-                    {queuedSystemMessages.map((message) => (
-                      <div
-                        key={message.id}
-                        className="rounded-2xl border border-amber-300/15 bg-black/10 px-3 py-2"
-                      >
-                        {message.role === "system" && message.kind === "directoryInstruction" ? (
-                          <p>{clipText(message.content[0]?.type === "text" ? message.content[0].text : "", 120)}</p>
-                        ) : message.role === "system" && message.kind === "watchdogPrompt" ? (
-                          <p>
-                            watchdog ·{" "}
-                            {clipText(message.content[0]?.type === "text" ? message.content[0].text : "", 120)}
-                          </p>
-                        ) : (
-                          <p>
-                            {message.replyToMessageId ? "reply queued · " : ""}
-                            {clipText(message.content[0]?.type === "text" ? message.content[0].text : "", 120)}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
               {activeReplyTarget ? (
                 <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
                   <div className="flex items-center justify-between gap-3">
@@ -3575,6 +3602,17 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         </button>
                       </div>
                   </form>
+                </div>
+              ) : null}
+
+              {compactWaitingSummary ? (
+                <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-sm text-amber-50">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-100">
+                      Waiting
+                    </span>
+                    <p className="min-w-0 truncate text-sm text-amber-50">{compactWaitingSummary}</p>
+                  </div>
                 </div>
               ) : null}
 

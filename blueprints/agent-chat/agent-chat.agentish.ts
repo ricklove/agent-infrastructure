@@ -114,6 +114,7 @@ AgentChat.enforces(`
 - Changing the session process selector must not submit or otherwise flush the current human draft; the process change remains only a queued next-turn instruction until the operator later sends a real message.
 - When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
 - Once a session process is active, it remains unresolved until the agent emits that process blueprint's exact done token or exact blocked token.
+- Once a terminal process state is resolved by a fresh process selection or by new active non-terminal work, the transient Done or Blocked selector state should clear immediately.
 - Expectation-aware watchdog behavior must treat operator-visible stalled turns as unresolved inactivity even when the provider transport still considers the turn open.
 - If the provider explicitly reports itself idle while the session process is still unresolved, AgentChat should make the watchdog immediately eligible rather than waiting another full idle timeout window.
 - If the provider explicitly reports an error, AgentChat should enter provider-error handling and retry policy rather than misclassifying that state as ordinary idle.
@@ -123,6 +124,7 @@ AgentChat.enforces(`
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
 - Provider quota exhaustion, token-budget exhaustion, and context-window exhaustion should surface as canonical transcript activity when the provider exposes those states, even when no assistant text is produced.
 - All surfaced agent activity must become canonical transcript history, including tool calls, sub-agent work, retries, waiting states, approvals, provider limit status, and future surfaced activity classes.
+- Canonical system-injected history, assistant prose, and agent execution activity should remain visually distinguishable presentation classes even when they share the same transcript.
 - When many adjacent low-signal activity items accumulate in the transcript, AgentChat may collapse that activity cluster by default as long as the underlying canonical history and ordering remain intact.
 - When collapsed activity is expanded, the transcript should foreground the actual task identity or work item rather than generic lifecycle wording such as started or completed without context.
 - Composer warning and activity-state affordances may use compact border-attached or floating treatments to preserve mobile space, but they must remain readable, tappable when interactive, and must not occlude message text or send controls.
