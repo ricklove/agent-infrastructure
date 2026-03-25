@@ -36,10 +36,11 @@ properly defined, lazy-loaded, and integrated with both shell and gateway.
   classes to enable proper vertical scrolling when content exceeds viewport height.
 
 ### Known Gaps
-- **Dashboard Terminal WebSocket Path (2026-03-25)**: The DashboardTerminalScreen constructs the
-  WebSocket URL by appending `/ws` to `wsRootUrl`, but if `wsRootUrl` already includes `/ws`, this
-  creates a double path like `ws://host/ws/ws`. The fix is to use `wsRootUrl` directly without
-  appending the path, as the root URL should already point to the correct WebSocket endpoint.
+- **Dashboard Version Popup Not Working (2026-03-25)**: The dashboard shell has an "AI" button that
+  should show a version/status popup on hover using `group-hover:block`, but the popup is not
+  appearing for users. The hover-only interaction doesn't work on mobile/touch devices and may have
+  CSS specificity or z-index issues. The fix is to make the popup clickable (toggle on click)
+  ensuring it works on all devices and is more discoverable.
 
 ### Recently Fixed Issues (Continued)
 - **Agent Swarm Process Color Distribution (2026-03-23)**: Colors are keyed by PID with preset
