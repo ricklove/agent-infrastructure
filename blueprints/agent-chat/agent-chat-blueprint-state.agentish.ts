@@ -200,6 +200,7 @@ CurrentReality.stalledTurnWatchdog.means(`
 - watchdog scheduling now tracks the last meaningful visible progress time even while a provider turn remains in running state
 - a stalled running turn can now flip watchdog state to nudged and append a watchdog prompt before the provider emits turn completion
 - local verification confirmed that a long-running shell command session stayed provider-running, then received its Full Development Process watchdog prompt after the configured inactivity budget expired
+- the process-blueprint watchdog prompts now explicitly tell the agent to resume real work by default and reserve plain text terminal replies for exact done or blocked outcomes
 - when the provider finishes a turn and reports itself idle before the process is done or blocked, the watchdog becomes immediately eligible instead of waiting a second idle timeout
 `);
 
