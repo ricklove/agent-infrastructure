@@ -3340,14 +3340,14 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
               <form
                 onSubmit={submitMessage}
-                className={`relative rounded-2xl border px-3 pb-3 pt-4 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] ${
+                className={`relative rounded-2xl border px-2.5 pb-2.5 pt-3 md:px-3 md:pb-3 md:pt-4 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] ${
                   processResolutionRequired
                     ? "border-rose-400/45 bg-rose-500/[0.05]"
                     : "border-white/10 bg-slate-900/90"
                 }`}
               >
                 {activeSession ? (
-                  <div className="pointer-events-none absolute -top-2 left-3 z-10">
+                  <div className="pointer-events-none absolute -top-3 left-2.5 z-10 md:-top-2 md:left-3">
                     <div
                       className={`inline-flex max-w-[calc(100vw-7rem)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur ${activityTone(activity)}`}
                     >
@@ -3381,9 +3381,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                       : "Select or create a chat first."
                   }
                   disabled={!activeSession || sending}
-                  className="min-h-[5.5rem] w-full resize-y border-0 bg-transparent px-1 py-1 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem]"
+                  className="min-h-[5rem] w-full resize-y border-0 bg-transparent px-0.5 py-0.5 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem] md:px-1 md:py-1"
                 />
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-1.5 flex items-center gap-1.5 md:mt-2 md:gap-2">
                     <label className="min-w-0 flex-1">
                       <span className="sr-only">Quick set current chat process</span>
                       <div className="relative">
