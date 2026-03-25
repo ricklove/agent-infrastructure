@@ -1067,7 +1067,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
       ) : null}
 
       <div
-        className={`relative rounded-2xl border px-2.5 pb-2.5 pt-3 md:px-3 md:pb-3 md:pt-4 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] ${
+        className={`relative rounded-2xl border px-1.5 pb-2 pt-2.5 sm:px-2 sm:pb-2.5 sm:pt-3 md:px-3 md:pb-3 md:pt-4 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] ${
           props.processResolutionRequired
             ? props.processTerminalStatus === "blocked"
               ? "border-rose-400/35 bg-rose-500/[0.04]"
@@ -1076,7 +1076,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
         }`}
       >
         {props.activeSession ? (
-          <div className="pointer-events-none absolute -top-4 left-2.5 z-10 md:-top-3 md:left-3">
+          <div className="pointer-events-none absolute -top-4.5 left-1.5 z-10 sm:left-2 sm:-top-4 md:-top-3 md:left-3">
             <div
               className={`inline-flex max-w-[calc(100vw-7rem)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur ${activityTone(props.activity)}`}
             >
@@ -1114,7 +1114,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
               : "Select or create a chat first."
           }
           disabled={!props.activeSession || props.sending}
-          className="min-h-[5rem] w-full resize-y border-0 bg-transparent px-0.5 py-0.5 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem] md:px-1 md:py-1"
+          className="min-h-[5rem] w-full resize-y border-0 bg-transparent px-0 py-0.5 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem] md:px-1 md:py-1"
         />
         <div className="mt-1.5 flex items-center gap-1.5 md:mt-2 md:gap-2">
           <label className="min-w-0 flex-1">
@@ -3091,7 +3091,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             ref={transcriptViewportRef}
             onScroll={handleTranscriptViewportScroll}
             data-agent-chat-transcript-viewport="true"
-            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 md:px-6"
+            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 py-3 sm:px-3 sm:py-4 md:px-6"
           >
             <div ref={transcriptContentRef} className="min-h-full">
               {!activeSession ? (
@@ -3103,9 +3103,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   This chat has no messages yet.
                 </div>
               ) : (
-                <div className="mx-auto flex w-full max-w-[78rem] min-w-0 gap-4 overflow-x-hidden">
+                <div className="mx-auto flex w-full max-w-[78rem] min-w-0 gap-3 sm:gap-4 overflow-x-hidden">
                   <div className="min-w-0 flex-1">
-                    <div className="mx-auto flex max-w-4xl flex-col gap-4">
+                    <div className="mx-auto flex max-w-4xl flex-col gap-3 sm:gap-4">
                     {renderedTranscriptItems.map((item) => {
                       if (item.type === "activityCluster") {
                         const clusterKey = activityClusterKey(item.messages)
@@ -3113,7 +3113,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         return (
                           <article
                             key={clusterKey}
-                            className="w-full overflow-hidden rounded-3xl border border-amber-300/15 bg-amber-300/[0.06] px-4 py-3 md:max-w-[64%] md:px-5 md:py-4"
+                            className="w-full overflow-hidden rounded-3xl border border-amber-300/15 bg-amber-300/[0.06] px-3 py-2.5 sm:px-4 sm:py-3 md:max-w-[64%] md:px-5 md:py-4"
                           >
                             <div className="flex items-center justify-between gap-3">
                               <div className="min-w-0 flex-1">
@@ -3175,7 +3175,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         <article
                           key={message.id}
                           ref={(element) => setMessageElementRef(message.id, element)}
-                          className={`min-w-0 overflow-hidden rounded-3xl border px-4 py-3 md:px-5 md:py-4 ${
+                          className={`min-w-0 overflow-hidden rounded-3xl border px-3 py-2.5 sm:px-4 sm:py-3 md:px-5 md:py-4 ${
                             message.kind === "thought" ||
                             message.kind === "streamCheckpoint" ||
                             message.kind === "activity"
@@ -3340,7 +3340,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     })}
 
                       {streamingAssistantText && !hasVisibleStreamCheckpoint ? (
-                        <article className="w-full max-w-[88%] min-w-0 overflow-hidden rounded-3xl border border-cyan-300/20 bg-cyan-400/5 p-4 md:p-5">
+                        <article className="w-full max-w-[88%] min-w-0 overflow-hidden rounded-3xl border border-cyan-300/20 bg-cyan-400/5 p-3 sm:p-4 md:p-5">
                           <div className="flex items-center justify-between gap-3">
                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
                               assistant
@@ -3360,7 +3360,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             </div>
           </div>
 
-          <div className="border-t border-white/10 bg-slate-950/95 px-4 py-4 md:px-6">
+          <div className="border-t border-white/10 bg-slate-950/95 px-2 py-3 sm:px-3 sm:py-4 md:px-6">
             <div className="mx-auto flex max-w-4xl flex-col gap-3">
               {activeReplyTarget ? (
                 <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
