@@ -47,10 +47,10 @@ DeployManagerRuntime.enforces(`
 - Deploy may terminate local backend server processes so normal runtime supervision can restart them.
 - Deploy does not manage dashboard tunnel lifecycle.
 - Deploy does not replace, rotate, or reissue the dashboard public URL.
-- In named tunnel mode, deploy does not recreate the named tunnel and does not delete active session hostname mappings as part of rollout.
+- In named tunnel mode, deploy does not recreate the named tunnel and does not rotate the stable stack-owned hostname as part of rollout.
 - Tunnel provisioning for a new stack happens before CDK deploy, not during runtime deploy.
 - Tunnel token secrets are prepared before CDK deploy and are consumed by reference during runtime rollout.
-- The stack wildcard DNS route is prepared before CDK deploy and is not managed during runtime rollout.
+- The stack DNS route is prepared before CDK deploy and is not managed during runtime rollout.
 - Stack-owned hostname metadata is prepared before CDK deploy and fetched by the manager at runtime rather than through EC2 user data.
 - Sensitive dashboard runtime secrets should be consumed from AWS runtime fetch paths rather than refreshed through EC2 user data.
 - Dashboard tunnel lifecycle remains owned by the dashboard controller.
@@ -65,7 +65,7 @@ DeployManagerRuntime.defines(`
 - FrontendBuildRequired means frontend assets are rebuilt from the runtime checkout after the target revision is selected.
 - BackendRestartOnly means deploy restarts local backend server processes and relies on normal runtime supervision for recovery.
 - TunnelUntouchedByDeploy means deploy never kills, replaces, rotates, or otherwise manages the dashboard tunnel.
-- In named tunnel mode, TunnelUntouchedByDeploy also means deploy does not recreate the persistent named tunnel connector; only the controller manages connector health and session hostname lifecycle.
+- In named tunnel mode, TunnelUntouchedByDeploy also means deploy does not recreate the persistent named tunnel connector; only the controller manages connector health for the stable stack-owned hostname path.
 - ControllerOwnsTunnelLifecycle means only the dashboard controller or its recovery policy decides tunnel repair or replacement.
 - ReturnToDevelopmentProcessVerification means rollout hands back to the normal post-deploy verification flow for version checks, health checks, browser verification, and screenshots.
 `);

@@ -168,9 +168,8 @@ if [[ -z "${tunnel_token_secret_arn}" || "${tunnel_token_secret_arn}" == "None" 
 fi
 
 hostname_base="${tunnel_name}.${zone_name}"
-wildcard_hostname="*.${hostname_base}"
 
-cloudflared tunnel --origincert "${origin_cert_path}" route dns "${tunnel_name}" "${wildcard_hostname}" >/dev/null
+cloudflared tunnel --origincert "${origin_cert_path}" route dns "${tunnel_name}" "${hostname_base}" >/dev/null
 
 tunnel_config_json="$(
   jq -cn \

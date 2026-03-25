@@ -567,7 +567,7 @@ async function recoverDashboardRuntimeState(
         localUrl,
         cloudflaredMode: "named",
       })) ?? 0;
-    const publicUrl = `https://health.${namedTunnelConfig.hostnameBase}`;
+    const publicUrl = `https://${namedTunnelConfig.hostname}`;
 
     if (tunnelPid > 0 && (await isPublicDashboardReady(publicUrl))) {
       return {
@@ -582,7 +582,7 @@ async function recoverDashboardRuntimeState(
         cloudflaredMode: "named",
         publicUrl,
         namedTunnelName: namedTunnelConfig.tunnelName,
-        namedTunnelHostnameBase: namedTunnelConfig.hostnameBase,
+        namedTunnelHostnameBase: namedTunnelConfig.hostname,
       };
     }
   }
@@ -675,7 +675,7 @@ function readOptionalFile(path?: string): string {
 type NamedTunnelConfig = {
   tunnelId: string;
   tunnelName: string;
-  hostnameBase: string;
+  hostname: string;
   configPath: string;
 };
 
@@ -687,18 +687,28 @@ function sanitizeDnsLabel(value: string): string {
     .replace(/-{2,}/g, "-");
 }
 
+function sanitizeDnsHostname(value: string): string {
+  return value
+    .split(".")
+    .map((label) => sanitizeDnsLabel(label))
+    .filter((label) => label.length > 0)
+    .join(".");
+}
+
 function getNamedTunnelConfig(): NamedTunnelConfig | null {
   if (!cloudflareZoneName || !cloudflareTunnelId || !cloudflareTunnelName || !cloudflareTunnelToken) {
     return null;
   }
 
   const tunnelName = sanitizeDnsLabel(cloudflareTunnelName);
-  const hostnameBase = sanitizeDnsLabel(cloudflareHostnameBase || `${tunnelName}.${cloudflareZoneName}`);
+  const hostname = sanitizeDnsHostname(
+    cloudflareHostnameBase || `${tunnelName}.${cloudflareZoneName}`,
+  );
 
   return {
     tunnelId: cloudflareTunnelId,
     tunnelName,
-    hostnameBase,
+    hostname,
     configPath: cloudflaredConfigPath,
   };
 }
@@ -1024,7 +1034,7 @@ function ensureNamedTunnelConfigFile(config: NamedTunnelConfig, port: number): v
     [
       `tunnel: ${config.tunnelId}`,
       "ingress:",
-      `  - hostname: \"*.${config.hostnameBase}\"`,
+      `  - hostname: \"${config.hostname}\"`,
       `    service: http://127.0.0.1:${port}`,
       "  - service: http_status:404",
       "",
@@ -1038,7 +1048,7 @@ async function startNamedTunnel(port: number): Promise<{
   url: string;
   tunnelId: string;
   tunnelName: string;
-  hostnameBase: string;
+  hostname: string;
 }> {
   const config = getNamedTunnelConfig();
   if (!config) {
@@ -1056,7 +1066,7 @@ async function startNamedTunnel(port: number): Promise<{
   const pid = await spawnDetached(command, cloudflaredLogPath, {
     TUNNEL_TOKEN: cloudflareTunnelToken,
   });
-  const url = `https://health.${config.hostnameBase}`;
+  const url = `https://${config.hostname}`;
   await waitForPublicDashboardReady(url, 20, 1000);
 
   return {
@@ -1064,7 +1074,7 @@ async function startNamedTunnel(port: number): Promise<{
     url,
     tunnelId: config.tunnelId,
     tunnelName: config.tunnelName,
-    hostnameBase: config.hostnameBase,
+    hostname: config.hostname,
   };
 }
 
@@ -1149,7 +1159,7 @@ async function startTemporaryTunnel(
       cloudflaredMode: "named",
       namedTunnelId: tunnel.tunnelId,
       namedTunnelName: tunnel.tunnelName,
-      namedTunnelHostnameBase: tunnel.hostnameBase,
+      namedTunnelHostnameBase: tunnel.hostname,
     };
   }
 
@@ -1606,10 +1616,8 @@ export async function issueDashboardSession(input?: {
   let sessionPublicUrl = runtime.publicUrl;
   let sessionHostname: string | undefined;
   if (runtime.cloudflaredMode === "named" && runtime.namedTunnelHostnameBase) {
-    const candidateHostname = `${sanitizeDnsLabel(`sess-${token.slice(0, 16)}`)}.${runtime.namedTunnelHostnameBase}`;
-    sessionHostname = candidateHostname;
-    sessionPublicUrl = `https://${candidateHostname}`;
-    await waitForPublicDashboardReady(sessionPublicUrl, 20, 1000);
+    sessionHostname = runtime.namedTunnelHostnameBase;
+    sessionPublicUrl = `https://${runtime.namedTunnelHostnameBase}`;
   }
 
   nextSessions.push({

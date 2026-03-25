@@ -77,7 +77,8 @@ CdkManagerInterface.defines(`
 - Running setup from repo contents plus bootstrap context is sufficient to provision the manager host.
 - After setup, the manager host provides a monitor service and a dashboard service.
 - CDK may read deploy-machine-only prepared Cloudflare tunnel config from a local file outside the repo and project it into bootstrap context.
-- If named tunnel configuration is present in bootstrap context, the manager host can provide dashboard public ingress through that stack-owned tunnel plus ephemeral session hostnames.
+- If named tunnel configuration is present in runtime config, the manager host can provide dashboard public ingress through that stack-owned tunnel and stable stack-owned hostname.
+ - If named tunnel configuration is present in runtime config, the manager host can provide dashboard public ingress through that stack-owned tunnel and stable stack-owned hostname.
 - Auth can request a dashboard access URL without knowing the repo's internal structure.
 `);
 
@@ -132,7 +133,8 @@ Contract.dashboardIssuer.means(`
 - returns a one-time bootstrap URL rather than a long-lived authenticated API base URL
 - may reuse an existing dashboard runtime
 - may reuse an existing quick tunnel
-- may reuse one configured named cloudflared tunnel and create a fresh session hostname on that tunnel
+- may reuse one configured named cloudflared tunnel and stable stack-owned hostname on that tunnel
+ - may reuse one configured named cloudflared tunnel and stable stack-owned hostname on that tunnel
 - may notify the manager controller dashboard-recovery domain to keep dashboard access alive during active use
 - does not require callers to know internal package paths or helper implementation details
 `);
@@ -144,12 +146,13 @@ Contract.namedTunnelConfig.means(`
 - manager runtime does not receive named-tunnel metadata through EC2 user data
 - manager runtime does not receive the deploy-machine origin cert
 - absence of this config means the manager falls back to temporary ingress such as quick tunnels
+ - with tunnel-token-only runtime credentials, the named tunnel path should use one stable stack-owned hostname rather than per-session DNS hostnames
 `);
 
 Contract.namedTunnelProvisioning.means(`
 - a pre-CDK script reads ~/.cloudflared/zone-config.json on the deploy machine
 - that script creates or reuses one named tunnel per deployed stack
-- that script creates or reuses one wildcard DNS route for the deployed stack hostname space
+- that script creates or reuses one stable DNS route for the deployed stack hostname
 - that script writes or updates a deterministic AWS Secrets Manager secret for the tunnel runtime token
 - that script writes or updates a deterministic AWS SSM parameter for the stack-owned hostname metadata
 - that script writes ~/.cloudflared/stack-tunnels/<stackName>.json for CDK consumption using the config parameter name, not plaintext token values
