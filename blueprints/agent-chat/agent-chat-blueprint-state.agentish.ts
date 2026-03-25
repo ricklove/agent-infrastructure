@@ -29,6 +29,7 @@ const CurrentReality = {
   archivedSessionOrganization: define.concept("ArchivedSessionOrganization"),
   sessionListSearch: define.concept("SessionListSearch"),
   sessionListQuickProcessSet: define.concept("SessionListQuickProcessSet"),
+  processResolutionGuard: define.concept("ProcessResolutionGuard"),
   sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
   threadNavigationGap: define.concept("ThreadNavigationGap"),
   settingsAndMessageStateGap: define.concept("SettingsAndMessageStateGap"),
@@ -45,7 +46,7 @@ const CurrentReality = {
 AgentChatBlueprintState.defines(`
 - CurrentImplementationStatus means Agent Chat currently exists as a real dashboard feature with a working backend, working UI, canonical file-backed session persistence, realtime updates, clipboard image paste support, and more than one implemented provider path.
 - AssessmentConfidence is medium-high because the current state now has both direct source inspection and direct live-browser verification against the deployed dashboard at matching frontend and backend revisions.
-- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive live-browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-release-af79459/ and /home/ec2-user/state/screenshots/agent-chat-mobile-audit-local-2/.
+- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive live-browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-release-af79459/, /home/ec2-user/state/screenshots/agent-chat-mobile-audit-local-2/, and /home/ec2-user/state/screenshots/agent-chat-mobile-settings-submit/.
 - This blueprint-state compares current implementation reality against the ideal Agent Chat product blueprint in agent-chat.agentish.ts, the implementation-resolved dashboard blueprint in agent-chat-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
 - ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
 - ImplementationGap also includes chat durability still stopping at canonical file persistence rather than extending into manager-controlled workspace git commit and push.
@@ -72,6 +73,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.archivedSessionOrganization,
   CurrentReality.sessionListSearch,
   CurrentReality.sessionListQuickProcessSet,
+  CurrentReality.processResolutionGuard,
   CurrentReality.sessionListWorkflowPolishGap,
   CurrentReality.threadNavigationGap,
   CurrentReality.settingsAndMessageStateGap,
@@ -131,6 +133,8 @@ CurrentReality.currentChatProviderSettings.means(`
 - changing provider settings clears provider-owned thread metadata and preserves canonical transcript history
 - provider switching is blocked while a run is active, but otherwise works as a normal session patch
 - live browser verification confirms the current-chat provider, model, and auth-profile controls render as comboboxes on the deployed dashboard
+- the current-chat settings panel now keeps its primary save action pinned inside the menu on constrained mobile viewports instead of letting the action fall below the visible sheet
+- local iPhone-sized browser verification confirmed that pressing the focused text field's keyboard confirmation key submits the current-chat settings form and persists the session patch
 `);
 
 CurrentReality.clipboardImagePaste.means(`
@@ -159,6 +163,13 @@ CurrentReality.sessionListQuickProcessSet.means(`
 - the quick-set control uses the same repository-backed process blueprint catalog as new-chat creation and current-chat settings
 - the unassigned quick-set state is shown explicitly rather than as an imperative placeholder action label
 - changing the process assignment updates the queued next-turn system instruction so the agent sees the updated expectation on the next provider turn
+`);
+
+CurrentReality.processResolutionGuard.means(`
+- when the active session process reaches its completion token, the quick-set control enters a required unresolved state instead of silently reusing the completed process contract
+- that unresolved state is shown as red Done warning text in the quick-set selector rather than as a stored process value or selectable option
+- the current-chat settings surface also highlights that completed-process state and keeps normal process options available for resolution
+- the composer send path is blocked until the operator chooses the next normal process selection
 `);
 
 CurrentReality.sessionListWorkflowPolishGap.means(`

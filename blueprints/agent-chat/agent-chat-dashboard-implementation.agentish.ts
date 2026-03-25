@@ -167,6 +167,9 @@ AgentChatDashboardImplementation.enforces(`
 - The active-thread controls should expose a compact quick-set process selector for the current chat adjacent to the thread menu button.
 - The quick-set control should present an explicit unassigned state such as none rather than an imperative placeholder label.
 - Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next provider turn without creating an immediate standalone transcript event.
+- When the current process reaches its completion condition, the quick-set control should enter a required unresolved state before the next send.
+- That unresolved state should show Done as red warning text or placeholder treatment inside the selector, but Done must not become a stored process value or selectable option.
+- While that unresolved state is active, the composer send action should remain disabled until the operator picks one of the normal process selections.
 - When that queued process-change instruction is actually consumed by the next provider turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
@@ -181,6 +184,8 @@ AgentChatDashboardImplementation.enforces(`
 - The browser should preserve unsent per-session message drafts in local storage so transient reloads do not discard typed input.
 - Keyboard interrupt should be exposed as Esc when the selected provider supports a real interrupt action.
 - Canonical chat settings should remain editable whenever safe, and provider-setting forms must not reset unsaved selections before the operator decides to save.
+- The current-chat settings surface must remain saveable on mobile; when the menu is open in a constrained viewport, the save action must stay reachable within the settings surface instead of disappearing below off-screen chrome.
+- Text-entry fields inside the current-chat settings form should allow an operator to commit the pending settings directly from the mobile keyboard action, including the iOS confirmation key, rather than requiring a separate desktop-style click path.
 - Thread rendering should use one clear message-state model so pending, queued, and delivered messages are not duplicated or ambiguously split across transcript and waiting UI.
 - When the backend marks a queued user message as provider-seen at run start, that visibility transition should be pushed to the browser immediately so queued badges clear without waiting for a later full refresh or assistant completion.
 - If Agent Chat surfaces provider reasoning checkpoints as collapsed thought entries, those entries must be recorded into canonical message history when the backend receives the provider event.
@@ -361,6 +366,7 @@ Ui.sessionList.means(`
 - top-of-rail copy should stay minimal so the session list itself remains the focus
 - the active-thread header should offer a compact current-session process blueprint quick-set control adjacent to the thread-scoped menu actions
 - changing the assigned process blueprint should enqueue or append a system-visible expectation update for the active agent
+- when the previous process is complete and the next turn needs a fresh process selection, that same quick-set control should surface a red Done unresolved state until the operator resolves it
 - the main session list should stay visually compact so the active thread remains the primary focus
 - the session list should group sessions by optional folders before falling back to an ungrouped collection
 - the main list should exclude archived sessions by default
@@ -446,6 +452,7 @@ Scope.browserOwnsUi.means(`
 - the active transcript is the visual priority on mobile, tablet, and desktop layouts
 - create-session and session-settings controls should be collapsed behind bottom-of-composer menus when not actively being edited
 - activity and queued-message state should stay anchored immediately above the composer so the operator can understand what the agent is doing before sending the next message
+- when those menus are open on mobile, their internal content should scroll independently and keep primary actions reachable above the safe-area inset and keyboard-constrained viewport
 `);
 
 Scope.dashboardAuth.means(`
