@@ -34,6 +34,7 @@ const CurrentReality = {
   providerErrorRetry: define.concept("ProviderErrorRetry"),
   typingAwareIdleSuppression: define.concept("TypingAwareIdleSuppression"),
   canonicalActivityHistory: define.concept("CanonicalActivityHistory"),
+  providerLimitVisibilityGap: define.concept("ProviderLimitVisibilityGap"),
   sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
   threadNavigationGap: define.concept("ThreadNavigationGap"),
   backendOwnedWatchdogContinuity: define.concept("BackendOwnedWatchdogContinuity"),
@@ -83,6 +84,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.providerErrorRetry,
   CurrentReality.typingAwareIdleSuppression,
   CurrentReality.canonicalActivityHistory,
+  CurrentReality.providerLimitVisibilityGap,
   CurrentReality.sessionListWorkflowPolishGap,
   CurrentReality.threadNavigationGap,
   CurrentReality.backendOwnedWatchdogContinuity,
@@ -209,6 +211,12 @@ CurrentReality.canonicalActivityHistory.means(`
 - surfaced provider activity such as tool execution and background-task transitions now enters canonical transcript history as activity messages
 - those activity records survive refresh and backend restart instead of existing only as transient browser state
 - canonical activity coverage is still incomplete across every possible surfaced event class, so this area remains partial rather than finished
+`);
+
+CurrentReality.providerLimitVisibilityGap.means(`
+- the Codex provider can expose token-budget, quota, and context-window status over app-server events
+- the current Agent Chat Codex adapter does not yet translate those provider status events into canonical transcript activity
+- when Codex completes a turn without assistant text under those exhausted-provider conditions, the current server still falls back to an empty assistant response rather than surfacing the concrete provider limit reason in history
 `);
 
 CurrentReality.backendOwnedWatchdogContinuity.means(`

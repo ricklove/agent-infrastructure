@@ -178,6 +178,7 @@ AgentChatDashboardImplementation.enforces(`
 - A stalled running turn may still appear as provider-running in worker state, but watchdog behavior should treat it as unresolved inactivity once that visible-activity budget expires.
 - If the provider reports itself idle while the process is still unresolved, the watchdog should become immediately eligible instead of waiting a second timeout window.
 - If the provider reports an error, the backend should record that canonical failure activity immediately, apply retry policy for retryable cases, and avoid using idle-prompt wording for that state.
+- If the provider exposes quota exhaustion, token-budget exhaustion, or context-window exhaustion through supported provider status events rather than ordinary assistant text, the backend should turn that surfaced provider status into canonical transcript activity instead of falling back to a blank or `(empty response)` assistant message.
 - Human typing in the composer should suppress idle-watchdog prompting until the typing grace period ends.
 - When adjacent execution-activity entries become numerous and low-signal, the transcript may collapse that consecutive activity block by default so conversation remains visually dominant.
 - Expanded activity rows should lead with the actual command, task title, sub-agent name, approval target, retry target, or wait reason instead of generic labels like command execution started or completed when richer task identity exists.
