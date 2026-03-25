@@ -226,6 +226,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
   >("idle")
   const [gatewayBackendVersion, setGatewayBackendVersion] = useState("--")
   const [copiedStatus, setCopiedStatus] = useState(false)
+  const [versionPopupOpen, setVersionPopupOpen] = useState(false)
   const [mobileFeatureMenuOpen, setMobileFeatureMenuOpen] = useState(false)
   const [featureStatuses, setFeatureStatuses] = useState<
     Partial<Record<FeatureId, FeatureStatusItem[]>>
@@ -504,6 +505,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
         <div className="group relative">
           <button
             type="button"
+            onClick={() => setVersionPopupOpen((current) => !current)}
             className={[
               "pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border text-[11px] font-semibold tracking-[0.24em] transition",
               aiButtonTone,
@@ -512,7 +514,10 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
           >
             AI
           </button>
-          <div className="pointer-events-auto absolute left-full top-0 z-50 ml-2 hidden min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur group-hover:block">
+          <div className={[
+            "pointer-events-auto absolute left-full top-0 z-50 ml-2 min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur",
+            versionPopupOpen ? "block" : "hidden group-hover:block",
+          ].join(" ")}>
             <div className="absolute inset-y-0 -left-3 w-3" aria-hidden="true" />
             <button
               type="button"
