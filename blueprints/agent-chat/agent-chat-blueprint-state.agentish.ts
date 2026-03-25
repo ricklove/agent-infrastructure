@@ -183,7 +183,8 @@ CurrentReality.sessionListQuickProcessSet.means(`
 - the quick-set control uses the same repository-backed process blueprint catalog as new-chat creation and current-chat settings
 - the unassigned quick-set state is shown explicitly rather than as an imperative placeholder action label
 - creating a new chat with a selected process blueprint now emits the waiting expectation entry immediately instead of leaving the fresh transcript blank about the assigned contract
-- changing the process assignment updates the queued next-turn system instruction so the agent sees the updated expectation on the next provider turn
+- changing the process assignment updates the queued next-turn system instruction so the agent sees the updated expectation on the next explicit human-send turn
+- the older bug where a watchdog-only follow-up turn could consume that queued process expectation before the operator's next real send is now closed in the current source implementation
 `);
 
 CurrentReality.processResolutionGuard.means(`

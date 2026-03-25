@@ -1028,7 +1028,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
   return (
     <>
       {composerImages.length > 0 ? (
-        <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3">
+        <div className="relative z-10 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 shadow-2xl">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
               Pasted Images
@@ -3409,9 +3409,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
           <div
             ref={composerDockRef}
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-0 pb-[env(safe-area-inset-bottom)] sm:px-3 sm:pb-3 md:px-6"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-0 pb-[env(safe-area-inset-bottom)] sm:px-3 sm:pb-3 md:px-6"
           >
-            <div className="pointer-events-auto mx-auto flex max-w-4xl flex-col gap-2.5">
+            <div className="mx-auto flex w-full max-w-[78rem]">
+              <div className="pointer-events-auto mx-auto flex w-full max-w-4xl flex-col gap-2.5">
               {showScrollToBottomButton ? (
                 <div className="flex justify-end">
                   <button
@@ -3701,6 +3702,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 onReportTyping={reportTyping}
                 onSetError={setError}
               />
+              </div>
             </div>
           </div>
         </div>
