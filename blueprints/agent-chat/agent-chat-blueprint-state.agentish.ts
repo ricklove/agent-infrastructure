@@ -245,7 +245,8 @@ CurrentReality.sessionListWorkflowPolishGap.means(`
 `);
 
 CurrentReality.threadNavigationGap.means(`
-- loading a session now retries scroll-to-latest so the active thread lands near the latest visible content more reliably after the transcript mounts
+- loading a session still relies on a short retry burst to reach the latest content after the transcript mounts
+- if the thread is already pinned at the bottom, live transcript growth can still drift upward instead of keeping the latest visible content in view
 - the current custom transcript rail is still not reliable enough to justify its space and should be removed or deferred until a clearly stable design exists
 - the latest mobile audit recorded zero document-level and body-level horizontal overflow on the verified chat viewport, but horizontal containment should still be watched as transcript chrome evolves
 - richer local zoom or lens treatment is still deferred until there is a version that preserves the stability of the thin rail
@@ -260,8 +261,12 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - when queued system instructions such as process changes are consumed at run start, they now become canonical transcript history at that moment and survive refresh
 - Codex reasoning checkpoints are not yet recorded canonically at receipt time, so the current thought-entry behavior is not aligned with the intended canonical-only transcript model
 - live assistant streaming text is still only an in-memory UI buffer and is not yet recorded canonically as transcript checkpoint history
+- transcript text still renders mostly as plain paragraphs, so markdown structure and code blocks are harder to read than intended
+- the main activity status still consumes its own full-height footer card instead of using a condensed bottom-of-thread treatment
+- the composer footer still spends too much vertical space on explanatory copy and wrapped controls, especially on mobile
 - expanded activity rows still use overly generic wording like command execution started or completed instead of foregrounding the actual task identity
-- adjacent low-signal activity items still render as many full-height transcript cards instead of collapsing into a compact default summary when they accumulate
+- collapsed activity-cluster summaries still run long and list too much prior event detail instead of one short recent-task summary
+- adjacent low-signal activity items now collapse into grouped transcript cards, but the collapsed summary copy remains too verbose
 - provider-originated run events are still not consistently persisted into canonical Agent Chat history, so the transcript cannot yet be replayed solely from app-owned records for every surfaced provider event
 - the current stream-history presentation still mislabels observed provider text as draft semantics and needs cleaner stream-specific wording
 - internal stream checkpoint storage still leaks too directly into operator-facing transcript concepts and needs cleaner presentation boundaries

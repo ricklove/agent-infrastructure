@@ -182,6 +182,7 @@ AgentChatDashboardImplementation.enforces(`
 - If the provider exposes quota exhaustion, token-budget exhaustion, or context-window exhaustion through supported provider status events rather than ordinary assistant text, the backend should turn that surfaced provider status into canonical transcript activity instead of falling back to a blank or `(empty response)` assistant message.
 - Human typing in the composer should suppress idle-watchdog prompting until the typing grace period ends.
 - When adjacent execution-activity entries become numerous and low-signal, the transcript may collapse that consecutive activity block by default so conversation remains visually dominant.
+- Collapsed activity-cluster summaries should stay to one short line that foregrounds the most recent concrete task identity rather than a verbose list of many prior events.
 - Expanded activity rows should lead with the actual command, task title, sub-agent name, approval target, retry target, or wait reason instead of generic labels like command execution started or completed when richer task identity exists.
 - When that queued process-change instruction is actually consumed by the next provider turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
@@ -189,6 +190,8 @@ AgentChatDashboardImplementation.enforces(`
 - When several human messages queue behind an active run, the backend should deliver that queued human batch together into the next provider turn rather than consuming only one queued user message per follow-up run.
 - New-chat controls in the side rail should remain scrollable and usable even when the rail height is constrained.
 - Opening an existing thread should reliably scroll the transcript to the latest visible content, including waiting items and recent assistant output, unless the operator intentionally preserved another position.
+- If the transcript viewport is already pinned at the bottom, subsequent transcript growth should continue auto-following the latest content instead of drifting upward after load or during streaming.
+- Canonical text transcript blocks should render with readable markdown treatment, including formatted code fences and inline code, instead of flattening everything into plain paragraphs.
 - A custom transcript navigation rail should only ship when it is clearly stable and useful; if it remains visually noisy or misleading, the thread should omit it instead of exposing a broken control.
 - If a custom navigator exists, its markers must stay tiny, non-overlapping, and visually stable as the transcript scroll position changes.
 - If a zoomed inspection treatment exists, it should help local navigation without replacing a stable primary thread layout.
@@ -213,6 +216,8 @@ AgentChatDashboardImplementation.enforces(`
 - Replaced-stream history should stay collapsed by default and use a compact inline expander embedded in the main assistant header row rather than creating a second header row above the message body.
 - If that inline replaced-stream expander is opened, the expanded history should appear in normal transcript flow above the final assistant text, because those replaced streams were observed earlier in the turn.
 - Transcript spacing should stay compact around secondary history affordances; replaced-stream and thought chrome should not add large dead padding ahead of the actual message content.
+- The active-run status indicator should live at the bottom edge of the thread as a condensed inline strip so mobile keeps transcript height and composer height focused on message content rather than a separate status card.
+- The composer area should stay vertically compact, especially on mobile: explanatory filler text should be omitted, and the quick-process selector, settings menu, interrupt action, and send action should fit on one action row beneath the input whenever possible.
 - Provider adapters must not fail an otherwise active turn on a short fixed wall-clock deadline while the provider is still streaming output or reporting honest activity.
 - Provider timeout policy should be configurable and should treat lost activity or broken transport as failure conditions more strongly than ordinary long-running work.
 - The gateway should proxy Agent Chat traffic and the Agent Chat plugin should declare the chat backend as `always` so watchdog and queued-process responsibilities do not wait for a fresh feature request after restart.
