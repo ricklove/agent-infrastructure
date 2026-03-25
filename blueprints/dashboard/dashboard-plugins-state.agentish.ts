@@ -18,7 +18,7 @@ DashboardPluginsState.records(`
 
 ## Overview
 The dashboard plugin system is implemented per the blueprint architecture. Feature plugins are
-properly defined, lazy-loaded, and integrated with both shell and gateway.
+properly defined, startup-policy driven, and integrated with both shell and gateway.
 
 ## Current State vs Blueprint
 
@@ -26,6 +26,8 @@ properly defined, lazy-loaded, and integrated with both shell and gateway.
 - ✅ Plugin registry model implemented
 - ✅ Lazy UI screen loading works
 - ✅ Lazy backend startup works
+- ✅ Plugin definitions expose an explicit `lazy` vs `always` backend startup policy
+- ✅ The gateway/runtime proactively restores `always` backends after startup
 - ✅ Feature-owned plugin definitions in place
 - ✅ Tab metadata, routes, icons, tooltips properly configured
 

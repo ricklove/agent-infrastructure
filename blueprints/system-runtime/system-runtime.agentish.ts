@@ -117,8 +117,9 @@ SystemRuntime.enforces(`
 - Convenience wrapper scripts that merely bounce TS to TS are not justified.
 - System-level logs should be simple human-readable lines, not overengineered structured logging glue.
 - System event lines are written to a fixed file.
-- Feature backends behind the dashboard gateway are lazy by default.
-- The dashboard gateway may start a backend only when a feature path is actually used.
+- Feature backends behind the dashboard gateway must declare whether they are `lazy` or `always`.
+- The dashboard gateway may start a `lazy` backend only when a feature path is actually used.
+- The dashboard runtime should proactively start and restore any backend declared `always`.
 - The dashboard gateway should prefer declared backend definitions over ad hoc one-off launch logic.
 - Manager updates should follow one full development process from source edit through post-deploy verification.
 - state/ is only for temporary runtime state and recoverable operational artifacts, never durable app data.
@@ -143,7 +144,7 @@ SystemRuntime.defines(`
 - RuntimeCheckoutOnly means the host runtime tree is updated by version checkout rather than ad hoc editing.
 - ScriptBoundaryRule means shell exists only at real system edges.
 - SystemLoggingRule means important system events emit short timestamped comments to a fixed log file.
-- GatewayBackendDefinition means one declared lazy backend contract with base URL, health probe, and optional start command.
+- GatewayBackendDefinition means one declared backend contract with base URL, health probe, optional start command, and explicit startup policy.
 - FullManagerUpdateWorkflow means source change, local verification, commit, push, runtime rollout, and post-deploy checks.
 - SwarmMonitorProgram means the worker or manager telemetry path that captures cheap host metrics and sparse process context.
 - ManagerController means one thin always-on manager-host control plane with distinct internal domains for dashboard recovery and workspace persistence.
@@ -266,10 +267,11 @@ Integration.workspacePersistenceController.means(`
 `);
 
 Gateway.lazyStart.means(`
-- feature backend processes are started only on first use
-- gateway proxy traffic is the trigger point
+- lazy feature backend processes are started on first use
+- always feature backend processes are started when the dashboard runtime starts
+- gateway proxy traffic is the trigger point for lazy backends
 - unhealthy backends may be started or restarted by the gateway
-- backends should not be kept always-on merely because they exist
+- backends should not be marked always-on without an explicit feature need for proactive availability
 `);
 
 when(Operator.changes("server code"))
@@ -325,7 +327,7 @@ when(Gateway.dashboard.proxies("feature traffic"))
   .then(Gateway.dashboard.mayEnsure(Gateway.backend))
   .and(Gateway.backend.uses(Gateway.definition))
   .and(Gateway.definition.includes(Gateway.health))
-  .and(Gateway.definition.mayInclude("a lazy start command"));
+  .and(Gateway.definition.mayInclude("a lazy or always startup policy"));
 
 when(Gateway.dashboard.detects("an unhealthy feature backend"))
   .then(Gateway.dashboard.applies(Gateway.lazyStart))
