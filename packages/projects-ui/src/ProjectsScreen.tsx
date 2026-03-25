@@ -70,6 +70,9 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
 function featurePath(apiRootUrl: string, pathname: string): string {
   const trimmedRoot = apiRootUrl.replace(/\/+$/, "");
   const trimmedPath = pathname.replace(/^\/+/, "");
+  if (!trimmedPath) {
+    return trimmedRoot;
+  }
   return `${trimmedRoot}/${trimmedPath}`;
 }
 
