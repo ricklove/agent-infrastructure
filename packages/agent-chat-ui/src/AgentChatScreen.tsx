@@ -645,7 +645,7 @@ function summarizeActivityCluster(messages: SessionMessage[]) {
     return `${messages.length} activity events`
   }
 
-  return `${messages.length} events · ${clipText(normalizeActivitySummaryText(latestLabel), 72)}`
+  return clipText(normalizeActivitySummaryText(latestLabel), 64)
 }
 
 function renderInlineMarkdown(text: string, keyPrefix: string) {
@@ -3003,24 +3003,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             </div>
           </div>
 
-          {activeSession ? (
-            <div className="pointer-events-none absolute bottom-3 left-4 right-4 z-10 md:left-6 md:right-6">
-              <div className="mx-auto flex max-w-4xl justify-end">
-                <div
-                  className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] ${activityTone(activity)}`}
-                >
-                  <span className="font-semibold">{threadStatusSummary[0] ?? activityLabel(activity)}</span>
-                  {threadStatusSummary.slice(1).map((item) => (
-                    <span key={item} className="truncate">
-                      {item}
-                    </span>
-                  ))}
-                  {interrupting ? <span>interrupting...</span> : null}
-                </div>
-              </div>
-            </div>
-          ) : null}
-
           <div className="border-t border-white/10 bg-slate-950/95 px-4 py-4 md:px-6">
             <div className="mx-auto flex max-w-4xl flex-col gap-3">
               {activeSession?.pendingSystemInstruction && queuedSystemMessages.length === 0 ? (
@@ -3356,7 +3338,29 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </div>
               ) : null}
 
-              <form onSubmit={submitMessage} className="space-y-2">
+              <form
+                onSubmit={submitMessage}
+                className={`relative rounded-2xl border px-3 pb-3 pt-4 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] ${
+                  processResolutionRequired
+                    ? "border-rose-400/45 bg-rose-500/[0.05]"
+                    : "border-white/10 bg-slate-900/90"
+                }`}
+              >
+                {activeSession ? (
+                  <div className="pointer-events-none absolute -top-2 left-3 z-10">
+                    <div
+                      className={`inline-flex max-w-[calc(100vw-7rem)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur ${activityTone(activity)}`}
+                    >
+                      <span className="truncate">{threadStatusSummary[0] ?? activityLabel(activity)}</span>
+                      {threadStatusSummary.slice(1, 2).map((item) => (
+                        <span key={item} className="truncate normal-case tracking-normal">
+                          {item}
+                        </span>
+                      ))}
+                      {interrupting ? <span className="normal-case tracking-normal">interrupting...</span> : null}
+                    </div>
+                  </div>
+                ) : null}
                 <textarea
                   ref={composerInputRef}
                   value={composerText}
@@ -3370,21 +3374,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   onPaste={(event) => {
                     void handleComposerPaste(event)
                   }}
-                  rows={3}
+                  rows={2}
                   placeholder={
                     activeSession
                       ? "Write the next message..."
                       : "Select or create a chat first."
                   }
                   disabled={!activeSession || sending}
-                  className="w-full rounded-2xl border border-white/10 bg-slate-900/90 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  className="min-h-[5.5rem] w-full resize-y border-0 bg-transparent px-1 py-1 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem]"
                 />
-                {processResolutionRequired ? (
-                  <p className="text-xs font-semibold text-rose-200">
-                    This process is {processTerminalStatus === "blocked" ? "blocked" : "done"}. Choose the next process before sending.
-                  </p>
-                ) : null}
-                <div className="flex items-center gap-2">
+                <div className="mt-2 flex items-center gap-2">
                     <label className="min-w-0 flex-1">
                       <span className="sr-only">Quick set current chat process</span>
                       <div className="relative">
@@ -3394,7 +3393,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           onChange={(event) => void updateActiveSessionProcessQuickSet(event.target.value)}
                           disabled={!activeSession || updatingQuickProcessBlueprint}
                           title="Quick Set Process"
-                          className={`w-full min-w-0 rounded-full border px-3 py-2 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                          className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
                             processResolutionRequired
                               ? "border-rose-400/70 bg-rose-400/10 text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.18)]"
                               : activeSession?.processBlueprintId
@@ -3415,9 +3414,17 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           ))}
                         </select>
                         {processResolutionRequired ? (
-                          <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3 text-xs font-semibold text-rose-200">
-                            {processTerminalStatus === "blocked" ? "Blocked" : "Done"}
-                          </span>
+                          <>
+                            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center px-3 text-xs font-semibold text-rose-200">
+                              {processTerminalStatus === "blocked" ? "Blocked" : "Done"}
+                            </span>
+                            <span
+                              title={`Choose the next process before sending. The previous process is ${processTerminalStatus === "blocked" ? "blocked" : "done"}.`}
+                              className="pointer-events-none absolute inset-y-0 right-8 flex items-center text-rose-200"
+                            >
+                              !
+                            </span>
+                          </>
                         ) : null}
                       </div>
                     </label>
@@ -3449,7 +3456,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         processResolutionRequired ||
                         (!composerText.trim() && composerImages.length === 0)
                       }
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300 text-slate-950 disabled:cursor-not-allowed disabled:border-cyan-300/20 disabled:bg-cyan-300/40"
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300 text-slate-950 disabled:cursor-not-allowed disabled:border-cyan-300/20 disabled:bg-cyan-300/40"
                     >
                       <SendIcon />
                     </button>
