@@ -53,6 +53,10 @@ export type StoredSession = {
   messageCount: number;
 };
 
+type PendingInstructionConsumeOptions = {
+  excludePrefixes?: string[];
+};
+
 export type StoredMessage = {
   id: string;
   sessionId: string;
@@ -662,20 +666,53 @@ export class AgentChatStore {
     return nextSession;
   }
 
-  consumePendingSystemInstruction(sessionId: string): string | null {
+  consumePendingSystemInstruction(
+    sessionId: string,
+    options?: PendingInstructionConsumeOptions,
+  ): string | null {
     const current = this.sessionCache.get(sessionId);
     if (!current || !current.pendingSystemInstruction) {
       return null;
     }
 
-    const instruction = current.pendingSystemInstruction;
+    const excludePrefixes = options?.excludePrefixes?.filter(Boolean) ?? [];
+    const instructionLines = current.pendingSystemInstruction
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const retainedLines: string[] = [];
+    const consumedLines: string[] = [];
+
+    for (const line of instructionLines) {
+      if (excludePrefixes.some((prefix) => line.startsWith(prefix))) {
+        retainedLines.push(line);
+      } else {
+        consumedLines.push(line);
+      }
+    }
+
+    if (consumedLines.length === 0) {
+      return null;
+    }
+
+    const instruction = consumedLines.join("\n");
     const nextSession: StoredSession = {
       ...current,
-      pendingSystemInstruction: null,
+      pendingSystemInstruction: retainedLines.length > 0 ? retainedLines.join("\n") : null,
     };
     this.writeSessionMetadata(nextSession);
     this.sessionCache.set(sessionId, nextSession);
-    this.markQueuedSystemMessagesSeen(sessionId);
+    const consumedText = new Set(consumedLines);
+    const messageIds = this.listQueuedMessages(sessionId)
+      .filter((message) => {
+        if (message.role !== "system") {
+          return false;
+        }
+        const firstText = message.content.find((block) => block.type === "text");
+        return firstText?.type === "text" && consumedText.has(firstText.text.trim());
+      })
+      .map((message) => message.id);
+    this.markMessagesSeen(sessionId, messageIds);
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",

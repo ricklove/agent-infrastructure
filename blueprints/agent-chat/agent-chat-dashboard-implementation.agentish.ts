@@ -168,7 +168,7 @@ AgentChatDashboardImplementation.enforces(`
 - The active-thread controls should expose a compact quick-set process selector for the current chat adjacent to the thread menu button.
 - The quick-set control should present an explicit unassigned state such as none rather than an imperative placeholder label.
 - Creating a new session with a selected process blueprint should immediately emit the queued expectation entry for that chat so the operator can see the assigned contract before sending the first human message.
-- Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next provider turn without creating an immediate standalone transcript event.
+- Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next explicit human-send turn without creating an immediate standalone transcript event.
 - Changing the quick-set process selector must not trigger the composer submit path or send the current draft; it only patches queued process state for the next explicit human message.
 - When the current process reaches its completion condition, the quick-set control should enter a required unresolved state before the next send.
 - That unresolved state should show Done as red warning text or placeholder treatment inside the selector, but Done must not become a stored process value or selectable option.
@@ -187,7 +187,10 @@ AgentChatDashboardImplementation.enforces(`
 - When adjacent execution-activity entries become numerous and low-signal, the transcript may collapse that consecutive activity block by default so conversation remains visually dominant.
 - Collapsed activity-cluster summaries should stay to one short line that foregrounds the most recent concrete task identity rather than a verbose list of many prior events.
 - Expanded activity rows should lead with the actual command, task title, sub-agent name, approval target, retry target, or wait reason instead of generic labels like command execution started or completed when richer task identity exists.
-- When that queued process-change instruction is actually consumed by the next provider turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
+- When that queued process-change instruction is actually consumed by the next explicit human-send turn, the transcript should record a canonical system-history entry at that moment so reload still explains what changed and when it took effect.
+- Automatic watchdog or continuation turns must not consume a queued process-change instruction ahead of the operator's next real message send.
+- The floating composer overlay may differ from the transcript rail on mobile, but on desktop its left and right rails should either match the active thread column exactly or differ by an obviously intentional inset rather than a subtle accidental drift.
+- Staged image-attachment preview chrome should remain visually above the transcript when it extends into the thread area instead of slipping behind transcript cards.
 - Queued messages that the provider has not seen yet should be shown below the activity status and above the composer.
 - A queued next-turn system instruction should render as a distinct waiting item rather than visually merging with queued user messages.
 - Waiting-for-agent chrome should stay compact and bottom-oriented near the thread end or composer edge instead of becoming a large warning box above the composer.
