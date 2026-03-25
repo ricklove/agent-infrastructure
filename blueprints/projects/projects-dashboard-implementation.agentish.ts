@@ -87,6 +87,7 @@ const Scope = {
   repoRootBoundaries: define.concept("RepoRootBoundary"),
   installationScopedAuth: define.concept("InstallationScopedGitHubAccess"),
   githubFirstPrivateRepoOnboarding: define.concept("GitHubFirstPrivateRepoOnboarding"),
+  existingLocalGithubAppImport: define.concept("ExistingLocalGitHubAppImport"),
   projectScopedIntegration: define.concept("ProjectScopedIntegrationPolicy"),
   sharedDevelopmentProcess: define.concept("SharedDevelopmentProcessForAllProjects"),
   noImplicitOwnerAuth: define.concept("NoImplicitOwnerOnlyAuth"),
@@ -118,6 +119,7 @@ ProjectsDashboardImplementation.enforces(`
 - Private-repo onboarding should support adding GitHub App access before any clone step so the system can discover private repos through that installation.
 - After GitHub App access is added, the operator should be able to list repositories visible to that installation and create a project from that discovered repo catalog.
 - For private repos, selecting from the discovered installation-visible repo list is the preferred add-project path over manually typing a clone URL first.
+- Existing locally configured GitHub App credentials under the agent GitHub config root should be discoverable and importable into the managed installation registry so operators do not need to re-enter already-installed app access.
 - On narrow mobile viewports, GitHub Access and project-management surfaces must not remain scrunched into simultaneous half-height panes.
 - Mobile layout should show one primary section at a time with a compact section switcher such as tabs, segmented controls, or an equivalent single-surface navigator.
 - All projects should share the same development-process blueprint for agentic coding rather than defining bespoke full project workflows.
@@ -139,6 +141,7 @@ ProjectsDashboardImplementation.defines(`
 - ProjectGitHubBinding means the explicit relation between a project repo and the GitHub App installation used for authenticated git operations.
 - InstallationScopedGitHubAccess means token resolution starts from the selected project binding and chosen installation, not from owner name alone.
 - GitHubFirstPrivateRepoOnboarding means the operator may need to configure GitHub access first, browse installation-visible repos second, and only then create the project record for a private repository.
+- ExistingLocalGitHubAppImport means legacy or manually configured local app credentials may be adopted into the Projects-managed installation registry and surfaced in the dashboard as reusable GitHub access records.
 - ProjectScopedIntegrationPolicy means each project carries only the repo-specific integration values needed by the shared development workflow.
 - SharedDevelopmentProcessForAllProjects means agents use the same development-process blueprint across repos while reading base branch and post-merge command from project config.
 - RepoRootBoundary means project paths are validated relative to approved workspace roots so the Projects feature cannot become a generic host filesystem browser.
@@ -204,6 +207,7 @@ Project.workspace.contains(
   Scope.repoRootBoundaries,
   Scope.installationScopedAuth,
   Scope.githubFirstPrivateRepoOnboarding,
+  Scope.existingLocalGithubAppImport,
   Scope.projectScopedIntegration,
   Scope.sharedDevelopmentProcess,
   Scope.noImplicitOwnerAuth,
@@ -231,6 +235,12 @@ Scope.githubFirstPrivateRepoOnboarding.means(`
 - the operator may add GitHub App access before creating the project record
 - once an installation is configured, the system can list repos visible to that installation
 - private repos should usually be added to Projects by selecting from that discovered repo list
+`);
+
+Scope.existingLocalGithubAppImport.means(`
+- pre-existing local app credentials under the agent GitHub config root may be discovered without manual re-entry
+- imported credentials are normalized into the managed installation registry so repo binding and token resolution use the same source of truth
+- import should preserve operator clarity by surfacing the adopted installation as a normal dashboard-managed GitHub access record
 `);
 
 Scope.projectScopedIntegration.means(`

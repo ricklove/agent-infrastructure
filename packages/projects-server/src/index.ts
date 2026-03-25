@@ -3,8 +3,8 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
-  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -89,7 +89,7 @@ function textError(message: string, status = 400): Response {
   return new Response(message, { status });
 }
 
-function readRegistry(): ProjectsRegistry {
+function readRegistryFile(): ProjectsRegistry {
   if (!existsSync(registryPath)) {
     return { installations: [], projects: [] };
   }
@@ -103,6 +103,113 @@ function readRegistry(): ProjectsRegistry {
 function writeRegistry(registry: ProjectsRegistry) {
   mkdirSync(dirname(registryPath), { recursive: true });
   writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
+}
+
+function parseEnvFile(envPath: string) {
+  const values: Record<string, string> = {};
+  for (const rawLine of readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex < 0) {
+      continue;
+    }
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+    if (key) {
+      values[key] = value;
+    }
+  }
+  return values;
+}
+
+function persistInstallationEnv(installation: InstallationRecord) {
+  mkdirSync(installationDir(installation.installationId), { recursive: true });
+  writeFileSync(
+    installationEnvPath(installation.installationId),
+    [
+      `GITHUB_APP_ID=${installation.appId}`,
+      `GITHUB_INSTALLATION_ID=${installation.installationId}`,
+      `GITHUB_APP_PEM=${installation.pemPath}`,
+      `GITHUB_ACCOUNT_LOGIN=${installation.accountLogin}`,
+      "",
+    ].join("\n"),
+    { mode: 0o600 },
+  );
+}
+
+function importLegacyInstallations(registry: ProjectsRegistry) {
+  if (!existsSync(configRoot)) {
+    return { registry, changed: false };
+  }
+
+  const installationsById = new Map(
+    registry.installations.map((installation) => [installation.installationId, installation]),
+  );
+  let changed = false;
+
+  for (const entry of readdirSync(configRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith("@")) {
+      continue;
+    }
+
+    const envPath = join(configRoot, entry.name, "env");
+    if (!existsSync(envPath)) {
+      continue;
+    }
+
+    const env = parseEnvFile(envPath);
+    const appId = env.GITHUB_APP_ID?.trim();
+    const installationId = env.GITHUB_INSTALLATION_ID?.trim();
+    const pemPath = env.GITHUB_APP_PEM?.trim() || join(configRoot, entry.name, "github-app.pem");
+    const accountLogin =
+      env.GITHUB_ACCOUNT_LOGIN?.trim() || entry.name.replace(/^@/, "").trim();
+
+    if (!appId || !installationId || !accountLogin || !existsSync(pemPath)) {
+      continue;
+    }
+
+    const existing = installationsById.get(installationId);
+    const now = Date.now();
+    const installation: InstallationRecord = {
+      id: existing?.id ?? randomUUID(),
+      label: existing?.label || `${accountLogin} GitHub App`,
+      accountLogin,
+      appId,
+      installationId,
+      pemPath,
+      createdAtMs: existing?.createdAtMs ?? now,
+      updatedAtMs: existing?.updatedAtMs ?? now,
+    };
+
+    const envMirrorPath = installationEnvPath(installationId);
+    if (!existsSync(envMirrorPath)) {
+      persistInstallationEnv(installation);
+      changed = true;
+    }
+
+    if (!existing) {
+      registry.installations.push(installation);
+      installationsById.set(installationId, installation);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    registry.installations.sort((left, right) => left.label.localeCompare(right.label));
+  }
+
+  return { registry, changed };
+}
+
+function readRegistry(): ProjectsRegistry {
+  const imported = importLegacyInstallations(readRegistryFile());
+  if (imported.changed) {
+    writeRegistry(imported.registry);
+  }
+  return imported.registry;
 }
 
 function installationDir(installationId: string) {
@@ -371,17 +478,7 @@ const server = Bun.serve({
 
         mkdirSync(installationDir(installationId), { recursive: true });
         writeFileSync(installation.pemPath, `${pemText}\n`, { mode: 0o600 });
-        writeFileSync(
-          installationEnvPath(installationId),
-          [
-            `GITHUB_APP_ID=${installation.appId}`,
-            `GITHUB_INSTALLATION_ID=${installation.installationId}`,
-            `GITHUB_APP_PEM=${installation.pemPath}`,
-            `GITHUB_ACCOUNT_LOGIN=${installation.accountLogin}`,
-            "",
-          ].join("\n"),
-          { mode: 0o600 },
-        );
+        persistInstallationEnv(installation);
 
         await validateInstallationAccess(installation);
 
