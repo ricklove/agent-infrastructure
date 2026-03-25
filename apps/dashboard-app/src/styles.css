@@ -2,5 +2,6 @@
 @source "./";
 @source "../../../packages/dashboard-ui/src";
 @source "../../../packages/agent-swarm-ui/src";
+@source "../../../packages/projects-ui/src";
 @source "../../../packages/agent-chat-ui/src";
 @source "../../../packages/agent-graph-ui/src";

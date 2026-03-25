@@ -7,6 +7,7 @@ SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SO
 CONFIG_ROOT="${AGENT_GITHUB_CONFIG_ROOT:-${HOME}/.config/agent-github}"
 DEFAULT_ENV_FILE="${CONFIG_ROOT}/env"
 DEFAULT_ASKPASS_FILE="${CONFIG_ROOT}/git-askpass.sh"
+DEFAULT_PROJECTS_REGISTRY_PATH="${AGENT_PROJECTS_REGISTRY_PATH:-${HOME}/workspace/data/projects/registry.json}"
 command_name="token"
 env_file="$DEFAULT_ENV_FILE"
 askpass_file="$DEFAULT_ASKPASS_FILE"
@@ -74,6 +75,70 @@ github_owner_from_remote() {
   printf '%s\n' "$owner_part"
 }
 
+github_repo_from_remote() {
+  local remote_url repo_part
+
+  remote_url="$(git -C "$repo_path" remote get-url origin 2>/dev/null || true)"
+  [[ -n "$remote_url" ]] || return 1
+
+  case "$remote_url" in
+    git@github.com:*)
+      repo_part="${remote_url#git@github.com:}"
+      ;;
+    ssh://git@github.com/*)
+      repo_part="${remote_url#ssh://git@github.com/}"
+      ;;
+    https://github.com/*)
+      repo_part="${remote_url#https://github.com/}"
+      ;;
+    http://github.com/*)
+      repo_part="${remote_url#http://github.com/}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  repo_part="${repo_part#*/}"
+  repo_part="${repo_part%.git}"
+  [[ -n "$repo_part" ]] || return 1
+  printf '%s\n' "$repo_part"
+}
+
+resolve_project_env_file() {
+  local registry_path repo_root repo_name installation_id
+  registry_path="$DEFAULT_PROJECTS_REGISTRY_PATH"
+  [[ -f "$registry_path" ]] || return 1
+
+  repo_root="$(git -C "$repo_path" rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$repo_root" ]] || return 1
+
+  owner_name="${owner_name:-$(github_owner_from_remote || true)}"
+  repo_name="$(github_repo_from_remote || true)"
+
+  installation_id="$(
+    jq -r \
+      --arg repo_root "$repo_root" \
+      --arg owner "$owner_name" \
+      --arg repo "$repo_name" \
+      '
+        first(
+          .projects[]?
+          | select(
+              (.localPath? == $repo_root)
+              or ((.owner? == $owner) and (.repo? == $repo))
+            )
+          | .installationId // empty
+        )
+      ' \
+      "$registry_path"
+  )"
+  [[ -n "$installation_id" ]] || return 1
+
+  env_file="${CONFIG_ROOT}/installations/${installation_id}/env"
+  [[ -f "$env_file" ]] || return 1
+}
+
 resolve_env_file() {
   if [[ "$explicit_env_file" == "true" ]]; then
     return 0
@@ -81,6 +146,10 @@ resolve_env_file() {
 
   if [[ -n "$owner_name" ]]; then
     env_file="${CONFIG_ROOT}/@${owner_name}/env"
+    return 0
+  fi
+
+  if resolve_project_env_file; then
     return 0
   fi
 

@@ -1,21 +1,18 @@
 {
-  "name": "@agent-infrastructure/dashboard-ui",
+  "name": "@agent-infrastructure/projects-ui",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./plugin": "./src/dashboard-plugin.ts",
+    "./ui-plugin": "./src/dashboard-ui-plugin.ts"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json --noEmit",
     "check": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@agent-infrastructure/agent-chat-ui": "workspace:*",
-    "@agent-infrastructure/agent-graph-ui": "workspace:*",
-    "@agent-infrastructure/agent-swarm-ui": "workspace:*",
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
-    "@agent-infrastructure/projects-ui": "workspace:*",
-    "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

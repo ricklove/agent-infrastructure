@@ -123,6 +123,25 @@ function TerminalIcon(props: { className?: string }) {
   )
 }
 
+function ProjectsIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h3A2.5 2.5 0 0 1 12 7.5v9A2.5 2.5 0 0 1 9.5 19h-3A2.5 2.5 0 0 1 4 16.5z" />
+      <path d="M12 8.5A2.5 2.5 0 0 1 14.5 6H18a2 2 0 0 1 2 2v7.5a2.5 2.5 0 0 1-2.5 2.5h-3A2.5 2.5 0 0 1 12 15.5z" />
+      <path d="M7 9h2M7 12h2M15 10h2M15 13h2" />
+    </svg>
+  )
+}
+
 function CopyIcon(props: { className?: string }) {
   return (
     <svg
@@ -182,6 +201,7 @@ const featureIconMap: Record<
   (props: { className?: string }) => JSX.Element
 > = {
   swarm: SwarmIcon,
+  projects: ProjectsIcon,
   chat: ChatIcon,
   graph: GraphIcon,
   terminal: TerminalIcon,
