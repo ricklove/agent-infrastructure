@@ -93,7 +93,7 @@ DevelopmentProcess.defines(`
 - IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and the normal setup path is to create the worktree and feature branch together from the base branch.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
-- FeatureBranchRefreshByMerge means an active feature branch may be updated from `development`, `main`, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
+- FeatureBranchRefreshByMerge means an active feature branch may be updated from development, main, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
 - ReleaseBranch means `main` is the canonical release branch for runtime deployment.
 - ReleaseGitTag means an immutable git tag created from the promoted release commit and used as the runtime deploy target.
 - TemporaryStateOnly means logs, pids, sockets, caches, and controller metadata may live under state/, but durable user or app content may not.
