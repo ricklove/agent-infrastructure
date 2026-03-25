@@ -86,33 +86,46 @@ function dashboardSessionWebSocketProtocols(): string[] {
  * requires bundler configuration — this gets the interactive PTY working first.
  */
 function useTerminalRenderer() {
+  const containerRef = useRef<HTMLDivElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
+  const cursorRef = useRef<HTMLSpanElement>(null);
   const contentRef = useRef("");
 
   const normalize = useCallback((text: string) => {
     return text
-      .replace(/\u001b\][^\u0007]*\u0007/g, "")
+      // Strip OSC sequences (title sets, etc.)
+      .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
+      // Strip CSI sequences (colors, cursor movement, etc.)
       .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
-      .replace(/\u001b[@-_]/g, "");
+      // Strip remaining two-byte escape sequences
+      .replace(/\u001b[@-_]/g, "")
+      // Strip carriage returns that aren't part of \r\n (overwrite-style output)
+      .replace(/\r(?!\n)/g, "");
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
   }, []);
 
   const append = useCallback((text: string) => {
     contentRef.current += normalize(text);
     if (preRef.current) {
       preRef.current.textContent = contentRef.current;
-      preRef.current.scrollTop = preRef.current.scrollHeight;
+      scrollToBottom();
     }
-  }, [normalize]);
+  }, [normalize, scrollToBottom]);
 
   const reset = useCallback((text: string) => {
     contentRef.current = normalize(text);
     if (preRef.current) {
       preRef.current.textContent = contentRef.current;
-      preRef.current.scrollTop = preRef.current.scrollHeight;
+      scrollToBottom();
     }
-  }, [normalize]);
+  }, [normalize, scrollToBottom]);
 
-  return { preRef, append, reset };
+  return { containerRef, preRef, cursorRef, append, reset };
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -143,7 +156,7 @@ export function DashboardTerminalScreen({
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const { preRef, append, reset } = useTerminalRenderer();
+  const { containerRef, preRef, cursorRef, append, reset } = useTerminalRenderer();
 
   // -----------------------------------------------------------------------
   // API helpers
@@ -560,22 +573,43 @@ export function DashboardTerminalScreen({
       >
         {activeSessionId && connected ? (
           <>
-            <pre
-              ref={preRef}
+            <div
+              ref={containerRef}
               style={{
-                margin: 0,
-                padding: "8px 12px",
-                fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace",
-                fontSize: "13px",
-                lineHeight: "1.4",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-all",
                 overflowY: "auto",
                 height: "100%",
-                color: "#c9d1d9",
+                padding: "8px 12px",
                 backgroundColor: "#0d1117",
               }}
-            />
+            >
+              <pre
+                ref={preRef}
+                style={{
+                  margin: 0,
+                  padding: 0,
+                  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace",
+                  fontSize: "13px",
+                  lineHeight: "1.4",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                  color: "#c9d1d9",
+                  backgroundColor: "transparent",
+                  display: "inline",
+                }}
+              />
+              <span
+                ref={cursorRef}
+                style={{
+                  display: "inline-block",
+                  width: "7.8px",
+                  height: "1.15em",
+                  backgroundColor: "#c9d1d9",
+                  verticalAlign: "text-bottom",
+                  animation: "terminal-blink 1s step-end infinite",
+                }}
+              />
+              <style>{`@keyframes terminal-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
+            </div>
             {/* Hidden input to capture keyboard events */}
             <textarea
               ref={inputRef}
