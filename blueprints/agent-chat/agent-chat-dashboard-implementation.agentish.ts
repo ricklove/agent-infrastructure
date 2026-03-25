@@ -169,6 +169,7 @@ AgentChatDashboardImplementation.enforces(`
 - The quick-set control should present an explicit unassigned state such as none rather than an imperative placeholder label.
 - Creating a new session with a selected process blueprint should immediately emit the queued expectation entry for that chat so the operator can see the assigned contract before sending the first human message.
 - Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next provider turn without creating an immediate standalone transcript event.
+- Changing the quick-set process selector must not trigger the composer submit path or send the current draft; it only patches queued process state for the next explicit human message.
 - When the current process reaches its completion condition, the quick-set control should enter a required unresolved state before the next send.
 - That unresolved state should show Done as red warning text or placeholder treatment inside the selector, but Done must not become a stored process value or selectable option.
 - The unresolved Done state must be backed by a distinct UI sentinel rather than by reusing the current real process option, so the operator can explicitly pick the same prior process again and resolve the guard intentionally.
@@ -181,6 +182,7 @@ AgentChatDashboardImplementation.enforces(`
 - If the provider reports an error, the backend should record that canonical failure activity immediately, apply retry policy for retryable cases, and avoid using idle-prompt wording for that state.
 - If the provider exposes quota exhaustion, token-budget exhaustion, or context-window exhaustion through supported provider status events rather than ordinary assistant text, the backend should turn that surfaced provider status into canonical transcript activity instead of falling back to a blank or `(empty response)` assistant message.
 - Human typing in the composer should suppress idle-watchdog prompting until the typing grace period ends.
+- The browser should retry transient Agent Chat websocket disconnects with exponential backoff, should defer operator-facing disconnect warnings until the socket has remained unavailable for a short grace period such as five seconds, and should clear that warning promptly after a successful reconnect.
 - When adjacent execution-activity entries become numerous and low-signal, the transcript may collapse that consecutive activity block by default so conversation remains visually dominant.
 - Collapsed activity-cluster summaries should stay to one short line that foregrounds the most recent concrete task identity rather than a verbose list of many prior events.
 - Expanded activity rows should lead with the actual command, task title, sub-agent name, approval target, retry target, or wait reason instead of generic labels like command execution started or completed when richer task identity exists.
@@ -197,6 +199,7 @@ AgentChatDashboardImplementation.enforces(`
 - If a zoomed inspection treatment exists, it should help local navigation without replacing a stable primary thread layout.
 - The active thread surface must remain horizontally contained; long content should wrap safely and the transcript viewport must not expose a browser-level horizontal scrollbar.
 - The composer should support a lightweight reply-target reminder so the operator can indicate that the in-progress human message responds to a specific earlier agent message.
+- Composer text entry should live in an isolated rendering boundary so ordinary keystrokes do not re-render the entire transcript, session list, and worker-status surface on each input event.
 - The browser should preserve unsent per-session message drafts in local storage so transient reloads do not discard typed input.
 - Keyboard interrupt should be exposed as Esc when the selected provider supports a real interrupt action.
 - Canonical chat settings should remain editable whenever safe, and provider-setting forms must not reset unsaved selections before the operator decides to save.
