@@ -3,6 +3,7 @@ import {
   type ClipboardEvent,
   type FormEvent,
   Fragment,
+  isValidElement,
   type KeyboardEvent,
   memo,
   type ReactNode,
@@ -241,35 +242,49 @@ const darkNativeOptionStyle = {
   color: "#f8fafc",
 } as const
 
-const IconButton = memo(function IconButton(props: {
-  label: string
-  title?: string
-  disabled?: boolean
-  onClick?: () => void
-  children: ReactNode
-  tone?: "default" | "primary" | "danger"
-}) {
-  useRenderCounter("IconButton")
-  const toneClass =
-    props.tone === "primary"
-      ? "border-cyan-300/30 bg-cyan-300 text-slate-950"
-      : props.tone === "danger"
-        ? "border-white/10 bg-white/5 text-rose-100"
-        : "border-white/10 bg-white/5 text-slate-200"
+function iconButtonChildType(child: ReactNode) {
+  return isValidElement(child) ? child.type : child
+}
 
-  return (
-    <button
-      type="button"
-      aria-label={props.label}
-      title={props.title ?? props.label}
-      onClick={props.onClick}
-      disabled={props.disabled}
-      className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border ${toneClass} disabled:cursor-not-allowed disabled:opacity-50`}
-    >
-      {props.children}
-    </button>
-  )
-})
+const IconButton = memo(
+  function IconButton(props: {
+    label: string
+    title?: string
+    disabled?: boolean
+    onClick?: () => void
+    children: ReactNode
+    tone?: "default" | "primary" | "danger"
+  }) {
+    useRenderCounter("IconButton")
+    const toneClass =
+      props.tone === "primary"
+        ? "border-cyan-300/30 bg-cyan-300 text-slate-950"
+        : props.tone === "danger"
+          ? "border-white/10 bg-white/5 text-rose-100"
+          : "border-white/10 bg-white/5 text-slate-200"
+
+    return (
+      <button
+        type="button"
+        aria-label={props.label}
+        title={props.title ?? props.label}
+        onClick={props.onClick}
+        disabled={props.disabled}
+        className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border ${toneClass} disabled:cursor-not-allowed disabled:opacity-50`}
+      >
+        {props.children}
+      </button>
+    )
+  },
+  (previousProps, nextProps) =>
+    previousProps.label === nextProps.label &&
+    previousProps.title === nextProps.title &&
+    previousProps.disabled === nextProps.disabled &&
+    previousProps.onClick === nextProps.onClick &&
+    previousProps.tone === nextProps.tone &&
+    iconButtonChildType(previousProps.children) ===
+      iconButtonChildType(nextProps.children),
+)
 
 const SessionsIcon = memo(function SessionsIcon() {
   useRenderCounter("SessionsIcon")
