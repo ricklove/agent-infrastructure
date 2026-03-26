@@ -236,7 +236,10 @@ const minCollapsedActivityClusterSize = 3
 const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
 const websocketWarningDelayMs = 5_000
 const darkNativeSelectClass = "bg-slate-950 text-slate-100 [color-scheme:dark]"
-const darkNativeOptionClass = "bg-slate-950 text-slate-100"
+const darkNativeOptionStyle = {
+  backgroundColor: "#020617",
+  color: "#f8fafc",
+} as const
 
 const IconButton = memo(function IconButton(props: {
   label: string
@@ -1391,7 +1394,7 @@ const ComposerPanel = memo(
                 >
                   {props.processResolutionRequired ? (
                     <option
-                      className={darkNativeOptionClass}
+                      style={darkNativeOptionStyle}
                       value={completedProcessResolutionSentinel}
                       disabled
                     >
@@ -1400,12 +1403,12 @@ const ComposerPanel = memo(
                         : "Done"}
                     </option>
                   ) : null}
-                  <option className={darkNativeOptionClass} value="">
+                  <option style={darkNativeOptionStyle} value="">
                     none
                   </option>
                   {props.processBlueprints.map((entry) => (
                     <option
-                      className={darkNativeOptionClass}
+                      style={darkNativeOptionStyle}
                       key={entry.id}
                       value={entry.id}
                     >
@@ -3648,12 +3651,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   }
                   className={`mt-2 w-full rounded-2xl border border-white/10 px-4 py-3 text-sm outline-none ${darkNativeSelectClass}`}
                 >
-                  <option className={darkNativeOptionClass} value="">
+                  <option style={darkNativeOptionStyle} value="">
                     none
                   </option>
                   {processBlueprints.map((entry) => (
                     <option
-                      className={darkNativeOptionClass}
+                      style={darkNativeOptionStyle}
                       key={entry.id}
                       value={entry.id}
                     >
@@ -4304,7 +4307,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         >
                           {processResolutionRequired ? (
                             <option
-                              className={darkNativeOptionClass}
+                              style={darkNativeOptionStyle}
                               value={completedProcessResolutionSentinel}
                               disabled
                             >
@@ -4313,12 +4316,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 : "Done"}
                             </option>
                           ) : null}
-                          <option className={darkNativeOptionClass} value="">
+                          <option style={darkNativeOptionStyle} value="">
                             none
                           </option>
                           {processBlueprints.map((entry) => (
                             <option
-                              className={darkNativeOptionClass}
+                              style={darkNativeOptionStyle}
                               key={entry.id}
                               value={entry.id}
                             >
