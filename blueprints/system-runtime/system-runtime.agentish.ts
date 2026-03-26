@@ -136,6 +136,8 @@ SystemRuntime.enforces(`
 - Workspace durability for canonical app data should be handled by the manager controller's workspace-persistence domain rather than by browser clients or ad hoc cron glue.
 - Heavy repository development work should prefer worker hosts over the manager runtime host so the control plane remains available for deploy and verification.
 - A worker promoted into an active development surface should include git and copied commit authorship so it can create branch-local commits without receiving long-lived external repository credentials.
+- If the active development worker becomes unhealthy or unreachable, the normal recovery path is to repair it, reboot it, or create a replacement worker rather than resuming heavy development on the manager runtime host by default.
+- Once a replacement worker is healthy and active, superseded unused worker instances should be disposed so the swarm does not accumulate stale development hosts.
 `);
 
 SystemRuntime.defines(`
@@ -143,6 +145,8 @@ SystemRuntime.defines(`
 - RepoTools means repository helper scripts used by developers or operators but not part of the deployed host runtime boundary.
 - ConnectWorkerEc2SshTool means the repository helper that reuses low-load swarm workers when possible, launches a worker when needed, bootstraps SSH, and then connects directly to the worker private IP.
 - Worker development readiness means the worker has git plus copied commit authorship identity so it can behave like a remote execution worktree while the manager host remains the authenticated integration surface.
+- Worker recovery means restoring a usable development worker by repair, reboot, or replacement before resuming heavy development work.
+- Superseded worker disposal means removing stale unused worker instances after a healthy replacement worker takes over the active development role.
 - PackageTools means package-local assets or workflow helpers that remain internal to a package.
 - BootstrapAsset means a script or document consumed by provisioning or user-data rather than by an operator directly.
 - SourceFirstServerChange means source is changed, committed, and only then rolled into runtime.

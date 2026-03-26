@@ -75,6 +75,8 @@ DevelopmentProcess.enforces(`
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
 - Heavy repo-wide check, build, lint-fix, or refactor work should run on a swarm worker rather than on the manager runtime host.
 - A worker used as the active development surface should be prepared as a remote worktree-like environment with git installed and commit authorship config copied from the manager host.
+- If the active development worker becomes unhealthy or unavailable, the expected recovery path is to repair that worker, reboot it, or create a replacement worker rather than silently continuing heavy development on the manager host.
+- Unused or superseded worker instances should be disposed once a healthy replacement worker is ready so stale workers do not accumulate.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
 - The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
@@ -113,6 +115,8 @@ DevelopmentProcess.defines(`
 - DevelopmentWorkerHost means a swarm worker host used as the safe execution surface for heavy development and verification workloads.
 - HeavyDevelopmentWorkRunsOnWorker means repo-wide TypeScript checks, broad build steps, lint-fix sweeps, and similar resource-heavy work should move to a worker host rather than compete with the manager runtime host.
 - RemoteWorktreeLikeWorker means a worker-host repo checkout can act like a remote execution worktree when it has git, correct authorship identity, and branch-local commit capability even though GitHub push authority stays on the manager host.
+- Worker recovery means restoring a usable worker development surface by repairing the current worker, rebooting it, or creating a replacement worker before resuming heavy development.
+- Worker disposal means terminating or otherwise removing unused worker instances once they are no longer the active development surface.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - FeatureBranchRefreshByMerge means an active feature branch may be updated from development, main, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
@@ -227,6 +231,8 @@ when(Actor.operator.runs("development or local verification for a feature branch
   .and(DevelopmentProcess.prefers(Artifact.developmentWorker).for("resource-heavy checks, builds, lint-fix passes, and broad refactors"))
   .and(DevelopmentProcess.expects("bun run agent:connect-worker-ec2-ssh to be the normal command for reaching a reusable or newly launched development worker"))
   .and(DevelopmentProcess.expects("a worker used for active branch work to have git installed and commit authorship copied from the manager host"))
+  .and(DevelopmentProcess.expects("worker failure during active development to be answered by worker repair, reboot, or replacement before resuming heavy work"))
+  .and(DevelopmentProcess.expects("unused worker instances to be disposed once an active replacement worker is ready"))
   .and(DevelopmentProcess.expects("manager-host git to fetch or pull committed worker branch state before GitHub push, release promotion, and deploy"));
 
 when(Artifact.blueprint.exists())

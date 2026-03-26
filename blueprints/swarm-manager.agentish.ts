@@ -55,6 +55,8 @@ const StartupPaths = {
 
 const Lifecycle = {
   launchRequested: define.event("LaunchRequested"),
+  rebootRequested: define.event("RebootRequested"),
+  replacementRequested: define.event("ReplacementRequested"),
   cloudInitStarted: define.event("CloudInitStarted"),
   telemetryStarted: define.event("TelemetryStarted"),
   wakeRequested: define.event("WakeRequested"),
@@ -81,6 +83,8 @@ const Policy = {
   repeatedManualSSMOperations: define.concept("RepeatedManualSSMOperations"),
   workerReuseBeforeLaunch: define.concept("WorkerReuseBeforeLaunch"),
   managerOwnsExternalGitAuth: define.concept("ManagerOwnsExternalGitAuth"),
+  workerRecoveryBeforeManagerFallback: define.concept("WorkerRecoveryBeforeManagerFallback"),
+  disposeUnusedWorkers: define.concept("DisposeUnusedWorkers"),
 };
 
 SwarmManager.observes(Truth.inventory).toUnderstand('ExistenceTruth');
@@ -97,6 +101,8 @@ SwarmManager.owns("LifecycleExecution", "ImagePromotion", "BenchmarkExecution", 
 SwarmManager.minimizes(Policy.repeatedManualSSMOperations);
 SwarmManager.prefers(Policy.workerReuseBeforeLaunch);
 SwarmManager.enforces(Policy.managerOwnsExternalGitAuth);
+SwarmManager.prefers(Policy.workerRecoveryBeforeManagerFallback);
+SwarmManager.prefers(Policy.disposeUnusedWorkers);
 
 Worker.runsOn(EC2);
 Worker.starts(Docker);
@@ -144,6 +150,13 @@ when(Operator.connectsTo(Worker).through(SwarmManager))
   .and(SwarmManager.launches(Worker).when("NoReusableWorkerExists"))
   .and(SwarmManager.prepares(WorkerDevEnvironment).for(Worker))
   .and(Operator.reaches(Worker).through("PrivateIpSsh"));
+
+when(Operator.finds(Worker).as("UnavailableOrUnhealthy").through(SwarmManager))
+  .then(SwarmManager.records(Lifecycle.rebootRequested).in(Truth.history))
+  .and(SwarmManager.reboots(Worker).when(Policy.workerRecoveryBeforeManagerFallback))
+  .and(SwarmManager.records(Lifecycle.replacementRequested).in(Truth.history).when("RebootDoesNotRestoreHealthyWorker"))
+  .and(SwarmManager.launches(Worker).when("RebootDoesNotRestoreHealthyWorker"))
+  .and(SwarmManager.disposes(Worker).when(Policy.disposeUnusedWorkers).when("ReplacementWorkerIsReady"));
 
 when(Worker.reaches(Lifecycle.ec2Running))
   .then(SwarmManager.records(Lifecycle.ec2Running).in(Truth.history))
@@ -215,6 +228,10 @@ when(SwarmManager.prepares(WorkerDevEnvironment).for(Worker))
   .and(Worker.commits("BranchLocalChanges"))
   .and(SwarmManager.fetches("CommittedWorkerBranchState").into(ManagerRuntime))
   .and(SwarmManager.keeps(Policy.managerOwnsExternalGitAuth));
+
+when(SwarmManager.keeps(Policy.disposeUnusedWorkers))
+  .then(SwarmManager.terminates("UnusedWorkerInstances"))
+  .and(SwarmManager.removes("SupersededWorkersFromActiveFleet"));
 
 when(Operator.benchmarks(BunService).through(SwarmManager).on(Worker))
   .then(SwarmManager.starts(BunService).through(Docker).on(Worker))
