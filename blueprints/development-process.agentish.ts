@@ -24,6 +24,7 @@ const Artifact = {
   temporaryState: define.workspace("TemporaryRuntimeState"),
   appData: define.workspace("DurableAppData"),
   blueprint: define.document("RelevantBlueprint"),
+  agentishSections: define.document("AgentishSectionsBlueprint"),
   techStack: define.document("TechStackBlueprint"),
   codingStandards: define.document("CodingStandardsBlueprint"),
   processBlueprint: define.document("ProcessBlueprintJson"),
@@ -52,6 +53,7 @@ const Rule = {
 
 DevelopmentProcess.enforces(`
 - Relevant blueprints must be reviewed and updated before implementation changes.
+- The repository Agentish sections blueprint should be read before defining or restructuring a subject blueprint.
 - The repository tech-stack blueprint and coding-standards blueprint must be read before implementation begins.
 - Changes that alter canonical tooling, frameworks, styling systems, verification surfaces, or repository technology choices must update the tech-stack blueprint before implementation dependence continues.
 - Changes that alter repository coding norms, allowed abstraction shape, styling exceptions, branching style, or dependency discipline must update the coding-standards blueprint before implementation dependence continues.
@@ -91,6 +93,7 @@ DevelopmentProcess.enforces(`
 DevelopmentProcess.defines(`
 - BlueprintFirstChange means architecture and policy are corrected in blueprints before code is changed.
 - TechStackBlueprint means the repository-wide blueprint that owns canonical technology choices and stack exceptions.
+- AgentishSectionsBlueprint means the repository-wide blueprint that owns the canonical in-file section structure for a subject Agentish blueprint.
 - CodingStandardsBlueprint means the repository-wide blueprint that owns code-shaping norms and repository implementation discipline.
 - ProcessBlueprintJson means a machine-readable process contract in blueprints/ that the system may assign to a chat session.
 - BlueprintCommitBeforeImplementation means blueprint edits are turned into a committed source revision before dependent implementation work starts.
@@ -121,6 +124,7 @@ DevelopmentProcess.contains(
   Artifact.temporaryState,
   Artifact.appData,
   Artifact.blueprint,
+  Artifact.agentishSections,
   Artifact.techStack,
   Artifact.codingStandards,
   Artifact.processBlueprint,
@@ -148,6 +152,7 @@ when(Actor.operator.implements("a feature or fix"))
   .then(DevelopmentProcess.requires(Rule.blueprintFirst))
   .and(DevelopmentProcess.requires(Rule.blueprintCommitFirst))
   .and(DevelopmentProcess.requires(Rule.blueprintStateRequired))
+  .and(DevelopmentProcess.requires(Artifact.agentishSections))
   .and(DevelopmentProcess.requires(Artifact.techStack))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
   .and(DevelopmentProcess.requires(Rule.sourceOnly))
@@ -163,6 +168,7 @@ when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
   .then(DevelopmentProcess.requires(Rule.blueprintFirst))
   .and(DevelopmentProcess.requires(Rule.blueprintCommitFirst))
   .and(DevelopmentProcess.requires(Rule.blueprintStateRequired))
+  .and(DevelopmentProcess.requires(Artifact.agentishSections))
   .and(DevelopmentProcess.requires(Artifact.techStack))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
@@ -204,9 +210,14 @@ when(Artifact.blueprint.exists())
   .and(DevelopmentProcess.treats("blueprint as ideal and blueprint-state as current comparison"));
 
 when(Actor.operator.starts("implementation"))
-  .then(DevelopmentProcess.expects(Artifact.techStack))
+  .then(DevelopmentProcess.expects(Artifact.agentishSections))
+  .and(DevelopmentProcess.expects(Artifact.techStack))
   .and(DevelopmentProcess.expects(Artifact.codingStandards))
-  .and(DevelopmentProcess.treats("tech-stack and coding-standards as repository-wide prerequisite reading"));
+  .and(DevelopmentProcess.treats("agentish-sections, tech-stack, and coding-standards as repository-wide prerequisite reading"));
+
+when(Actor.operator.defines("a subject blueprint"))
+  .then(DevelopmentProcess.expects(Artifact.agentishSections))
+  .and(DevelopmentProcess.treats("agentish-sections as the canonical in-file subject blueprint structure"));
 
 when(Artifact.processBlueprint.exists())
   .then(DevelopmentProcess.treats("process blueprint JSON as a first-class blueprint artifact"))
