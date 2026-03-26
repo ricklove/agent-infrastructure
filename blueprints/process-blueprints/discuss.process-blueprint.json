@@ -11,7 +11,7 @@
     "waiting for user decision"
   ],
   "watchdog": {
-    "enabled": true,
+    "enabled": false,
     "idleTimeoutSeconds": 90,
     "maxNudgesPerIdleEpisode": 0
   }
