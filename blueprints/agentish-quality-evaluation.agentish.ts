@@ -13,6 +13,7 @@ const Artifact = {
   languageRoot: define.document("AgentishLanguageRoot"),
   companionContext: define.document("AllowedCompanionContext"),
   evaluationReport: define.document("AgentishEvaluationReport"),
+  reportCatalog: define.document("AgentishQualityReportCatalog"),
 };
 
 const FileClass = {
@@ -50,6 +51,7 @@ AgentishQualityEvaluation.contains(
   Artifact.languageRoot,
   Artifact.companionContext,
   Artifact.evaluationReport,
+  Artifact.reportCatalog,
   FileClass.languageRoot,
   FileClass.sharedMeta,
   FileClass.productIdeal,
@@ -81,12 +83,14 @@ AgentishQualityEvaluation.enforces(`- Every target file must be classified befor
 - Process guides are judged relative to their paired JSON contract rather than as primary machine-readable artifacts.
 - Files with no clear ownership, no evident companion role, and no live-use evidence should be evaluated for obsolescence risk separately from intrinsic writing quality.
 - Reports must separate quality problems from corpus-role problems.
+- The canonical latest per-file reports should live under blueprints/agentish-quality-reports/ with paths that mirror the evaluated blueprint tree.
 - Reports must distinguish low quality, partial but correct role execution, and likely obsolete or orphaned artifacts.`);
 
 AgentishQualityEvaluation.defines(`- TargetAgentishFile means one repository Agentish artifact under evaluation.
 - AgentishQualityBlueprint means this standard quality-evaluation blueprint.
 - AgentishLanguageRoot means the shared language-level Agentish definition such as _agentish.ts.
 - AllowedCompanionContext means only the smallest extra blueprint set needed for a fair layer-relative read.
+- AgentishQualityReportCatalog means the durable report tree rooted at blueprints/agentish-quality-reports/ plus its rollup index.
 - StandaloneRead means the file is judged primarily by what a capable reader can recover from the file itself plus the language root.
 - LayerRelativeRead means the file is judged relative to the blueprint layer and companion artifacts it is supposed to rely on.
 - CorpusUsefulnessRead means the file is judged by whether it improves the larger blueprint graph even if it is intentionally partial in isolation.
@@ -148,3 +152,8 @@ when(Artifact.evaluationReport.describes(Artifact.targetFile))
   .and(Artifact.evaluationReport.expects("dimension-by-dimension judgment"))
   .and(Artifact.evaluationReport.expects("separate obsolescence assessment"))
   .and(Artifact.evaluationReport.expects("recommended next action: keep, revise, pair, archive, or delete"));
+
+when(Artifact.reportCatalog.contains(Artifact.evaluationReport))
+  .then(Artifact.reportCatalog.expects("one durable latest report per target file"))
+  .and(Artifact.reportCatalog.expects("a mirrored path derived from the source blueprint path"))
+  .and(Artifact.reportCatalog.expects("a rollup summary index for corpus-wide comparison"));

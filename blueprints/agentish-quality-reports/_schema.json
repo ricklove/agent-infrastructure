@@ -1,0 +1,194 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "target_file",
+    "file_class",
+    "evaluation_modes",
+    "allowed_companion_context",
+    "dimension_ratings",
+    "summary",
+    "strengths",
+    "weaknesses",
+    "recommendation",
+    "confidence"
+  ],
+  "properties": {
+    "target_file": {
+      "type": "string"
+    },
+    "file_class": {
+      "type": "string",
+      "enum": [
+        "language_root",
+        "shared_meta",
+        "product_ideal",
+        "implementation_resolved",
+        "blueprint_state",
+        "process_guide",
+        "exploratory_companion"
+      ]
+    },
+    "evaluation_modes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "standalone",
+          "layer_relative",
+          "corpus_usefulness"
+        ]
+      },
+      "minItems": 1
+    },
+    "allowed_companion_context": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dimension_ratings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "self_description",
+        "semantic_density",
+        "causal_clarity",
+        "local_recoverability",
+        "abstraction_discipline",
+        "interpretive_slack",
+        "corpus_fit",
+        "layer_correctness",
+        "live_use_evidence",
+        "obsolescence_risk"
+      ],
+      "properties": {
+        "self_description": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        },
+        "semantic_density": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        },
+        "causal_clarity": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        },
+        "local_recoverability": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        },
+        "abstraction_discipline": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        },
+        "interpretive_slack": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        },
+        "corpus_fit": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        },
+        "layer_correctness": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        },
+        "live_use_evidence": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        },
+        "obsolescence_risk": {
+          "type": "string",
+          "enum": [
+            "strong",
+            "good",
+            "mixed",
+            "weak"
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "string"
+    },
+    "strengths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "weaknesses": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "recommendation": {
+      "type": "string",
+      "enum": [
+        "keep",
+        "revise",
+        "pair",
+        "archive",
+        "delete"
+      ]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

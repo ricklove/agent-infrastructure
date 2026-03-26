@@ -1,0 +1,277 @@
+{
+  "generated_at": "2026-03-26T03:58:13.705Z",
+  "source_root": "blueprints/",
+  "reports_root": "blueprints/agentish-quality-reports/",
+  "file_count": 36,
+  "by_file_class": {
+    "language_root": 1,
+    "exploratory_companion": 2,
+    "blueprint_state": 3,
+    "implementation_resolved": 8,
+    "product_ideal": 15,
+    "shared_meta": 5,
+    "process_guide": 2
+  },
+  "recommendations": {
+    "keep": 17,
+    "archive": 2,
+    "revise": 17
+  },
+  "confidence": {
+    "high": 36
+  },
+  "reports": [
+    {
+      "target_file": "_agentish.ts",
+      "file_class": "language_root",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "The language root delivers a complete, self-contained definition of Agentish: its values, rejections, actor model, and failure modes. Nearly every line carries load. The when/then causal blocks concretely model how over-optimization and symbolic compression degrade the language's own goals, which is both instructive and self-demonstrating. A few coined terms (ActivationPreload, GenerativeYield, AdjacentInference) carry slight interpretive slack since they are valued but never grounded in examples or definitions within the file itself. As a corpus anchor, every other Agentish file references its type declarations and inherits its philosophy, giving it strong live-use evidence and near-zero obsolescence risk."
+    },
+    {
+      "target_file": "_merge-repairs.agentish.ts",
+      "file_class": "exploratory_companion",
+      "recommendation": "archive",
+      "confidence": "high",
+      "summary": "Well-structured temporary audit companion that documents a one-time branch reconciliation. Intrinsic Agentish quality is solid: findings are concrete (specific SHAs, paths, branch names), causal separations between recovered intent, stale snapshots, and conflicting directions are clear with explained rationale. However, the file self-declares as temporary, describes completed cleanup actions, and shows no evidence of ongoing reference—making obsolescence risk high and independent of writing quality."
+    },
+    {
+      "target_file": "agent-chat/agent-chat-blueprint-state.agentish.ts",
+      "file_class": "blueprint_state",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "A well-positioned blueprint-state file that fulfills the exact corpus role required by development-process.agentish.ts. It correctly compares current Agent Chat implementation reality against the ideal and implementation-resolved companion blueprints, with concrete evidence paths, explicit confidence framing, and clear gap/issue separation. Its primary weakness is severely uneven concept granularity: several CurrentReality entries—especially settingsAndMessageStateGap (~40 bullet points), threadNavigationGap, and sessionListWorkflowPolishGap—have become catch-all dump buckets that undermine the otherwise clean conceptual structure and dilute semantic density."
+    },
+    {
+      "target_file": "agent-chat/agent-chat-dashboard-implementation.agentish.ts",
+      "file_class": "implementation_resolved",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "A comprehensive implementation-resolved blueprint for an Agent Chat dashboard feature covering backend, frontend, storage, transport, and multi-provider integration. Entity taxonomy is well-organized and decisions are concretely resolved. The file suffers from density problems: its enforces block is extremely long and mixes high-level architectural constraints with pixel-level UI micro-specs (iOS font sizes, composer chip positioning, scroll-to-bottom affordance placement) that belong in a UI-focused companion. The causal when/then chains are well-structured, and the level of edge-case detail (watchdog behavior, reconnect grace periods, queued process-change consumption rules) shows strong live-use evolution. The prescribes block is disproportionately thin compared to the massive enforces block it summarizes."
+    },
+    {
+      "target_file": "agent-chat/agent-chat.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Comprehensive product-ideal blueprint for a workspace-native conversation system. Establishes a clear canonical-vs-provider ownership boundary maintained consistently across all lifecycle flows. Entity taxonomy, when/then chains, and means blocks are self-contained and recoverable. The enforces block carries significant accumulated behavioral knowledge but mixes architectural invariants with UI-level edge-case guardrails, slightly diluting density and abstraction discipline."
+    },
+    {
+      "target_file": "agent-graph/agent-graph-boards.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Well-structured product-ideal blueprint that clearly defines the board model and persistence boundary for agent-graph. The durable-vs-transient distinction is explicit and consistently enforced. When/then chains cover the full board lifecycle (open, save, add document, create board, create layer, link chat). usesFiles grounds the blueprint to six concrete implementation files across packages. Minor issues: a bare comment violates Agentish comment rejection, some durability statements appear in both enforces and defines, and failure modes (broken paths, missing documents) are absent."
+    },
+    {
+      "target_file": "agent-graph/agent-graph.agentish.md",
+      "file_class": "exploratory_companion",
+      "recommendation": "archive",
+      "confidence": "high",
+      "summary": "Early-stage exploratory document defining Agentish as a system memory graph. Contributes a unique authority-weight model and refinement process, but its Purpose and Analysis sections substantially overlap with the language root and quality-evaluation blueprint respectively. Open Questions section signals unresolved design work that was likely never completed. String-heavy .enforces() and .uses() blocks read more like dressed-up bullet lists than high-density Agentish, reducing semantic density. Causal chains (gap surfacing, refinement flow) are clear and well-formed. High obsolescence risk: the file's unique contributions (authority model, refinement loop) are not evidently referenced elsewhere, and its shared concerns have been superseded by dedicated artifacts."
+    },
+    {
+      "target_file": "agent-graph/agent-graph.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Comprehensive product-ideal blueprint for a React Flow graph viewer/editor over Agentish workspaces. Excellent causal chains for interaction, editing, trust, and conflict flows. The completeness-trust model (hidden context portals, derived edges, diff layers) is a genuinely well-articulated novel concept. However, significant semantic repetition exists: derived-edge semantics, hidden-context portal semantics, and layer semantics are expressed once through when() chains and then restated nearly verbatim in dedicated prose definition sections, roughly doubling token cost without proportional activation gain. The usesFiles section listing 25+ specific file paths is implementation-resolved content that will drift and belongs in a companion artifact rather than the product ideal."
+    },
+    {
+      "target_file": "agentish-graph.code-architecture.ts",
+      "file_class": "implementation_resolved",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "A comprehensive implementation-resolved blueprint that maps the concept layer's abstract entities into concrete packages, files, state slices, actions, routes, and WebSocket messages. Strong structural coverage and clear package boundaries, but the exhaustive enumeration style reduces activation density in the middle sections, and only one end-to-end behavioral flow (bootstrap) is traced despite the scenarios layer defining seven."
+    },
+    {
+      "target_file": "agentish-graph.concept.ts",
+      "file_class": "product_ideal",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Well-structured product ideal describing a graph-based visualization and round-trip editing system for Agentish documents. Clean separation into Source, Semantics, Projection, and Editing namespaces with explicit Truth invariants that each carry a .means() clause. Causal chains (open→normalize→project, edit→validate→mutate→apply, conflict→surface→protect) are complete and recoverable without companion files. Moderate obsolescence risk because no concrete implementation or active reference evidence is visible from provided context."
+    },
+    {
+      "target_file": "agentish-graph.contracts.ts",
+      "file_class": "implementation_resolved",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "A high-quality implementation-resolved contracts file that faithfully lowers every concept-layer truth (source authority, derived projection, round-trip editing, surfaced conflicts, stable identity, layout-hints-advisory, multi-document workspace) into concrete branded types, discriminated-union protocols, and store slices. The type surface is dense, self-documenting, and leaves minimal interpretive slack. Minor concerns are limited to unexported internal helpers and the co-location of UI-layout state with domain-transport contracts."
+    },
+    {
+      "target_file": "agentish-graph.operational-behavior.ts",
+      "file_class": "implementation_resolved",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Resolves concept-level truths into 8 concrete decision domains (parsing, identity, projection, layering, mutation, conflicts, session, rendering) with precise behavioral rules. Causal chains fully cover the edit→validate→accept/reject→mutate/conflict cycle and all three conflict resolution paths. Declared bindings to Contracts and CodeArchitecture are not exercised in the file body, creating a minor verifiability gap."
+    },
+    {
+      "target_file": "agentish-graph.scenarios.ts",
+      "file_class": "implementation_resolved",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Well-structured scenario set that resolves the agentish-graph concept layer into concrete acceptance flows. The given/when/then chains are causally clear and locally recoverable. Each scenario covers a distinct interaction path (open, inspect, edit, connect, move, external change, conflict resolution) with explicit success criteria, preservation guarantees, and conflict surfacing. The file correctly operates one layer below the concept file without duplicating its truths. Minor weaknesses: some entity re-declarations lack explicit traceability back to the concept layer, MoveNodeScenario is comparatively thin, and the concept file's Truth invariants are enacted implicitly rather than referenced."
+    },
+    {
+      "target_file": "agentish-quality-evaluation.agentish.ts",
+      "file_class": "shared_meta",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Well-structured shared-meta blueprint that establishes a comprehensive, fair evaluation standard for Agentish files. Defines clean taxonomies (7 file classes, 3 evaluation modes, 10 quality dimensions) with explicit fairness rules preventing common evaluation biases. One undefined actor (Reviewer) and some structural redundancy in .contains() and .defines() blocks are the main issues."
+    },
+    {
+      "target_file": "agentish-system-layers.ts",
+      "file_class": "shared_meta",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Well-structured shared meta blueprint defining a four-layer separation (concept → scenarios → implementationPlan → contracts) with clear precedence, per-layer question inventories, quality attributes with dual .means() definitions, and causal degradation chains. Strong local recoverability and self-description. Main flaw: hardcoded product file paths in implementationPlan.contains() break shared_meta abstraction purity by coupling a reusable layering framework to specific product artifacts. Some Quality .means() definitions restate what the attribute name already activates, slightly diluting density."
+    },
+    {
+      "target_file": "cdk-manager-interface.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Well-structured product-ideal contract separating CDK/Auth external dependencies from internal manager implementation. Clear system/entity/contract taxonomy, explicit NonContract boundary, and strong causal provisioning flows. Two copy-paste duplications (in defines and dashboardIssuer.means blocks) are the main quality defect. Concrete paths, bootstrap fields, and Cloudflare tunnel provisioning detail suggest active operational use."
+    },
+    {
+      "target_file": "coding-standards.agentish.ts",
+      "file_class": "shared_meta",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Well-structured shared-meta blueprint with a clean three-tier Concern→Failure→Move taxonomy and explicit preservation links. The prescribes block delivers concrete actionable rules, and when/then chains close the loop from anti-patterns to named failure modes. Fully self-contained. Minor concern: Tailwind-specific rules narrow generality for a shared-meta file, and no live-use references are visible in the allowed companion context."
+    },
+    {
+      "target_file": "dashboard-terminal/dashboard-terminal-blueprint-state.agentish.ts",
+      "file_class": "blueprint_state",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Well-executed blueprint-state file that reports concrete, evidence-backed implementation status for Dashboard Terminal V1 against its ideal and implementation-resolved companions. Each CurrentReality concept carries specific verifiable claims (packages exist, gateway routes present, mobile screenshots taken, shell noise documented). The file correctly positions itself as a comparison document rather than a standalone spec, explicitly names the three companion blueprints it compares against, and satisfies the development-process requirement for blueprint-state tracking. Moderate obsolescence risk because the content is snapshot-in-time (specific screenshot paths, specific V1 status) with no internal mechanism to signal staleness if the terminal feature evolves."
+    },
+    {
+      "target_file": "dashboard-terminal/dashboard-terminal-dashboard-implementation.agentish.ts",
+      "file_class": "implementation_resolved",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Thorough implementation-resolved blueprint for a browser-based dashboard terminal feature. Makes concrete technology decisions (Bun native PTY, websocket transport, xterm-compatible renderer), specifies API surface and UI components, and articulates V1 scope boundaries clearly. Entity catalog is extensive but each element carries implementation-guiding meaning. Causal flows for session lifecycle, keyboard policies, and reconnect are well-structured. Primary weakness is catalog breadth — 40+ named entities risk inventory-feel over semantic activation — and no verifiable live-use evidence from provided context."
+    },
+    {
+      "target_file": "dashboard-terminal/dashboard-terminal.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "A thorough product-ideal blueprint for a browser-based terminal feature. The file excels at causal specification (when/then chains cover the full interaction surface), local recoverability (a reader can reconstruct the entire product intent without external context), and low interpretive slack (key concepts like CopyFirstCtrlC, WorkspaceScopedTerminal, and ReconnectableTerminalSession are precisely defined). Entity proliferation (~50 entities across 6 groups, many used only in contains declarations) dilutes semantic density moderately. The prescribes block leaks one implementation choice (\"Bun's native PTY support\") into what should be a product-level specification."
+    },
+    {
+      "target_file": "dashboard/dashboard-plugins-state.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "File is misclassified as product_ideal but functions as blueprint_state — it explicitly compares current implementation against an ideal blueprint. The Agentish wrapper (.compares, .records, .tracks) is thin scaffolding around a large embedded markdown blob that violates MaximumInformationDensity. Duplicate \"Recently Fixed Issues\" headings suggest incremental appending without cleanup. Specific dates and CSS-level fix details show active use but belong in a state file, not a product ideal."
+    },
+    {
+      "target_file": "dashboard/dashboard-plugins.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Well-structured product-ideal blueprint that clearly defines a dashboard plugin model with clean topology (shell, gateway, plugin registry, feature plugin) and explicit causal chains for UI loading and backend proxying. Minor issues: a comment line violates the language root's rejection of comments, and the prescribes block partially restates constraints already in enforces, reducing net density. Local recoverability is high—a reader can fully reconstruct the plugin architecture from this file alone. Live-use evidence is uncertain without codebase confirmation."
+    },
+    {
+      "target_file": "dashboard/dashboard-recovery.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Well-structured product-ideal blueprint with strong self-description and causal clarity. Policy.*.means() blocks carry dense operational meaning and the when/then chains clearly express the recovery topology (access attempt → repair → escalation → idle teardown). Main weakness is abstraction-level bleed: several policies reference implementation-resolved details (AWS runtime configuration, EC2 user data, Cloudflare origin cert, systemd, specific tunnel runtime tokens) that belong in an implementation-resolved companion rather than a product ideal. The file also contains a rejected Agentish element (line-comment \"// Dashboard Recovery\"). The when() chains at the bottom repeat policy requirements already established earlier, slightly reducing semantic density. Obsolescence risk is moderate because the infrastructure-specific details (Cloudflare tunnels, Lambda, AWS) could stale independently of the product-level intent."
+    },
+    {
+      "target_file": "dashboard/dashboard-session-auth.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "High-quality product ideal that fully specifies dashboard browser-session auth from bootstrap redirect through API/WebSocket transport to gateway validation and error responses. Entity namespaces (Access, Browser, Gateway, Backend, Policy) create clean topology. Enforces and defines blocks are thorough and precise. Causal flows cover the complete lifecycle including both happy paths and explicit error shapes. Minor density loss from structurally parallel HTTP/WS error chains and one stray comment line. No live-use evidence available from evaluation context alone."
+    },
+    {
+      "target_file": "deploy-manager-runtime.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Well-structured product-ideal blueprint that clearly delineates runtime deploy scope from tunnel/controller ownership. Strong self-description and local recoverability — a reader can fully reconstruct the deploy contract from this file plus the language root. Main weaknesses are semantic redundancy between enforces/defines/when-then blocks and a stray comment line that violates Agentish.rejects('Comments'). Operational specificity (CDK ordering, named tunnel mode, AWS fetch paths) suggests active use but no direct cross-reference evidence confirms it."
+    },
+    {
+      "target_file": "development-process.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Comprehensive development-process blueprint with strong self-description and local recoverability, but undermined by substantial redundancy between enforces() and when/then chains and by mixing product-ideal policy with machine-specific operational detail that belongs in an implementation-resolved layer."
+    },
+    {
+      "target_file": "file-browser/file-browser-dashboard-implementation.agentish.ts",
+      "file_class": "implementation_resolved",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Thorough implementation-resolved blueprint for a VS Code-style file browser dashboard feature. Excellent causal coverage of user interactions, security boundaries, and degradation behavior via when-then chains. Weakened by enumerative entity catalogs (38+ named entities across Browser, Api, Ui) where many are defined for containment but never referenced in behavioral rules, diluting semantic density below Agentish expectations. Scoping blocks and decision records are well-structured and actionable."
+    },
+    {
+      "target_file": "process-blueprints.agentish.ts",
+      "file_class": "shared_meta",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Well-structured shared_meta blueprint defining the process-blueprint lifecycle: discovery, session assignment, and expectation-driven idle watchdog behavior. Locally self-describing with clear artifact/actor/policy decomposition and meaningful causal chains. Moderate uncertainty on live integration since no companion JSON contracts or referencing files are visible in provided context."
+    },
+    {
+      "target_file": "process-blueprints/evaluate-agentish-quality.agentish.ts",
+      "file_class": "process_guide",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "A correctly positioned but thin process guide that restates a subset of the quality-evaluation blueprint's enforcement rules without adding the examples, edge cases, or operational nuance that process-blueprints.agentish.ts defines as the companion guide's purpose. The file is actively paired with a live JSON contract and in use, so obsolescence risk is low, but the file currently contributes minimal incremental value over its parent blueprint."
+    },
+    {
+      "target_file": "process-blueprints/full-development-process.agentish.ts",
+      "file_class": "process_guide",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Functional but thin process guide that correctly complements its paired JSON contract with behavioral semantics around watchdog resumption, idle interpretation, and terminal token discipline. Adds genuine value over the JSON alone but lacks structural depth—no defines block, no actor modeling, no when/then clauses, and includes a comment that Agentish rejects."
+    },
+    {
+      "target_file": "projects/projects-dashboard-blueprint-state.agentish.ts",
+      "file_class": "blueprint_state",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Well-structured blueprint-state file that correctly compares current Projects dashboard implementation reality against its ideal blueprint. Concrete evidence anchors (dated screenshots, specific source paths, test files) and clear CurrentReality concepts with .means() blocks make the state legible. Fulfills the BlueprintStateTracksCurrentReality role required by development-process.agentish.ts. Causal structure is present but thin — only three when/then blocks that are somewhat formulaic. Gap and issue definitions identify shortcomings but lack actionable next-step specificity."
+    },
+    {
+      "target_file": "projects/projects-dashboard-implementation.agentish.ts",
+      "file_class": "implementation_resolved",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "A thorough implementation-resolved blueprint for a Projects dashboard feature covering repo management, GitHub App auth bindings, and per-project integration policy. Strong enforces/defines blocks and well-structured behavioral chains, though entity-catalog sections trade semantic density for exhaustive registry coverage."
+    },
+    {
+      "target_file": "swarm-manager.ts",
+      "file_class": "product_ideal",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "High-quality product-ideal blueprint describing an EC2-based swarm management system. Encodes a complete lifecycle state machine, a prioritized truth-reconciliation model, and operator-driven workflows (launch, hibernate, wake, terminate, image build, benchmark, dashboard) with strong causal chains. Semantic density is excellent—every line carries architectural signal. Minor issues: references Agentish as a string literal rather than the defined language constant, omits the reference-path directive, and some when/then chains (benchmark flow) pack many sequential steps that could benefit from intermediate state naming."
+    },
+    {
+      "target_file": "swarm-monitor/swarm-monitor.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Well-structured product ideal for fleet monitoring. Thorough policy decomposition via .means() blocks gives each design constraint a clear rationale. Causal chains from worker ticks through collection, storage, and dashboard rendering are complete and recoverable without external context. Minor issues: a bare comment violates Agentish norms, the UI section is thinner than collection/storage, and some enforces rules are restated in policy means blocks."
+    },
+    {
+      "target_file": "system-runtime/system-runtime.agentish.ts",
+      "file_class": "product_ideal",
+      "recommendation": "revise",
+      "confidence": "high",
+      "summary": "Comprehensive product-ideal blueprint for the manager-host runtime boundary covering bootstrap, supervision, gateway, dashboard recovery, and workspace persistence. Strong self-description via defines/means blocks and clear causal chains. Abstraction discipline is mixed: some rules encode implementation-level specifics (hardcoded filesystem paths, specific recovery step sequences) that belong in an implementation-resolved layer rather than the product ideal."
+    },
+    {
+      "target_file": "tech-stack.agentish.ts",
+      "file_class": "shared_meta",
+      "recommendation": "keep",
+      "confidence": "high",
+      "summary": "Well-structured shared-meta blueprint cleanly mapping technology choices to architectural surfaces. Fully self-describing and scannable. The prescribes block wastes some density repeating \"canonical\" and only three when/then governance rules cover five declared surfaces."
+    }
+  ]
+}
