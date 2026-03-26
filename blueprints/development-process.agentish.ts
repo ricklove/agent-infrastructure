@@ -21,7 +21,6 @@ const Artifact = {
   featureBranch: define.workspace("FeatureBranch"),
   implementationWorktree: define.workspace("ImplementationWorktree"),
   developmentWorker: define.workspace("DevelopmentWorkerHost"),
-  workerCheckout: define.workspace("WorkerCheckout"),
   runtimeCheckout: define.workspace("RuntimeCheckout"),
   temporaryState: define.workspace("TemporaryRuntimeState"),
   appData: define.workspace("DurableAppData"),
@@ -48,8 +47,6 @@ const Rule = {
   stateTemporaryOnly: define.concept("TemporaryStateOnly"),
   verifyLocally: define.concept("LocalVerification"),
   heavyWorkOnWorker: define.concept("HeavyDevelopmentWorkRunsOnWorker"),
-  persistentWorkerTerminals: define.concept("PersistentWorkerTerminalWorkflow"),
-  workerFallbackDiscipline: define.concept("WorkerUnavailableFallbackDiscipline"),
   deployByCheckout: define.concept("DeployByRuntimeCheckout"),
   verifyVersions: define.concept("VersionMatchVerification"),
   verifyBehavior: define.concept("BehaviorVerification"),
@@ -78,10 +75,6 @@ DevelopmentProcess.enforces(`
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
 - Heavy repo-wide check, build, lint-fix, or refactor work should run on a swarm worker rather than on the manager runtime host.
 - A worker used as the active development surface should be prepared as a remote worktree-like environment with git installed and commit authorship config copied from the manager host.
-- A worker checkout used for active development should be the only mutable checkout for that branch while heavy work continues there.
-- Routine worker-host development should happen through persistent worker terminals rather than repeated one-off ssh command execution.
-- If the worker host becomes unavailable or unhealthy, that condition should be treated as an environment issue to repair or explicitly bypass rather than silently drifting back into mixed manager-side development on the same active branch.
-- If temporary fallback to manager-host development is required because the worker is unavailable, the fallback checkout should become the only active mutable checkout for that branch until the branch is re-homed deliberately.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
 - The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
@@ -120,9 +113,6 @@ DevelopmentProcess.defines(`
 - DevelopmentWorkerHost means a swarm worker host used as the safe execution surface for heavy development and verification workloads.
 - HeavyDevelopmentWorkRunsOnWorker means repo-wide TypeScript checks, broad build steps, lint-fix sweeps, and similar resource-heavy work should move to a worker host rather than compete with the manager runtime host.
 - RemoteWorktreeLikeWorker means a worker-host repo checkout can act like a remote execution worktree when it has git, correct authorship identity, and branch-local commit capability even though GitHub push authority stays on the manager host.
-- WorkerCheckout means the repo checkout hosted on a development worker and treated as the active remote worktree for a branch.
-- PersistentWorkerTerminalWorkflow means worker-host development should keep long-lived interactive worker terminals as the normal edit and verification loop instead of repeated one-off ssh commands.
-- WorkerUnavailableFallbackDiscipline means worker-host failure or unavailability must be handled deliberately: either repair the worker path or make a single explicit fallback checkout the only active mutable branch surface until re-homing is complete.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - FeatureBranchRefreshByMerge means an active feature branch may be updated from development, main, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
@@ -143,7 +133,6 @@ DevelopmentProcess.contains(
   Artifact.featureBranch,
   Artifact.implementationWorktree,
   Artifact.developmentWorker,
-  Artifact.workerCheckout,
   Artifact.runtimeCheckout,
   Artifact.temporaryState,
   Artifact.appData,
@@ -167,8 +156,6 @@ DevelopmentProcess.contains(
   Rule.stateTemporaryOnly,
   Rule.verifyLocally,
   Rule.heavyWorkOnWorker,
-  Rule.persistentWorkerTerminals,
-  Rule.workerFallbackDiscipline,
   Rule.deployByCheckout,
   Rule.verifyVersions,
   Rule.verifyBehavior,
@@ -187,8 +174,6 @@ when(Actor.operator.implements("a feature or fix"))
   .and(DevelopmentProcess.requires(Rule.sourceOnly))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
   .and(DevelopmentProcess.requires(Rule.heavyWorkOnWorker))
-  .and(DevelopmentProcess.requires(Rule.persistentWorkerTerminals))
-  .and(DevelopmentProcess.requires(Rule.workerFallbackDiscipline))
   .and(DevelopmentProcess.requires(Rule.mergeIntoBase))
   .and(DevelopmentProcess.requires(Rule.verifyLocally))
   .and(DevelopmentProcess.requires(Rule.deployByCheckout))
@@ -206,8 +191,6 @@ when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
   .and(DevelopmentProcess.requires(Artifact.renderDiagnostics))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
   .and(DevelopmentProcess.requires(Rule.heavyWorkOnWorker))
-  .and(DevelopmentProcess.requires(Rule.persistentWorkerTerminals))
-  .and(DevelopmentProcess.requires(Rule.workerFallbackDiscipline))
   .and(DevelopmentProcess.requires(Rule.mergeIntoBase))
   .and(DevelopmentProcess.requires("the same relevant blueprints the operator would check"))
   .and(DevelopmentProcess.requires("the Agent Chat blueprint-state document to be updated as the current implementation comparison for Agent Chat work"))
@@ -221,13 +204,8 @@ when(Actor.operator.starts("code-changing implementation on a feature or fix"))
   .and(DevelopmentProcess.treats("the shared repository checkout as the base-branch integration surface"))
   .and(DevelopmentProcess.prefers(Artifact.featureBranch))
   .and(DevelopmentProcess.prefers(Artifact.implementationWorktree))
-  .and(DevelopmentProcess.prefers(Artifact.developmentWorker))
-  .and(DevelopmentProcess.prefers(Artifact.workerCheckout))
   .and(DevelopmentProcess.expects("feature-branch creation to leave the shared checkout on the base branch"))
   .and(DevelopmentProcess.expects("the normal setup command to be `git worktree add -b <feature-branch> <worktree-path> <base-branch>`"))
-  .and(DevelopmentProcess.expects("heavy development to prefer a worker checkout as the only active mutable branch surface"))
-  .and(DevelopmentProcess.expects("worker-host development to use persistent worker terminals for routine editing and verification"))
-  .and(DevelopmentProcess.expects("worker unavailability to be handled deliberately rather than by silently resuming mixed manager-side edits"))
   .and(DevelopmentProcess.expects("feature-branch refresh to use normal merges from the relevant base or release branches when the feature branch falls behind"))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.baseBranch))
   .and(DevelopmentProcess.associates(Artifact.implementationWorktree).with(Artifact.featureBranch))
@@ -244,14 +222,11 @@ when(Actor.operator.finishes("code-changing implementation on a feature branch")
 
 when(Actor.operator.runs("development or local verification for a feature branch"))
   .then(DevelopmentProcess.expects(Artifact.implementationWorktree))
-  .and(DevelopmentProcess.expects(Artifact.workerCheckout))
-  .and(DevelopmentProcess.treats("the implementation worktree or worker checkout is the single editable development surface, depending on where the branch is actively hosted"))
+  .and(DevelopmentProcess.treats("the implementation worktree as the editable development surface"))
   .and(DevelopmentProcess.treats("the manager runtime host as the control-plane and deploy surface rather than the preferred target for heavy verification load"))
   .and(DevelopmentProcess.prefers(Artifact.developmentWorker).for("resource-heavy checks, builds, lint-fix passes, and broad refactors"))
   .and(DevelopmentProcess.expects("bun run agent:connect-worker-ec2-ssh to be the normal command for reaching a reusable or newly launched development worker"))
   .and(DevelopmentProcess.expects("a worker used for active branch work to have git installed and commit authorship copied from the manager host"))
-  .and(DevelopmentProcess.expects("persistent worker terminals to remain open for normal development loops when the branch is hosted on a worker"))
-  .and(DevelopmentProcess.expects("temporary manager-host fallback to become the only active mutable checkout until the branch is deliberately moved back to a worker"))
   .and(DevelopmentProcess.expects("manager-host git to fetch or pull committed worker branch state before GitHub push, release promotion, and deploy"));
 
 when(Artifact.blueprint.exists())
