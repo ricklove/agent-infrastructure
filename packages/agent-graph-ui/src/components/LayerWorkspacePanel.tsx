@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { observer, useSelector } from "@legendapp/state/react";
 import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
 
@@ -20,6 +21,7 @@ function IconButton({
   onClick(): void;
   children: React.ReactNode;
 }) {
+  useRenderCounter("IconButton")
   return (
     <button
       type="button"
@@ -34,6 +36,7 @@ function IconButton({
 }
 
 function DiffIcon() {
+  useRenderCounter("DiffIcon")
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3v18" />
@@ -44,6 +47,7 @@ function DiffIcon() {
 }
 
 function CopyIcon() {
+  useRenderCounter("CopyIcon")
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect x="9" y="9" width="11" height="11" rx="2" />
@@ -53,6 +57,7 @@ function CopyIcon() {
 }
 
 function VisibilityIcon({ visible }: { visible: boolean }) {
+  useRenderCounter("VisibilityIcon")
   return (
     <svg
       aria-hidden="true"

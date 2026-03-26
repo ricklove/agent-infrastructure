@@ -1,5 +1,6 @@
 import { observer, useSelector } from "@legendapp/state/react";
 import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
 
 type DiffPanelProps = {
   store: AgentGraphStore;
@@ -12,6 +13,7 @@ export const DiffPanel = observer(function DiffPanel({
   store,
   actions,
 }: DiffPanelProps) {
+  useRenderCounter("DiffPanel");
   const diff = useSelector(store.state$.diff);
   const conflict = useSelector(store.state$.conflict);
 

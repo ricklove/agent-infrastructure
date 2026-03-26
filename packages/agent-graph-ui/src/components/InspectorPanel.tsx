@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { useState } from "react";
 import type { GraphEdge, GraphNode } from "@agent-infrastructure/agent-graph-core";
 import { NodeAvatar } from "./NodeAvatar";
@@ -34,6 +35,7 @@ export function InspectorPanel({
   selectedEdge,
   actions,
 }: InspectorPanelProps) {
+  useRenderCounter("InspectorPanel")
   const [labelDraft, setLabelDraft] = useState("");
   const [targetNodeId, setTargetNodeId] = useState("");
   const multiSelectedNodes = selectedNodes.filter((node) => node.kind === "semantic-node");

@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
   useCallback,
   useEffect,
@@ -161,6 +162,7 @@ export function DashboardTerminalScreen({
   wsRootUrl,
   appVersion,
 }: DashboardTerminalScreenProps) {
+  useRenderCounter("DashboardTerminalScreen")
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<ProfilesResponse | null>(null);

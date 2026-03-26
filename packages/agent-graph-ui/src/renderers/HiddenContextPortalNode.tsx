@@ -1,4 +1,5 @@
 import { memo, useState } from "react";
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
 import { NodeAvatar } from "../components/NodeAvatar";
 import { Handle, Position, type NodeProps } from "reactflow";
 
@@ -15,6 +16,7 @@ export const HiddenContextPortalNode = memo(function HiddenContextPortalNode({ d
   onRevealHiddenNode?: (hiddenNodeId: string) => void;
   isHidePreview?: boolean;
 }>) {
+  useRenderCounter("HiddenContextPortalNode");
   const [expanded, setExpanded] = useState(false);
   const hiddenNodes = data.hiddenNodes ?? [];
   const previewNodes = expanded ? hiddenNodes : hiddenNodes.slice(0, 3);

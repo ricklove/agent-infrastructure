@@ -3,6 +3,7 @@ import type {
   DashboardFeatureId,
   DashboardFeatureUiPlugin,
 } from "@agent-infrastructure/dashboard-plugin"
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
   type ComponentType,
   lazy,
@@ -54,6 +55,7 @@ const sessionStorageKey = "agent-infrastructure.dashboard.session"
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
 
 function SwarmIcon(props: { className?: string }) {
+  useRenderCounter("SwarmIcon")
   return (
     <svg
       viewBox="0 0 24 24"
@@ -74,6 +76,7 @@ function SwarmIcon(props: { className?: string }) {
 }
 
 function ChatIcon(props: { className?: string }) {
+  useRenderCounter("ChatIcon")
   return (
     <svg
       viewBox="0 0 24 24"
@@ -92,6 +95,7 @@ function ChatIcon(props: { className?: string }) {
 }
 
 function GraphIcon(props: { className?: string }) {
+  useRenderCounter("GraphIcon")
   return (
     <svg
       viewBox="0 0 24 24"
@@ -112,6 +116,7 @@ function GraphIcon(props: { className?: string }) {
 }
 
 function TerminalIcon(props: { className?: string }) {
+  useRenderCounter("TerminalIcon")
   return (
     <svg
       viewBox="0 0 24 24"
@@ -131,6 +136,7 @@ function TerminalIcon(props: { className?: string }) {
 }
 
 function ProjectsIcon(props: { className?: string }) {
+  useRenderCounter("ProjectsIcon")
   return (
     <svg
       viewBox="0 0 24 24"
@@ -150,6 +156,7 @@ function ProjectsIcon(props: { className?: string }) {
 }
 
 function CopyIcon(props: { className?: string }) {
+  useRenderCounter("CopyIcon")
   return (
     <svg
       viewBox="0 0 24 24"
@@ -168,6 +175,7 @@ function CopyIcon(props: { className?: string }) {
 }
 
 function MenuIcon(props: { className?: string }) {
+  useRenderCounter("MenuIcon")
   return (
     <svg
       viewBox="0 0 24 24"
@@ -222,6 +230,7 @@ export function DashboardShell({
 }: {
   appVersion?: string
 }) {
+  useRenderCounter("DashboardShell")
   const featureDefinitions: FeatureDefinition[] = useMemo(
     () =>
       dashboardFeaturePlugins.map((plugin) => ({

@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { useEffect, useMemo, useState } from "react";
 
 type InstallationSummary = {
@@ -87,6 +88,7 @@ function defaultLocalPath(owner: string, repo: string) {
 export function ProjectsScreen({
   apiRootUrl = "/api/projects",
 }: ProjectsScreenProps) {
+  useRenderCounter("ProjectsScreen")
   const [activeMobileSection, setActiveMobileSection] = useState<"github" | "projects">("github");
   const [installations, setInstallations] = useState<InstallationSummary[]>([]);
   const [projects, setProjects] = useState<ProjectRecord[]>([]);

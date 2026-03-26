@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { memo } from "react";
 import { Handle, NodeToolbar, Position, type NodeProps } from "reactflow";
 import { NodeAvatar } from "../components/NodeAvatar";
@@ -5,6 +6,7 @@ import { VisibilityIcon } from "../components/VisibilityIcon";
 import { nodeTypeColors } from "../components/graphColors";
 
 function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  useRenderCounter("CopyIcon")
   return (
     <svg
       aria-hidden="true"

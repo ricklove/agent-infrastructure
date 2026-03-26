@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { observer, useSelector } from "@legendapp/state/react";
 import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
 import { NodeAvatar } from "./NodeAvatar";
 import { VisibilityIcon } from "./VisibilityIcon";
 
@@ -17,6 +18,7 @@ export const NodesToolPanel = observer(function NodesToolPanel({
   store,
   actions,
 }: NodesToolPanelProps) {
+  useRenderCounter("NodesToolPanel");
   const [query, setQuery] = useState("");
   const workspace = useSelector(store.state$.workspace);
   const graph = useSelector(store.state$.graph);

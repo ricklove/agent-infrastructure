@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
   type ClipboardEvent,
   type FormEvent,
@@ -243,6 +244,7 @@ function IconButton(props: {
   children: ReactNode
   tone?: "default" | "primary" | "danger"
 }) {
+  useRenderCounter("IconButton")
   const toneClass =
     props.tone === "primary"
       ? "border-cyan-300/30 bg-cyan-300 text-slate-950"
@@ -265,6 +267,7 @@ function IconButton(props: {
 }
 
 function SessionsIcon() {
+  useRenderCounter("SessionsIcon")
   return (
     <svg
       aria-hidden="true"
@@ -280,6 +283,7 @@ function SessionsIcon() {
 }
 
 function MenuIcon() {
+  useRenderCounter("MenuIcon")
   return (
     <svg
       aria-hidden="true"
@@ -296,6 +300,7 @@ function MenuIcon() {
 }
 
 function SendIcon() {
+  useRenderCounter("SendIcon")
   return (
     <svg
       aria-hidden="true"
@@ -311,6 +316,7 @@ function SendIcon() {
 }
 
 function StopIcon() {
+  useRenderCounter("StopIcon")
   return (
     <svg
       aria-hidden="true"
@@ -325,6 +331,7 @@ function StopIcon() {
 }
 
 function PlusIcon() {
+  useRenderCounter("PlusIcon")
   return (
     <svg
       aria-hidden="true"
@@ -340,6 +347,7 @@ function PlusIcon() {
 }
 
 function EditIcon() {
+  useRenderCounter("EditIcon")
   return (
     <svg
       aria-hidden="true"
@@ -355,6 +363,7 @@ function EditIcon() {
 }
 
 function ArchiveIcon() {
+  useRenderCounter("ArchiveIcon")
   return (
     <svg
       aria-hidden="true"
@@ -371,6 +380,7 @@ function ArchiveIcon() {
 }
 
 function RestoreIcon() {
+  useRenderCounter("RestoreIcon")
   return (
     <svg
       aria-hidden="true"
@@ -387,6 +397,7 @@ function RestoreIcon() {
 }
 
 function SearchIcon() {
+  useRenderCounter("SearchIcon")
   return (
     <svg
       aria-hidden="true"
@@ -402,6 +413,7 @@ function SearchIcon() {
 }
 
 function ScrollToBottomIcon() {
+  useRenderCounter("ScrollToBottomIcon")
   return (
     <svg
       aria-hidden="true"
@@ -919,6 +931,7 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
 }
 
 function MessageImageAsset({ path }: { path: string }) {
+  useRenderCounter("MessageImageAsset")
   const [assetUrl, setAssetUrl] = useState("")
   const [error, setError] = useState("")
 
@@ -1021,6 +1034,7 @@ const ComposerPanel = memo(
     ) => Promise<void>
     onSetError: (message: string) => void
   }) {
+    useRenderCounter("ComposerPanel")
     const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
     const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
     const draftPersistTimeoutRef = useRef<ReturnType<
@@ -1481,7 +1495,7 @@ const ComposerPanel = memo(
     const nextThreadStatusKey = nextProps.threadStatusSummary.join("|")
 
     return (
-      previousSessionId == nextSessionId &&
+      previousSessionId === nextSessionId &&
       previousProps.sending === nextProps.sending &&
       previousProps.interrupting === nextProps.interrupting &&
       previousProps.activity.status === nextProps.activity.status &&
@@ -1539,6 +1553,7 @@ function sessionCardTone(
 }
 
 export function AgentChatScreen(props: AgentChatScreenProps) {
+  useRenderCounter("AgentChatScreen")
   const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
   const transcriptBottomSentinelRef = useRef<HTMLDivElement | null>(null)

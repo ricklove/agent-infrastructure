@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { nodeAvatarColors } from "./graphColors";
 
 function initialsForLabel(label: string): string {
@@ -25,6 +26,7 @@ export function NodeAvatar({
   label,
   size = "md",
 }: NodeAvatarProps) {
+  useRenderCounter("NodeAvatar")
   const colors = nodeAvatarColors(nodeKey);
   const sizing =
     size === "sm"

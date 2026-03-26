@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { useEffect, useMemo, useRef } from "react";
 import {
   applyNodeChanges,
@@ -721,6 +722,7 @@ function SelectionSync({
 }: {
   onChange(nodeIds: string[], edgeIds: string[]): void;
 }) {
+  useRenderCounter("SelectionSync")
   useOnSelectionChange({
     onChange: ({ nodes, edges }) => {
       onChange(

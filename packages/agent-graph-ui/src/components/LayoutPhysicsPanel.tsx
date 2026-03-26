@@ -1,3 +1,5 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
+
 type LayoutPhysicsPanelProps = {
   pinnedNodeCount: number;
   movableNodeCount: number;
@@ -22,6 +24,7 @@ export function LayoutPhysicsPanel({
   repulsionStrength,
   actions,
 }: LayoutPhysicsPanelProps) {
+  useRenderCounter("LayoutPhysicsPanel")
   return (
     <section className="rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
       <div className="flex items-center justify-between gap-3">

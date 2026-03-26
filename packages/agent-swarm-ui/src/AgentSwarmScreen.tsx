@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 type DashboardHealth = {
@@ -579,6 +580,7 @@ function processLabelScore(label: string): number {
 export function AgentSwarmScreen({
   apiRootUrl = "/api/agent-swarm",
 }: AgentSwarmScreenProps) {
+  useRenderCounter("AgentSwarmScreen")
   const [health, setHealth] = useState<DashboardHealth | null>(null)
   const [workers, setWorkers] = useState<Worker[]>([])
   const [services, setServices] = useState<Service[]>([])

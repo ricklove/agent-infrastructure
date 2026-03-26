@@ -12,6 +12,7 @@
       "name": "@agent-infrastructure/agentish-studio",
       "dependencies": {
         "@agent-infrastructure/agent-graph-ui": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
@@ -29,6 +30,7 @@
       "name": "@agent-infrastructure/dashboard-app",
       "dependencies": {
         "@agent-infrastructure/dashboard-ui": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
@@ -57,6 +59,7 @@
       "name": "@agent-infrastructure/agent-chat-ui",
       "dependencies": {
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
@@ -111,6 +114,7 @@
         "@agent-infrastructure/agent-graph-protocol": "workspace:*",
         "@agent-infrastructure/agent-graph-store": "workspace:*",
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
         "@legendapp/state": "^3.0.0-beta.31",
         "@types/d3-force": "^3.0.10",
         "d3-force": "^3.0.0",
@@ -128,6 +132,7 @@
       "name": "@agent-infrastructure/agent-swarm-ui",
       "dependencies": {
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
@@ -200,6 +205,7 @@
       "name": "@agent-infrastructure/dashboard-terminal-ui",
       "dependencies": {
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
@@ -218,6 +224,7 @@
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
         "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
         "@agent-infrastructure/projects-ui": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
@@ -239,6 +246,7 @@
       "name": "@agent-infrastructure/projects-ui",
       "dependencies": {
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
@@ -246,6 +254,12 @@
         "@types/react": "^18.3.3",
         "@types/react-dom": "^18.3.0",
         "typescript": "^5.4.5",
+      },
+    },
+    "packages/render-diagnostics": {
+      "name": "@agent-infrastructure/render-diagnostics",
+      "devDependencies": {
+        "typescript": "^5.9.2",
       },
     },
     "packages/swarm-manager": {
@@ -294,6 +308,8 @@
     "@agent-infrastructure/projects-server": ["@agent-infrastructure/projects-server@workspace:packages/projects-server"],
 
     "@agent-infrastructure/projects-ui": ["@agent-infrastructure/projects-ui@workspace:packages/projects-ui"],
+
+    "@agent-infrastructure/render-diagnostics": ["@agent-infrastructure/render-diagnostics@workspace:packages/render-diagnostics"],
 
     "@agent-infrastructure/swarm-manager": ["@agent-infrastructure/swarm-manager@workspace:packages/swarm-manager"],
 

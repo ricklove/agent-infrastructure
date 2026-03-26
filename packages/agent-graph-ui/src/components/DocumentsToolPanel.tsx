@@ -1,3 +1,4 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { observer, useSelector } from "@legendapp/state/react";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -22,6 +23,7 @@ function IconButton({
   onClick(): void;
   children: React.ReactNode;
 }) {
+  useRenderCounter("IconButton")
   return (
     <button
       type="button"
@@ -36,6 +38,7 @@ function IconButton({
 }
 
 function RefreshIcon() {
+  useRenderCounter("RefreshIcon")
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 12a9 9 0 1 1-2.64-6.36" />
@@ -45,6 +48,7 @@ function RefreshIcon() {
 }
 
 function FolderIcon() {
+  useRenderCounter("FolderIcon")
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
@@ -53,6 +57,7 @@ function FolderIcon() {
 }
 
 function PlusIcon() {
+  useRenderCounter("PlusIcon")
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 5v14" />
@@ -62,6 +67,7 @@ function PlusIcon() {
 }
 
 function SaveIcon() {
+  useRenderCounter("SaveIcon")
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -72,6 +78,7 @@ function SaveIcon() {
 }
 
 function CheckIcon() {
+  useRenderCounter("CheckIcon")
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m5 12 5 5L20 7" />

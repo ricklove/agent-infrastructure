@@ -1,9 +1,11 @@
 import { memo } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "reactflow";
 import type { GraphEdge } from "@agent-infrastructure/agent-graph-core";
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
 import { edgeColors } from "../components/graphColors";
 
 export const DirectEdgeRenderer = memo(function DirectEdgeRenderer(props: EdgeProps) {
+  useRenderCounter("DirectEdgeRenderer");
   const [path, labelX, labelY] = getBezierPath(props);
   const edge = props.data as (GraphEdge & { hidePreview?: boolean }) | undefined;
   const isHiddenContext = edge?.kind === "hidden-context";

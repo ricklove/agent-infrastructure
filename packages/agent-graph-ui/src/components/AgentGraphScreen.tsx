@@ -9,6 +9,7 @@ import {
   type SetStateAction,
 } from "react";
 import { observer, useMount, useValue } from "@legendapp/state/react";
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
 import { createAgentGraphStore, findSelectedEdge, findSelectedNode } from "@agent-infrastructure/agent-graph-store";
 import { createAgentGraphActions } from "@agent-infrastructure/agent-graph-store";
 import { AgentGraphCanvas } from "./AgentGraphCanvas";
@@ -50,6 +51,7 @@ export const AgentGraphScreen = observer(function AgentGraphScreen({
   apiRootUrl = "http://localhost:8788/api/agent-graph",
   wsRootUrl = "ws://localhost:8788/api/agent-graph/ws",
 }: AgentGraphScreenProps) {
+  useRenderCounter("AgentGraphScreen");
   const [store] = useState(() => createAgentGraphStore(apiRootUrl, wsRootUrl));
   const [actions] = useState(() => createAgentGraphActions(store));
   const leftColumnRef = useRef<HTMLDivElement | null>(null);

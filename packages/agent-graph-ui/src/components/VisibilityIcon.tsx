@@ -1,9 +1,12 @@
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
+
 type VisibilityIconProps = {
   visible: boolean;
   className?: string;
 };
 
 export function VisibilityIcon({ visible, className = "h-3.5 w-3.5" }: VisibilityIconProps) {
+  useRenderCounter("VisibilityIcon")
   return (
     <svg
       aria-hidden="true"

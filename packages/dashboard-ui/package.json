@@ -17,7 +17,8 @@
     "@agent-infrastructure/projects-ui": "workspace:*",
     "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "@agent-infrastructure/render-diagnostics": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
