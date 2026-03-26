@@ -265,6 +265,7 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - Codex reasoning checkpoints are not yet recorded canonically at receipt time, so the current thought-entry behavior is not aligned with the intended canonical-only transcript model
 - live assistant streaming text is still only an in-memory UI buffer and is not yet recorded canonically as transcript checkpoint history
 - transcript text still renders mostly as plain paragraphs, so markdown structure and code blocks are harder to read than intended
+- very long threads now render through a bounded recent-item window with an explicit `Show earlier items` affordance so the live transcript DOM stays smaller while the operator is typing in active sessions
 - the main activity status now uses a compact composer-border treatment instead of a separate footer card
 - the bottom composer stack now floats over the thread instead of sitting inside a dedicated footer slab, and the transcript adds measured bottom spacer so the latest message stays visible above the composer
 - the mobile thread and composer now trim their outer gutter and card padding more aggressively on narrow screens so iPhone focus/zoom keeps more horizontal room for transcript and typed text while the working chip sits slightly higher on the composer border

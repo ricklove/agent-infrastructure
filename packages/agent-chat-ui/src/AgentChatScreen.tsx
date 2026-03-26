@@ -230,6 +230,7 @@ const maxSessionRailWidth = 520
 const completedProcessResolutionSentinel = "__process_done__"
 const typingHeartbeatMs = 1000
 const composerDraftPersistMs = 250
+const transcriptRenderPageSize = 200
 const minCollapsedActivityClusterSize = 3
 const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
 const websocketWarningDelayMs = 5_000
@@ -1594,6 +1595,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] =
     useState<Record<string, boolean>>({})
   const [composerDockHeight, setComposerDockHeight] = useState(0)
+  const [transcriptRenderLimit, setTranscriptRenderLimit] = useState(
+    transcriptRenderPageSize,
+  )
   const [threadViewportMetrics, setThreadViewportMetrics] = useState({
     scrollTop: 0,
     scrollHeight: 1,
@@ -1779,6 +1783,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       ),
     [renderedTranscriptItems],
   )
+
+  const visibleTranscriptItems = useMemo(() => {
+    if (renderedTranscriptItems.length <= transcriptRenderLimit) {
+      return renderedTranscriptItems
+    }
+    return renderedTranscriptItems.slice(
+      renderedTranscriptItems.length - transcriptRenderLimit,
+    )
+  }, [renderedTranscriptItems, transcriptRenderLimit])
+
+  const hiddenTranscriptItemCount =
+    renderedTranscriptItems.length - visibleTranscriptItems.length
 
   const queuedSystemMessages = useMemo(
     () =>
@@ -2053,6 +2069,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   useEffect(() => {
     pendingSessionOpenScrollRef.current = activeSessionId || null
     transcriptPinnedToBottomRef.current = true
+    setTranscriptRenderLimit(transcriptRenderPageSize)
   }, [activeSessionId])
 
   useEffect(() => {
@@ -3665,7 +3682,28 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 <div className="mx-auto flex w-full max-w-[78rem] min-w-0 gap-3 sm:gap-4 overflow-x-hidden">
                   <div className="min-w-0 flex-1">
                     <div className="mx-auto flex max-w-4xl flex-col gap-3 sm:gap-4">
-                      {renderedTranscriptItems.map((item) => {
+                      {hiddenTranscriptItemCount > 0 ? (
+                        <div className="flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTranscriptRenderLimit(
+                                (current) => current + transcriptRenderPageSize,
+                              )
+                            }
+                            className="rounded-full border border-white/10 bg-slate-950/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300"
+                          >
+                            Show{" "}
+                            {Math.min(
+                              transcriptRenderPageSize,
+                              hiddenTranscriptItemCount,
+                            )}{" "}
+                            earlier items · {hiddenTranscriptItemCount} hidden
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {visibleTranscriptItems.map((item) => {
                         if (item.type === "activityCluster") {
                           const clusterKey = activityClusterKey(item.messages)
                           const expanded =
