@@ -50,6 +50,7 @@ const Layout = {
 const Tooling = {
   connectSsh: define.entity("ConnectSshTool"),
   connectVscode: define.entity("ConnectVscodeTool"),
+  connectWorkerEc2Ssh: define.entity("ConnectWorkerEc2SshTool"),
   githubAppToken: define.entity("GithubAppTokenTool"),
   localSwarmTest: define.entity("LocalSwarmTestTool"),
   repoTool: define.entity("RepoTool"),
@@ -138,6 +139,7 @@ SystemRuntime.enforces(`
 SystemRuntime.defines(`
 - RuntimeScripts means the externally called shell entrypoints that the deployed host relies on.
 - RepoTools means repository helper scripts used by developers or operators but not part of the deployed host runtime boundary.
+- ConnectWorkerEc2SshTool means the repository helper that reuses low-load swarm workers when possible, launches a worker when needed, bootstraps SSH, and then connects directly to the worker private IP.
 - PackageTools means package-local assets or workflow helpers that remain internal to a package.
 - BootstrapAsset means a script or document consumed by provisioning or user-data rather than by an operator directly.
 - SourceFirstServerChange means source is changed, committed, and only then rolled into runtime.
@@ -175,6 +177,7 @@ Layout.scripts.contains(
 Layout.tools.contains(
   Tooling.connectSsh,
   Tooling.connectVscode,
+  Tooling.connectWorkerEc2Ssh,
   Tooling.githubAppToken,
   Tooling.localSwarmTest,
 );

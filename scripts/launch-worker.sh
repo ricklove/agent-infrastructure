@@ -18,6 +18,15 @@ system_event_log() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKER_USER_DATA_PATH="${SCRIPT_DIR}/worker-user-data.sh"
+if [[ ! -f "$WORKER_USER_DATA_PATH" ]]; then
+  WORKER_USER_DATA_PATH="${SCRIPT_DIR}/../packages/swarm-manager/scripts/worker-user-data.sh"
+fi
+if [[ ! -f "$WORKER_USER_DATA_PATH" ]]; then
+  system_event_log "launch-worker.sh" "error" "missing_worker_user_data path=${WORKER_USER_DATA_PATH}"
+  echo "worker user data script is missing" >&2
+  exit 1
+fi
 STATE_ROOT="${AGENT_STATE_ROOT:-/home/ec2-user/state}"
 CONFIG="${STATE_ROOT}/bootstrap-context.json"
 REGION=$(jq -r '.region' "$CONFIG")
@@ -153,7 +162,7 @@ sed \
   -e "s/__WORKER_RUNTIME_RELEASE_BUCKET__/$WORKER_RUNTIME_RELEASE_BUCKET/g" \
   -e "s#__WORKER_RUNTIME_RELEASE_KEY__#$WORKER_RUNTIME_RELEASE_KEY#g" \
   -e "s/__REGION__/$REGION/g" \
-  "$SCRIPT_DIR/worker-user-data.sh" > "$TEMP_USER_DATA"
+  "$WORKER_USER_DATA_PATH" > "$TEMP_USER_DATA"
 
 IMAGE_SOURCE="latest-amazon-linux"
 IMAGE_METADATA=""

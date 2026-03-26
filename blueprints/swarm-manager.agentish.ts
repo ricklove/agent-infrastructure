@@ -78,6 +78,7 @@ const Policy = {
   bootGraceWindow: define.concept("BootGraceWindow"),
   fewHighLevelCommands: define.concept("FewHighLevelCommands"),
   repeatedManualSSMOperations: define.concept("RepeatedManualSSMOperations"),
+  workerReuseBeforeLaunch: define.concept("WorkerReuseBeforeLaunch"),
 };
 
 SwarmManager.observes(Truth.inventory).toUnderstand('ExistenceTruth');
@@ -91,6 +92,7 @@ SwarmManager.aligns(WorkerImageProfile).toMatch(WorkerImage);
 SwarmManager.aligns(WorkerRuntimeRelease).toMatch("ActiveWorkerRuntime");
 SwarmManager.owns("LifecycleExecution", "ImagePromotion", "BenchmarkExecution", "FailureRecovery");
 SwarmManager.minimizes(Policy.repeatedManualSSMOperations);
+SwarmManager.prefers(Policy.workerReuseBeforeLaunch);
 
 Worker.runsOn(EC2);
 Worker.starts(Docker);
@@ -131,6 +133,12 @@ when(Operator.launches(Worker).through(SwarmManager))
   .then(SwarmManager.selects(WorkerImageProfile))
   .and(EC2.materializes(Worker))
   .and(SwarmManager.records(Lifecycle.launchRequested).in(Truth.history));
+
+when(Operator.connectsTo(Worker).through(SwarmManager))
+  .then(SwarmManager.observes(Truth.telemetry))
+  .and(SwarmManager.reuses(Worker).when(Policy.workerReuseBeforeLaunch))
+  .and(SwarmManager.launches(Worker).when("NoReusableWorkerExists"))
+  .and(Operator.reaches(Worker).through("PrivateIpSsh"));
 
 when(Worker.reaches(Lifecycle.ec2Running))
   .then(SwarmManager.records(Lifecycle.ec2Running).in(Truth.history))
