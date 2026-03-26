@@ -235,6 +235,8 @@ const transcriptRenderPageSize = 200
 const minCollapsedActivityClusterSize = 3
 const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
 const websocketWarningDelayMs = 5_000
+const darkNativeSelectClass = "bg-slate-950 text-slate-100 [color-scheme:dark]"
+const darkNativeOptionClass = "bg-slate-950 text-slate-100"
 
 const IconButton = memo(function IconButton(props: {
   label: string
@@ -1377,19 +1379,19 @@ const ComposerPanel = memo(
                     !props.activeSession || props.updatingQuickProcessBlueprint
                   }
                   title="Quick Set Process"
-                  className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-base outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-xs ${
+                  className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-base outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-xs ${darkNativeSelectClass} ${
                     props.processResolutionRequired
                       ? props.processTerminalStatus === "blocked"
-                        ? "border-rose-400/50 bg-rose-500/[0.08] text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.16)]"
-                        : "border-amber-300/45 bg-amber-300/[0.08] text-transparent shadow-[0_0_0_1px_rgba(252,211,77,0.12)]"
+                        ? "border-rose-400/50 shadow-[0_0_0_1px_rgba(251,113,133,0.16)]"
+                        : "border-amber-300/45 shadow-[0_0_0_1px_rgba(252,211,77,0.12)]"
                       : props.activeProcessBlueprintId
-                        ? "border-white/10 bg-slate-900/80 text-slate-200"
-                        : "border-white/10 bg-slate-950/70 text-slate-500"
+                        ? "border-white/10"
+                        : "border-white/10 text-slate-400"
                   }`}
                 >
                   {props.processResolutionRequired ? (
                     <option
-                      className="text-slate-950"
+                      className={darkNativeOptionClass}
                       value={completedProcessResolutionSentinel}
                       disabled
                     >
@@ -1398,12 +1400,12 @@ const ComposerPanel = memo(
                         : "Done"}
                     </option>
                   ) : null}
-                  <option className="text-slate-950" value="">
+                  <option className={darkNativeOptionClass} value="">
                     none
                   </option>
                   {props.processBlueprints.map((entry) => (
                     <option
-                      className="text-slate-950"
+                      className={darkNativeOptionClass}
                       key={entry.id}
                       value={entry.id}
                     >
@@ -3644,14 +3646,14 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   onChange={(event) =>
                     setProcessBlueprintId(event.target.value)
                   }
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
+                  className={`mt-2 w-full rounded-2xl border border-white/10 px-4 py-3 text-sm outline-none ${darkNativeSelectClass}`}
                 >
-                  <option className="text-slate-950" value="">
+                  <option className={darkNativeOptionClass} value="">
                     none
                   </option>
                   {processBlueprints.map((entry) => (
                     <option
-                      className="text-slate-950"
+                      className={darkNativeOptionClass}
                       key={entry.id}
                       value={entry.id}
                     >
@@ -4294,15 +4296,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           disabled={
                             !activeSession || updatingQuickProcessBlueprint
                           }
-                          className={`mt-2 w-full rounded-2xl border bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                          className={`mt-2 w-full rounded-2xl border px-4 py-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 ${darkNativeSelectClass} ${
                             processResolutionRequired
-                              ? "border-rose-400/60 text-rose-100"
+                              ? "border-rose-400/60"
                               : "border-white/10"
                           }`}
                         >
                           {processResolutionRequired ? (
                             <option
-                              className="text-slate-950"
+                              className={darkNativeOptionClass}
                               value={completedProcessResolutionSentinel}
                               disabled
                             >
@@ -4311,12 +4313,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 : "Done"}
                             </option>
                           ) : null}
-                          <option className="text-slate-950" value="">
+                          <option className={darkNativeOptionClass} value="">
                             none
                           </option>
                           {processBlueprints.map((entry) => (
                             <option
-                              className="text-slate-950"
+                              className={darkNativeOptionClass}
                               key={entry.id}
                               value={entry.id}
                             >
