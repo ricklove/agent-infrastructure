@@ -1483,8 +1483,8 @@ const ComposerPanel = memo(
                   className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-base outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-xs ${darkNativeSelectClass} ${
                     props.processResolutionRequired
                       ? props.processTerminalStatus === "blocked"
-                        ? "border-rose-400/50 shadow-[0_0_0_1px_rgba(251,113,133,0.16)]"
-                        : "border-amber-300/45 shadow-[0_0_0_1px_rgba(252,211,77,0.12)]"
+                        ? "border-rose-400/50 pl-24 pr-12 shadow-[0_0_0_1px_rgba(251,113,133,0.16)]"
+                        : "border-amber-300/45 pl-20 pr-12 shadow-[0_0_0_1px_rgba(252,211,77,0.12)]"
                       : props.activeProcessBlueprintId
                         ? "border-white/10"
                         : "border-white/10 text-slate-400"
@@ -1496,9 +1496,7 @@ const ComposerPanel = memo(
                       value={completedProcessResolutionSentinel}
                       disabled
                     >
-                      {props.processTerminalStatus === "blocked"
-                        ? "Blocked"
-                        : "Done"}
+                      Choose next process
                     </option>
                   ) : null}
                   <option style={darkNativeOptionStyle} value="">
@@ -4418,9 +4416,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               value={completedProcessResolutionSentinel}
                               disabled
                             >
-                              {processTerminalStatus === "blocked"
-                                ? "Blocked"
-                                : "Done"}
+                              Choose next process
                             </option>
                           ) : null}
                           <option style={darkNativeOptionStyle} value="">
