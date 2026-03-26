@@ -135,12 +135,14 @@ SystemRuntime.enforces(`
 - The returned dashboard URL may contain one-time bootstrap session material only for the initial browser redirect; all later dashboard API and WebSocket auth must be enforced by the Bun gateway through headers rather than URL parameters.
 - Workspace durability for canonical app data should be handled by the manager controller's workspace-persistence domain rather than by browser clients or ad hoc cron glue.
 - Heavy repository development work should prefer worker hosts over the manager runtime host so the control plane remains available for deploy and verification.
+- A worker promoted into an active development surface should include git and copied commit authorship so it can create branch-local commits without receiving long-lived external repository credentials.
 `);
 
 SystemRuntime.defines(`
 - RuntimeScripts means the externally called shell entrypoints that the deployed host relies on.
 - RepoTools means repository helper scripts used by developers or operators but not part of the deployed host runtime boundary.
 - ConnectWorkerEc2SshTool means the repository helper that reuses low-load swarm workers when possible, launches a worker when needed, bootstraps SSH, and then connects directly to the worker private IP.
+- Worker development readiness means the worker has git plus copied commit authorship identity so it can behave like a remote execution worktree while the manager host remains the authenticated integration surface.
 - PackageTools means package-local assets or workflow helpers that remain internal to a package.
 - BootstrapAsset means a script or document consumed by provisioning or user-data rather than by an operator directly.
 - SourceFirstServerChange means source is changed, committed, and only then rolled into runtime.

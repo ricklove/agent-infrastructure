@@ -34,6 +34,7 @@ const WorkerRuntimeRelease = define.entity("WorkerRuntimeRelease");
 const ManagerRuntime = define.entity("ManagerRuntime");
 const BunService = define.entity("BunService");
 const BenchmarkRun = define.entity("BenchmarkRun");
+const WorkerDevEnvironment = define.entity("WorkerDevEnvironment");
 
 const Truth = {
   inventory: define.entity("AwsInventory"),
@@ -79,6 +80,7 @@ const Policy = {
   fewHighLevelCommands: define.concept("FewHighLevelCommands"),
   repeatedManualSSMOperations: define.concept("RepeatedManualSSMOperations"),
   workerReuseBeforeLaunch: define.concept("WorkerReuseBeforeLaunch"),
+  managerOwnsExternalGitAuth: define.concept("ManagerOwnsExternalGitAuth"),
 };
 
 SwarmManager.observes(Truth.inventory).toUnderstand('ExistenceTruth');
@@ -90,9 +92,11 @@ SwarmManager.reconciles(Fleet).from(Truth.inventory, Truth.telemetry, Truth.hist
 
 SwarmManager.aligns(WorkerImageProfile).toMatch(WorkerImage);
 SwarmManager.aligns(WorkerRuntimeRelease).toMatch("ActiveWorkerRuntime");
+SwarmManager.prepares(WorkerDevEnvironment).for(Worker);
 SwarmManager.owns("LifecycleExecution", "ImagePromotion", "BenchmarkExecution", "FailureRecovery");
 SwarmManager.minimizes(Policy.repeatedManualSSMOperations);
 SwarmManager.prefers(Policy.workerReuseBeforeLaunch);
+SwarmManager.enforces(Policy.managerOwnsExternalGitAuth);
 
 Worker.runsOn(EC2);
 Worker.starts(Docker);
@@ -138,6 +142,7 @@ when(Operator.connectsTo(Worker).through(SwarmManager))
   .then(SwarmManager.observes(Truth.telemetry))
   .and(SwarmManager.reuses(Worker).when(Policy.workerReuseBeforeLaunch))
   .and(SwarmManager.launches(Worker).when("NoReusableWorkerExists"))
+  .and(SwarmManager.prepares(WorkerDevEnvironment).for(Worker))
   .and(Operator.reaches(Worker).through("PrivateIpSsh"));
 
 when(Worker.reaches(Lifecycle.ec2Running))
@@ -203,6 +208,13 @@ when(BunService.uses(StartupPaths.mutable))
   .then(BunService.synchronizes("SourceCode").with(Git))
   .and(BunService.installs("Dependencies"))
   .and(BunService.reconciles("RuntimeState"));
+
+when(SwarmManager.prepares(WorkerDevEnvironment).for(Worker))
+  .then(Worker.installs(Git))
+  .and(Worker.copies("CommitAuthorshipConfig").from("ManagerHost"))
+  .and(Worker.commits("BranchLocalChanges"))
+  .and(SwarmManager.fetches("CommittedWorkerBranchState").into(ManagerRuntime))
+  .and(SwarmManager.keeps(Policy.managerOwnsExternalGitAuth));
 
 when(Operator.benchmarks(BunService).through(SwarmManager).on(Worker))
   .then(SwarmManager.starts(BunService).through(Docker).on(Worker))
