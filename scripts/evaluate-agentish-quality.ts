@@ -166,7 +166,7 @@ function classifyFile(relPath: string): FileClass {
   ) {
     return "shared_meta";
   }
-  if (base.includes("blueprint-state")) {
+  if (base.includes(".blueprint-state.") || base.includes("-blueprint-state.")) {
     return "blueprint_state";
   }
   if (relPath.startsWith("process-blueprints/") && relPath.endsWith(".agentish.ts")) {
@@ -191,7 +191,7 @@ function allowedCompanionContext(relPath: string, fileClass: FileClass): string[
   const companions = ["_agentish.ts", "agentish-quality-evaluation.agentish.ts"];
   if (fileClass === "blueprint_state") {
     const fileName = relPath.split("/").pop() ?? relPath;
-    const base = fileName.replace("-blueprint-state.agentish.ts", "");
+    const base = fileName.replace(/(\.|-)?blueprint-state\.agentish\.ts$/, "");
     const dir = dirname(relPath);
     const ideal = join(dir, `${base}.agentish.ts`).replaceAll("\\", "/");
     const impl = join(dir, `${base}-dashboard-implementation.agentish.ts`).replaceAll("\\", "/");

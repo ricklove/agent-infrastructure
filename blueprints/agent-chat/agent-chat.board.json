@@ -5,7 +5,7 @@
   "documents": [
     "./agent-chat.agentish.ts",
     "./agent-chat-dashboard-implementation.agentish.ts",
-    "./agent-chat-blueprint-state.agentish.ts"
+    "./agent-chat.blueprint-state.agentish.ts"
   ],
   "revision": 740,
   "layers": [
