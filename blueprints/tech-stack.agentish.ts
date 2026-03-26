@@ -26,6 +26,7 @@ const Stack = {
   formatting: define.technology("Biome"),
   browserVerification: define.technology("AgentBrowser"),
   renderDiagnostics: define.technology("GlobalRenderCounterUtility"),
+  debugWorkflow: define.technology("AgentDebugWorkflow"),
 };
 
 TechStack.contains(
@@ -44,6 +45,7 @@ TechStack.contains(
   Stack.formatting,
   Stack.browserVerification,
   Stack.renderDiagnostics,
+  Stack.debugWorkflow,
 );
 
 Surface.runtime.uses(Stack.packageRuntime, Stack.language);
@@ -51,7 +53,7 @@ Surface.frontend.uses(Stack.frontendBuild, Stack.frontendUi, Stack.frontendStyli
 Surface.backend.uses(Stack.packageRuntime, Stack.language);
 Surface.verification.uses(Stack.browserVerification);
 Surface.formatting.uses(Stack.formatting);
-Surface.diagnostics.uses(Stack.language, Stack.frontendUi, Stack.renderDiagnostics);
+Surface.diagnostics.uses(Stack.language, Stack.frontendUi, Stack.renderDiagnostics, Stack.debugWorkflow);
 
 TechStack.prescribes(`- TypeScript is the canonical implementation language for repository source.
 - Bun is the canonical workspace runtime, package manager, and task runner unless a more specific repository blueprint closes a narrower exception.
@@ -62,6 +64,7 @@ TechStack.prescribes(`- TypeScript is the canonical implementation language for 
 - Biome is the canonical formatter and linter surface where repository formatting or lint automation is defined.
 - agent-browser is the canonical browser-verification tool on this machine for UI behavior and visual verification.
 - A small internal global render-counter utility is the canonical rerender-diagnosis surface for React UI overrendering and event-churn investigation.
+- The repository's agent-debug-tools blueprint is the canonical workflow surface for using agent-browser, render counters, snapshots, console output, and targeted browser eval during UI debugging.
 - New implementation should prefer the canonical stack over introducing alternate frameworks, styling systems, build tools, or verification surfaces without an explicit blueprint change.
 - Stack exceptions belong here before they spread into implementation.`);
 
@@ -69,6 +72,7 @@ TechStack.defines(`- Canonical means default, preferred, and expected for new wo
 - TailwindCss means static presentation should be expressed through the repository styling system rather than ad hoc CSS or inline-style drift.
 - AgentBrowser means the browser-verification surface expected by development-process for responsive and live UI validation on this machine.
 - GlobalRenderCounterUtility means the repository's shared globalThis-backed render and event counter surface used for React rerender diagnosis without third-party tooling dependencies.
+- AgentDebugWorkflow means the repository's canonical procedure for browser debugging and render diagnosis using agent-browser plus the shared render counter surface.
 - Stack exception means a materially different technology choice that changes authoring, runtime, styling, verification, or repository maintenance expectations.`);
 
 when(Repository.introduces("a new framework or tooling surface"))
