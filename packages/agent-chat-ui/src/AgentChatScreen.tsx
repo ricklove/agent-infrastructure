@@ -717,6 +717,10 @@ function formatCompactInteger(value: number | null) {
   if (value === null || !Number.isFinite(value)) {
     return null
   }
+  if (value >= 1_000_000) {
+    const abbreviated = value / 1_000_000
+    return `${abbreviated >= 100 ? Math.round(abbreviated) : abbreviated.toFixed(abbreviated >= 10 ? 1 : 2).replace(/\.?0+$/, "")}m`
+  }
   if (value >= 1000) {
     const abbreviated = value / 1000
     return `${abbreviated >= 100 ? Math.round(abbreviated) : abbreviated.toFixed(abbreviated >= 10 ? 1 : 2).replace(/\.?0+$/, "")}k`
@@ -746,14 +750,14 @@ function summarizeProviderUsage(usage: SessionProviderUsage | null) {
   if (!usage) {
     return null
   }
-  const total = formatCompactInteger(usage.totalTokens)
+  const contextUsedValue = usage.lastTotalTokens ?? usage.totalTokens
+  const total = formatCompactInteger(contextUsedValue)
   const window = formatCompactInteger(usage.modelContextWindow)
   const last = formatCompactInteger(usage.lastTotalTokens)
-  const cached = formatCompactInteger(usage.cachedInputTokens)
-  const percent = formatUsagePercent(
-    usage.totalTokens,
-    usage.modelContextWindow,
+  const cached = formatCompactInteger(
+    usage.lastCachedInputTokens ?? usage.cachedInputTokens,
   )
+  const percent = formatUsagePercent(contextUsedValue, usage.modelContextWindow)
   const parts: string[] = []
 
   if (total && window) {
