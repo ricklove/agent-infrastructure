@@ -86,10 +86,13 @@ when(Layer.implementationPlan.weakens("architecture or behavior decisions"))
 SystemLayers.prescribes(`- Each lower layer must be mechanical relative to the layer above.
 - Use native structure instead of strings whenever possible.
 - Choose the densest form that preserves semantic shape.
+- Optimize for semantic activation rather than raw token count.
 - Do not promote single-use phrases into named nodes without structural reuse.
 - Prefer appropriate abstraction over textual deduplication.
 - Keep semantic meaning close to where it has the most impact.
 - Prefer explicitness over indirection when indirection only saves tokens.
+- Prefer self-descriptive graphs over symbolic compression that hides semantic class.
+- Use enough local description to keep node class, causal role, and scope visible at the point of use.
 - Repeat structure freely when repetition improves local clarity.
 - Reject abstractions that hide semantic class at the point of use.`);
 
@@ -101,6 +104,10 @@ const Quality = {
   lowOpaqueStrings: define.quality("LowOpaqueStrings"),
   decisionCompression: define.quality("DecisionCompression"),
   exactNativeSchemas: define.quality("ExactNativeSchemas"),
+  localSelfDescription: define.quality("LocalSelfDescription"),
+  activationPreload: define.quality("ActivationPreload"),
+  generativeYield: define.quality("GenerativeYield"),
+  lowInterpretiveSlack: define.quality("LowInterpretiveSlack"),
 };
 
 SystemLayers.values(
@@ -111,6 +118,10 @@ SystemLayers.values(
   Quality.lowOpaqueStrings,
   Quality.decisionCompression,
   Quality.exactNativeSchemas,
+  Quality.localSelfDescription,
+  Quality.activationPreload,
+  Quality.generativeYield,
+  Quality.lowInterpretiveSlack,
 );
 
 Quality.recoverableStructure.means(
@@ -146,21 +157,53 @@ Quality.decisionCompression.means(
 Quality.exactNativeSchemas.means(
   "When exact shapes matter, they should be expressed in real type syntax rather than described indirectly.",
 );
+Quality.localSelfDescription.means(
+  "A capable reader should recover semantic class, causal role, and local importance from the graph surface without external decoding.",
+);
+Quality.localSelfDescription.means(
+  "Agentish should not rely on compiler-style symbolic tables that force the reader to reconstruct obvious graph meaning from weak local cues.",
+);
+Quality.activationPreload.means(
+  "A good Agentish statement should preload the adjacent network of rationale, failure, tradeoff, and likely next inference rather than merely restating one rule.",
+);
+Quality.activationPreload.means(
+  "Reading one node or relation should activate neighboring semantic structure that would otherwise require prose explanation.",
+);
+Quality.generativeYield.means(
+  "Agentish quality is measured partly by how much correct downstream reasoning the graph unlocks beyond the literal statement.",
+);
+Quality.generativeYield.means(
+  "A strong graph does not only preserve instruction; it makes the right continuation feel locally inevitable.",
+);
+Quality.lowInterpretiveSlack.means(
+  "The graph should leave few plausible wrong readings while still avoiding wasteful explanation of what its visible structure already makes obvious.",
+);
+Quality.lowInterpretiveSlack.means(
+  "Compression is bad when it increases reconstruction burden or permits many incompatible mental expansions.",
+);
 
 Layer.concept.optimizesFor(
   Quality.recoverableStructure,
   Quality.semanticNodeReuse,
   Quality.explicitRelations,
+  Quality.localSelfDescription,
+  Quality.activationPreload,
+  Quality.lowInterpretiveSlack,
 );
 Layer.scenarios.optimizesFor(
   Quality.causalShape,
   Quality.semanticNodeReuse,
   Quality.lowOpaqueStrings,
+  Quality.activationPreload,
+  Quality.generativeYield,
 );
 Layer.implementationPlan.optimizesFor(
   Quality.decisionCompression,
   Quality.explicitRelations,
   Quality.lowOpaqueStrings,
+  Quality.localSelfDescription,
+  Quality.generativeYield,
+  Quality.lowInterpretiveSlack,
 );
 Layer.contracts.optimizesFor(
   Quality.exactNativeSchemas,
@@ -170,8 +213,16 @@ Layer.contracts.optimizesFor(
 when(SystemLayers.overOptimizes("token count"))
   .then(SystemLayers.degrades(Quality.recoverableStructure))
   .and(SystemLayers.degrades(Quality.explicitRelations))
+  .and(SystemLayers.degrades(Quality.activationPreload))
+  .and(SystemLayers.degrades(Quality.lowInterpretiveSlack))
   .and(SystemLayers.encounters("false density"));
 
 when(SystemLayers.compresses("structure").into("strings"))
   .then(SystemLayers.degrades(Quality.lowOpaqueStrings))
   .and(SystemLayers.encounters("markdown-like flattening"));
+
+when(SystemLayers.compresses("graph meaning").into("symbolic shorthand"))
+  .then(SystemLayers.degrades(Quality.localSelfDescription))
+  .and(SystemLayers.degrades(Quality.activationPreload))
+  .and(SystemLayers.degrades(Quality.generativeYield))
+  .and(SystemLayers.encounters("compiler-shaped pseudo-density"));

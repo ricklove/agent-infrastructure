@@ -27,6 +27,7 @@ For now, the intended authoritative document set is:
 - `code-architecture`
 - `infrastructure-architecture`
 - `tech-stack`
+- `coding-standards`
 - `contracts`
 
 We should keep architecture-led names, but define each document strictly by:
