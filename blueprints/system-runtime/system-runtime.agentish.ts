@@ -134,6 +134,7 @@ SystemRuntime.enforces(`
 - Dashboard session issuance should only return a public URL after the manager has verified that the returned URL serves the dashboard.
 - The returned dashboard URL may contain one-time bootstrap session material only for the initial browser redirect; all later dashboard API and WebSocket auth must be enforced by the Bun gateway through headers rather than URL parameters.
 - Workspace durability for canonical app data should be handled by the manager controller's workspace-persistence domain rather than by browser clients or ad hoc cron glue.
+- Heavy repository development work should prefer worker hosts over the manager runtime host so the control plane remains available for deploy and verification.
 `);
 
 SystemRuntime.defines(`
@@ -245,6 +246,8 @@ Policy.fullUpdateWorkflow.means(`
 - verify the served frontend version matches the deployed revision
 - verify the running backend version matches the deployed revision
 - require the deployed frontend version and deployed backend version to match exactly
+- move heavy repo-wide checks, builds, lint-fix passes, and broad refactors onto a worker host rather than the manager runtime host
+- use bun run agent:connect-worker-ec2-ssh as the normal repository command for reaching a reusable or newly launched worker
 - treat any frontend-backend version mismatch as a failed rollout state
 - treat durable app data under state/ as a failed architecture state
 `);

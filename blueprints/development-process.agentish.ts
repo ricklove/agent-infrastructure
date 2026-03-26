@@ -20,6 +20,7 @@ const Artifact = {
   releaseBranch: define.workspace("ReleaseBranch"),
   featureBranch: define.workspace("FeatureBranch"),
   implementationWorktree: define.workspace("ImplementationWorktree"),
+  developmentWorker: define.workspace("DevelopmentWorkerHost"),
   runtimeCheckout: define.workspace("RuntimeCheckout"),
   temporaryState: define.workspace("TemporaryRuntimeState"),
   appData: define.workspace("DurableAppData"),
@@ -44,6 +45,7 @@ const Rule = {
   runtimeReadonly: define.concept("RuntimeReadonlyCheckout"),
   stateTemporaryOnly: define.concept("TemporaryStateOnly"),
   verifyLocally: define.concept("LocalVerification"),
+  heavyWorkOnWorker: define.concept("HeavyDevelopmentWorkRunsOnWorker"),
   deployByCheckout: define.concept("DeployByRuntimeCheckout"),
   verifyVersions: define.concept("VersionMatchVerification"),
   verifyBehavior: define.concept("BehaviorVerification"),
@@ -68,6 +70,7 @@ DevelopmentProcess.enforces(`
 - The shared repository checkout should remain on the current base branch used for ongoing integration work.
 - Feature and fix implementation should begin from a feature branch rooted at the current base branch while leaving the shared checkout on that base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
+- Heavy repo-wide check, build, lint-fix, or refactor work should run on a swarm worker rather than on the manager runtime host.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
 - The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
@@ -85,6 +88,7 @@ DevelopmentProcess.enforces(`
 - Provider-backed agents used for implementation must inherit this same workflow.
 - Runtime rollout should follow the deploy-manager-runtime blueprint as the standard deploy path.
 - Runtime rollout should call `bun run deploy-manager-runtime` from the shared source repository unless a more specific documented operator entrypoint supersedes it.
+- `bun run agent:connect-worker-ec2-ssh` is the canonical repository command for reusing or launching a development worker and connecting to it over private-IP SSH.
 - UI-facing changes require real browser verification with `agent-browser`, visual verification on the rendered UI, saved screenshots, verification at small, medium, and wide viewport sizes, and deployed frontend-backend version matching.
 - Responsive UI changes must be verified with `agent-browser` at small, medium, and wide viewport sizes.
 - A rollout is not complete until post-deploy behavior has been verified on the live system.
@@ -101,6 +105,8 @@ DevelopmentProcess.defines(`
 - WorkspaceToolingDiscovery means local machine tooling should be discovered from `/home/ec2-user/workspace/README.md` and `/home/ec2-user/workspace/tools/` guidance before installing replacements or parallel toolchains.
 - For UI verification on this machine, `agent-browser` is the expected browser tool for both behavior verification and visual verification, including small, medium, and wide viewport checks, unless a more specific documented workspace replacement supersedes it.
 - IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and the normal setup path is to create the worktree and feature branch together from the base branch.
+- DevelopmentWorkerHost means a swarm worker host used as the safe execution surface for heavy development and verification workloads.
+- HeavyDevelopmentWorkRunsOnWorker means repo-wide TypeScript checks, broad build steps, lint-fix sweeps, and similar resource-heavy work should move to a worker host rather than compete with the manager runtime host.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - FeatureBranchRefreshByMerge means an active feature branch may be updated from development, main, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
@@ -120,6 +126,7 @@ DevelopmentProcess.contains(
   Artifact.releaseBranch,
   Artifact.featureBranch,
   Artifact.implementationWorktree,
+  Artifact.developmentWorker,
   Artifact.runtimeCheckout,
   Artifact.temporaryState,
   Artifact.appData,
@@ -141,6 +148,7 @@ DevelopmentProcess.contains(
   Rule.runtimeReadonly,
   Rule.stateTemporaryOnly,
   Rule.verifyLocally,
+  Rule.heavyWorkOnWorker,
   Rule.deployByCheckout,
   Rule.verifyVersions,
   Rule.verifyBehavior,
@@ -157,6 +165,7 @@ when(Actor.operator.implements("a feature or fix"))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
   .and(DevelopmentProcess.requires(Rule.sourceOnly))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
+  .and(DevelopmentProcess.requires(Rule.heavyWorkOnWorker))
   .and(DevelopmentProcess.requires(Rule.mergeIntoBase))
   .and(DevelopmentProcess.requires(Rule.verifyLocally))
   .and(DevelopmentProcess.requires(Rule.deployByCheckout))
@@ -172,6 +181,7 @@ when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
   .and(DevelopmentProcess.requires(Artifact.techStack))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
+  .and(DevelopmentProcess.requires(Rule.heavyWorkOnWorker))
   .and(DevelopmentProcess.requires(Rule.mergeIntoBase))
   .and(DevelopmentProcess.requires("the same relevant blueprints the operator would check"))
   .and(DevelopmentProcess.requires("the Agent Chat blueprint-state document to be updated as the current implementation comparison for Agent Chat work"))
@@ -203,7 +213,10 @@ when(Actor.operator.finishes("code-changing implementation on a feature branch")
 
 when(Actor.operator.runs("development or local verification for a feature branch"))
   .then(DevelopmentProcess.expects(Artifact.implementationWorktree))
-  .and(DevelopmentProcess.treats("the implementation worktree as the editable development surface"));
+  .and(DevelopmentProcess.treats("the implementation worktree as the editable development surface"))
+  .and(DevelopmentProcess.treats("the manager runtime host as the control-plane and deploy surface rather than the preferred target for heavy verification load"))
+  .and(DevelopmentProcess.prefers(Artifact.developmentWorker).for("resource-heavy checks, builds, lint-fix passes, and broad refactors"))
+  .and(DevelopmentProcess.expects("bun run agent:connect-worker-ec2-ssh to be the normal command for reaching a reusable or newly launched development worker"));
 
 when(Artifact.blueprint.exists())
   .then(DevelopmentProcess.expects(Artifact.blueprintState))
