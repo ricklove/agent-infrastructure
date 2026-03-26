@@ -20,7 +20,8 @@ const Artifact = {
   releaseBranch: define.workspace("ReleaseBranch"),
   featureBranch: define.workspace("FeatureBranch"),
   implementationWorktree: define.workspace("ImplementationWorktree"),
-  developmentWorker: define.workspace("DevelopmentWorkerHost"),
+  workerDevelopmentHost: define.workspace("WorkerDevelopmentHost"),
+  workerCheckout: define.workspace("WorkerCheckout"),
   runtimeCheckout: define.workspace("RuntimeCheckout"),
   temporaryState: define.workspace("TemporaryRuntimeState"),
   appData: define.workspace("DurableAppData"),
@@ -29,7 +30,6 @@ const Artifact = {
   techStack: define.document("TechStackBlueprint"),
   codingStandards: define.document("CodingStandardsBlueprint"),
   renderDiagnostics: define.document("RenderDiagnosticsBlueprint"),
-  agentDebugTools: define.document("AgentDebugToolsBlueprint"),
   processBlueprint: define.document("ProcessBlueprintJson"),
   blueprintState: define.document("RelevantBlueprintState"),
   releaseTag: define.document("ReleaseGitTag"),
@@ -43,11 +43,12 @@ const Rule = {
   blueprintStateRequired: define.concept("BlueprintStateTracksCurrentReality"),
   sourceOnly: define.concept("SourceOnlyEdits"),
   worktreeIsolation: define.concept("IsolatedGitWorktreeDevelopment"),
+  workerBackedDevelopment: define.concept("WorkerBackedDevelopment"),
+  persistentWorkerTerminals: define.concept("PersistentWorkerTerminalWorkflow"),
   mergeIntoBase: define.concept("FeatureBranchMergesIntoBase"),
   runtimeReadonly: define.concept("RuntimeReadonlyCheckout"),
   stateTemporaryOnly: define.concept("TemporaryStateOnly"),
   verifyLocally: define.concept("LocalVerification"),
-  heavyWorkOnWorker: define.concept("HeavyDevelopmentWorkRunsOnWorker"),
   deployByCheckout: define.concept("DeployByRuntimeCheckout"),
   verifyVersions: define.concept("VersionMatchVerification"),
   verifyBehavior: define.concept("BehaviorVerification"),
@@ -60,11 +61,9 @@ DevelopmentProcess.enforces(`
 - The repository Agentish sections blueprint should be read before defining or restructuring a subject blueprint.
 - The repository tech-stack blueprint and coding-standards blueprint must be read before implementation begins.
 - The repository render-diagnostics blueprint should be read before introducing repository-wide rerender instrumentation or broad UI render-count probes.
-- The repository agent-debug-tools blueprint should be read before substantial browser-side UI debugging, rerender investigation, or agent-browser-based diagnosis workflows.
 - Changes that alter canonical tooling, frameworks, styling systems, verification surfaces, or repository technology choices must update the tech-stack blueprint before implementation dependence continues.
 - Changes that alter repository coding norms, allowed abstraction shape, styling exceptions, branching style, or dependency discipline must update the coding-standards blueprint before implementation dependence continues.
 - Changes that alter repository-wide render instrumentation shape, naming, or diagnosis workflow must update the render-diagnostics blueprint before implementation dependence continues.
-- Changes that alter the repository's canonical browser-debugging or agent-browser diagnosis workflow must update the agent-debug-tools blueprint before implementation dependence continues.
 - Relevant process blueprints under blueprints/ must be reviewed and updated when a feature changes session process behavior, watchdog semantics, or expectation-selection behavior.
 - Relevant blueprint-state documents must describe how current implementation compares to the ideal blueprint.
 - Blueprint changes that alter architecture, workflow, or product requirements must be committed before dependent implementation work begins.
@@ -76,10 +75,12 @@ DevelopmentProcess.enforces(`
 - The shared repository checkout should remain on the current base branch used for ongoing integration work.
 - Feature and fix implementation should begin from a feature branch rooted at the current base branch while leaving the shared checkout on that base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
-- Heavy repo-wide check, build, lint-fix, or refactor work should run on a swarm worker rather than on the manager runtime host.
-- A worker used as the active development surface should be prepared as a remote worktree-like environment with git installed and commit authorship config copied from the manager host.
-- If the active development worker becomes unhealthy or unavailable, the expected recovery path is to repair that worker, reboot it, or create a replacement worker rather than silently continuing heavy development on the manager host.
-- Unused or superseded worker instances should be disposed once a healthy replacement worker is ready so stale workers do not accumulate.
+- Code-changing implementation work should use a swarm worker as the active development host rather than the manager runtime host.
+- New features, broad refactors, dependency installation, workspace builds, workspace checks, and other substantial implementation loops are always worker-host work and must not run on the manager host.
+- When a swarm worker is used for development, the worker checkout is the only active mutable implementation surface for that branch and should be treated as a remote worktree.
+- When a swarm worker is used for development, the manager host remains the integration, GitHub push, release, deploy, and live-verification surface rather than a parallel editing surface.
+- The manager host must not be used as the active mutable implementation surface for code-changing feature or fix work.
+- Development on a swarm worker should happen through persistent worker terminals rather than one-off ssh command invocations for routine edit and verification loops.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
 - The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
@@ -97,7 +98,6 @@ DevelopmentProcess.enforces(`
 - Provider-backed agents used for implementation must inherit this same workflow.
 - Runtime rollout should follow the deploy-manager-runtime blueprint as the standard deploy path.
 - Runtime rollout should call `bun run deploy-manager-runtime` from the shared source repository unless a more specific documented operator entrypoint supersedes it.
-- `bun run agent:connect-worker-ec2-ssh` is the canonical repository command for reusing or launching a development worker and connecting to it over private-IP SSH.
 - UI-facing changes require real browser verification with `agent-browser`, visual verification on the rendered UI, saved screenshots, verification at small, medium, and wide viewport sizes, and deployed frontend-backend version matching.
 - Responsive UI changes must be verified with `agent-browser` at small, medium, and wide viewport sizes.
 - A rollout is not complete until post-deploy behavior has been verified on the live system.
@@ -109,18 +109,14 @@ DevelopmentProcess.defines(`
 - AgentishSectionsBlueprint means the repository-wide blueprint that owns the canonical in-file section structure for a subject Agentish blueprint.
 - CodingStandardsBlueprint means the repository-wide blueprint that owns code-shaping norms and repository implementation discipline.
 - RenderDiagnosticsBlueprint means the repository-wide blueprint that owns the shared global render-counter model for UI rerender diagnosis.
-- AgentDebugToolsBlueprint means the repository-wide blueprint that owns the canonical agent-browser and render-diagnosis workflow for browser-side investigation.
 - ProcessBlueprintJson means a machine-readable process contract in blueprints/ that the system may assign to a chat session.
 - BlueprintCommitBeforeImplementation means blueprint edits are turned into a committed source revision before dependent implementation work starts.
 - BlueprintStateTracksCurrentReality means blueprint-state records current implementation status, confidence, evidence, gaps, and known issues relative to the ideal blueprint.
 - WorkspaceToolingDiscovery means local machine tooling should be discovered from `/home/ec2-user/workspace/README.md` and `/home/ec2-user/workspace/tools/` guidance before installing replacements or parallel toolchains.
 - For UI verification on this machine, `agent-browser` is the expected browser tool for both behavior verification and visual verification, including small, medium, and wide viewport checks, unless a more specific documented workspace replacement supersedes it.
 - IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and the normal setup path is to create the worktree and feature branch together from the base branch.
-- DevelopmentWorkerHost means a swarm worker host used as the safe execution surface for heavy development and verification workloads.
-- HeavyDevelopmentWorkRunsOnWorker means repo-wide TypeScript checks, broad build steps, lint-fix sweeps, and similar resource-heavy work should move to a worker host rather than compete with the manager runtime host.
-- RemoteWorktreeLikeWorker means a worker-host repo checkout can act like a remote execution worktree when it has git, correct authorship identity, and branch-local commit capability even though GitHub push authority stays on the manager host.
-- Worker recovery means restoring a usable worker development surface by repairing the current worker, rebooting it, or creating a replacement worker before resuming heavy development.
-- Worker disposal means terminating or otherwise removing unused worker instances once they are no longer the active development surface.
+- WorkerBackedDevelopment means code-changing implementation work belongs on a swarm worker host whose checkout serves as the active remote worktree for that branch, with the manager host reserved for integration, deployment, and live verification.
+- PersistentWorkerTerminalWorkflow means worker-host development should use long-lived interactive worker terminals for normal editing and verification loops instead of repeated one-off ssh command execution.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - FeatureBranchRefreshByMerge means an active feature branch may be updated from development, main, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
@@ -140,7 +136,8 @@ DevelopmentProcess.contains(
   Artifact.releaseBranch,
   Artifact.featureBranch,
   Artifact.implementationWorktree,
-  Artifact.developmentWorker,
+  Artifact.workerDevelopmentHost,
+  Artifact.workerCheckout,
   Artifact.runtimeCheckout,
   Artifact.temporaryState,
   Artifact.appData,
@@ -149,7 +146,6 @@ DevelopmentProcess.contains(
   Artifact.techStack,
   Artifact.codingStandards,
   Artifact.renderDiagnostics,
-  Artifact.agentDebugTools,
   Artifact.processBlueprint,
   Artifact.blueprintState,
   Artifact.releaseTag,
@@ -160,11 +156,12 @@ DevelopmentProcess.contains(
   Rule.blueprintStateRequired,
   Rule.sourceOnly,
   Rule.worktreeIsolation,
+  Rule.workerBackedDevelopment,
+  Rule.persistentWorkerTerminals,
   Rule.mergeIntoBase,
   Rule.runtimeReadonly,
   Rule.stateTemporaryOnly,
   Rule.verifyLocally,
-  Rule.heavyWorkOnWorker,
   Rule.deployByCheckout,
   Rule.verifyVersions,
   Rule.verifyBehavior,
@@ -180,10 +177,10 @@ when(Actor.operator.implements("a feature or fix"))
   .and(DevelopmentProcess.requires(Artifact.techStack))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
   .and(DevelopmentProcess.requires(Artifact.renderDiagnostics))
-  .and(DevelopmentProcess.requires(Artifact.agentDebugTools))
   .and(DevelopmentProcess.requires(Rule.sourceOnly))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
-  .and(DevelopmentProcess.requires(Rule.heavyWorkOnWorker))
+  .and(DevelopmentProcess.requires(Rule.workerBackedDevelopment))
+  .and(DevelopmentProcess.requires(Rule.persistentWorkerTerminals))
   .and(DevelopmentProcess.requires(Rule.mergeIntoBase))
   .and(DevelopmentProcess.requires(Rule.verifyLocally))
   .and(DevelopmentProcess.requires(Rule.deployByCheckout))
@@ -199,9 +196,9 @@ when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
   .and(DevelopmentProcess.requires(Artifact.techStack))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
   .and(DevelopmentProcess.requires(Artifact.renderDiagnostics))
-  .and(DevelopmentProcess.requires(Artifact.agentDebugTools))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
-  .and(DevelopmentProcess.requires(Rule.heavyWorkOnWorker))
+  .and(DevelopmentProcess.requires(Rule.workerBackedDevelopment))
+  .and(DevelopmentProcess.requires(Rule.persistentWorkerTerminals))
   .and(DevelopmentProcess.requires(Rule.mergeIntoBase))
   .and(DevelopmentProcess.requires("the same relevant blueprints the operator would check"))
   .and(DevelopmentProcess.requires("the Agent Chat blueprint-state document to be updated as the current implementation comparison for Agent Chat work"))
@@ -215,8 +212,13 @@ when(Actor.operator.starts("code-changing implementation on a feature or fix"))
   .and(DevelopmentProcess.treats("the shared repository checkout as the base-branch integration surface"))
   .and(DevelopmentProcess.prefers(Artifact.featureBranch))
   .and(DevelopmentProcess.prefers(Artifact.implementationWorktree))
+  .and(DevelopmentProcess.requires(Artifact.workerDevelopmentHost))
+  .and(DevelopmentProcess.requires(Artifact.workerCheckout))
   .and(DevelopmentProcess.expects("feature-branch creation to leave the shared checkout on the base branch"))
   .and(DevelopmentProcess.expects("the normal setup command to be `git worktree add -b <feature-branch> <worktree-path> <base-branch>`"))
+  .and(DevelopmentProcess.expects("the active branch workspace to live on a worker checkout for implementation work"))
+  .and(DevelopmentProcess.expects("worker-host development to keep the manager host as the integration-only surface until fetch, push, deploy, or live verification is needed"))
+  .and(DevelopmentProcess.expects("worker-host development to use persistent worker terminals for routine editing and verification"))
   .and(DevelopmentProcess.expects("feature-branch refresh to use normal merges from the relevant base or release branches when the feature branch falls behind"))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.baseBranch))
   .and(DevelopmentProcess.associates(Artifact.implementationWorktree).with(Artifact.featureBranch))
@@ -233,14 +235,10 @@ when(Actor.operator.finishes("code-changing implementation on a feature branch")
 
 when(Actor.operator.runs("development or local verification for a feature branch"))
   .then(DevelopmentProcess.expects(Artifact.implementationWorktree))
-  .and(DevelopmentProcess.treats("the implementation worktree as the editable development surface"))
-  .and(DevelopmentProcess.treats("the manager runtime host as the control-plane and deploy surface rather than the preferred target for heavy verification load"))
-  .and(DevelopmentProcess.prefers(Artifact.developmentWorker).for("resource-heavy checks, builds, lint-fix passes, and broad refactors"))
-  .and(DevelopmentProcess.expects("bun run agent:connect-worker-ec2-ssh to be the normal command for reaching a reusable or newly launched development worker"))
-  .and(DevelopmentProcess.expects("a worker used for active branch work to have git installed and commit authorship copied from the manager host"))
-  .and(DevelopmentProcess.expects("worker failure during active development to be answered by worker repair, reboot, or replacement before resuming heavy work"))
-  .and(DevelopmentProcess.expects("unused worker instances to be disposed once an active replacement worker is ready"))
-  .and(DevelopmentProcess.expects("manager-host git to fetch or pull committed worker branch state before GitHub push, release promotion, and deploy"));
+  .and(DevelopmentProcess.expects(Artifact.workerCheckout))
+  .and(DevelopmentProcess.treats("the implementation worktree or worker checkout as the editable development surface depending on where the active branch is hosted"))
+  .and(DevelopmentProcess.treats("a worker checkout as the required editable development surface for code-changing work"))
+  .and(DevelopmentProcess.treats("persistent worker terminals as the preferred control loop when the active branch is hosted on a worker"));
 
 when(Artifact.blueprint.exists())
   .then(DevelopmentProcess.expects(Artifact.blueprintState))
@@ -251,8 +249,7 @@ when(Actor.operator.starts("implementation"))
   .and(DevelopmentProcess.expects(Artifact.techStack))
   .and(DevelopmentProcess.expects(Artifact.codingStandards))
   .and(DevelopmentProcess.expects(Artifact.renderDiagnostics))
-  .and(DevelopmentProcess.expects(Artifact.agentDebugTools))
-  .and(DevelopmentProcess.treats("agentish-sections, tech-stack, coding-standards, render-diagnostics, and agent-debug-tools as repository-wide prerequisite reading when they are relevant"));
+  .and(DevelopmentProcess.treats("agentish-sections, tech-stack, coding-standards, and render-diagnostics as repository-wide prerequisite reading when they are relevant"));
 
 when(Actor.operator.defines("a subject blueprint"))
   .then(DevelopmentProcess.expects(Artifact.agentishSections))
@@ -281,3 +278,11 @@ when(Artifact.temporaryState.contains("durable app content"))
 
 when(Artifact.runtimeCheckout.receives("manual code edits"))
   .then(DevelopmentProcess.violates(Rule.runtimeReadonly));
+
+when(Actor.operator.runs("dependency installation, workspace checks, or workspace builds for code-changing implementation"))
+  .then(DevelopmentProcess.requires(Artifact.workerCheckout))
+  .and(DevelopmentProcess.expects("those commands to run on the worker host rather than on the manager host"));
+
+when(Actor.operator.uses("the manager host as the active mutable implementation surface for code-changing work"))
+  .then(DevelopmentProcess.violates(Rule.workerBackedDevelopment))
+  .and(DevelopmentProcess.violates("manager-host isolation for implementation"));
