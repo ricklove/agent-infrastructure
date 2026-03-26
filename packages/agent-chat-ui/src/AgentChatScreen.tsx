@@ -1029,7 +1029,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
   const previousSessionIdRef = useRef<string | null>(null)
   const lastTypingReportAtRef = useRef(0)
   const typingActiveRef = useRef(false)
-  const [composerText, setComposerText] = useState("")
+  const [hasComposerText, setHasComposerText] = useState(false)
   const [composerImages, setComposerImages] = useState<
     ComposerImageAttachment[]
   >([])
@@ -1044,7 +1044,10 @@ const ComposerPanel = memo(function ComposerPanel(props: {
       latestDraftRef.current = ""
       lastTypingReportAtRef.current = 0
       typingActiveRef.current = false
-      setComposerText("")
+      if (composerInputRef.current) {
+        composerInputRef.current.value = ""
+      }
+      setHasComposerText(false)
       setComposerImages([])
       return
     }
@@ -1059,34 +1062,23 @@ const ComposerPanel = memo(function ComposerPanel(props: {
     latestDraftRef.current = nextDraft
     lastTypingReportAtRef.current = 0
     typingActiveRef.current = false
-    setComposerText(nextDraft)
+    if (composerInputRef.current) {
+      composerInputRef.current.value = nextDraft
+    }
+    setHasComposerText(nextDraft.trim().length > 0)
     setComposerImages([])
   }, [props.activeSession?.id])
 
-  useEffect(() => {
-    latestDraftRef.current = composerText
-
-    if (!props.activeSession?.id) {
-      return
-    }
-
+  const scheduleDraftPersist = useCallback((sessionId: string) => {
     if (draftPersistTimeoutRef.current !== null) {
       window.clearTimeout(draftPersistTimeoutRef.current)
     }
 
-    const sessionId = props.activeSession.id
     draftPersistTimeoutRef.current = window.setTimeout(() => {
       writeDraft(sessionId, latestDraftRef.current)
       draftPersistTimeoutRef.current = null
     }, composerDraftPersistMs)
-
-    return () => {
-      if (draftPersistTimeoutRef.current !== null) {
-        window.clearTimeout(draftPersistTimeoutRef.current)
-        draftPersistTimeoutRef.current = null
-      }
-    }
-  }, [composerText, props.activeSession?.id])
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -1136,8 +1128,7 @@ const ComposerPanel = memo(function ComposerPanel(props: {
     [props.activeSession?.id, props.onReportTyping],
   )
 
-  const hasComposerContent =
-    composerText.trim().length > 0 || composerImages.length > 0
+  const hasComposerContent = hasComposerText || composerImages.length > 0
 
   const submitComposer = useCallback(async () => {
     if (!props.activeSession || !hasComposerContent) {
@@ -1150,18 +1141,24 @@ const ComposerPanel = memo(function ComposerPanel(props: {
     }
 
     const didSend = await props.onSubmitMessage({
-      text: composerText,
+      text: latestDraftRef.current,
       images: composerImages,
     })
     if (!didSend) {
       return
     }
-    setComposerText("")
+    latestDraftRef.current = ""
+    if (props.activeSession?.id) {
+      writeDraft(props.activeSession.id, "")
+    }
+    if (composerInputRef.current) {
+      composerInputRef.current.value = ""
+    }
+    setHasComposerText(false)
     setComposerImages([])
     await reportComposerTyping(false, { force: true })
   }, [
     composerImages,
-    composerText,
     hasComposerContent,
     props.activeSession,
     props.onSetError,
@@ -1315,9 +1312,17 @@ const ComposerPanel = memo(function ComposerPanel(props: {
         ) : null}
         <textarea
           ref={composerInputRef}
-          value={composerText}
+          defaultValue=""
           onChange={(event) => {
-            setComposerText(event.target.value)
+            const nextValue = event.target.value
+            latestDraftRef.current = nextValue
+            setHasComposerText((current) => {
+              const nextHasText = nextValue.trim().length > 0
+              return current === nextHasText ? current : nextHasText
+            })
+            if (props.activeSession?.id) {
+              scheduleDraftPersist(props.activeSession.id)
+            }
             void reportComposerTyping(true)
           }}
           onFocus={() => void reportComposerTyping(true, { force: true })}
