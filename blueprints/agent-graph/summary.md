@@ -21,14 +21,10 @@ Documents should be organized by what truth they own, not just by their position
 
 For now, the intended authoritative document set is:
 
-- `concept`
-- `scenarios`
-- `operational-behavior`
-- `code-architecture`
+- `agentish-graph.agentish.ts`
 - `infrastructure-architecture`
 - `tech-stack`
 - `coding-standards`
-- `contracts`
 
 We should keep architecture-led names, but define each document strictly by:
 
@@ -75,12 +71,11 @@ So the preferred model is:
 - separate files for human governance and purpose boundaries
 - no heavy import/export boilerplate in the LLM-facing representation
 
-This means there is little practical difference, for the LLM, between:
+This means the preferred representation is:
 
-- a multi-file graph
-- a single-file graph with section separators
-
-The important thing is that names are unique and directly referenceable.
+- one subject file
+- one coherent graph with explicit in-file sections
+- globally unique names and directly referenceable semantic nodes
 
 ## File Boundaries And Ordering
 
@@ -94,11 +89,12 @@ Separate files still matter for humans:
 But for LLM consumption, the preferred representation is a **canonical flattened order** with file separators such as:
 
 ```ts
-// agentish-graph.concept.ts
-...
-
-// agentish-graph.scenarios.ts
-...
+// agentish-graph.agentish.ts
+// SectionMap
+// Concept
+// Scenarios
+// ImplementationPlan
+// Contracts
 ```
 
 This gives the LLM:
@@ -110,8 +106,8 @@ This gives the LLM:
 
 So the current best model is:
 
-- canonical storage form: separate purpose-specific files
-- canonical LLM presentation form: one flattened graph with `// filename.ts` separators
+- canonical storage form: one subject file with a canonical section map
+- canonical LLM presentation form: the same file in its native section order
 
 ## Refinement Model
 
