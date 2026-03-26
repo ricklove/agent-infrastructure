@@ -29,6 +29,7 @@ const Artifact = {
   agentishSections: define.document("AgentishSectionsBlueprint"),
   techStack: define.document("TechStackBlueprint"),
   codingStandards: define.document("CodingStandardsBlueprint"),
+  renderDiagnostics: define.document("RenderDiagnosticsBlueprint"),
   processBlueprint: define.document("ProcessBlueprintJson"),
   blueprintState: define.document("RelevantBlueprintState"),
   releaseTag: define.document("ReleaseGitTag"),
@@ -60,8 +61,10 @@ DevelopmentProcess.enforces(`
 - Relevant blueprints must be reviewed and updated before implementation changes.
 - The repository Agentish sections blueprint should be read before defining or restructuring a subject blueprint.
 - The repository tech-stack blueprint and coding-standards blueprint must be read before implementation begins.
+- The repository render-diagnostics blueprint should be read before introducing repository-wide rerender instrumentation or broad UI render-count probes.
 - Changes that alter canonical tooling, frameworks, styling systems, verification surfaces, or repository technology choices must update the tech-stack blueprint before implementation dependence continues.
 - Changes that alter repository coding norms, allowed abstraction shape, styling exceptions, branching style, or dependency discipline must update the coding-standards blueprint before implementation dependence continues.
+- Changes that alter repository-wide render instrumentation shape, naming, or diagnosis workflow must update the render-diagnostics blueprint before implementation dependence continues.
 - Relevant process blueprints under blueprints/ must be reviewed and updated when a feature changes session process behavior, watchdog semantics, or expectation-selection behavior.
 - Relevant blueprint-state documents must describe how current implementation compares to the ideal blueprint.
 - Blueprint changes that alter architecture, workflow, or product requirements must be committed before dependent implementation work begins.
@@ -107,6 +110,7 @@ DevelopmentProcess.defines(`
 - TechStackBlueprint means the repository-wide blueprint that owns canonical technology choices and stack exceptions.
 - AgentishSectionsBlueprint means the repository-wide blueprint that owns the canonical in-file section structure for a subject Agentish blueprint.
 - CodingStandardsBlueprint means the repository-wide blueprint that owns code-shaping norms and repository implementation discipline.
+- RenderDiagnosticsBlueprint means the repository-wide blueprint that owns the shared global render-counter model for UI rerender diagnosis.
 - ProcessBlueprintJson means a machine-readable process contract in blueprints/ that the system may assign to a chat session.
 - BlueprintCommitBeforeImplementation means blueprint edits are turned into a committed source revision before dependent implementation work starts.
 - BlueprintStateTracksCurrentReality means blueprint-state records current implementation status, confidence, evidence, gaps, and known issues relative to the ideal blueprint.
@@ -147,6 +151,7 @@ DevelopmentProcess.contains(
   Artifact.agentishSections,
   Artifact.techStack,
   Artifact.codingStandards,
+  Artifact.renderDiagnostics,
   Artifact.processBlueprint,
   Artifact.blueprintState,
   Artifact.releaseTag,
@@ -178,6 +183,7 @@ when(Actor.operator.implements("a feature or fix"))
   .and(DevelopmentProcess.requires(Artifact.agentishSections))
   .and(DevelopmentProcess.requires(Artifact.techStack))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
+  .and(DevelopmentProcess.requires(Artifact.renderDiagnostics))
   .and(DevelopmentProcess.requires(Rule.sourceOnly))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
   .and(DevelopmentProcess.requires(Rule.heavyWorkOnWorker))
@@ -197,6 +203,7 @@ when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
   .and(DevelopmentProcess.requires(Artifact.agentishSections))
   .and(DevelopmentProcess.requires(Artifact.techStack))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
+  .and(DevelopmentProcess.requires(Artifact.renderDiagnostics))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
   .and(DevelopmentProcess.requires(Rule.heavyWorkOnWorker))
   .and(DevelopmentProcess.requires(Rule.persistentWorkerTerminals))
@@ -255,7 +262,8 @@ when(Actor.operator.starts("implementation"))
   .then(DevelopmentProcess.expects(Artifact.agentishSections))
   .and(DevelopmentProcess.expects(Artifact.techStack))
   .and(DevelopmentProcess.expects(Artifact.codingStandards))
-  .and(DevelopmentProcess.treats("agentish-sections, tech-stack, and coding-standards as repository-wide prerequisite reading"));
+  .and(DevelopmentProcess.expects(Artifact.renderDiagnostics))
+  .and(DevelopmentProcess.treats("agentish-sections, tech-stack, coding-standards, and render-diagnostics as repository-wide prerequisite reading when they are relevant"));
 
 when(Actor.operator.defines("a subject blueprint"))
   .then(DevelopmentProcess.expects(Artifact.agentishSections))

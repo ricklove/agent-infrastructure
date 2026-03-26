@@ -14,6 +14,7 @@ const Concern = {
   boundaryDiscipline: define.concern("BoundaryDiscipline"),
   semanticExtraction: define.concern("SemanticExtraction"),
   staticStyleCanonicality: define.concern("StaticStyleCanonicality"),
+  cheapDiagnostics: define.concern("CheapDiagnostics"),
 };
 
 const Failure = {
@@ -22,6 +23,7 @@ const Failure = {
   controlDepth: define.failureMode("ControlDepth"),
   convenienceCoupling: define.failureMode("ConvenienceCoupling"),
   staticStyleEscape: define.failureMode("StaticStyleEscape"),
+  noisyRenderInstrumentation: define.failureMode("NoisyRenderInstrumentation"),
 };
 
 const Move = {
@@ -31,6 +33,7 @@ const Move = {
   preserveBoundary: define.move("PreserveBoundary"),
   keepStaticStyleInTailwind: define.move("KeepStaticStyleInTailwind"),
   reserveInlineStyleForRuntimeValues: define.move("ReserveInlineStyleForRuntimeValues"),
+  useSharedRenderCounter: define.move("UseSharedRenderCounter"),
 };
 
 CodingStandards.contains(
@@ -40,17 +43,20 @@ CodingStandards.contains(
   Concern.boundaryDiscipline,
   Concern.semanticExtraction,
   Concern.staticStyleCanonicality,
+  Concern.cheapDiagnostics,
   Failure.hiddenOwnership,
   Failure.weakAbstraction,
   Failure.controlDepth,
   Failure.convenienceCoupling,
   Failure.staticStyleEscape,
+  Failure.noisyRenderInstrumentation,
   Move.colocateByChange,
   Move.extractBySemanticGain,
   Move.resolveByGuard,
   Move.preserveBoundary,
   Move.keepStaticStyleInTailwind,
   Move.reserveInlineStyleForRuntimeValues,
+  Move.useSharedRenderCounter,
 );
 
 Move.colocateByChange.preserves(
@@ -74,6 +80,10 @@ Move.keepStaticStyleInTailwind.preserves(
 Move.reserveInlineStyleForRuntimeValues.preserves(
   Concern.staticStyleCanonicality,
 );
+Move.useSharedRenderCounter.preserves(
+  Concern.cheapDiagnostics,
+  Concern.semanticLocality,
+);
 
 CodingStandards.prescribes(`- Colocation is king: keep behavior near the feature or domain that owns the reason to change it.
 - Minimize unnecessary dependencies and preserve intended layer boundaries.
@@ -87,6 +97,8 @@ CodingStandards.prescribes(`- Colocation is king: keep behavior near the feature
 - Use names that expose domain meaning at the point of use.
 - Use Tailwind for static styling.
 - Reserve inline style for truly runtime-calculated values or renderer-constrained values.
+- For React rerender diagnosis, prefer the shared global render-counter utility over ad hoc console logging or bespoke per-component debug scaffolding.
+- Render instrumentation should stay cheap, use explicit string names, and keep render counts separate from non-render event counts.
 - Comments should explain intent, invariant, or tradeoff when the code cannot carry that load itself.`);
 
 when(Code.lacks(Move.colocateByChange))
@@ -103,3 +115,6 @@ when(Code.crosses("module or layer boundaries for convenience reuse"))
 
 when(Code.uses("inline style for statically knowable presentation"))
   .then(CodingStandards.encounters(Failure.staticStyleEscape));
+
+when(Code.uses("console logging as the primary rerender counter"))
+  .then(CodingStandards.encounters(Failure.noisyRenderInstrumentation));
