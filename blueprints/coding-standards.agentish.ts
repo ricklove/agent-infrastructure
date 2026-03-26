@@ -96,6 +96,7 @@ CodingStandards.prescribes(`- Colocation is king: keep behavior near the feature
 - Make invalid or ambiguous state harder to represent than valid state.
 - Use names that expose domain meaning at the point of use.
 - Use Tailwind for static styling.
+- Keep import ordering and statically knowable Tailwind class ordering in the repository's canonical Biome surface when that automation is enabled.
 - Reserve inline style for truly runtime-calculated values or renderer-constrained values.
 - For React rerender diagnosis, prefer the shared global render-counter utility over ad hoc console logging or bespoke per-component debug scaffolding.
 - Render instrumentation should stay cheap, use explicit string names, and keep render counts separate from non-render event counts.
