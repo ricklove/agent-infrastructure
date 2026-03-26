@@ -4,9 +4,11 @@ import { agentSwarmDashboardUiPlugin } from "@agent-infrastructure/agent-swarm-u
 import type { DashboardFeatureUiPlugin } from "@agent-infrastructure/dashboard-plugin"
 import { dashboardTerminalUiPlugin } from "@agent-infrastructure/dashboard-terminal-ui/ui-plugin"
 import { projectsDashboardUiPlugin } from "@agent-infrastructure/projects-ui/ui-plugin"
+import { uiDesignCanvasDashboardUiPlugin } from "@agent-infrastructure/ui-design-canvas-ui/ui-plugin"
 
 export const dashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
   agentSwarmDashboardUiPlugin,
+  uiDesignCanvasDashboardUiPlugin,
   projectsDashboardUiPlugin,
   agentChatDashboardUiPlugin,
   agentGraphDashboardUiPlugin,

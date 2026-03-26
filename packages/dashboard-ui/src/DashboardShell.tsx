@@ -155,6 +155,27 @@ function ProjectsIcon(props: { className?: string }) {
   )
 }
 
+function DesignIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <path d="M4 18.5 10.5 12" />
+      <path d="M8 5h9a2 2 0 0 1 2 2v9" />
+      <path d="M5 8.5V5h3.5" />
+      <path d="m13 4 7 7" />
+      <path d="M5 19h4.5l8.8-8.8a1.8 1.8 0 0 0 0-2.5l-2-2a1.8 1.8 0 0 0-2.5 0L5 14.5Z" />
+    </svg>
+  )
+}
+
 function CopyIcon(props: { className?: string }) {
   useRenderCounter("CopyIcon")
   return (
@@ -219,6 +240,7 @@ const featureIconMap: Record<
   (props: { className?: string }) => JSX.Element
 > = {
   swarm: SwarmIcon,
+  design: DesignIcon,
   projects: ProjectsIcon,
   chat: ChatIcon,
   graph: GraphIcon,
