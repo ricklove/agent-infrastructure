@@ -55,12 +55,14 @@ TechStack.prescribes(`- TypeScript is the canonical implementation language for 
 - Tailwind CSS is the canonical static styling system for browser UI.
 - React Flow is the canonical graph-canvas rendering surface where graph interaction is required.
 - Biome is the canonical formatter and linter surface where repository formatting or lint automation is defined.
+- Biome should own canonical import ordering and static Tailwind class ordering where repository automation supports those normalizations safely.
 - agent-browser is the canonical browser-verification tool on this machine for UI behavior and visual verification.
 - New implementation should prefer the canonical stack over introducing alternate frameworks, styling systems, build tools, or verification surfaces without an explicit blueprint change.
 - Stack exceptions belong here before they spread into implementation.`);
 
 TechStack.defines(`- Canonical means default, preferred, and expected for new work unless an explicit blueprint closes a different choice.
 - TailwindCss means static presentation should be expressed through the repository styling system rather than ad hoc CSS or inline-style drift.
+- Biome means the repository's code-shaping automation surface for formatting, linting, import organization, and other explicitly enabled safe canonicalization passes.
 - AgentBrowser means the browser-verification surface expected by development-process for responsive and live UI validation on this machine.
 - Stack exception means a materially different technology choice that changes authoring, runtime, styling, verification, or repository maintenance expectations.`);
 
