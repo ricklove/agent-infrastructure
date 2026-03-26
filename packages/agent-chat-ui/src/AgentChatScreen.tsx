@@ -236,7 +236,7 @@ const minCollapsedActivityClusterSize = 3
 const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
 const websocketWarningDelayMs = 5_000
 
-function IconButton(props: {
+const IconButton = memo(function IconButton(props: {
   label: string
   title?: string
   disabled?: boolean
@@ -264,9 +264,9 @@ function IconButton(props: {
       {props.children}
     </button>
   )
-}
+})
 
-function SessionsIcon() {
+const SessionsIcon = memo(function SessionsIcon() {
   useRenderCounter("SessionsIcon")
   return (
     <svg
@@ -280,9 +280,9 @@ function SessionsIcon() {
       <rect x="3.5" y="14.5" width="17" height="5" rx="1.5" />
     </svg>
   )
-}
+})
 
-function MenuIcon() {
+const MenuIcon = memo(function MenuIcon() {
   useRenderCounter("MenuIcon")
   return (
     <svg
@@ -297,9 +297,9 @@ function MenuIcon() {
       <path d="M4 17h16" />
     </svg>
   )
-}
+})
 
-function SendIcon() {
+const SendIcon = memo(function SendIcon() {
   useRenderCounter("SendIcon")
   return (
     <svg
@@ -313,9 +313,9 @@ function SendIcon() {
       <path d="M11.5 13.5 20 4" />
     </svg>
   )
-}
+})
 
-function StopIcon() {
+const StopIcon = memo(function StopIcon() {
   useRenderCounter("StopIcon")
   return (
     <svg
@@ -328,9 +328,9 @@ function StopIcon() {
       <rect x="6.5" y="6.5" width="11" height="11" rx="2" />
     </svg>
   )
-}
+})
 
-function PlusIcon() {
+const PlusIcon = memo(function PlusIcon() {
   useRenderCounter("PlusIcon")
   return (
     <svg
@@ -344,9 +344,9 @@ function PlusIcon() {
       <path d="M5 12h14" />
     </svg>
   )
-}
+})
 
-function EditIcon() {
+const EditIcon = memo(function EditIcon() {
   useRenderCounter("EditIcon")
   return (
     <svg
@@ -360,9 +360,9 @@ function EditIcon() {
       <path d="m12.5 7.5 4 4" />
     </svg>
   )
-}
+})
 
-function ArchiveIcon() {
+const ArchiveIcon = memo(function ArchiveIcon() {
   useRenderCounter("ArchiveIcon")
   return (
     <svg
@@ -377,9 +377,9 @@ function ArchiveIcon() {
       <path d="M6.5 9.5h11v9a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-9Z" />
     </svg>
   )
-}
+})
 
-function RestoreIcon() {
+const RestoreIcon = memo(function RestoreIcon() {
   useRenderCounter("RestoreIcon")
   return (
     <svg
@@ -394,9 +394,9 @@ function RestoreIcon() {
       <path d="M9.5 12h5" />
     </svg>
   )
-}
+})
 
-function SearchIcon() {
+const SearchIcon = memo(function SearchIcon() {
   useRenderCounter("SearchIcon")
   return (
     <svg
@@ -410,9 +410,9 @@ function SearchIcon() {
       <path d="m16 16 4 4" />
     </svg>
   )
-}
+})
 
-function ScrollToBottomIcon() {
+const ScrollToBottomIcon = memo(function ScrollToBottomIcon() {
   useRenderCounter("ScrollToBottomIcon")
   return (
     <svg
@@ -427,7 +427,7 @@ function ScrollToBottomIcon() {
       <path d="M6 20h12" />
     </svg>
   )
-}
+})
 
 function formatTime(timestampMs: number) {
   return new Date(timestampMs).toLocaleString(undefined, {
@@ -1551,6 +1551,260 @@ function sessionCardTone(
         : "border-white/10 bg-slate-900/70 hover:border-white/20"
   }
 }
+
+function sessionCardRuntimeNowMs(session: SessionSummary, nowMs: number) {
+  return session.activity.status === "running" ? nowMs : 0
+}
+
+type SessionCardProps = {
+  session: SessionSummary
+  isActive: boolean
+  processTitle: string | null
+  runtimeNowMs: number
+  onActivateSession: (sessionId: string) => void
+}
+
+type MainSessionCardProps = SessionCardProps & {
+  isRenaming: boolean
+  renameTitle: string
+  renaming: boolean
+  isArchiving: boolean
+  onBeginRename: (sessionId: string, title: string) => void
+  onRenameTitleChange: (value: string) => void
+  onRenameSubmit: () => void
+  onArchiveSession: (sessionId: string) => void
+}
+
+const MainSessionCard = memo(
+  function MainSessionCard(props: MainSessionCardProps) {
+    useRenderCounter("MainSessionCard")
+    const workerSummary = summarizeSessionWorkerState(
+      props.session.activity,
+      props.session.queuedMessageCount,
+      props.runtimeNowMs,
+    )
+    const watchdogLabel = watchdogAttentionLabel(props.session.watchdogState)
+
+    return (
+      <div
+        className={`relative rounded-2xl border px-3 py-3 transition ${sessionCardTone(
+          props.session.activity,
+          props.isActive,
+          props.session.archived,
+        )}`}
+      >
+        {!props.isRenaming ? (
+          <button
+            type="button"
+            aria-label={`Open chat ${props.session.title}`}
+            onClick={() => props.onActivateSession(props.session.id)}
+            className="absolute inset-0 z-10 rounded-2xl"
+          />
+        ) : null}
+        <div className="relative flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 text-left">
+            <div className="flex items-center gap-2">
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${activityTone(
+                  props.session.activity,
+                )}`}
+              >
+                {activityLabel(props.session.activity)}
+              </span>
+              <span className="text-[11px] text-slate-500">
+                {props.session.messageCount}
+              </span>
+            </div>
+            <p className="mt-2 truncate text-base font-semibold leading-5 text-white">
+              {props.session.title}
+            </p>
+            <p className="mt-1 truncate text-[11px] text-slate-500">
+              {props.session.providerKind} · {props.session.modelRef}
+            </p>
+            {props.processTitle ? (
+              <p className="mt-2 truncate text-[11px] text-cyan-200/80">
+                {props.processTitle}
+              </p>
+            ) : null}
+          </div>
+          <div className="relative z-20 flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Rename chat"
+              title="Rename Chat"
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onBeginRename(props.session.id, props.session.title)
+              }}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300"
+            >
+              <EditIcon />
+            </button>
+            <button
+              type="button"
+              aria-label="Archive chat"
+              title="Archive Chat"
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onArchiveSession(props.session.id)
+              }}
+              disabled={props.isArchiving}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ArchiveIcon />
+            </button>
+          </div>
+        </div>
+        {props.isRenaming ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              props.onRenameSubmit()
+            }}
+            className="relative z-20 mt-3 flex gap-2"
+          >
+            <input
+              value={props.renameTitle}
+              onChange={(event) =>
+                props.onRenameTitleChange(event.target.value)
+              }
+              className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
+            />
+            <button
+              type="submit"
+              disabled={
+                props.renaming ||
+                !props.renameTitle.trim() ||
+                props.renameTitle.trim() === props.session.title
+              }
+              className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {props.renaming ? "Saving..." : "Save"}
+            </button>
+          </form>
+        ) : null}
+        <p className="mt-3 truncate text-sm text-slate-300">
+          {props.session.preview ?? "No messages yet"}
+        </p>
+        <p className="mt-2 text-xs text-slate-400">
+          {workerSummary.join(" · ")}
+        </p>
+        {watchdogLabel ? (
+          <p className="mt-2 text-xs text-amber-200">{watchdogLabel}</p>
+        ) : null}
+        <p className="mt-2 truncate text-[11px] text-slate-500">
+          {props.session.cwd}
+        </p>
+      </div>
+    )
+  },
+  (previousProps, nextProps) =>
+    previousProps.session === nextProps.session &&
+    previousProps.isActive === nextProps.isActive &&
+    previousProps.processTitle === nextProps.processTitle &&
+    previousProps.runtimeNowMs === nextProps.runtimeNowMs &&
+    previousProps.isRenaming === nextProps.isRenaming &&
+    previousProps.renameTitle === nextProps.renameTitle &&
+    previousProps.renaming === nextProps.renaming &&
+    previousProps.isArchiving === nextProps.isArchiving &&
+    previousProps.onActivateSession === nextProps.onActivateSession &&
+    previousProps.onBeginRename === nextProps.onBeginRename &&
+    previousProps.onRenameTitleChange === nextProps.onRenameTitleChange &&
+    previousProps.onRenameSubmit === nextProps.onRenameSubmit &&
+    previousProps.onArchiveSession === nextProps.onArchiveSession,
+)
+
+type ArchivedSessionCardProps = SessionCardProps & {
+  isArchiving: boolean
+  onRestoreSession: (sessionId: string) => void
+}
+
+const ArchivedSessionCard = memo(
+  function ArchivedSessionCard(props: ArchivedSessionCardProps) {
+    useRenderCounter("ArchivedSessionCard")
+    const workerSummary = summarizeSessionWorkerState(
+      props.session.activity,
+      props.session.queuedMessageCount,
+      props.runtimeNowMs,
+    )
+    const watchdogLabel = watchdogAttentionLabel(props.session.watchdogState)
+
+    return (
+      <div
+        className={`relative rounded-2xl border px-3 py-3 transition ${sessionCardTone(
+          props.session.activity,
+          props.isActive,
+          true,
+        )}`}
+      >
+        <button
+          type="button"
+          aria-label={`Open chat ${props.session.title}`}
+          onClick={() => props.onActivateSession(props.session.id)}
+          className="absolute inset-0 z-10 rounded-2xl"
+        />
+        <div className="relative flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 text-left">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-cyan-300/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+                archived
+              </span>
+              <span className="text-[11px] text-slate-500">
+                {props.session.messageCount}
+              </span>
+            </div>
+            <p className="mt-2 truncate text-base font-semibold text-white">
+              {props.session.title}
+            </p>
+            <p className="mt-1 truncate text-[11px] text-slate-500">
+              {props.session.providerKind} · {props.session.modelRef}
+            </p>
+            {props.processTitle ? (
+              <p className="mt-2 truncate text-[11px] text-cyan-200/80">
+                {props.processTitle}
+              </p>
+            ) : null}
+          </div>
+          <div className="relative z-20 flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Restore chat"
+              title="Restore Chat"
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onRestoreSession(props.session.id)
+              }}
+              disabled={props.isArchiving}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RestoreIcon />
+            </button>
+          </div>
+        </div>
+        <p className="mt-3 truncate text-sm text-slate-300">
+          {props.session.preview ?? "No messages yet"}
+        </p>
+        <p className="mt-3 text-xs text-slate-400">
+          {workerSummary.join(" · ")}
+        </p>
+        {watchdogLabel ? (
+          <p className="mt-2 text-xs text-amber-200">{watchdogLabel}</p>
+        ) : null}
+        <p className="mt-2 truncate text-[11px] text-slate-500">
+          {props.session.cwd}
+        </p>
+      </div>
+    )
+  },
+  (previousProps, nextProps) =>
+    previousProps.session === nextProps.session &&
+    previousProps.isActive === nextProps.isActive &&
+    previousProps.processTitle === nextProps.processTitle &&
+    previousProps.runtimeNowMs === nextProps.runtimeNowMs &&
+    previousProps.isArchiving === nextProps.isArchiving &&
+    previousProps.onActivateSession === nextProps.onActivateSession &&
+    previousProps.onRestoreSession === nextProps.onRestoreSession,
+)
 
 export function AgentChatScreen(props: AgentChatScreenProps) {
   useRenderCounter("AgentChatScreen")
@@ -2718,53 +2972,82 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setMobileSessionsOpen(false)
   }, [])
 
-  async function setSessionArchived(sessionId: string, archived: boolean) {
-    setArchivingSessionId(sessionId)
-    setError("")
+  const setSessionArchived = useCallback(
+    async (sessionId: string, archived: boolean) => {
+      setArchivingSessionId(sessionId)
+      setError("")
 
-    try {
-      const response = await apiFetch(
-        `${props.apiRootUrl}/sessions/${sessionId}`,
-        {
-          method: "PATCH",
-          headers: {
-            "content-type": "application/json",
+      try {
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${sessionId}`,
+          {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              archived,
+            }),
           },
-          body: JSON.stringify({
-            archived,
-          }),
-        },
-      )
-      const payload = (await response.json()) as SessionSnapshotResponse & {
-        error?: string
-      }
-      if (!response.ok || !payload.ok) {
-        throw new Error(
-          payload.error ?? (archived ? "Archive failed." : "Restore failed."),
         )
-      }
+        const payload = (await response.json()) as SessionSnapshotResponse & {
+          error?: string
+        }
+        if (!response.ok || !payload.ok) {
+          throw new Error(
+            payload.error ?? (archived ? "Archive failed." : "Restore failed."),
+          )
+        }
 
-      mergeSession(payload.session)
-      if (payload.session.id === activeSessionId) {
-        setMessages(payload.messages)
-        setQueuedMessages(payload.queuedMessages)
-        setActivity(payload.activity)
+        mergeSession(payload.session)
+        if (payload.session.id === activeSessionId) {
+          setMessages(payload.messages)
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+        }
+        if (!archived) {
+          setShowArchivedSessions(true)
+        }
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : archived
+              ? "Archive failed."
+              : "Restore failed.",
+        )
+      } finally {
+        setArchivingSessionId(null)
       }
-      if (!archived) {
-        setShowArchivedSessions(true)
-      }
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : archived
-            ? "Archive failed."
-            : "Restore failed.",
-      )
-    } finally {
-      setArchivingSessionId(null)
-    }
-  }
+    },
+    [activeSessionId, mergeSession, props.apiRootUrl],
+  )
+
+  const beginRenamingSession = useCallback(
+    (sessionId: string, title: string) => {
+      setRenamingSessionId(sessionId)
+      setRenameTitle(title)
+    },
+    [],
+  )
+
+  const updateRenameTitle = useCallback((value: string) => {
+    setRenameTitle(value)
+  }, [])
+
+  const archiveSession = useCallback(
+    (sessionId: string) => {
+      void setSessionArchived(sessionId, true)
+    },
+    [setSessionArchived],
+  )
+
+  const restoreSession = useCallback(
+    (sessionId: string) => {
+      void setSessionArchived(sessionId, false)
+    },
+    [setSessionArchived],
+  )
 
   async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -2963,49 +3246,56 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     ],
   )
 
-  async function renameSession(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  const submitRenameSession = useCallback(() => {
     if (!renamingSessionId || !renameTitle.trim()) {
       return
     }
 
-    setRenaming(true)
-    setError("")
-    try {
-      const response = await apiFetch(
-        `${props.apiRootUrl}/sessions/${renamingSessionId}`,
-        {
-          method: "PATCH",
-          headers: {
-            "content-type": "application/json",
+    void (async () => {
+      setRenaming(true)
+      setError("")
+      try {
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${renamingSessionId}`,
+          {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              title: renameTitle,
+            }),
           },
-          body: JSON.stringify({
-            title: renameTitle,
-          }),
-        },
-      )
-      const payload = (await response.json()) as SessionSnapshotResponse & {
-        error?: string
+        )
+        const payload = (await response.json()) as SessionSnapshotResponse & {
+          error?: string
+        }
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error ?? "Rename failed.")
+        }
+        mergeSession(payload.session)
+        if (payload.session.id === activeSessionId) {
+          setMessages(payload.messages)
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+        }
+        setRenamingSessionId(null)
+        setRenameTitle("")
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error ? nextError.message : "Rename failed.",
+        )
+      } finally {
+        setRenaming(false)
       }
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? "Rename failed.")
-      }
-      mergeSession(payload.session)
-      if (payload.session.id === activeSessionId) {
-        setMessages(payload.messages)
-        setQueuedMessages(payload.queuedMessages)
-        setActivity(payload.activity)
-      }
-      setRenamingSessionId(null)
-      setRenameTitle("")
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error ? nextError.message : "Rename failed.",
-      )
-    } finally {
-      setRenaming(false)
-    }
-  }
+    })()
+  }, [
+    activeSessionId,
+    mergeSession,
+    props.apiRootUrl,
+    renameTitle,
+    renamingSessionId,
+  ])
 
   const sendMessage = useCallback(
     async (payload: ComposerSubmitPayload) => {
@@ -3421,135 +3711,27 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         </p>
                       </div>
                       {mainSessions.map((session) => (
-                        <div
+                        <MainSessionCard
                           key={session.id}
-                          className={`relative rounded-2xl border px-3 py-3 transition ${sessionCardTone(
-                            session.activity,
-                            session.id === activeSessionId,
-                            session.archived,
-                          )}`}
-                        >
-                          {renamingSessionId !== session.id ? (
-                            <button
-                              type="button"
-                              aria-label={`Open chat ${session.title}`}
-                              onClick={() =>
-                                activateSessionFromList(session.id)
-                              }
-                              className="absolute inset-0 z-10 rounded-2xl"
-                            />
-                          ) : null}
-                          <div className="relative flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1 text-left">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${
-                                    session.activity.status === "running"
-                                      ? "bg-emerald-300/15 text-emerald-100"
-                                      : session.activity.status === "queued"
-                                        ? "bg-amber-300/15 text-amber-100"
-                                        : session.activity.status === "error"
-                                          ? "bg-rose-300/15 text-rose-100"
-                                          : "bg-white/10 text-slate-300"
-                                  }`}
-                                >
-                                  {activityLabel(session.activity)}
-                                </span>
-                                <span className="text-[11px] text-slate-500">
-                                  {session.messageCount}
-                                </span>
-                              </div>
-                              <p className="mt-2 truncate text-base font-semibold leading-5 text-white">
-                                {session.title}
-                              </p>
-                              <p className="mt-1 truncate text-[11px] text-slate-500">
-                                {session.providerKind} · {session.modelRef}
-                              </p>
-                              {processBlueprintTitle(
-                                processBlueprints,
-                                session.processBlueprintId,
-                              ) ? (
-                                <p className="mt-2 truncate text-[11px] text-cyan-200/80">
-                                  {processBlueprintTitle(
-                                    processBlueprints,
-                                    session.processBlueprintId,
-                                  )}
-                                </p>
-                              ) : null}
-                            </div>
-                            <div className="relative z-20 flex items-center gap-1">
-                              <button
-                                type="button"
-                                aria-label="Rename chat"
-                                title="Rename Chat"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  setRenamingSessionId(session.id)
-                                  setRenameTitle(session.title)
-                                }}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300"
-                              >
-                                <EditIcon />
-                              </button>
-                              <button
-                                type="button"
-                                aria-label="Archive chat"
-                                title="Archive Chat"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  void setSessionArchived(session.id, true)
-                                }}
-                                disabled={archivingSessionId === session.id}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <ArchiveIcon />
-                              </button>
-                            </div>
-                          </div>
-                          {renamingSessionId === session.id ? (
-                            <form
-                              onSubmit={renameSession}
-                              className="relative z-20 mt-3 flex gap-2"
-                            >
-                              <input
-                                value={renameTitle}
-                                onChange={(event) =>
-                                  setRenameTitle(event.target.value)
-                                }
-                                className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
-                              />
-                              <button
-                                type="submit"
-                                disabled={
-                                  renaming ||
-                                  !renameTitle.trim() ||
-                                  renameTitle.trim() === session.title
-                                }
-                                className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {renaming ? "Saving..." : "Save"}
-                              </button>
-                            </form>
-                          ) : null}
-                          <p className="mt-3 truncate text-sm text-slate-300">
-                            {session.preview ?? "No messages yet"}
-                          </p>
-                          <p className="mt-2 text-xs text-slate-400">
-                            {summarizeSessionWorkerState(
-                              session.activity,
-                              session.queuedMessageCount,
-                              nowMs,
-                            ).join(" · ")}
-                          </p>
-                          {watchdogAttentionLabel(session.watchdogState) ? (
-                            <p className="mt-2 text-xs text-amber-200">
-                              {watchdogAttentionLabel(session.watchdogState)}
-                            </p>
-                          ) : null}
-                          <p className="mt-2 truncate text-[11px] text-slate-500">
-                            {session.cwd}
-                          </p>
-                        </div>
+                          session={session}
+                          isActive={session.id === activeSessionId}
+                          processTitle={processBlueprintTitle(
+                            processBlueprints,
+                            session.processBlueprintId,
+                          )}
+                          runtimeNowMs={sessionCardRuntimeNowMs(session, nowMs)}
+                          isRenaming={renamingSessionId === session.id}
+                          renameTitle={
+                            renamingSessionId === session.id ? renameTitle : ""
+                          }
+                          renaming={renaming}
+                          isArchiving={archivingSessionId === session.id}
+                          onActivateSession={activateSessionFromList}
+                          onBeginRename={beginRenamingSession}
+                          onRenameTitleChange={updateRenameTitle}
+                          onRenameSubmit={submitRenameSession}
+                          onArchiveSession={archiveSession}
+                        />
                       ))}
                     </div>
                   ) : null}
@@ -3572,85 +3754,22 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         </div>
                       ) : (
                         archivedSessions.map((session) => (
-                          <div
+                          <ArchivedSessionCard
                             key={session.id}
-                            className={`relative rounded-2xl border px-3 py-3 transition ${sessionCardTone(
-                              session.activity,
-                              session.id === activeSessionId,
-                              true,
-                            )}`}
-                          >
-                            <button
-                              type="button"
-                              aria-label={`Open chat ${session.title}`}
-                              onClick={() =>
-                                activateSessionFromList(session.id)
-                              }
-                              className="absolute inset-0 z-10 rounded-2xl"
-                            />
-                            <div className="relative flex items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1 text-left">
-                                <div className="flex items-center gap-2">
-                                  <span className="rounded-full bg-cyan-300/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                                    archived
-                                  </span>
-                                  <span className="text-[11px] text-slate-500">
-                                    {session.messageCount}
-                                  </span>
-                                </div>
-                                <p className="mt-2 truncate text-base font-semibold text-white">
-                                  {session.title}
-                                </p>
-                                <p className="mt-1 truncate text-[11px] text-slate-500">
-                                  {session.providerKind} · {session.modelRef}
-                                </p>
-                                {processBlueprintTitle(
-                                  processBlueprints,
-                                  session.processBlueprintId,
-                                ) ? (
-                                  <p className="mt-2 truncate text-[11px] text-cyan-200/80">
-                                    {processBlueprintTitle(
-                                      processBlueprints,
-                                      session.processBlueprintId,
-                                    )}
-                                  </p>
-                                ) : null}
-                              </div>
-                              <div className="relative z-20 flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  aria-label="Restore chat"
-                                  title="Restore Chat"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    void setSessionArchived(session.id, false)
-                                  }}
-                                  disabled={archivingSessionId === session.id}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  <RestoreIcon />
-                                </button>
-                              </div>
-                            </div>
-                            <p className="mt-3 truncate text-sm text-slate-300">
-                              {session.preview ?? "No messages yet"}
-                            </p>
-                            <p className="mt-3 text-xs text-slate-400">
-                              {summarizeSessionWorkerState(
-                                session.activity,
-                                session.queuedMessageCount,
-                                nowMs,
-                              ).join(" · ")}
-                            </p>
-                            {watchdogAttentionLabel(session.watchdogState) ? (
-                              <p className="mt-2 text-xs text-amber-200">
-                                {watchdogAttentionLabel(session.watchdogState)}
-                              </p>
-                            ) : null}
-                            <p className="mt-2 truncate text-[11px] text-slate-500">
-                              {session.cwd}
-                            </p>
-                          </div>
+                            session={session}
+                            isActive={session.id === activeSessionId}
+                            processTitle={processBlueprintTitle(
+                              processBlueprints,
+                              session.processBlueprintId,
+                            )}
+                            runtimeNowMs={sessionCardRuntimeNowMs(
+                              session,
+                              nowMs,
+                            )}
+                            isArchiving={archivingSessionId === session.id}
+                            onActivateSession={activateSessionFromList}
+                            onRestoreSession={restoreSession}
+                          />
                         ))
                       )}
                     </div>

@@ -239,6 +239,7 @@ CurrentReality.backendOwnedWatchdogContinuity.means(`
 `);
 
 CurrentReality.sessionListWorkflowPolishGap.means(`
+- the session list now renders through memoized main and archived session-card boundaries, so ordinary thread and composer churn no longer re-renders every card action button in the rail
 - session-list card hierarchy and spacing are still looser than the intended compact workflow surface
 - titles, status color, and model metadata do not yet reflect the intended stronger visual hierarchy
 - button and icon chrome still costs too much row space in the session list
