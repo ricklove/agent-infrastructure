@@ -1,4 +1,4 @@
-import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin";
+import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin"
 
 export const agentSwarmDashboardPlugin: DashboardFeaturePlugin = {
   id: "swarm",
@@ -19,4 +19,4 @@ export const agentSwarmDashboardPlugin: DashboardFeaturePlugin = {
     healthPath: "/health",
     startupPolicy: "always",
   },
-};
+}

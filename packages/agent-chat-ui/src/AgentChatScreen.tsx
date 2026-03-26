@@ -1,15 +1,15 @@
 import {
+  type ClipboardEvent,
+  type FormEvent,
   Fragment,
+  type KeyboardEvent,
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ClipboardEvent,
-  type FormEvent,
-  type KeyboardEvent,
-  type ReactNode,
 } from "react"
 
 type ProviderKind =
@@ -84,7 +84,9 @@ type SessionMessage = {
     | "activity"
   replyToMessageId: string | null
   providerSeenAtMs: number | null
-  content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>
+  content: Array<
+    { type: "text"; text: string } | { type: "image"; url: string }
+  >
   createdAtMs: number
 }
 
@@ -220,7 +222,8 @@ const sessionStorageKey = "agent-infrastructure.dashboard.session"
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
 const defaultSessionDirectory = "/home/ec2-user/workspace"
 const draftStorageKeyPrefix = "agent-infrastructure.agent-chat.draft."
-const sessionRailWidthStorageKey = "agent-infrastructure.agent-chat.session-rail-width"
+const sessionRailWidthStorageKey =
+  "agent-infrastructure.agent-chat.session-rail-width"
 const defaultSessionRailWidth = 352
 const minSessionRailWidth = 280
 const maxSessionRailWidth = 520
@@ -261,7 +264,13 @@ function IconButton(props: {
 
 function SessionsIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <rect x="3.5" y="4.5" width="17" height="5" rx="1.5" />
       <rect x="3.5" y="14.5" width="17" height="5" rx="1.5" />
     </svg>
@@ -270,7 +279,13 @@ function SessionsIcon() {
 
 function MenuIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <path d="M4 7h16" />
       <path d="M4 12h16" />
       <path d="M4 17h16" />
@@ -280,7 +295,13 @@ function MenuIcon() {
 
 function SendIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <path d="M4 11.5 20 4l-4.5 16-3.5-6L4 11.5Z" />
       <path d="M11.5 13.5 20 4" />
     </svg>
@@ -289,7 +310,13 @@ function SendIcon() {
 
 function StopIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <rect x="6.5" y="6.5" width="11" height="11" rx="2" />
     </svg>
   )
@@ -297,7 +324,13 @@ function StopIcon() {
 
 function PlusIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <path d="M12 5v14" />
       <path d="M5 12h14" />
     </svg>
@@ -306,7 +339,13 @@ function PlusIcon() {
 
 function EditIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <path d="M4 20h4l9.5-9.5-4-4L4 16v4Z" />
       <path d="m12.5 7.5 4 4" />
     </svg>
@@ -315,7 +354,13 @@ function EditIcon() {
 
 function ArchiveIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <path d="M4.5 7.5h15" />
       <rect x="3.5" y="5" width="17" height="4" rx="1.5" />
       <path d="M6.5 9.5h11v9a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-9Z" />
@@ -325,7 +370,13 @@ function ArchiveIcon() {
 
 function RestoreIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <path d="M8 7H4v4" />
       <path d="M4.5 10.5a7.5 7.5 0 1 0 2.1-5" />
       <path d="M9.5 12h5" />
@@ -335,7 +386,13 @@ function RestoreIcon() {
 
 function SearchIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <circle cx="11" cy="11" r="6.5" />
       <path d="m16 16 4 4" />
     </svg>
@@ -344,7 +401,13 @@ function SearchIcon() {
 
 function ScrollToBottomIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+    >
       <path d="M12 4v12" />
       <path d="m7 12 5 5 5-5" />
       <path d="M6 20h12" />
@@ -401,10 +464,14 @@ function sessionMatchesSearch(session: SessionSummary, query: string) {
 }
 
 function summarizeMessageContent(
-  content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>,
+  content: Array<
+    { type: "text"; text: string } | { type: "image"; url: string }
+  >,
   maxLength = 88,
 ) {
-  const firstText = content.find((block) => block.type === "text" && block.text.trim())
+  const firstText = content.find(
+    (block) => block.type === "text" && block.text.trim(),
+  )
   if (firstText?.type === "text") {
     return clipText(firstText.text, maxLength)
   }
@@ -437,16 +504,6 @@ function readClipboardImage(file: File) {
     }
     reader.readAsDataURL(file)
   })
-}
-
-function insertTextAtSelection(
-  textarea: HTMLTextAreaElement,
-  currentValue: string,
-  insertedText: string,
-) {
-  const start = textarea.selectionStart ?? currentValue.length
-  const end = textarea.selectionEnd ?? currentValue.length
-  return `${currentValue.slice(0, start)}${insertedText}${currentValue.slice(end)}`
 }
 
 function readStoredSessionToken(): string {
@@ -493,7 +550,9 @@ function readSessionRailWidth() {
   if (typeof window === "undefined") {
     return defaultSessionRailWidth
   }
-  const raw = Number(window.localStorage.getItem(sessionRailWidthStorageKey) ?? "")
+  const raw = Number(
+    window.localStorage.getItem(sessionRailWidthStorageKey) ?? "",
+  )
   if (!Number.isFinite(raw)) {
     return defaultSessionRailWidth
   }
@@ -582,7 +641,10 @@ function processBlueprintTitle(
   if (!processBlueprintId) {
     return null
   }
-  return processBlueprints.find((entry) => entry.id === processBlueprintId)?.title ?? processBlueprintId
+  return (
+    processBlueprints.find((entry) => entry.id === processBlueprintId)?.title ??
+    processBlueprintId
+  )
 }
 
 function watchdogAttentionLabel(watchdogState: SessionWatchdogState) {
@@ -598,7 +660,10 @@ function watchdogAttentionLabel(watchdogState: SessionWatchdogState) {
   return null
 }
 
-function mergeMessagesById(current: SessionMessage[], incoming: SessionMessage[]) {
+function mergeMessagesById(
+  current: SessionMessage[],
+  incoming: SessionMessage[],
+) {
   const next = new Map<string, SessionMessage>()
   for (const message of current) {
     next.set(message.id, message)
@@ -606,7 +671,9 @@ function mergeMessagesById(current: SessionMessage[], incoming: SessionMessage[]
   for (const message of incoming) {
     next.set(message.id, message)
   }
-  return Array.from(next.values()).sort((left, right) => left.createdAtMs - right.createdAtMs)
+  return Array.from(next.values()).sort(
+    (left, right) => left.createdAtMs - right.createdAtMs,
+  )
 }
 
 function threadMessageQueueLabel(message: SessionMessage) {
@@ -693,26 +760,33 @@ function waitingSummaryLabel(
 }
 
 function renderInlineMarkdown(text: string, keyPrefix: string) {
-  return text.split(/(`[^`]+`)/g).filter(Boolean).map((segment, index) => {
-    if (segment.startsWith("`") && segment.endsWith("`") && segment.length >= 2) {
-      return (
-        <code
-          key={`${keyPrefix}-code-${index}`}
-          className="rounded-md bg-slate-950/90 px-1.5 py-0.5 font-mono text-[0.92em] text-cyan-100"
-        >
-          {segment.slice(1, -1)}
-        </code>
-      )
-    }
-    return <Fragment key={`${keyPrefix}-text-${index}`}>{segment}</Fragment>
-  })
+  return text
+    .split(/(`[^`]+`)/g)
+    .filter(Boolean)
+    .map((segment, _index) => {
+      if (
+        segment.startsWith("`") &&
+        segment.endsWith("`") &&
+        segment.length >= 2
+      ) {
+        return (
+          <code
+            key={`${keyPrefix}-code-${segment.slice(1, -1)}`}
+            className="rounded-md bg-slate-950/90 px-1.5 py-0.5 font-mono text-[0.92em] text-cyan-100"
+          >
+            {segment.slice(1, -1)}
+          </code>
+        )
+      }
+      return <Fragment key={`${keyPrefix}-text-${segment}`}>{segment}</Fragment>
+    })
 }
 
 function renderMarkdownParagraph(lines: string[], keyPrefix: string) {
   return lines.map((line, index) => (
-    <Fragment key={`${keyPrefix}-line-${index}`}>
+    <Fragment key={`${keyPrefix}-line-${line}`}>
       {index > 0 ? <br /> : null}
-      {renderInlineMarkdown(line, `${keyPrefix}-${index}`)}
+      {renderInlineMarkdown(line, `${keyPrefix}-${line}`)}
     </Fragment>
   ))
 }
@@ -747,8 +821,14 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
               ? "text-base font-semibold text-slate-100"
               : "text-sm font-semibold uppercase tracking-[0.12em] text-slate-300"
         nodes.push(
-          <p key={`${keyPrefix}-heading-${blockIndex}`} className={headingClass}>
-            {renderInlineMarkdown(headingMatch[2], `${keyPrefix}-heading-${blockIndex}`)}
+          <p
+            key={`${keyPrefix}-heading-${blockIndex}`}
+            className={headingClass}
+          >
+            {renderInlineMarkdown(
+              headingMatch[2],
+              `${keyPrefix}-heading-${blockIndex}`,
+            )}
           </p>,
         )
         blockIndex += 1
@@ -761,9 +841,12 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
             key={`${keyPrefix}-ul-${blockIndex}`}
             className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-disc"
           >
-            {lines.map((line, lineIndex) => (
-              <li key={`${keyPrefix}-ul-${blockIndex}-${lineIndex}`}>
-                {renderInlineMarkdown(line.replace(/^[-*]\s+/, ""), `${keyPrefix}-ul-${blockIndex}-${lineIndex}`)}
+            {lines.map((line) => (
+              <li key={`${keyPrefix}-ul-${blockIndex}-${line}`}>
+                {renderInlineMarkdown(
+                  line.replace(/^[-*]\s+/, ""),
+                  `${keyPrefix}-ul-${blockIndex}-${line}`,
+                )}
               </li>
             ))}
           </ul>,
@@ -778,9 +861,12 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
             key={`${keyPrefix}-ol-${blockIndex}`}
             className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-decimal"
           >
-            {lines.map((line, lineIndex) => (
-              <li key={`${keyPrefix}-ol-${blockIndex}-${lineIndex}`}>
-                {renderInlineMarkdown(line.replace(/^\d+\.\s+/, ""), `${keyPrefix}-ol-${blockIndex}-${lineIndex}`)}
+            {lines.map((line) => (
+              <li key={`${keyPrefix}-ol-${blockIndex}-${line}`}>
+                {renderInlineMarkdown(
+                  line.replace(/^\d+\.\s+/, ""),
+                  `${keyPrefix}-ol-${blockIndex}-${line}`,
+                )}
               </li>
             ))}
           </ol>,
@@ -801,7 +887,8 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
     }
   }
 
-  while ((match = codeBlockPattern.exec(normalized))) {
+  match = codeBlockPattern.exec(normalized)
+  while (match) {
     pushTextBlocks(normalized.slice(lastIndex, match.index))
     const language = match[1]?.trim() ?? ""
     const code = match[2]?.replace(/\n$/, "") ?? ""
@@ -822,6 +909,7 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
     )
     blockIndex += 1
     lastIndex = codeBlockPattern.lastIndex
+    match = codeBlockPattern.exec(normalized)
   }
 
   pushTextBlocks(normalized.slice(lastIndex))
@@ -840,7 +928,9 @@ function MessageImageAsset({ path }: { path: string }) {
       try {
         const response = await apiFetch(path)
         if (!response.ok) {
-          throw new Error(`Image request failed with status ${response.status}.`)
+          throw new Error(
+            `Image request failed with status ${response.status}.`,
+          )
         }
 
         const blob = await response.blob()
@@ -859,7 +949,9 @@ function MessageImageAsset({ path }: { path: string }) {
         }
 
         setAssetUrl("")
-        setError(nextError instanceof Error ? nextError.message : "Image unavailable.")
+        setError(
+          nextError instanceof Error ? nextError.message : "Image unavailable.",
+        )
       }
     }
 
@@ -885,7 +977,9 @@ function MessageImageAsset({ path }: { path: string }) {
             />
           </a>
         ) : (
-          <div className="text-xs text-slate-400">{error || "Loading image..."}</div>
+          <div className="text-xs text-slate-400">
+            {error || "Loading image..."}
+          </div>
         )}
       </div>
       <div className="border-t border-white/10 px-3 py-2 text-xs text-slate-300">
@@ -927,7 +1021,9 @@ const ComposerPanel = memo(function ComposerPanel(props: {
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
   const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
   const [composerText, setComposerText] = useState("")
-  const [composerImages, setComposerImages] = useState<ComposerImageAttachment[]>([])
+  const [composerImages, setComposerImages] = useState<
+    ComposerImageAttachment[]
+  >([])
 
   useEffect(() => {
     if (!props.activeSession?.id) {
@@ -946,7 +1042,8 @@ const ComposerPanel = memo(function ComposerPanel(props: {
     writeDraft(props.activeSession.id, composerText)
   }, [composerText, props.activeSession?.id])
 
-  const hasComposerContent = composerText.trim().length > 0 || composerImages.length > 0
+  const hasComposerContent =
+    composerText.trim().length > 0 || composerImages.length > 0
 
   const submitComposer = useCallback(async () => {
     if (!props.activeSession || !hasComposerContent) {
@@ -997,13 +1094,21 @@ const ComposerPanel = memo(function ComposerPanel(props: {
         props.onInterrupt()
       }
     },
-    [props.activity.canInterrupt, props.activity.status, props.interrupting, props.onInterrupt, submitComposer],
+    [
+      props.activity.canInterrupt,
+      props.activity.status,
+      props.interrupting,
+      props.onInterrupt,
+      submitComposer,
+    ],
   )
 
   const handleComposerPaste = useCallback(
     async (event: ClipboardEvent<HTMLTextAreaElement>) => {
       const clipboardItems = Array.from(event.clipboardData.items || [])
-      const imageItems = clipboardItems.filter((item) => item.type.startsWith("image/"))
+      const imageItems = clipboardItems.filter((item) =>
+        item.type.startsWith("image/"),
+      )
       if (imageItems.length === 0) {
         return
       }
@@ -1020,7 +1125,9 @@ const ComposerPanel = memo(function ComposerPanel(props: {
         )
         setComposerImages((current) => [...current, ...nextImages])
       } catch (error) {
-        props.onSetError(error instanceof Error ? error.message : "Image paste failed.")
+        props.onSetError(
+          error instanceof Error ? error.message : "Image paste failed.",
+        )
       }
     },
     [props.onSetError],
@@ -1063,7 +1170,9 @@ const ComposerPanel = memo(function ComposerPanel(props: {
                     type="button"
                     onClick={() =>
                       setComposerImages((current) =>
-                        current.filter((attachment) => attachment.id !== image.id),
+                        current.filter(
+                          (attachment) => attachment.id !== image.id,
+                        ),
                       )
                     }
                     className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300"
@@ -1095,12 +1204,17 @@ const ComposerPanel = memo(function ComposerPanel(props: {
                 {props.threadStatusSummary[0] ?? activityLabel(props.activity)}
               </span>
               {props.threadStatusSummary.slice(1, 2).map((item) => (
-                <span key={item} className="truncate normal-case tracking-normal">
+                <span
+                  key={item}
+                  className="truncate normal-case tracking-normal"
+                >
                   {item}
                 </span>
               ))}
               {props.interrupting ? (
-                <span className="normal-case tracking-normal">interrupting...</span>
+                <span className="normal-case tracking-normal">
+                  interrupting...
+                </span>
               ) : null}
             </div>
           </div>
@@ -1134,13 +1248,17 @@ const ComposerPanel = memo(function ComposerPanel(props: {
               <select
                 ref={quickProcessSelectRef}
                 value={props.quickProcessSelectValue}
-                onChange={(event) => props.onQuickProcessChange(event.target.value)}
+                onChange={(event) =>
+                  props.onQuickProcessChange(event.target.value)
+                }
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault()
                   }
                 }}
-                disabled={!props.activeSession || props.updatingQuickProcessBlueprint}
+                disabled={
+                  !props.activeSession || props.updatingQuickProcessBlueprint
+                }
                 title="Quick Set Process"
                 className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-base outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-xs ${
                   props.processResolutionRequired
@@ -1153,13 +1271,25 @@ const ComposerPanel = memo(function ComposerPanel(props: {
                 }`}
               >
                 {props.processResolutionRequired ? (
-                  <option className="text-slate-950" value={completedProcessResolutionSentinel} disabled>
-                    {props.processTerminalStatus === "blocked" ? "Blocked" : "Done"}
+                  <option
+                    className="text-slate-950"
+                    value={completedProcessResolutionSentinel}
+                    disabled
+                  >
+                    {props.processTerminalStatus === "blocked"
+                      ? "Blocked"
+                      : "Done"}
                   </option>
                 ) : null}
-                <option className="text-slate-950" value="">none</option>
+                <option className="text-slate-950" value="">
+                  none
+                </option>
                 {props.processBlueprints.map((entry) => (
-                  <option className="text-slate-950" key={entry.id} value={entry.id}>
+                  <option
+                    className="text-slate-950"
+                    key={entry.id}
+                    value={entry.id}
+                  >
                     {entry.title}
                   </option>
                 ))}
@@ -1168,20 +1298,28 @@ const ComposerPanel = memo(function ComposerPanel(props: {
                 <>
                   <span
                     className={`pointer-events-none absolute inset-y-0 left-0 flex items-center gap-1.5 px-3 text-sm font-semibold md:text-xs ${
-                      props.processTerminalStatus === "blocked" ? "text-rose-200" : "text-amber-100"
+                      props.processTerminalStatus === "blocked"
+                        ? "text-rose-200"
+                        : "text-amber-100"
                     }`}
                   >
                     <span
                       className={`h-2 w-2 rounded-full ${
-                        props.processTerminalStatus === "blocked" ? "bg-rose-300" : "bg-amber-200"
+                        props.processTerminalStatus === "blocked"
+                          ? "bg-rose-300"
+                          : "bg-amber-200"
                       }`}
                     />
-                    {props.processTerminalStatus === "blocked" ? "Blocked" : "Done"}
+                    {props.processTerminalStatus === "blocked"
+                      ? "Blocked"
+                      : "Done"}
                   </span>
                   <span
                     title={`Choose the next process before sending. The previous process is ${props.processTerminalStatus === "blocked" ? "blocked" : "done"}.`}
                     className={`pointer-events-none absolute inset-y-0 right-8 flex items-center text-sm md:text-xs ${
-                      props.processTerminalStatus === "blocked" ? "text-rose-200" : "text-amber-100"
+                      props.processTerminalStatus === "blocked"
+                        ? "text-rose-200"
+                        : "text-amber-100"
                     }`}
                   >
                     !
@@ -1191,13 +1329,16 @@ const ComposerPanel = memo(function ComposerPanel(props: {
             </div>
           </label>
           <IconButton
-            label={props.settingsOpen ? "Hide settings menu" : "Show settings menu"}
+            label={
+              props.settingsOpen ? "Hide settings menu" : "Show settings menu"
+            }
             title={props.settingsOpen ? "Hide Menu" : "Menu"}
             onClick={props.onToggleSettings}
           >
             <MenuIcon />
           </IconButton>
-          {props.activity.canInterrupt && props.activity.status === "running" ? (
+          {props.activity.canInterrupt &&
+          props.activity.status === "running" ? (
             <IconButton
               label={props.interrupting ? "Interrupting run" : "Interrupt run"}
               title={props.interrupting ? "Interrupting..." : "Interrupt"}
@@ -1229,7 +1370,11 @@ const ComposerPanel = memo(function ComposerPanel(props: {
   )
 })
 
-function sessionCardTone(activity: SessionActivity, active: boolean, archived: boolean) {
+function sessionCardTone(
+  activity: SessionActivity,
+  active: boolean,
+  archived: boolean,
+) {
   if (active) {
     switch (activity.status) {
       case "running":
@@ -1268,12 +1413,21 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const composerDockRef = useRef<HTMLDivElement | null>(null)
   const pendingSessionOpenScrollRef = useRef<string | null>(null)
   const transcriptPinnedToBottomRef = useRef(true)
-  const typingStateRef = useRef<{ sessionId: string; lastSentAt: number; active: boolean } | null>(null)
+  const typingStateRef = useRef<{
+    sessionId: string
+    lastSentAt: number
+    active: boolean
+  } | null>(null)
   const messageElementRefs = useRef(new Map<string, HTMLElement>())
-  const sessionRailResizeRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const sessionRailResizeRef = useRef<{
+    startX: number
+    startWidth: number
+  } | null>(null)
   const queuedMessageCountRef = useRef(0)
   const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
-  const [processBlueprints, setProcessBlueprints] = useState<ProcessBlueprint[]>([])
+  const [processBlueprints, setProcessBlueprints] = useState<
+    ProcessBlueprint[]
+  >([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeSessionId, setActiveSessionId] = useState("")
   const [messages, setMessages] = useState<SessionMessage[]>([])
@@ -1296,7 +1450,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [error, setError] = useState("")
   const [wsWarning, setWsWarning] = useState("")
   const [streamingAssistantText, setStreamingAssistantText] = useState("")
-  const [providerKind, setProviderKind] = useState<ProviderKind>("codex-app-server")
+  const [providerKind, setProviderKind] =
+    useState<ProviderKind>("codex-app-server")
   const [newChatTitle, setNewChatTitle] = useState("")
   const [modelRef, setModelRef] = useState("")
   const [directory, setDirectory] = useState(defaultSessionDirectory)
@@ -1308,28 +1463,43 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     useState<ProviderKind>("codex-app-server")
   const [activeSessionModelRef, setActiveSessionModelRef] = useState("")
   const [activeSessionAuthProfile, setActiveSessionAuthProfile] = useState("")
-  const [activeSessionImageModelRef, setActiveSessionImageModelRef] = useState("")
-  const [activeSessionProcessBlueprintId, setActiveSessionProcessBlueprintId] = useState("")
+  const [activeSessionImageModelRef, setActiveSessionImageModelRef] =
+    useState("")
+  const [activeSessionProcessBlueprintId, setActiveSessionProcessBlueprintId] =
+    useState("")
   const [updatingDirectory, setUpdatingDirectory] = useState(false)
-  const [updatingQuickProcessBlueprint, setUpdatingQuickProcessBlueprint] = useState(false)
+  const [updatingQuickProcessBlueprint, setUpdatingQuickProcessBlueprint] =
+    useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false)
   const [newChatOpen, setNewChatOpen] = useState(false)
   const [sessionListMenuOpen, setSessionListMenuOpen] = useState(false)
   const [showArchivedSessions, setShowArchivedSessions] = useState(false)
   const [sessionSearchQuery, setSessionSearchQuery] = useState("")
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
+    null,
+  )
   const [renameTitle, setRenameTitle] = useState("")
   const [renaming, setRenaming] = useState(false)
-  const [archivingSessionId, setArchivingSessionId] = useState<string | null>(null)
-  const [wsStatus, setWsStatus] = useState<"idle" | "connecting" | "ready" | "error">("idle")
-  const [replyTargetMessageId, setReplyTargetMessageId] = useState<string | null>(null)
+  const [archivingSessionId, setArchivingSessionId] = useState<string | null>(
+    null,
+  )
+  const [wsStatus, setWsStatus] = useState<
+    "idle" | "connecting" | "ready" | "error"
+  >("idle")
+  const [replyTargetMessageId, setReplyTargetMessageId] = useState<
+    string | null
+  >(null)
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const [sessionRailWidth, setSessionRailWidth] = useState(() => readSessionRailWidth())
-  const [expandedReplacedStreamMessageIds, setExpandedReplacedStreamMessageIds] = useState<
-    Record<string, boolean>
-  >({})
-  const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] = useState<Record<string, boolean>>({})
+  const [sessionRailWidth, setSessionRailWidth] = useState(() =>
+    readSessionRailWidth(),
+  )
+  const [
+    expandedReplacedStreamMessageIds,
+    setExpandedReplacedStreamMessageIds,
+  ] = useState<Record<string, boolean>>({})
+  const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] =
+    useState<Record<string, boolean>>({})
   const [composerDockHeight, setComposerDockHeight] = useState(0)
   const [threadViewportMetrics, setThreadViewportMetrics] = useState({
     scrollTop: 0,
@@ -1342,12 +1512,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     [providerKind, providers],
   )
   const activeSessionProvider = useMemo(
-    () => providers.find((entry) => entry.kind === activeSessionProviderKind) ?? null,
+    () =>
+      providers.find((entry) => entry.kind === activeSessionProviderKind) ??
+      null,
     [activeSessionProviderKind, providers],
   )
   const activeSessionProcessBlueprint = useMemo(
     () =>
-      processBlueprints.find((entry) => entry.id === activeSessionProcessBlueprintId) ?? null,
+      processBlueprints.find(
+        (entry) => entry.id === activeSessionProcessBlueprintId,
+      ) ?? null,
     [activeSessionProcessBlueprintId, processBlueprints],
   )
 
@@ -1365,17 +1539,19 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       activeSession.watchdogState.status === "blocked")
       ? activeSession.watchdogState.status
       : null
-  const processResolutionRequired =
-    processTerminalStatus !== null
+  const processResolutionRequired = processTerminalStatus !== null
   const quickProcessSelectValue = processResolutionRequired
     ? completedProcessResolutionSentinel
-    : activeSession?.processBlueprintId ?? ""
+    : (activeSession?.processBlueprintId ?? "")
   const settingsProcessSelectValue = processResolutionRequired
     ? completedProcessResolutionSentinel
     : activeSessionProcessBlueprintId
 
   const visibleSessions = useMemo(
-    () => sessions.filter((session) => sessionMatchesSearch(session, sessionSearchQuery)),
+    () =>
+      sessions.filter((session) =>
+        sessionMatchesSearch(session, sessionSearchQuery),
+      ),
     [sessionSearchQuery, sessions],
   )
 
@@ -1391,7 +1567,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
   const loadSessions = useCallback(async () => {
     const response = await apiFetch(`${props.apiRootUrl}/sessions`)
-    const payload = (await response.json()) as SessionsResponse & { error?: string }
+    const payload = (await response.json()) as SessionsResponse & {
+      error?: string
+    }
     if (!response.ok || !payload.ok || !Array.isArray(payload.sessions)) {
       throw new Error(payload.error ?? "Agent Chat sessions failed to load.")
     }
@@ -1399,7 +1577,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [props.apiRootUrl])
 
   const activeReplyTarget = useMemo(
-    () => messages.find((message) => message.id === replyTargetMessageId) ?? null,
+    () =>
+      messages.find((message) => message.id === replyTargetMessageId) ?? null,
     [messages, replyTargetMessageId],
   )
 
@@ -1502,7 +1681,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const hasVisibleStreamCheckpoint = useMemo(
     () =>
       renderedTranscriptItems.some(
-        (item) => item.type === "message" && item.message.kind === "streamCheckpoint",
+        (item) =>
+          item.type === "message" && item.message.kind === "streamCheckpoint",
       ),
     [renderedTranscriptItems],
   )
@@ -1511,13 +1691,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     () =>
       queuedMessages.filter(
         (message) =>
-          message.role === "system" &&
-          message.providerSeenAtMs === null,
+          message.role === "system" && message.providerSeenAtMs === null,
       ),
     [queuedMessages],
   )
   const compactWaitingSummary = useMemo(
-    () => waitingSummaryLabel(activeSession?.pendingSystemInstruction, queuedSystemMessages),
+    () =>
+      waitingSummaryLabel(
+        activeSession?.pendingSystemInstruction,
+        queuedSystemMessages,
+      ),
     [activeSession?.pendingSystemInstruction, queuedSystemMessages],
   )
   const showScrollToBottomButton = useMemo(() => {
@@ -1529,14 +1712,63 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     )
   }, [threadViewportMetrics])
 
-  const syncCurrentChatSettingsFromSession = useCallback((session: SessionSummary | null) => {
-    setActiveSessionDirectory(session?.cwd ?? "")
-    setActiveSessionProviderKind(session?.providerKind ?? "codex-app-server")
-    setActiveSessionModelRef(session?.modelRef ?? "")
-    setActiveSessionAuthProfile(session?.authProfile ?? "")
-    setActiveSessionImageModelRef(session?.imageModelRef ?? "")
-    setActiveSessionProcessBlueprintId(session?.processBlueprintId ?? "")
-  }, [])
+  const syncCurrentChatSettingsFromSession = useCallback(
+    (session: SessionSummary | null) => {
+      setActiveSessionDirectory(session?.cwd ?? "")
+      setActiveSessionProviderKind(session?.providerKind ?? "codex-app-server")
+      setActiveSessionModelRef(session?.modelRef ?? "")
+      setActiveSessionAuthProfile(session?.authProfile ?? "")
+      setActiveSessionImageModelRef(session?.imageModelRef ?? "")
+      setActiveSessionProcessBlueprintId(session?.processBlueprintId ?? "")
+    },
+    [],
+  )
+
+  const reportTyping = useCallback(
+    async (
+      active: boolean,
+      options?: { force?: boolean; sessionId?: string },
+    ) => {
+      const targetSessionId = options?.sessionId ?? activeSessionId
+      if (!targetSessionId) {
+        return
+      }
+
+      const now = Date.now()
+      const currentState = typingStateRef.current
+      if (
+        !options?.force &&
+        active &&
+        currentState?.sessionId === targetSessionId &&
+        currentState.active &&
+        now - currentState.lastSentAt < typingHeartbeatMs
+      ) {
+        return
+      }
+
+      typingStateRef.current = {
+        sessionId: targetSessionId,
+        lastSentAt: now,
+        active,
+      }
+
+      try {
+        await apiFetch(
+          `${props.apiRootUrl}/sessions/${targetSessionId}/typing`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ active }),
+          },
+        )
+      } catch {
+        // Best-effort presence signal only.
+      }
+    },
+    [activeSessionId, props.apiRootUrl],
+  )
 
   const updateThreadViewportMetrics = useCallback(() => {
     const viewport = transcriptViewportRef.current
@@ -1583,7 +1815,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
     const nearBottom = isViewportNearBottom(viewport)
     transcriptPinnedToBottomRef.current = nearBottom
-    if (nearBottom && activeSessionId && pendingSessionOpenScrollRef.current === activeSessionId) {
+    if (
+      nearBottom &&
+      activeSessionId &&
+      pendingSessionOpenScrollRef.current === activeSessionId
+    ) {
       pendingSessionOpenScrollRef.current = null
     }
     updateThreadViewportMetrics()
@@ -1609,13 +1845,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     [activeSessionId],
   )
 
-  const setMessageElementRef = useCallback((messageId: string, element: HTMLElement | null) => {
-    if (!element) {
-      messageElementRefs.current.delete(messageId)
-      return
-    }
-    messageElementRefs.current.set(messageId, element)
-  }, [])
+  const setMessageElementRef = useCallback(
+    (messageId: string, element: HTMLElement | null) => {
+      if (!element) {
+        messageElementRefs.current.delete(messageId)
+        return
+      }
+      messageElementRefs.current.set(messageId, element)
+    },
+    [],
+  )
 
   const toggleExpandedReplacedStreams = useCallback((messageId: string) => {
     setExpandedReplacedStreamMessageIds((current) => ({
@@ -1636,8 +1875,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       return
     }
     const nextModel =
-      (modelRef && activeProvider.modelOptions.includes(modelRef) ? modelRef : null) ??
-      activeProvider.modelOptions.find((option) => option === activeProvider.defaultModelRef) ??
+      (modelRef && activeProvider.modelOptions.includes(modelRef)
+        ? modelRef
+        : null) ??
+      activeProvider.modelOptions.find(
+        (option) => option === activeProvider.defaultModelRef,
+      ) ??
       activeProvider.modelOptions[0] ??
       activeProvider.defaultModelRef
     setModelRef(nextModel)
@@ -1647,32 +1890,42 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   useEffect(() => {
     const previousTypingState = typingStateRef.current
     if (
-      previousTypingState &&
-      previousTypingState.sessionId &&
+      previousTypingState?.sessionId &&
       previousTypingState.sessionId !== activeSessionId &&
       previousTypingState.active
     ) {
-      void reportTyping(false, { force: true, sessionId: previousTypingState.sessionId })
+      void reportTyping(false, {
+        force: true,
+        sessionId: previousTypingState.sessionId,
+      })
     }
     syncCurrentChatSettingsFromSession(activeSession)
     setReplyTargetMessageId(null)
-  }, [activeSessionId, syncCurrentChatSettingsFromSession])
+  }, [
+    activeSessionId,
+    syncCurrentChatSettingsFromSession,
+    activeSession,
+    reportTyping,
+  ])
 
   useEffect(() => {
     if (activeSession && renamingSessionId === activeSession.id) {
       setRenameTitle(activeSession.title)
     }
-  }, [activeSession?.title, activeSession?.id, renamingSessionId])
+  }, [activeSession, renamingSessionId])
 
   useEffect(() => {
     if (!activeSessionProvider) {
       return
     }
     const nextModel =
-      (activeSessionModelRef && activeSessionProvider.modelOptions.includes(activeSessionModelRef)
+      (activeSessionModelRef &&
+      activeSessionProvider.modelOptions.includes(activeSessionModelRef)
         ? activeSessionModelRef
         : null) ??
-      activeSessionProvider.modelOptions.find((option) => option === activeSessionModelRef) ??
+      activeSessionProvider.modelOptions.find(
+        (option) => option === activeSessionModelRef,
+      ) ??
       activeSessionProvider.modelOptions.find(
         (option) => option === activeSessionProvider.defaultModelRef,
       ) ??
@@ -1683,7 +1936,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
 
     const nextAuthProfile =
-      activeSessionProvider.authProfiles.find((option) => option === activeSessionAuthProfile) ??
+      activeSessionProvider.authProfiles.find(
+        (option) => option === activeSessionAuthProfile,
+      ) ??
       activeSessionProvider.authProfiles[0] ??
       ""
     if (nextAuthProfile !== activeSessionAuthProfile) {
@@ -1694,10 +1949,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   useEffect(() => {
     return () => {
       if (typingStateRef.current?.active) {
-        void reportTyping(false, { force: true, sessionId: typingStateRef.current.sessionId })
+        void reportTyping(false, {
+          force: true,
+          sessionId: typingStateRef.current.sessionId,
+        })
       }
     }
-  }, [])
+  }, [reportTyping])
 
   useEffect(() => {
     pendingSessionOpenScrollRef.current = activeSessionId || null
@@ -1734,13 +1992,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     return () => {
       window.cancelAnimationFrame(handle)
     }
-  }, [
-    activeSessionId,
-    queuedMessages.length,
-    renderedTranscriptItems.length,
-    scrollTranscriptToBottom,
-    streamingAssistantText,
-  ])
+  }, [activeSessionId, scrollTranscriptToBottom])
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -1795,7 +2047,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     return () => {
       window.cancelAnimationFrame(handle)
     }
-  }, [activeSessionId, messages.length, streamingAssistantText, updateThreadViewportMetrics])
+  }, [updateThreadViewportMetrics])
 
   useEffect(() => {
     const composerDock = composerDockRef.current
@@ -1804,7 +2056,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
 
     const updateHeight = () => {
-      setComposerDockHeight(Math.ceil(composerDock.getBoundingClientRect().height))
+      setComposerDockHeight(
+        Math.ceil(composerDock.getBoundingClientRect().height),
+      )
     }
 
     const observer = new ResizeObserver(() => {
@@ -1816,14 +2070,17 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     return () => {
       observer.disconnect()
     }
-  }, [activeSessionId, settingsOpen, replyTargetMessageId, compactWaitingSummary])
+  }, [])
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return
     }
 
-    window.localStorage.setItem(sessionRailWidthStorageKey, String(sessionRailWidth))
+    window.localStorage.setItem(
+      sessionRailWidthStorageKey,
+      String(sessionRailWidth),
+    )
   }, [sessionRailWidth])
 
   useEffect(() => {
@@ -1834,7 +2091,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       }
       const delta = event.clientX - resizeState.startX
       setSessionRailWidth(
-        Math.max(minSessionRailWidth, Math.min(maxSessionRailWidth, resizeState.startWidth + delta)),
+        Math.max(
+          minSessionRailWidth,
+          Math.min(maxSessionRailWidth, resizeState.startWidth + delta),
+        ),
       )
     }
 
@@ -1858,23 +2118,47 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setError("")
 
       try {
-        const [providersResponse, processBlueprintsResponse, sessionsResponse] = await Promise.all([
-          apiFetch(`${props.apiRootUrl}/providers`).then(async (response) => {
-            const payload = (await response.json()) as ProvidersResponse & { error?: string }
-            if (!response.ok || !payload.ok || !Array.isArray(payload.providers)) {
-              throw new Error(payload.error ?? "Agent Chat providers failed to load.")
-            }
-            return payload
-          }),
-          apiFetch(`${props.apiRootUrl}/process-blueprints`).then(async (response) => {
-            const payload = (await response.json()) as ProcessBlueprintsResponse & { error?: string }
-            if (!response.ok || !payload.ok || !Array.isArray(payload.processBlueprints)) {
-              throw new Error(payload.error ?? "Agent Chat process blueprints failed to load.")
-            }
-            return payload
-          }),
-          loadSessions().then((sessions) => ({ ok: true as const, sessions })),
-        ])
+        const [providersResponse, processBlueprintsResponse, sessionsResponse] =
+          await Promise.all([
+            apiFetch(`${props.apiRootUrl}/providers`).then(async (response) => {
+              const payload = (await response.json()) as ProvidersResponse & {
+                error?: string
+              }
+              if (
+                !response.ok ||
+                !payload.ok ||
+                !Array.isArray(payload.providers)
+              ) {
+                throw new Error(
+                  payload.error ?? "Agent Chat providers failed to load.",
+                )
+              }
+              return payload
+            }),
+            apiFetch(`${props.apiRootUrl}/process-blueprints`).then(
+              async (response) => {
+                const payload =
+                  (await response.json()) as ProcessBlueprintsResponse & {
+                    error?: string
+                  }
+                if (
+                  !response.ok ||
+                  !payload.ok ||
+                  !Array.isArray(payload.processBlueprints)
+                ) {
+                  throw new Error(
+                    payload.error ??
+                      "Agent Chat process blueprints failed to load.",
+                  )
+                }
+                return payload
+              },
+            ),
+            loadSessions().then((sessions) => ({
+              ok: true as const,
+              sessions,
+            })),
+          ])
 
         if (cancelled) {
           return
@@ -1884,13 +2168,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         setProcessBlueprints(processBlueprintsResponse.processBlueprints)
         setSessions(sessionsResponse.sessions)
         const initialSession =
-          sessionsResponse.sessions.find((session) => !session.archived) ?? sessionsResponse.sessions[0]
+          sessionsResponse.sessions.find((session) => !session.archived) ??
+          sessionsResponse.sessions[0]
         if (initialSession) {
           setActiveSessionId((current) => current || initialSession.id)
         }
       } catch (nextError) {
         if (!cancelled) {
-          setError(nextError instanceof Error ? nextError.message : "Agent Chat failed to load.")
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Agent Chat failed to load.",
+          )
         }
       } finally {
         if (!cancelled) {
@@ -1918,7 +2207,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         setSessions(nextSessions)
         if (!nextSessions.some((session) => session.id === activeSessionId)) {
           const fallbackSession =
-            nextSessions.find((session) => !session.archived) ?? nextSessions[0] ?? null
+            nextSessions.find((session) => !session.archived) ??
+            nextSessions[0] ??
+            null
           setActiveSessionId(fallbackSession?.id ?? "")
         }
       } catch {
@@ -1958,8 +2249,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
     async function loadSession() {
       try {
-        const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}`)
-        const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${activeSessionId}`,
+        )
+        const payload = (await response.json()) as SessionSnapshotResponse & {
+          error?: string
+        }
         if (!response.ok || !payload.ok || !Array.isArray(payload.messages)) {
           throw new Error(payload.error ?? "Session load failed.")
         }
@@ -1975,7 +2270,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         }
       } catch (nextError) {
         if (!cancelled) {
-          setError(nextError instanceof Error ? nextError.message : "Session load failed.")
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Session load failed.",
+          )
         }
       }
     }
@@ -2062,7 +2361,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           setMessages(payload.messages)
           setQueuedMessages(payload.queuedMessages)
           setActivity(payload.activity)
-          updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
+          updateActiveSessionRuntime(
+            payload.activity,
+            payload.queuedMessages.length,
+          )
           setStreamingAssistantText("")
           setSessions((current) =>
             current.map((session) =>
@@ -2073,18 +2375,24 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         }
 
         if (payload.type === "session.updated") {
-          if (payload.session) {
+          const updatedSession = payload.session
+          if (updatedSession) {
             setSessions((current) =>
               current.map((session) =>
-                session.id === payload.session!.id ? payload.session! : session,
+                session.id === updatedSession.id ? updatedSession : session,
               ),
             )
           }
           setMessages((current) => mergeMessagesById(current, payload.messages))
           setQueuedMessages(payload.queuedMessages)
           setActivity(payload.activity)
-          updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
-          if (payload.messages.some((message) => message.role === "assistant")) {
+          updateActiveSessionRuntime(
+            payload.activity,
+            payload.queuedMessages.length,
+          )
+          if (
+            payload.messages.some((message) => message.role === "assistant")
+          ) {
             setStreamingAssistantText("")
           }
           return
@@ -2094,7 +2402,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           setMessages((current) => mergeMessagesById(current, payload.messages))
           setQueuedMessages(payload.queuedMessages)
           setActivity(payload.activity)
-          updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
+          updateActiveSessionRuntime(
+            payload.activity,
+            payload.queuedMessages.length,
+          )
           setStreamingAssistantText("")
           return
         }
@@ -2102,7 +2413,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         if (payload.type === "run.activity") {
           setActivity(payload.activity)
           setQueuedMessages(payload.queuedMessages)
-          updateActiveSessionRuntime(payload.activity, payload.queuedMessages.length)
+          updateActiveSessionRuntime(
+            payload.activity,
+            payload.queuedMessages.length,
+          )
           return
         }
 
@@ -2117,20 +2431,29 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
         if (payload.type === "run.completed") {
           setActivity(payload.activity)
-          updateActiveSessionRuntime(payload.activity, queuedMessageCountRef.current)
+          updateActiveSessionRuntime(
+            payload.activity,
+            queuedMessageCountRef.current,
+          )
           return
         }
 
         if (payload.type === "run.interrupted") {
           setActivity(payload.activity)
-          updateActiveSessionRuntime(payload.activity, queuedMessageCountRef.current)
+          updateActiveSessionRuntime(
+            payload.activity,
+            queuedMessageCountRef.current,
+          )
           setStreamingAssistantText("")
           return
         }
 
         if (payload.type === "run.failed") {
           setActivity(payload.activity)
-          updateActiveSessionRuntime(payload.activity, queuedMessageCountRef.current)
+          updateActiveSessionRuntime(
+            payload.activity,
+            queuedMessageCountRef.current,
+          )
           setStreamingAssistantText("")
           setError(payload.error)
         }
@@ -2146,7 +2469,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         }
         scheduleDisconnectWarning()
         const delayMs =
-          websocketRetryBackoffMs[Math.min(reconnectAttempt, websocketRetryBackoffMs.length - 1)] ??
+          websocketRetryBackoffMs[
+            Math.min(reconnectAttempt, websocketRetryBackoffMs.length - 1)
+          ] ??
           websocketRetryBackoffMs.at(-1) ??
           8000
         reconnectAttempt += 1
@@ -2219,7 +2544,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       const next = current.some((entry) => entry.id === session.id)
         ? current.map((entry) => (entry.id === session.id ? session : entry))
         : [session, ...current]
-      return [...next].sort((left, right) => right.updatedAtMs - left.updatedAtMs)
+      return [...next].sort(
+        (left, right) => right.updatedAtMs - left.updatedAtMs,
+      )
     })
   }, [])
 
@@ -2233,18 +2560,25 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setError("")
 
     try {
-      const response = await apiFetch(`${props.apiRootUrl}/sessions/${sessionId}`, {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
+      const response = await apiFetch(
+        `${props.apiRootUrl}/sessions/${sessionId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            archived,
+          }),
         },
-        body: JSON.stringify({
-          archived,
-        }),
-      })
-      const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
+      )
+      const payload = (await response.json()) as SessionSnapshotResponse & {
+        error?: string
+      }
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? (archived ? "Archive failed." : "Restore failed."))
+        throw new Error(
+          payload.error ?? (archived ? "Archive failed." : "Restore failed."),
+        )
       }
 
       mergeSession(payload.session)
@@ -2290,7 +2624,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           processBlueprintId: processBlueprintId || null,
         }),
       })
-      const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
+      const payload = (await response.json()) as SessionSnapshotResponse & {
+        error?: string
+      }
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error ?? "Session creation failed.")
       }
@@ -2305,43 +2641,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setNewChatOpen(false)
       setMobileSessionsOpen(false)
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Session creation failed.")
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Session creation failed.",
+      )
     } finally {
       setCreating(false)
-    }
-  }
-
-  async function updateDirectory(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!activeSessionId || !activeSessionDirectory.trim()) {
-      return
-    }
-
-    setUpdatingDirectory(true)
-    setError("")
-
-    try {
-      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}`, {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          cwd: activeSessionDirectory,
-        }),
-      })
-      const payload = (await response.json()) as (SessionSnapshotResponse & { error?: string })
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? "Directory update failed.")
-      }
-      mergeSession(payload.session)
-      setMessages(payload.messages)
-      setQueuedMessages(payload.queuedMessages)
-      setActivity(payload.activity)
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Directory update failed.")
-    } finally {
-      setUpdatingDirectory(false)
     }
   }
 
@@ -2367,7 +2673,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     if (activeSessionImageModelRef !== (activeSession.imageModelRef ?? "")) {
       nextPayload.imageModelRef = activeSessionImageModelRef || null
     }
-    if (activeSessionProcessBlueprintId !== (activeSession.processBlueprintId ?? "")) {
+    if (
+      activeSessionProcessBlueprintId !==
+      (activeSession.processBlueprintId ?? "")
+    ) {
       nextPayload.processBlueprintId = activeSessionProcessBlueprintId || null
     } else if (processResolutionRequired) {
       nextPayload.processBlueprintId = activeSessionProcessBlueprintId || null
@@ -2382,14 +2691,19 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setError("")
 
     try {
-      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}`, {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
+      const response = await apiFetch(
+        `${props.apiRootUrl}/sessions/${activeSessionId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(nextPayload),
         },
-        body: JSON.stringify(nextPayload),
-      })
-      const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
+      )
+      const payload = (await response.json()) as SessionSnapshotResponse & {
+        error?: string
+      }
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error ?? "Chat settings update failed.")
       }
@@ -2399,13 +2713,19 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setActivity(payload.activity)
       syncCurrentChatSettingsFromSession(payload.session)
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Chat settings update failed.")
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Chat settings update failed.",
+      )
     } finally {
       setUpdatingDirectory(false)
     }
   }
 
-  function handleCurrentChatSettingsFieldKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+  function handleCurrentChatSettingsFieldKeyDown(
+    event: KeyboardEvent<HTMLInputElement>,
+  ) {
     if (event.key !== "Enter" || event.nativeEvent.isComposing) {
       return
     }
@@ -2413,88 +2733,72 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     event.currentTarget.form?.requestSubmit()
   }
 
-  const updateActiveSessionProcessQuickSet = useCallback(async (nextProcessBlueprintId: string) => {
-    if (!activeSessionId || !activeSession) {
-      return
-    }
-
-    const normalizedProcessBlueprintId = nextProcessBlueprintId || null
-    const forceProcessBlueprintReapply =
-      processResolutionRequired &&
-      (activeSession.processBlueprintId ?? null) === normalizedProcessBlueprintId
-    if (
-      (activeSession.processBlueprintId ?? null) === normalizedProcessBlueprintId &&
-      !forceProcessBlueprintReapply
-    ) {
-      return
-    }
-
-    setUpdatingQuickProcessBlueprint(true)
-    setError("")
-
-    try {
-      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}`, {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          processBlueprintId: normalizedProcessBlueprintId,
-          forceProcessBlueprintReapply,
-        }),
-      })
-      const payload = (await response.json()) as SessionSnapshotResponse & { error?: string }
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? "Process update failed.")
+  const updateActiveSessionProcessQuickSet = useCallback(
+    async (nextProcessBlueprintId: string) => {
+      if (!activeSessionId || !activeSession) {
+        return
       }
-      mergeSession(payload.session)
-      setMessages(payload.messages)
-      setQueuedMessages(payload.queuedMessages)
-      setActivity(payload.activity)
-      syncCurrentChatSettingsFromSession(payload.session)
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Process update failed.")
-    } finally {
-      setUpdatingQuickProcessBlueprint(false)
-    }
-  }, [activeSession, activeSessionId, mergeSession, processResolutionRequired, props.apiRootUrl, syncCurrentChatSettingsFromSession])
 
-  const reportTyping = useCallback(async (active: boolean, options?: { force?: boolean; sessionId?: string }) => {
-    const targetSessionId = options?.sessionId ?? activeSessionId
-    if (!targetSessionId) {
-      return
-    }
+      const normalizedProcessBlueprintId = nextProcessBlueprintId || null
+      const forceProcessBlueprintReapply =
+        processResolutionRequired &&
+        (activeSession.processBlueprintId ?? null) ===
+          normalizedProcessBlueprintId
+      if (
+        (activeSession.processBlueprintId ?? null) ===
+          normalizedProcessBlueprintId &&
+        !forceProcessBlueprintReapply
+      ) {
+        return
+      }
 
-    const now = Date.now()
-    const currentState = typingStateRef.current
-    if (
-      !options?.force &&
-      active &&
-      currentState?.sessionId === targetSessionId &&
-      currentState.active &&
-      now - currentState.lastSentAt < typingHeartbeatMs
-    ) {
-      return
-    }
+      setUpdatingQuickProcessBlueprint(true)
+      setError("")
 
-    typingStateRef.current = {
-      sessionId: targetSessionId,
-      lastSentAt: now,
-      active,
-    }
-
-    try {
-      await apiFetch(`${props.apiRootUrl}/sessions/${targetSessionId}/typing`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ active }),
-      })
-    } catch {
-      // Best-effort presence signal only.
-    }
-  }, [activeSessionId, props.apiRootUrl])
+      try {
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${activeSessionId}`,
+          {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              processBlueprintId: normalizedProcessBlueprintId,
+              forceProcessBlueprintReapply,
+            }),
+          },
+        )
+        const payload = (await response.json()) as SessionSnapshotResponse & {
+          error?: string
+        }
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error ?? "Process update failed.")
+        }
+        mergeSession(payload.session)
+        setMessages(payload.messages)
+        setQueuedMessages(payload.queuedMessages)
+        setActivity(payload.activity)
+        syncCurrentChatSettingsFromSession(payload.session)
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Process update failed.",
+        )
+      } finally {
+        setUpdatingQuickProcessBlueprint(false)
+      }
+    },
+    [
+      activeSession,
+      activeSessionId,
+      mergeSession,
+      processResolutionRequired,
+      props.apiRootUrl,
+      syncCurrentChatSettingsFromSession,
+    ],
+  )
 
   async function renameSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -2505,16 +2809,21 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setRenaming(true)
     setError("")
     try {
-      const response = await apiFetch(`${props.apiRootUrl}/sessions/${renamingSessionId}`, {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
+      const response = await apiFetch(
+        `${props.apiRootUrl}/sessions/${renamingSessionId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            title: renameTitle,
+          }),
         },
-        body: JSON.stringify({
-          title: renameTitle,
-        }),
-      })
-      const payload = (await response.json()) as (SessionSnapshotResponse & { error?: string })
+      )
+      const payload = (await response.json()) as SessionSnapshotResponse & {
+        error?: string
+      }
       if (!response.ok || !payload.ok) {
         throw new Error(payload.error ?? "Rename failed.")
       }
@@ -2527,65 +2836,82 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setRenamingSessionId(null)
       setRenameTitle("")
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Rename failed.")
+      setError(
+        nextError instanceof Error ? nextError.message : "Rename failed.",
+      )
     } finally {
       setRenaming(false)
     }
   }
 
-  const sendMessage = useCallback(async (payload: ComposerSubmitPayload) => {
-    if (!activeSessionId) {
-      return false
-    }
-    if (!payload.text.trim() && payload.images.length === 0) {
-      return false
-    }
-    if (processResolutionRequired) {
-      setError("Choose the next process before sending.")
-      return false
-    }
-
-    setSending(true)
-    setError("")
-
-    try {
-      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}/messages`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          text: payload.text,
-          content: [
-            ...(payload.text.trim()
-              ? [
-                  {
-                    type: "text" as const,
-                    text: payload.text,
-                  },
-                ]
-              : []),
-            ...payload.images.map((image) => ({
-              type: "image" as const,
-              dataUrl: image.dataUrl,
-            })),
-          ],
-          replyToMessageId: replyTargetMessageId,
-        }),
-      })
-      const responsePayload = (await response.json()) as { error?: string }
-      if (!response.ok) {
-        throw new Error(responsePayload.error ?? "Message send failed.")
+  const sendMessage = useCallback(
+    async (payload: ComposerSubmitPayload) => {
+      if (!activeSessionId) {
+        return false
       }
-      setReplyTargetMessageId(null)
-      return true
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Message send failed.")
-      return false
-    } finally {
-      setSending(false)
-    }
-  }, [activeSessionId, processResolutionRequired, props.apiRootUrl, replyTargetMessageId])
+      if (!payload.text.trim() && payload.images.length === 0) {
+        return false
+      }
+      if (processResolutionRequired) {
+        setError("Choose the next process before sending.")
+        return false
+      }
+
+      setSending(true)
+      setError("")
+
+      try {
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${activeSessionId}/messages`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              text: payload.text,
+              content: [
+                ...(payload.text.trim()
+                  ? [
+                      {
+                        type: "text" as const,
+                        text: payload.text,
+                      },
+                    ]
+                  : []),
+                ...payload.images.map((image) => ({
+                  type: "image" as const,
+                  dataUrl: image.dataUrl,
+                })),
+              ],
+              replyToMessageId: replyTargetMessageId,
+            }),
+          },
+        )
+        const responsePayload = (await response.json()) as { error?: string }
+        if (!response.ok) {
+          throw new Error(responsePayload.error ?? "Message send failed.")
+        }
+        setReplyTargetMessageId(null)
+        return true
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Message send failed.",
+        )
+        return false
+      } finally {
+        setSending(false)
+      }
+    },
+    [
+      activeSessionId,
+      processResolutionRequired,
+      props.apiRootUrl,
+      replyTargetMessageId,
+    ],
+  )
 
   const interruptRun = useCallback(async () => {
     if (!activeSessionId || !activity.canInterrupt || !activity.turnId) {
@@ -2596,21 +2922,34 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setError("")
 
     try {
-      const response = await apiFetch(`${props.apiRootUrl}/sessions/${activeSessionId}/interrupt`, {
-        method: "POST",
-      })
-      const payload = (await response.json()) as { ok?: boolean; error?: string; activity?: SessionActivity }
+      const response = await apiFetch(
+        `${props.apiRootUrl}/sessions/${activeSessionId}/interrupt`,
+        {
+          method: "POST",
+        },
+      )
+      const payload = (await response.json()) as {
+        ok?: boolean
+        error?: string
+        activity?: SessionActivity
+      }
       if (!response.ok || !payload.ok || !payload.activity) {
         throw new Error(payload.error ?? "Interrupt failed.")
       }
       setActivity(payload.activity)
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Interrupt failed.")
+      setError(
+        nextError instanceof Error ? nextError.message : "Interrupt failed.",
+      )
     } finally {
       setInterrupting(false)
     }
-  }, [activeSessionId, activity.canInterrupt, activity.turnId, props.apiRootUrl])
-
+  }, [
+    activeSessionId,
+    activity.canInterrupt,
+    activity.turnId,
+    props.apiRootUrl,
+  ])
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -2633,10 +2972,19 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     return () => {
       window.removeEventListener("keydown", handleWindowKeyDown)
     }
-  }, [activeSessionId, activity.canInterrupt, activity.status, interrupting])
+  }, [
+    activeSessionId,
+    activity.canInterrupt,
+    activity.status,
+    interrupting,
+    interruptRun,
+  ])
 
-  const elapsedLabel = formatElapsed(activity.startedAtMs, nowMs)
-  const threadStatusSummary = summarizeSessionWorkerState(activity, queuedMessages.length, nowMs)
+  const threadStatusSummary = summarizeSessionWorkerState(
+    activity,
+    queuedMessages.length,
+    nowMs,
+  )
 
   return (
     <div className="flex h-full min-h-0 bg-slate-950 text-slate-100">
@@ -2680,8 +3028,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             </IconButton>
             <div className="relative">
               <IconButton
-                label={sessionListMenuOpen ? "Hide session list menu" : "Show session list menu"}
-                title={sessionListMenuOpen ? "Hide Session List Menu" : "Session List Menu"}
+                label={
+                  sessionListMenuOpen
+                    ? "Hide session list menu"
+                    : "Show session list menu"
+                }
+                title={
+                  sessionListMenuOpen
+                    ? "Hide Session List Menu"
+                    : "Session List Menu"
+                }
                 onClick={() => setSessionListMenuOpen((current) => !current)}
               >
                 <MenuIcon />
@@ -2696,8 +3052,14 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     }}
                     className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-200 hover:bg-white/5"
                   >
-                    <span>{showArchivedSessions ? "Hide archived chats" : "Show archived chats"}</span>
-                    <span className="text-xs text-slate-500">{sessions.filter((session) => session.archived).length}</span>
+                    <span>
+                      {showArchivedSessions
+                        ? "Hide archived chats"
+                        : "Show archived chats"}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {sessions.filter((session) => session.archived).length}
+                    </span>
                   </button>
                 </div>
               ) : null}
@@ -2744,17 +3106,23 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </span>
                 <select
                   value={providerKind}
-                  onChange={(event) => setProviderKind(event.target.value as ProviderKind)}
+                  onChange={(event) =>
+                    setProviderKind(event.target.value as ProviderKind)
+                  }
                   className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
                 >
                   {providers.map((provider) => (
-                    <option className="text-slate-950" key={provider.kind} value={provider.kind}>
+                    <option
+                      className="text-slate-950"
+                      key={provider.kind}
+                      value={provider.kind}
+                    >
                       {provider.label}
                     </option>
                   ))}
                 </select>
               </label>
-              <label className="block">
+              <div className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Model
                 </span>
@@ -2765,7 +3133,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
                   >
                     {activeProvider.modelOptions.map((model) => (
-                      <option className="text-slate-950" key={model} value={model}>
+                      <option
+                        className="text-slate-950"
+                        key={model}
+                        value={model}
+                      >
                         {model}
                       </option>
                     ))}
@@ -2777,7 +3149,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                     className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
                   />
                 )}
-              </label>
+              </div>
               <label className="block">
                 <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                   Directory
@@ -2816,25 +3188,39 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 </span>
                 <select
                   value={processBlueprintId}
-                  onChange={(event) => setProcessBlueprintId(event.target.value)}
+                  onChange={(event) =>
+                    setProcessBlueprintId(event.target.value)
+                  }
                   className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none"
                 >
-                  <option className="text-slate-950" value="">none</option>
+                  <option className="text-slate-950" value="">
+                    none
+                  </option>
                   {processBlueprints.map((entry) => (
-                    <option className="text-slate-950" key={entry.id} value={entry.id}>
+                    <option
+                      className="text-slate-950"
+                      key={entry.id}
+                      value={entry.id}
+                    >
                       {entry.title}
                     </option>
                   ))}
                 </select>
                 {processBlueprintId ? (
                   <p className="mt-2 text-xs text-slate-500">
-                    {processBlueprints.find((entry) => entry.id === processBlueprintId)?.expectation ?? ""}
+                    {processBlueprints.find(
+                      (entry) => entry.id === processBlueprintId,
+                    )?.expectation ?? ""}
                   </p>
                 ) : null}
               </label>
               <button
                 type="submit"
-                disabled={creating || !modelRef.trim() || activeProvider?.status !== "ready"}
+                disabled={
+                  creating ||
+                  !modelRef.trim() ||
+                  activeProvider?.status !== "ready"
+                }
                 className="w-full rounded-2xl bg-fuchsia-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:bg-fuchsia-400/40"
               >
                 {creating
@@ -2852,7 +3238,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-4 text-sm text-slate-400">
                   Loading sessions...
                 </div>
-              ) : mainSessions.length === 0 && (!showArchivedSessions || archivedSessions.length === 0) ? (
+              ) : mainSessions.length === 0 &&
+                (!showArchivedSessions || archivedSessions.length === 0) ? (
                 <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-4 text-sm text-slate-400">
                   {sessionSearchQuery.trim()
                     ? "No chats match this search."
@@ -2866,7 +3253,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                           Chats
                         </p>
-                        <p className="text-[11px] text-slate-600">{mainSessions.length}</p>
+                        <p className="text-[11px] text-slate-600">
+                          {mainSessions.length}
+                        </p>
                       </div>
                       {mainSessions.map((session) => (
                         <div
@@ -2881,25 +3270,31 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             <button
                               type="button"
                               aria-label={`Open chat ${session.title}`}
-                              onClick={() => activateSessionFromList(session.id)}
+                              onClick={() =>
+                                activateSessionFromList(session.id)
+                              }
                               className="absolute inset-0 z-10 rounded-2xl"
                             />
                           ) : null}
                           <div className="relative flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1 text-left">
                               <div className="flex items-center gap-2">
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${
-                                  session.activity.status === "running"
-                                    ? "bg-emerald-300/15 text-emerald-100"
-                                    : session.activity.status === "queued"
-                                      ? "bg-amber-300/15 text-amber-100"
-                                      : session.activity.status === "error"
-                                        ? "bg-rose-300/15 text-rose-100"
-                                        : "bg-white/10 text-slate-300"
-                                }`}>
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                                    session.activity.status === "running"
+                                      ? "bg-emerald-300/15 text-emerald-100"
+                                      : session.activity.status === "queued"
+                                        ? "bg-amber-300/15 text-amber-100"
+                                        : session.activity.status === "error"
+                                          ? "bg-rose-300/15 text-rose-100"
+                                          : "bg-white/10 text-slate-300"
+                                  }`}
+                                >
                                   {activityLabel(session.activity)}
                                 </span>
-                                <span className="text-[11px] text-slate-500">{session.messageCount}</span>
+                                <span className="text-[11px] text-slate-500">
+                                  {session.messageCount}
+                                </span>
                               </div>
                               <p className="mt-2 truncate text-base font-semibold leading-5 text-white">
                                 {session.title}
@@ -2907,9 +3302,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               <p className="mt-1 truncate text-[11px] text-slate-500">
                                 {session.providerKind} · {session.modelRef}
                               </p>
-                              {processBlueprintTitle(processBlueprints, session.processBlueprintId) ? (
+                              {processBlueprintTitle(
+                                processBlueprints,
+                                session.processBlueprintId,
+                              ) ? (
                                 <p className="mt-2 truncate text-[11px] text-cyan-200/80">
-                                  {processBlueprintTitle(processBlueprints, session.processBlueprintId)}
+                                  {processBlueprintTitle(
+                                    processBlueprints,
+                                    session.processBlueprintId,
+                                  )}
                                 </p>
                               ) : null}
                             </div>
@@ -2949,12 +3350,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             >
                               <input
                                 value={renameTitle}
-                                onChange={(event) => setRenameTitle(event.target.value)}
+                                onChange={(event) =>
+                                  setRenameTitle(event.target.value)
+                                }
                                 className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
                               />
                               <button
                                 type="submit"
-                                disabled={renaming || !renameTitle.trim() || renameTitle.trim() === session.title}
+                                disabled={
+                                  renaming ||
+                                  !renameTitle.trim() ||
+                                  renameTitle.trim() === session.title
+                                }
                                 className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {renaming ? "Saving..." : "Save"}
@@ -2990,7 +3397,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                           Archived
                         </p>
-                        <p className="text-[11px] text-slate-600">{archivedSessions.length}</p>
+                        <p className="text-[11px] text-slate-600">
+                          {archivedSessions.length}
+                        </p>
                       </div>
                       {archivedSessions.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-white/15 bg-slate-900/70 p-4 text-sm text-slate-400">
@@ -3011,7 +3420,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             <button
                               type="button"
                               aria-label={`Open chat ${session.title}`}
-                              onClick={() => activateSessionFromList(session.id)}
+                              onClick={() =>
+                                activateSessionFromList(session.id)
+                              }
                               className="absolute inset-0 z-10 rounded-2xl"
                             />
                             <div className="relative flex items-start justify-between gap-2">
@@ -3020,7 +3431,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                   <span className="rounded-full bg-cyan-300/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
                                     archived
                                   </span>
-                                  <span className="text-[11px] text-slate-500">{session.messageCount}</span>
+                                  <span className="text-[11px] text-slate-500">
+                                    {session.messageCount}
+                                  </span>
                                 </div>
                                 <p className="mt-2 truncate text-base font-semibold text-white">
                                   {session.title}
@@ -3028,9 +3441,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 <p className="mt-1 truncate text-[11px] text-slate-500">
                                   {session.providerKind} · {session.modelRef}
                                 </p>
-                                {processBlueprintTitle(processBlueprints, session.processBlueprintId) ? (
+                                {processBlueprintTitle(
+                                  processBlueprints,
+                                  session.processBlueprintId,
+                                ) ? (
                                   <p className="mt-2 truncate text-[11px] text-cyan-200/80">
-                                    {processBlueprintTitle(processBlueprints, session.processBlueprintId)}
+                                    {processBlueprintTitle(
+                                      processBlueprints,
+                                      session.processBlueprintId,
+                                    )}
                                   </p>
                                 ) : null}
                               </div>
@@ -3077,7 +3496,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
               )}
             </div>
           </div>
-          <div
+          <button
+            type="button"
+            aria-label="Resize session rail"
             className="absolute inset-y-0 right-0 hidden w-3 cursor-col-resize md:block"
             onMouseDown={(event) => {
               sessionRailResizeRef.current = {
@@ -3088,7 +3509,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             }}
           >
             <div className="absolute inset-y-0 right-0 w-px bg-white/10" />
-          </div>
+          </button>
         </div>
       </aside>
 
@@ -3135,10 +3556,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
             data-agent-chat-transcript-viewport="true"
             className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-2 py-3 sm:px-3 sm:py-4 md:px-6"
             style={{
-              paddingBottom: `${Math.max(
-                composerDockHeight + 12,
-                104,
-              )}px`,
+              paddingBottom: `${Math.max(composerDockHeight + 12, 104)}px`,
             }}
           >
             <div ref={transcriptContentRef} className="min-h-full">
@@ -3154,238 +3572,269 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 <div className="mx-auto flex w-full max-w-[78rem] min-w-0 gap-3 sm:gap-4 overflow-x-hidden">
                   <div className="min-w-0 flex-1">
                     <div className="mx-auto flex max-w-4xl flex-col gap-3 sm:gap-4">
-                    {renderedTranscriptItems.map((item) => {
-                      if (item.type === "activityCluster") {
-                        const clusterKey = activityClusterKey(item.messages)
-                        const expanded = !!expandedActivityClusterKeys[clusterKey]
+                      {renderedTranscriptItems.map((item) => {
+                        if (item.type === "activityCluster") {
+                          const clusterKey = activityClusterKey(item.messages)
+                          const expanded =
+                            !!expandedActivityClusterKeys[clusterKey]
+                          return (
+                            <article
+                              key={clusterKey}
+                              className="w-full overflow-hidden rounded-3xl border border-amber-300/15 bg-amber-300/[0.06] px-3 py-2.5 sm:px-4 sm:py-3 md:max-w-[64%] md:px-5 md:py-4"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
+                                      assistant
+                                    </p>
+                                    <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                      activity
+                                    </span>
+                                  </div>
+                                  <p className="mt-2 break-words text-sm text-slate-100">
+                                    {summarizeActivityCluster(item.messages)}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    toggleExpandedActivityCluster(clusterKey)
+                                  }
+                                  className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-100"
+                                >
+                                  {expanded
+                                    ? "Collapse"
+                                    : `Show ${item.messages.length}`}
+                                </button>
+                              </div>
+
+                              {expanded ? (
+                                <div className="mt-3 space-y-2">
+                                  {item.messages.map((message) => (
+                                    <div
+                                      key={message.id}
+                                      className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2"
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                          activity
+                                        </span>
+                                        <p className="text-[10px] text-slate-500">
+                                          {formatTime(message.createdAtMs)}
+                                        </p>
+                                      </div>
+                                      <p className="mt-2 break-words whitespace-pre-wrap text-sm leading-6 text-slate-200">
+                                        {firstTextBlock(message) || "Activity"}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </article>
+                          )
+                        }
+
+                        const { message, precedingStreamCheckpoints } = item
+                        const replyTarget = message.replyToMessageId
+                          ? (messageMap.get(message.replyToMessageId) ?? null)
+                          : null
+                        const queueLabel = threadMessageQueueLabel(message)
+                        const replacedStreamsExpanded =
+                          !!expandedReplacedStreamMessageIds[message.id]
+
                         return (
                           <article
-                            key={clusterKey}
-                            className="w-full overflow-hidden rounded-3xl border border-amber-300/15 bg-amber-300/[0.06] px-3 py-2.5 sm:px-4 sm:py-3 md:max-w-[64%] md:px-5 md:py-4"
+                            key={message.id}
+                            ref={(element) =>
+                              setMessageElementRef(message.id, element)
+                            }
+                            className={`min-w-0 overflow-hidden rounded-3xl border px-3 py-2.5 sm:px-4 sm:py-3 md:px-5 md:py-4 ${
+                              message.kind === "thought" ||
+                              message.kind === "streamCheckpoint" ||
+                              message.kind === "activity"
+                                ? message.kind === "activity"
+                                  ? "w-full border-amber-300/15 bg-amber-300/[0.06] md:max-w-[64%]"
+                                  : "w-full border-white/10 bg-slate-950/60 md:max-w-[64%]"
+                                : message.role === "user"
+                                  ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]"
+                                  : message.role === "system"
+                                    ? "w-full border-slate-300/15 bg-slate-300/[0.04]"
+                                    : "w-full border-white/10 bg-white/5 md:max-w-[88%]"
+                            }`}
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
-                                    assistant
-                                  </p>
+                              <div className="relative flex min-w-0 items-center gap-2">
+                                <p
+                                  className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+                                    message.kind === "activity"
+                                      ? "text-amber-100"
+                                      : message.role === "system"
+                                        ? "text-slate-300"
+                                        : "text-slate-400"
+                                  }`}
+                                >
+                                  {message.kind === "activity"
+                                    ? "assistant"
+                                    : message.role}
+                                </p>
+                                {message.kind === "directoryInstruction" ? (
+                                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                    directory
+                                  </span>
+                                ) : null}
+                                {message.kind === "thought" ? (
+                                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-slate-300">
+                                    thought
+                                  </span>
+                                ) : null}
+                                {message.kind === "streamCheckpoint" ? (
+                                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                    stream
+                                  </span>
+                                ) : null}
+                                {message.kind === "activity" ? (
                                   <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
                                     activity
                                   </span>
-                                </div>
-                                <p className="mt-2 break-words text-sm text-slate-100">
-                                  {summarizeActivityCluster(item.messages)}
-                                </p>
+                                ) : null}
+                                {queueLabel ? (
+                                  <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                    {queueLabel}
+                                  </span>
+                                ) : null}
+                                {message.role === "assistant" &&
+                                message.kind === "chat" &&
+                                precedingStreamCheckpoints.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      toggleExpandedReplacedStreams(message.id)
+                                    }
+                                    className="inline-flex items-center rounded-full border border-cyan-300/15 bg-cyan-300/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100"
+                                    aria-expanded={replacedStreamsExpanded}
+                                  >
+                                    Replaced Streams{" "}
+                                    {precedingStreamCheckpoints.length}
+                                  </button>
+                                ) : null}
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => toggleExpandedActivityCluster(clusterKey)}
-                                className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-100"
-                              >
-                                {expanded ? "Collapse" : `Show ${item.messages.length}`}
-                              </button>
+                              <p className="text-xs text-slate-500">
+                                {formatTime(message.createdAtMs)}
+                              </p>
                             </div>
 
-                            {expanded ? (
-                              <div className="mt-3 space-y-2">
-                                {item.messages.map((message) => (
-                                  <div
-                                    key={message.id}
-                                    className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2"
-                                  >
-                                    <div className="flex items-center justify-between gap-3">
-                                      <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
-                                        activity
-                                      </span>
-                                      <p className="text-[10px] text-slate-500">
-                                        {formatTime(message.createdAtMs)}
+                            {replyTarget ? (
+                              <div className="mt-2 min-w-0 rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
+                                Replying to {replyTarget.role} ·{" "}
+                                {summarizeMessageContent(
+                                  replyTarget.content,
+                                  72,
+                                )}
+                              </div>
+                            ) : null}
+
+                            {message.role === "assistant" &&
+                            message.kind === "chat" &&
+                            precedingStreamCheckpoints.length > 0 &&
+                            replacedStreamsExpanded ? (
+                              <div className="mt-2.5 space-y-2">
+                                {precedingStreamCheckpoints.map(
+                                  (checkpoint, checkpointIndex) => (
+                                    <div
+                                      key={checkpoint.id}
+                                      className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2"
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                          Replaced Stream {checkpointIndex + 1}
+                                        </span>
+                                        <p className="text-[10px] text-slate-500">
+                                          {formatTime(checkpoint.createdAtMs)}
+                                        </p>
+                                      </div>
+                                      <p className="mt-1.5 break-words text-sm leading-6 text-slate-200 whitespace-pre-wrap">
+                                        {summarizeStreamCheckpoint(
+                                          checkpoint.content[0]?.type === "text"
+                                            ? checkpoint.content[0].text
+                                            : "",
+                                        )}
                                       </p>
                                     </div>
-                                    <p className="mt-2 break-words whitespace-pre-wrap text-sm leading-6 text-slate-200">
-                                      {firstTextBlock(message) || "Activity"}
-                                    </p>
-                                  </div>
-                                ))}
+                                  ),
+                                )}
+                              </div>
+                            ) : null}
+
+                            {message.kind === "thought" ? (
+                              <details className="mt-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300">
+                                <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                  Collapsed Thought Checkpoint
+                                </summary>
+                                <div className="mt-3 space-y-3 text-sm leading-6 text-slate-200">
+                                  {message.content.map((block, index) =>
+                                    block.type === "text" ? (
+                                      <div
+                                        key={`${message.id}-${block.text}`}
+                                        className="space-y-3"
+                                      >
+                                        {renderMarkdownBlocks(
+                                          block.text,
+                                          `${message.id}-${index}`,
+                                        )}
+                                      </div>
+                                    ) : null,
+                                  )}
+                                </div>
+                              </details>
+                            ) : (
+                              <div className="mt-2.5 space-y-3 text-sm leading-6 text-slate-100">
+                                {message.content.map((block, index) =>
+                                  block.type === "text" ? (
+                                    <div
+                                      key={`${message.id}-${block.text}`}
+                                      className={
+                                        message.kind === "activity"
+                                          ? "text-slate-100"
+                                          : message.role === "system"
+                                            ? "text-slate-200"
+                                            : ""
+                                      }
+                                    >
+                                      {renderMarkdownBlocks(
+                                        block.text,
+                                        `${message.id}-${index}`,
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <MessageImageAsset
+                                      key={`${message.id}-${block.url}`}
+                                      path={block.url}
+                                    />
+                                  ),
+                                )}
+                              </div>
+                            )}
+
+                            {message.role === "assistant" &&
+                            message.kind !== "thought" &&
+                            message.kind !== "streamCheckpoint" &&
+                            message.kind !== "activity" ? (
+                              <div className="mt-3 flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setReplyTargetMessageId(message.id)
+                                  }
+                                  className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:border-white/20"
+                                >
+                                  Reply to this
+                                </button>
                               </div>
                             ) : null}
                           </article>
                         )
-                      }
-
-                      const { message, precedingStreamCheckpoints } = item
-                      const replyTarget = message.replyToMessageId
-                        ? messageMap.get(message.replyToMessageId) ?? null
-                        : null
-                      const queueLabel = threadMessageQueueLabel(message)
-                      const replacedStreamsExpanded = !!expandedReplacedStreamMessageIds[message.id]
-
-                      return (
-                        <article
-                          key={message.id}
-                          ref={(element) => setMessageElementRef(message.id, element)}
-                          className={`min-w-0 overflow-hidden rounded-3xl border px-3 py-2.5 sm:px-4 sm:py-3 md:px-5 md:py-4 ${
-                            message.kind === "thought" ||
-                            message.kind === "streamCheckpoint" ||
-                            message.kind === "activity"
-                              ? message.kind === "activity"
-                                ? "w-full border-amber-300/15 bg-amber-300/[0.06] md:max-w-[64%]"
-                                : "w-full border-white/10 bg-slate-950/60 md:max-w-[64%]"
-                              : message.role === "user"
-                              ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]"
-                              : message.role === "system"
-                                ? "w-full border-slate-300/15 bg-slate-300/[0.04]"
-                                : "w-full border-white/10 bg-white/5 md:max-w-[88%]"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="relative flex min-w-0 items-center gap-2">
-                              <p
-                                className={`text-xs font-semibold uppercase tracking-[0.2em] ${
-                                  message.kind === "activity"
-                                    ? "text-amber-100"
-                                    : message.role === "system"
-                                      ? "text-slate-300"
-                                      : "text-slate-400"
-                                }`}
-                              >
-                                {message.kind === "activity" ? "assistant" : message.role}
-                              </p>
-                              {message.kind === "directoryInstruction" ? (
-                                <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
-                                  directory
-                                </span>
-                              ) : null}
-                              {message.kind === "thought" ? (
-                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-slate-300">
-                                  thought
-                                </span>
-                              ) : null}
-                              {message.kind === "streamCheckpoint" ? (
-                                <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
-                                  stream
-                                </span>
-                              ) : null}
-                              {message.kind === "activity" ? (
-                                <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
-                                  activity
-                                </span>
-                              ) : null}
-                              {queueLabel ? (
-                                <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
-                                  {queueLabel}
-                                </span>
-                              ) : null}
-                              {message.role === "assistant" &&
-                              message.kind === "chat" &&
-                              precedingStreamCheckpoints.length > 0 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleExpandedReplacedStreams(message.id)}
-                                  className="inline-flex items-center rounded-full border border-cyan-300/15 bg-cyan-300/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100"
-                                  aria-expanded={replacedStreamsExpanded}
-                                >
-                                  Replaced Streams {precedingStreamCheckpoints.length}
-                                </button>
-                              ) : null}
-                            </div>
-                            <p className="text-xs text-slate-500">{formatTime(message.createdAtMs)}</p>
-                          </div>
-
-                          {replyTarget ? (
-                            <div className="mt-2 min-w-0 rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
-                              Replying to {replyTarget.role} ·{" "}
-                              {summarizeMessageContent(replyTarget.content, 72)}
-                            </div>
-                          ) : null}
-
-                          {message.role === "assistant" &&
-                          message.kind === "chat" &&
-                          precedingStreamCheckpoints.length > 0 &&
-                          replacedStreamsExpanded ? (
-                            <div className="mt-2.5 space-y-2">
-                              {precedingStreamCheckpoints.map((checkpoint, checkpointIndex) => (
-                                <div
-                                  key={checkpoint.id}
-                                  className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2"
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
-                                      Replaced Stream {checkpointIndex + 1}
-                                    </span>
-                                    <p className="text-[10px] text-slate-500">
-                                      {formatTime(checkpoint.createdAtMs)}
-                                    </p>
-                                  </div>
-                                  <p className="mt-1.5 break-words text-sm leading-6 text-slate-200 whitespace-pre-wrap">
-                                    {summarizeStreamCheckpoint(
-                                      checkpoint.content[0]?.type === "text"
-                                        ? checkpoint.content[0].text
-                                        : "",
-                                    )}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-
-                          {message.kind === "thought" ? (
-                            <details className="mt-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300">
-                              <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                                Collapsed Thought Checkpoint
-                              </summary>
-                              <div className="mt-3 space-y-3 text-sm leading-6 text-slate-200">
-                                {message.content.map((block, index) =>
-                                  block.type === "text" ? (
-                                    <div key={`${message.id}-${index}`} className="space-y-3">
-                                      {renderMarkdownBlocks(block.text, `${message.id}-${index}`)}
-                                    </div>
-                                  ) : null,
-                                )}
-                              </div>
-                            </details>
-                          ) : (
-                            <div className="mt-2.5 space-y-3 text-sm leading-6 text-slate-100">
-                              {message.content.map((block, index) =>
-                                block.type === "text" ? (
-                                  <div
-                                    key={`${message.id}-${index}`}
-                                    className={
-                                      message.kind === "activity"
-                                        ? "text-slate-100"
-                                        : message.role === "system"
-                                          ? "text-slate-200"
-                                          : ""
-                                    }
-                                  >
-                                    {renderMarkdownBlocks(block.text, `${message.id}-${index}`)}
-                                  </div>
-                                ) : (
-                                  <MessageImageAsset
-                                    key={`${message.id}-${index}`}
-                                    path={block.url}
-                                  />
-                                ),
-                              )}
-                            </div>
-                          )}
-
-                          {message.role === "assistant" &&
-                          message.kind !== "thought" &&
-                          message.kind !== "streamCheckpoint" &&
-                          message.kind !== "activity" ? (
-                            <div className="mt-3 flex items-center justify-end">
-                              <button
-                                type="button"
-                                onClick={() => setReplyTargetMessageId(message.id)}
-                                className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:border-white/20"
-                              >
-                                Reply to this
-                              </button>
-                            </div>
-                          ) : null}
-                        </article>
-                      )
-                    })}
+                      })}
 
                       {streamingAssistantText && !hasVisibleStreamCheckpoint ? (
                         <article className="w-full max-w-[88%] min-w-0 overflow-hidden rounded-3xl border border-cyan-300/20 bg-cyan-400/5 p-3 sm:p-4 md:p-5">
@@ -3393,14 +3842,22 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
                               assistant
                             </p>
-                            <p className="text-xs text-cyan-100/70">streaming...</p>
+                            <p className="text-xs text-cyan-100/70">
+                              streaming...
+                            </p>
                           </div>
                           <div className="mt-3 space-y-3">
-                            {renderMarkdownBlocks(streamingAssistantText, "streaming")}
+                            {renderMarkdownBlocks(
+                              streamingAssistantText,
+                              "streaming",
+                            )}
                           </div>
                         </article>
                       ) : null}
-                      <div ref={transcriptBottomSentinelRef} className="h-px w-full" />
+                      <div
+                        ref={transcriptBottomSentinelRef}
+                        className="h-px w-full"
+                      />
                     </div>
                   </div>
                 </div>
@@ -3414,47 +3871,54 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           >
             <div className="mx-auto flex w-full max-w-[78rem]">
               <div className="pointer-events-auto mx-auto flex w-full max-w-4xl flex-col gap-2.5">
-              {showScrollToBottomButton ? (
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => scrollTranscriptToBottom()}
-                    className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-cyan-100 shadow-lg backdrop-blur"
-                  >
-                    <ScrollToBottomIcon />
-                    <span>Scroll to bottom</span>
-                  </button>
-                </div>
-              ) : null}
-
-              {activeReplyTarget ? (
-                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
-                  <div className="flex items-center justify-between gap-3">
-                    <p>
-                      Replying to {activeReplyTarget.role} ·{" "}
-                      {summarizeMessageContent(activeReplyTarget.content, 108)}
-                    </p>
+                {showScrollToBottomButton ? (
+                  <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={() => setReplyTargetMessageId(null)}
-                      className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-100"
+                      onClick={() => scrollTranscriptToBottom()}
+                      className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-cyan-100 shadow-lg backdrop-blur"
                     >
-                      Clear
+                      <ScrollToBottomIcon />
+                      <span>Scroll to bottom</span>
                     </button>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              {settingsOpen ? (
-                <div className="max-h-[min(34rem,calc(100dvh-15rem))] overflow-y-auto rounded-3xl border border-white/10 bg-white/5 p-4">
-                  <form onSubmit={updateCurrentChatSettings} className="space-y-4">
+                {activeReplyTarget ? (
+                  <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
+                    <div className="flex items-center justify-between gap-3">
+                      <p>
+                        Replying to {activeReplyTarget.role} ·{" "}
+                        {summarizeMessageContent(
+                          activeReplyTarget.content,
+                          108,
+                        )}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setReplyTargetMessageId(null)}
+                        className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-100"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {settingsOpen ? (
+                  <div className="max-h-[min(34rem,calc(100dvh-15rem))] overflow-y-auto rounded-3xl border border-white/10 bg-white/5 p-4">
+                    <form
+                      onSubmit={updateCurrentChatSettings}
+                      className="space-y-4"
+                    >
                       <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-start justify-between gap-3 rounded-t-3xl border-b border-white/10 bg-slate-950/95 px-4 py-4 backdrop-blur">
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                             Current Chat
                           </p>
                           <p className="mt-2 text-sm text-slate-400">
-                            Keep the current thread focused here. Use directory changes when the next turn should work elsewhere.
+                            Keep the current thread focused here. Use directory
+                            changes when the next turn should work elsewhere.
                           </p>
                         </div>
                         <button
@@ -3466,7 +3930,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         </button>
                       </div>
                       <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
-                        <p>{activeSession ? `${activeSession.providerKind} · ${activeSession.modelRef}` : "No active chat selected."}</p>
+                        <p>
+                          {activeSession
+                            ? `${activeSession.providerKind} · ${activeSession.modelRef}`
+                            : "No active chat selected."}
+                        </p>
                         {activeSessionProcessBlueprint ? (
                           <p className="mt-2 text-xs text-cyan-200/80">
                             {activeSessionProcessBlueprint.title}
@@ -3487,7 +3955,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           </div>
                           <button
                             type="button"
-                            onClick={() => void setSessionArchived(activeSession.id, !activeSession.archived)}
+                            onClick={() =>
+                              void setSessionArchived(
+                                activeSession.id,
+                                !activeSession.archived,
+                              )
+                            }
                             disabled={archivingSessionId === activeSession.id}
                             className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
@@ -3508,10 +3981,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         <select
                           value={settingsProcessSelectValue}
                           onChange={(event) => {
-                            setActiveSessionProcessBlueprintId(event.target.value)
-                            void updateActiveSessionProcessQuickSet(event.target.value)
+                            setActiveSessionProcessBlueprintId(
+                              event.target.value,
+                            )
+                            void updateActiveSessionProcessQuickSet(
+                              event.target.value,
+                            )
                           }}
-                          disabled={!activeSession || updatingQuickProcessBlueprint}
+                          disabled={
+                            !activeSession || updatingQuickProcessBlueprint
+                          }
                           className={`mt-2 w-full rounded-2xl border bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
                             processResolutionRequired
                               ? "border-rose-400/60 text-rose-100"
@@ -3519,13 +3998,25 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           }`}
                         >
                           {processResolutionRequired ? (
-                            <option className="text-slate-950" value={completedProcessResolutionSentinel} disabled>
-                              {processTerminalStatus === "blocked" ? "Blocked" : "Done"}
+                            <option
+                              className="text-slate-950"
+                              value={completedProcessResolutionSentinel}
+                              disabled
+                            >
+                              {processTerminalStatus === "blocked"
+                                ? "Blocked"
+                                : "Done"}
                             </option>
                           ) : null}
-                          <option className="text-slate-950" value="">none</option>
+                          <option className="text-slate-950" value="">
+                            none
+                          </option>
                           {processBlueprints.map((entry) => (
-                            <option className="text-slate-950" key={entry.id} value={entry.id}>
+                            <option
+                              className="text-slate-950"
+                              key={entry.id}
+                              value={entry.id}
+                            >
                               {entry.title}
                             </option>
                           ))}
@@ -3537,7 +4028,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         ) : null}
                         {processResolutionRequired ? (
                           <p className="mt-2 text-xs font-semibold text-rose-200">
-                            {processTerminalStatus === "blocked" ? "Blocked" : "Done"}. Choose the next process before sending the next message.
+                            {processTerminalStatus === "blocked"
+                              ? "Blocked"
+                              : "Done"}
+                            . Choose the next process before sending the next
+                            message.
                           </p>
                         ) : null}
                       </label>
@@ -3547,30 +4042,44 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         </span>
                         <select
                           value={activeSessionProviderKind}
-                          onChange={(event) => setActiveSessionProviderKind(event.target.value as ProviderKind)}
+                          onChange={(event) =>
+                            setActiveSessionProviderKind(
+                              event.target.value as ProviderKind,
+                            )
+                          }
                           disabled={!activeSession}
                           className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {providers.map((provider) => (
-                            <option className="text-slate-950" key={provider.kind} value={provider.kind}>
+                            <option
+                              className="text-slate-950"
+                              key={provider.kind}
+                              value={provider.kind}
+                            >
                               {provider.label}
                             </option>
                           ))}
                         </select>
                       </label>
-                      <label className="block">
+                      <div className="block">
                         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                           Model
                         </span>
                         {activeSessionProvider?.modelOptions.length ? (
                           <select
                             value={activeSessionModelRef}
-                            onChange={(event) => setActiveSessionModelRef(event.target.value)}
+                            onChange={(event) =>
+                              setActiveSessionModelRef(event.target.value)
+                            }
                             disabled={!activeSession}
                             className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {activeSessionProvider.modelOptions.map((model) => (
-                              <option className="text-slate-950" key={model} value={model}>
+                              <option
+                                className="text-slate-950"
+                                key={model}
+                                value={model}
+                              >
                                 {model}
                               </option>
                             ))}
@@ -3583,23 +4092,31 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         )}
-                      </label>
-                      <label className="block">
+                      </div>
+                      <div className="block">
                         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                           Auth Profile
                         </span>
                         {activeSessionProvider?.authProfiles.length ? (
                           <select
                             value={activeSessionAuthProfile}
-                            onChange={(event) => setActiveSessionAuthProfile(event.target.value)}
+                            onChange={(event) =>
+                              setActiveSessionAuthProfile(event.target.value)
+                            }
                             disabled={!activeSession}
                             className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {activeSessionProvider.authProfiles.map((profile) => (
-                              <option className="text-slate-950" key={profile} value={profile}>
-                                {profile}
-                              </option>
-                            ))}
+                            {activeSessionProvider.authProfiles.map(
+                              (profile) => (
+                                <option
+                                  className="text-slate-950"
+                                  key={profile}
+                                  value={profile}
+                                >
+                                  {profile}
+                                </option>
+                              ),
+                            )}
                           </select>
                         ) : (
                           <input
@@ -3609,14 +4126,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
                           />
                         )}
-                      </label>
+                      </div>
                       <label className="block">
                         <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                           Directory
                         </span>
                         <input
                           value={activeSessionDirectory}
-                          onChange={(event) => setActiveSessionDirectory(event.target.value)}
+                          onChange={(event) =>
+                            setActiveSessionDirectory(event.target.value)
+                          }
                           onKeyDown={handleCurrentChatSettingsFieldKeyDown}
                           placeholder={defaultSessionDirectory}
                           enterKeyHint="done"
@@ -3633,7 +4152,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         </span>
                         <input
                           value={activeSessionImageModelRef}
-                          onChange={(event) => setActiveSessionImageModelRef(event.target.value)}
+                          onChange={(event) =>
+                            setActiveSessionImageModelRef(event.target.value)
+                          }
                           onKeyDown={handleCurrentChatSettingsFieldKeyDown}
                           placeholder="optional provider/model"
                           enterKeyHint="done"
@@ -3651,58 +4172,72 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             !activeSession ||
                             updatingDirectory ||
                             !activeSessionDirectory.trim() ||
-                            (
-                              activeSessionDirectory.trim() === activeSession.cwd &&
-                              activeSessionProviderKind === activeSession.providerKind &&
-                              activeSessionModelRef === activeSession.modelRef &&
-                              activeSessionAuthProfile === (activeSession.authProfile ?? "") &&
-                              activeSessionImageModelRef === (activeSession.imageModelRef ?? "") &&
-                              activeSessionProcessBlueprintId === (activeSession.processBlueprintId ?? "") &&
-                              !processResolutionRequired
-                            )
+                            (activeSessionDirectory.trim() ===
+                              activeSession.cwd &&
+                              activeSessionProviderKind ===
+                                activeSession.providerKind &&
+                              activeSessionModelRef ===
+                                activeSession.modelRef &&
+                              activeSessionAuthProfile ===
+                                (activeSession.authProfile ?? "") &&
+                              activeSessionImageModelRef ===
+                                (activeSession.imageModelRef ?? "") &&
+                              activeSessionProcessBlueprintId ===
+                                (activeSession.processBlueprintId ?? "") &&
+                              !processResolutionRequired)
                           }
                           className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
                         >
-                          {updatingDirectory ? "Saving..." : "Save Chat Settings"}
+                          {updatingDirectory
+                            ? "Saving..."
+                            : "Save Chat Settings"}
                         </button>
                       </div>
-                  </form>
-                </div>
-              ) : null}
-
-              {compactWaitingSummary ? (
-                <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-sm text-amber-50">
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-100">
-                      Waiting
-                    </span>
-                    <p className="min-w-0 truncate text-sm text-amber-50">{compactWaitingSummary}</p>
+                    </form>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              <ComposerPanel
-                activeSession={activeSession}
-                sending={sending}
-                interrupting={interrupting}
-                activity={activity}
-                threadStatusSummary={threadStatusSummary}
-                processResolutionRequired={processResolutionRequired}
-                processTerminalStatus={processTerminalStatus}
-                quickProcessSelectValue={quickProcessSelectValue}
-                processBlueprints={processBlueprints}
-                activeProcessBlueprintId={activeSession?.processBlueprintId ?? null}
-                updatingQuickProcessBlueprint={updatingQuickProcessBlueprint}
-                settingsOpen={settingsOpen}
-                onToggleSettings={() => setSettingsOpen((current) => !current)}
-                onQuickProcessChange={(nextProcessBlueprintId) =>
-                  void updateActiveSessionProcessQuickSet(nextProcessBlueprintId)
-                }
-                onInterrupt={() => void interruptRun()}
-                onSubmitMessage={sendMessage}
-                onReportTyping={reportTyping}
-                onSetError={setError}
-              />
+                {compactWaitingSummary ? (
+                  <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-sm text-amber-50">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-100">
+                        Waiting
+                      </span>
+                      <p className="min-w-0 truncate text-sm text-amber-50">
+                        {compactWaitingSummary}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
+                <ComposerPanel
+                  activeSession={activeSession}
+                  sending={sending}
+                  interrupting={interrupting}
+                  activity={activity}
+                  threadStatusSummary={threadStatusSummary}
+                  processResolutionRequired={processResolutionRequired}
+                  processTerminalStatus={processTerminalStatus}
+                  quickProcessSelectValue={quickProcessSelectValue}
+                  processBlueprints={processBlueprints}
+                  activeProcessBlueprintId={
+                    activeSession?.processBlueprintId ?? null
+                  }
+                  updatingQuickProcessBlueprint={updatingQuickProcessBlueprint}
+                  settingsOpen={settingsOpen}
+                  onToggleSettings={() =>
+                    setSettingsOpen((current) => !current)
+                  }
+                  onQuickProcessChange={(nextProcessBlueprintId) =>
+                    void updateActiveSessionProcessQuickSet(
+                      nextProcessBlueprintId,
+                    )
+                  }
+                  onInterrupt={() => void interruptRun()}
+                  onSubmitMessage={sendMessage}
+                  onReportTyping={reportTyping}
+                  onSetError={setError}
+                />
               </div>
             </div>
           </div>

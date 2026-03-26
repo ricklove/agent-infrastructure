@@ -208,9 +208,7 @@ function formatRelativeMinutes(minutes: number): string {
 
   if (days < 365) {
     const months = days / 30
-    return Number.isInteger(months)
-      ? `${months}mo`
-      : `${months.toFixed(1)}mo`
+    return Number.isInteger(months) ? `${months}mo` : `${months.toFixed(1)}mo`
   }
 
   const years = days / 365
@@ -275,7 +273,12 @@ function typicalStepMs(points: Array<{ tsMs: number; value: number }>): number {
   const deltas: number[] = []
 
   for (let index = 1; index < points.length; index += 1) {
-    const delta = points[index]!.tsMs - points[index - 1]!.tsMs
+    const point = points[index]
+    const previousPoint = points[index - 1]
+    if (!point || !previousPoint) {
+      continue
+    }
+    const delta = point.tsMs - previousPoint.tsMs
     if (delta > 0) {
       deltas.push(delta)
     }
@@ -306,7 +309,10 @@ function buildSeriesPaths(
   let currentSegment: Array<{ x: number; y: number }> = []
 
   for (let index = 0; index < points.length; index += 1) {
-    const point = points[index]!
+    const point = points[index]
+    if (!point) {
+      continue
+    }
     const previousPoint = index > 0 ? points[index - 1] : null
 
     if (
@@ -336,7 +342,11 @@ function buildSeriesPaths(
   return segments.map((segment) => linePath(segment))
 }
 
-function guideLineY(value: number, maxValue: number, layout: ChartLayout): number {
+function guideLineY(
+  value: number,
+  maxValue: number,
+  layout: ChartLayout,
+): number {
   const innerHeight = chartInnerHeight(layout)
   return (
     layout.padTop +
@@ -423,11 +433,7 @@ function buildTimeAxisTicks(
       x: xForTimestamp(timestamp, domainStartTsMs, domainEndTsMs, layout),
       timestamp,
       anchor:
-        index === 0
-          ? "start"
-          : index === tickCount - 1
-            ? "end"
-            : "middle",
+        index === 0 ? "start" : index === tickCount - 1 ? "end" : "middle",
     })
   }
 
@@ -440,17 +446,7 @@ function buildTimeAxisTicks(
 }
 
 const timelineRangeOptions = [
-  15,
-  30,
-  60,
-  180,
-  720,
-  1440,
-  10080,
-  43200,
-  129600,
-  262800,
-  525600,
+  15, 30, 60, 180, 720, 1440, 10080, 43200, 129600, 262800, 525600,
 ]
 
 const relativeRangeUnitOptions: Array<{
@@ -507,7 +503,10 @@ function timelineQueryRangeMinutes(query: TimelineQuery): number {
   return Math.max(1, Math.round((untilTsMs - sinceTsMs) / 60000))
 }
 
-function buildTimelineQueryParams(workerId: string, query: TimelineQuery): string {
+function buildTimelineQueryParams(
+  workerId: string,
+  query: TimelineQuery,
+): string {
   const params = new URLSearchParams({
     workerId,
   })
@@ -529,8 +528,8 @@ function buildTimelineQueryParams(workerId: string, query: TimelineQuery): strin
 
 // Preset hue slots for better color distribution (same as agent-graph-ui)
 const PROCESS_HUE_SLOTS = [
-  4, 18, 32, 46, 60, 74, 88, 104, 122, 140, 158, 176,
-  194, 210, 226, 242, 258, 274, 290, 306, 322, 338, 352,
+  4, 18, 32, 46, 60, 74, 88, 104, 122, 140, 158, 176, 194, 210, 226, 242, 258,
+  274, 290, 306, 322, 338, 352,
 ]
 
 function hashString(value: string): number {
@@ -592,8 +591,7 @@ export function AgentSwarmScreen({
     "preset" | "relative" | "absolute"
   >("preset")
   const [relativeAmountInput, setRelativeAmountInput] = useState("6")
-  const [relativeUnit, setRelativeUnit] =
-    useState<RelativeRangeUnit>("hours")
+  const [relativeUnit, setRelativeUnit] = useState<RelativeRangeUnit>("hours")
   const [absoluteSinceInput, setAbsoluteSinceInput] = useState(() =>
     formatDateTimeLocalInput(Date.now() - 6 * 60 * 60 * 1000),
   )
@@ -874,11 +872,15 @@ export function AgentSwarmScreen({
         ranking === "cpu"
           ? Math.max(
               1,
-              ...topSeries.flatMap((series) => series.points.map((point) => point.value)),
+              ...topSeries.flatMap((series) =>
+                series.points.map((point) => point.value),
+              ),
             )
           : Math.max(
               1,
-              ...topSeries.flatMap((series) => series.points.map((point) => point.value)),
+              ...topSeries.flatMap((series) =>
+                series.points.map((point) => point.value),
+              ),
             )
 
       return {
@@ -889,7 +891,9 @@ export function AgentSwarmScreen({
           paths: buildSeriesPaths(
             series.points,
             maxValue,
-            ranking === "cpu" ? processCpuChartLayout : processMemoryChartLayout,
+            ranking === "cpu"
+              ? processCpuChartLayout
+              : processMemoryChartLayout,
             domainStartTsMs,
             domainEndTsMs,
           ),
@@ -927,26 +931,50 @@ export function AgentSwarmScreen({
     timelineRangeMinutes,
   ])
 
-  function buildAxisLabels(layout: ChartLayout) {
-    return buildTimeAxisTicks(
-      layout,
-      timelineCharts.domainStartTsMs,
-      timelineCharts.domainEndTsMs,
-      timelineRangeMinutes,
-    )
-  }
-
   const hostAxisLabels = useMemo(
-    () => buildAxisLabels(timelineCharts.hostLayout),
-    [timelineCharts.domainEndTsMs, timelineCharts.domainStartTsMs, timelineCharts.hostLayout, timelineRangeMinutes],
+    () =>
+      buildTimeAxisTicks(
+        timelineCharts.hostLayout,
+        timelineCharts.domainStartTsMs,
+        timelineCharts.domainEndTsMs,
+        timelineRangeMinutes,
+      ),
+    [
+      timelineCharts.domainEndTsMs,
+      timelineCharts.domainStartTsMs,
+      timelineCharts.hostLayout,
+      timelineRangeMinutes,
+    ],
   )
   const processCpuAxisLabels = useMemo(
-    () => buildAxisLabels(timelineCharts.processCpuLayout),
-    [timelineCharts.domainEndTsMs, timelineCharts.domainStartTsMs, timelineCharts.processCpuLayout, timelineRangeMinutes],
+    () =>
+      buildTimeAxisTicks(
+        timelineCharts.processCpuLayout,
+        timelineCharts.domainStartTsMs,
+        timelineCharts.domainEndTsMs,
+        timelineRangeMinutes,
+      ),
+    [
+      timelineCharts.domainEndTsMs,
+      timelineCharts.domainStartTsMs,
+      timelineCharts.processCpuLayout,
+      timelineRangeMinutes,
+    ],
   )
   const processMemoryAxisLabels = useMemo(
-    () => buildAxisLabels(timelineCharts.processMemoryLayout),
-    [timelineCharts.domainEndTsMs, timelineCharts.domainStartTsMs, timelineCharts.processMemoryLayout, timelineRangeMinutes],
+    () =>
+      buildTimeAxisTicks(
+        timelineCharts.processMemoryLayout,
+        timelineCharts.domainStartTsMs,
+        timelineCharts.domainEndTsMs,
+        timelineRangeMinutes,
+      ),
+    [
+      timelineCharts.domainEndTsMs,
+      timelineCharts.domainStartTsMs,
+      timelineCharts.processMemoryLayout,
+      timelineRangeMinutes,
+    ],
   )
 
   return (
@@ -1253,7 +1281,9 @@ export function AgentSwarmScreen({
                   <input
                     className="w-24 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
                     inputMode="numeric"
-                    onChange={(event) => setRelativeAmountInput(event.target.value)}
+                    onChange={(event) =>
+                      setRelativeAmountInput(event.target.value)
+                    }
                     value={relativeAmountInput}
                   />
                   <select
@@ -1291,13 +1321,17 @@ export function AgentSwarmScreen({
                 <>
                   <input
                     className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
-                    onChange={(event) => setAbsoluteSinceInput(event.target.value)}
+                    onChange={(event) =>
+                      setAbsoluteSinceInput(event.target.value)
+                    }
                     type="datetime-local"
                     value={absoluteSinceInput}
                   />
                   <input
                     className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
-                    onChange={(event) => setAbsoluteUntilInput(event.target.value)}
+                    onChange={(event) =>
+                      setAbsoluteUntilInput(event.target.value)
+                    }
                     type="datetime-local"
                     value={absoluteUntilInput}
                   />
@@ -1341,18 +1375,23 @@ export function AgentSwarmScreen({
                   </div>
                   <div className="text-right text-xs text-slate-400">
                     <div>
-                      CPU {timelineCharts.lastHostSample?.cpuPercent.toFixed(1) ?? "--"}%
+                      CPU{" "}
+                      {timelineCharts.lastHostSample?.cpuPercent.toFixed(1) ??
+                        "--"}
+                      %
                     </div>
                     <div>
                       RAM{" "}
-                      {timelineCharts.lastHostSample?.memoryPercent.toFixed(1) ??
-                        "--"}
+                      {timelineCharts.lastHostSample?.memoryPercent.toFixed(
+                        1,
+                      ) ?? "--"}
                       %
                     </div>
                   </div>
                 </div>
                 <div ref={hostChartMeasure.ref} className="mt-4 min-w-0 flex-1">
                   <svg
+                    aria-label="Host utilization chart"
                     className="block"
                     height={timelineCharts.hostLayout.height}
                     viewBox={`0 0 ${timelineCharts.hostLayout.width} ${timelineCharts.hostLayout.height}`}
@@ -1373,11 +1412,18 @@ export function AgentSwarmScreen({
                     {chartGuideValues(100).map((value) => (
                       <g key={`host-guide-${value}`}>
                         <line
-                          stroke={value === 100 ? "rgba(248, 250, 252, 0.30)" : "rgba(148, 163, 184, 0.18)"}
+                          stroke={
+                            value === 100
+                              ? "rgba(248, 250, 252, 0.30)"
+                              : "rgba(148, 163, 184, 0.18)"
+                          }
                           strokeDasharray={value === 100 ? undefined : "4 4"}
                           strokeWidth={value === 100 ? "1.2" : "1"}
                           x1={timelineCharts.hostLayout.padLeft}
-                          x2={timelineCharts.hostLayout.width - timelineCharts.hostLayout.padRight}
+                          x2={
+                            timelineCharts.hostLayout.width -
+                            timelineCharts.hostLayout.padRight
+                          }
                           y1={guideLineY(value, 100, timelineCharts.hostLayout)}
                           y2={guideLineY(value, 100, timelineCharts.hostLayout)}
                         />
@@ -1386,15 +1432,18 @@ export function AgentSwarmScreen({
                           fontSize="11"
                           textAnchor="end"
                           x={timelineCharts.hostLayout.padLeft - 8}
-                          y={guideLineY(value, 100, timelineCharts.hostLayout) + 4}
+                          y={
+                            guideLineY(value, 100, timelineCharts.hostLayout) +
+                            4
+                          }
                         >
                           {formatAxisValue(value, "%")}
                         </text>
                       </g>
                     ))}
-                    {timelineCharts.cpuPaths.map((path, index) => (
+                    {timelineCharts.cpuPaths.map((path) => (
                       <path
-                        key={`cpu-path-${index}`}
+                        key={path}
                         d={path}
                         fill="none"
                         opacity="0.9"
@@ -1402,9 +1451,9 @@ export function AgentSwarmScreen({
                         strokeWidth="2.5"
                       />
                     ))}
-                    {timelineCharts.memoryPaths.map((path, index) => (
+                    {timelineCharts.memoryPaths.map((path) => (
                       <path
-                        key={`memory-path-${index}`}
+                        key={path}
                         d={path}
                         fill="none"
                         opacity="1"
@@ -1468,8 +1517,12 @@ export function AgentSwarmScreen({
                   key={chart.title}
                   className="rounded-2xl border border-white/10 bg-[#111826] p-4"
                 >
-                  <h3 className="text-sm font-semibold text-white">{chart.title}</h3>
-                  <p className="mt-1 text-xs text-slate-500">{chart.subtitle}</p>
+                  <h3 className="text-sm font-semibold text-white">
+                    {chart.title}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {chart.subtitle}
+                  </p>
                   <div
                     ref={
                       chart.title === "Top Process CPU"
@@ -1479,6 +1532,7 @@ export function AgentSwarmScreen({
                     className="mt-4 min-w-0 flex-1"
                   >
                     <svg
+                      aria-label={chart.title}
                       className="block"
                       height={
                         chart.title === "Top Process CPU"
@@ -1511,107 +1565,123 @@ export function AgentSwarmScreen({
                             : processMemoryAxisLabels
                         return (
                           <>
-                      <rect
-                        fill="none"
-                        height={chartInnerHeight(layout)}
-                        opacity="0.8"
-                        rx="12"
-                        ry="12"
-                        stroke="rgba(148, 163, 184, 0.18)"
-                        strokeWidth="1"
-                        width={chartInnerWidth(layout)}
-                        x={layout.padLeft}
-                        y={layout.padTop}
-                      />
-                      {chartGuideValues(
-                        chart.title === "Top Process CPU"
-                          ? Math.max(
-                              chart.lines.reduce(
-                                (maxValue, line) =>
-                                  Math.max(maxValue, line.maxValue),
-                                1,
-                              ),
-                              1,
-                            )
-                          : Math.max(chart.lines.reduce((maxValue, line) => Math.max(maxValue, line.maxValue), 1), 1),
-                      ).map((value) => (
-                        <g key={`${chart.title}-guide-${value}`}>
-                          <line
-                            stroke={value > 0 ? "rgba(148, 163, 184, 0.18)" : "rgba(248, 250, 252, 0.30)"}
-                            strokeDasharray={value > 0 ? "4 4" : undefined}
-                            strokeWidth={value > 0 ? "1" : "1.2"}
-                            x1={layout.padLeft}
-                            x2={layout.width - layout.padRight}
-                            y1={guideLineY(
-                              value,
+                            <rect
+                              fill="none"
+                              height={chartInnerHeight(layout)}
+                              opacity="0.8"
+                              rx="12"
+                              ry="12"
+                              stroke="rgba(148, 163, 184, 0.18)"
+                              strokeWidth="1"
+                              width={chartInnerWidth(layout)}
+                              x={layout.padLeft}
+                              y={layout.padTop}
+                            />
+                            {chartGuideValues(
                               chart.title === "Top Process CPU"
-                                ? timelineCharts.cpuProcesses.maxValue
-                                : timelineCharts.memoryProcesses.maxValue,
-                              layout,
+                                ? Math.max(
+                                    chart.lines.reduce(
+                                      (maxValue, line) =>
+                                        Math.max(maxValue, line.maxValue),
+                                      1,
+                                    ),
+                                    1,
+                                  )
+                                : Math.max(
+                                    chart.lines.reduce(
+                                      (maxValue, line) =>
+                                        Math.max(maxValue, line.maxValue),
+                                      1,
+                                    ),
+                                    1,
+                                  ),
+                            ).map((value) => (
+                              <g key={`${chart.title}-guide-${value}`}>
+                                <line
+                                  stroke={
+                                    value > 0
+                                      ? "rgba(148, 163, 184, 0.18)"
+                                      : "rgba(248, 250, 252, 0.30)"
+                                  }
+                                  strokeDasharray={
+                                    value > 0 ? "4 4" : undefined
+                                  }
+                                  strokeWidth={value > 0 ? "1" : "1.2"}
+                                  x1={layout.padLeft}
+                                  x2={layout.width - layout.padRight}
+                                  y1={guideLineY(
+                                    value,
+                                    chart.title === "Top Process CPU"
+                                      ? timelineCharts.cpuProcesses.maxValue
+                                      : timelineCharts.memoryProcesses.maxValue,
+                                    layout,
+                                  )}
+                                  y2={guideLineY(
+                                    value,
+                                    chart.title === "Top Process CPU"
+                                      ? timelineCharts.cpuProcesses.maxValue
+                                      : timelineCharts.memoryProcesses.maxValue,
+                                    layout,
+                                  )}
+                                />
+                                <text
+                                  fill="rgba(148, 163, 184, 0.9)"
+                                  fontSize="11"
+                                  textAnchor="end"
+                                  x={layout.padLeft - 8}
+                                  y={
+                                    guideLineY(
+                                      value,
+                                      chart.title === "Top Process CPU"
+                                        ? timelineCharts.cpuProcesses.maxValue
+                                        : timelineCharts.memoryProcesses
+                                            .maxValue,
+                                      layout,
+                                    ) + 4
+                                  }
+                                >
+                                  {formatAxisValue(
+                                    value,
+                                    chart.title === "Top Process CPU"
+                                      ? "%"
+                                      : "memory",
+                                  )}
+                                </text>
+                              </g>
+                            ))}
+                            {chart.lines.flatMap((line) =>
+                              line.paths.map((path) => (
+                                <path
+                                  key={`${line.label}-${path}`}
+                                  d={path}
+                                  fill="none"
+                                  opacity="0.95"
+                                  stroke={line.color}
+                                  strokeWidth="2.25"
+                                />
+                              )),
                             )}
-                            y2={guideLineY(
-                              value,
-                              chart.title === "Top Process CPU"
-                                ? timelineCharts.cpuProcesses.maxValue
-                                : timelineCharts.memoryProcesses.maxValue,
-                              layout,
-                            )}
-                          />
-                          <text
-                            fill="rgba(148, 163, 184, 0.9)"
-                            fontSize="11"
-                            textAnchor="end"
-                            x={layout.padLeft - 8}
-                            y={
-                              guideLineY(
-                                value,
-                                chart.title === "Top Process CPU"
-                                  ? timelineCharts.cpuProcesses.maxValue
-                                  : timelineCharts.memoryProcesses.maxValue,
-                                layout,
-                              ) + 4
-                            }
-                          >
-                            {formatAxisValue(
-                              value,
-                              chart.title === "Top Process CPU" ? "%" : "memory",
-                            )}
-                          </text>
-                        </g>
-                      ))}
-                      {chart.lines.flatMap((line) =>
-                        line.paths.map((path, index) => (
-                          <path
-                            key={`${line.label}-${index}`}
-                            d={path}
-                            fill="none"
-                            opacity="0.95"
-                            stroke={line.color}
-                            strokeWidth="2.25"
-                          />
-                        )),
-                      )}
-                      {axisLabels.map((item) => (
-                        <g key={`${chart.title}-axis-${item.timestamp}`}>
-                          <line
-                            stroke="rgba(148, 163, 184, 0.22)"
-                            strokeDasharray="3 6"
-                            x1={item.x}
-                            x2={item.x}
-                            y1={layout.padTop}
-                            y2={layout.height - layout.padBottom}
-                          />
-                          <text
-                            fill="rgba(148, 163, 184, 0.9)"
-                            fontSize="11"
-                            textAnchor={item.anchor}
-                            x={item.x}
-                            y={layout.height - 4}
-                          >
-                            {item.label}
-                          </text>
-                        </g>
-                      ))}
+                            {axisLabels.map((item) => (
+                              <g key={`${chart.title}-axis-${item.timestamp}`}>
+                                <line
+                                  stroke="rgba(148, 163, 184, 0.22)"
+                                  strokeDasharray="3 6"
+                                  x1={item.x}
+                                  x2={item.x}
+                                  y1={layout.padTop}
+                                  y2={layout.height - layout.padBottom}
+                                />
+                                <text
+                                  fill="rgba(148, 163, 184, 0.9)"
+                                  fontSize="11"
+                                  textAnchor={item.anchor}
+                                  x={item.x}
+                                  y={layout.height - 4}
+                                >
+                                  {item.label}
+                                </text>
+                              </g>
+                            ))}
                           </>
                         )
                       })()}
@@ -1638,7 +1708,9 @@ export function AgentSwarmScreen({
                             <span className="truncate">{line.label}</span>
                           </span>
                           <span className="shrink-0 text-slate-400">
-                            {line.maxValue.toFixed(chart.suffix === "%" ? 1 : 0)}
+                            {line.maxValue.toFixed(
+                              chart.suffix === "%" ? 1 : 0,
+                            )}
                             {chart.suffix}
                           </span>
                         </div>

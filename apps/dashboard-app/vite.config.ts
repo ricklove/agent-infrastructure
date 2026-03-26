@@ -70,13 +70,16 @@ function versionPlugin(): Plugin {
     handleHotUpdate(ctx: HmrContext) {
       const normalizedFile = resolve(ctx.file)
       const touchesFrontend = frontendRoots.some(
-        (root) => normalizedFile === root || normalizedFile.startsWith(`${root}/`),
+        (root) =>
+          normalizedFile === root || normalizedFile.startsWith(`${root}/`),
       )
       if (!touchesFrontend) {
         return
       }
 
-      const versionModule = ctx.server.moduleGraph.getModuleById(resolvedVersionModuleId)
+      const versionModule = ctx.server.moduleGraph.getModuleById(
+        resolvedVersionModuleId,
+      )
       if (!versionModule) {
         return
       }

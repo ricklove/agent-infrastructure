@@ -1,15 +1,13 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.9/schema.json",
   "files": {
-    "include": [
-      "apps/dashboard-app/**",
-      "packages/dashboard-ui/**",
-      "packages/agent-swarm-ui/**",
-      "packages/agent-chat-ui/**"
-    ],
-    "ignore": [
-      "**/dist/**",
-      "**/node_modules/**"
+    "includes": [
+      "**/apps/dashboard-app/**",
+      "**/packages/dashboard-ui/**",
+      "**/packages/agent-swarm-ui/**",
+      "**/packages/agent-chat-ui/**",
+      "!**/dist/**",
+      "!**/node_modules/**"
     ]
   },
   "formatter": {
@@ -18,6 +16,11 @@
   },
   "linter": {
     "enabled": true
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   },
   "javascript": {
     "formatter": {

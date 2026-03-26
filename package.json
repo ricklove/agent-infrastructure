@@ -31,6 +31,6 @@
     "destroy:aws-setup": "bun run --filter @agent-infrastructure/aws-setup destroy"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4"
+    "@biomejs/biome": "^2.4.9"
   }
 }
