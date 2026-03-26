@@ -46,6 +46,22 @@ type SessionActivity = {
   canInterrupt: boolean
 }
 
+type SessionProviderUsage = {
+  providerKind: ProviderKind
+  modelContextWindow: number | null
+  totalTokens: number | null
+  inputTokens: number | null
+  outputTokens: number | null
+  cachedInputTokens: number | null
+  reasoningOutputTokens: number | null
+  lastTotalTokens: number | null
+  lastInputTokens: number | null
+  lastOutputTokens: number | null
+  lastCachedInputTokens: number | null
+  lastReasoningOutputTokens: number | null
+  updatedAtMs: number
+}
+
 type SessionWatchdogState = {
   status: "unconfigured" | "unresolved" | "nudged" | "completed" | "blocked"
   nudgeCount: number
@@ -71,6 +87,7 @@ type SessionSummary = {
   messageCount: number
   activity: SessionActivity
   queuedMessageCount: number
+  providerUsage: SessionProviderUsage | null
 }
 
 type SessionMessage = {
@@ -120,6 +137,7 @@ type SessionSnapshotResponse = {
   messages: SessionMessage[]
   queuedMessages: SessionMessage[]
   activity: SessionActivity
+  providerUsage?: SessionProviderUsage | null
 }
 
 type SessionsResponse = {
@@ -161,6 +179,7 @@ type SessionSnapshotEvent = {
   messages: SessionMessage[]
   queuedMessages: SessionMessage[]
   activity: SessionActivity
+  providerUsage?: SessionProviderUsage | null
 }
 
 type SessionUpdatedEvent = {
@@ -692,6 +711,70 @@ function watchdogAttentionLabel(watchdogState: SessionWatchdogState) {
     return "Blocked"
   }
   return null
+}
+
+function formatCompactInteger(value: number | null) {
+  if (value === null || !Number.isFinite(value)) {
+    return null
+  }
+  if (value >= 1000) {
+    const abbreviated = value / 1000
+    return `${abbreviated >= 100 ? Math.round(abbreviated) : abbreviated.toFixed(abbreviated >= 10 ? 1 : 2).replace(/\.?0+$/, "")}k`
+  }
+  return String(Math.round(value))
+}
+
+function formatUsagePercent(
+  totalTokens: number | null,
+  modelContextWindow: number | null,
+) {
+  if (
+    totalTokens === null ||
+    modelContextWindow === null ||
+    modelContextWindow <= 0
+  ) {
+    return null
+  }
+  const percent = (totalTokens / modelContextWindow) * 100
+  if (!Number.isFinite(percent)) {
+    return null
+  }
+  return `${percent >= 10 ? Math.round(percent) : percent.toFixed(1).replace(/\.0$/, "")}%`
+}
+
+function summarizeProviderUsage(usage: SessionProviderUsage | null) {
+  if (!usage) {
+    return null
+  }
+  const total = formatCompactInteger(usage.totalTokens)
+  const window = formatCompactInteger(usage.modelContextWindow)
+  const last = formatCompactInteger(usage.lastTotalTokens)
+  const cached = formatCompactInteger(usage.cachedInputTokens)
+  const percent = formatUsagePercent(
+    usage.totalTokens,
+    usage.modelContextWindow,
+  )
+  const parts: string[] = []
+
+  if (total && window) {
+    parts.push(`Context ${total} / ${window}`)
+  } else if (total) {
+    parts.push(`Context ${total}`)
+  }
+
+  if (percent) {
+    parts.push(percent)
+  }
+
+  if (last) {
+    parts.push(`Last ${last}`)
+  }
+
+  if (cached) {
+    parts.push(`Cached ${cached}`)
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : null
 }
 
 function mergeMessagesById(
@@ -1952,6 +2035,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeSessionId) ?? null,
     [activeSessionId, sessions],
+  )
+  const activeSessionUsageSummary = useMemo(
+    () => summarizeProviderUsage(activeSession?.providerUsage ?? null),
+    [activeSession?.providerUsage],
   )
   const processTerminalStatus =
     activeSession?.processBlueprintId &&
@@ -3826,6 +3913,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 ? `${activeSession.providerKind} · ${activeSession.modelRef}${activeSession.archived ? " · archived" : ""}`
                 : "Select a session or start a new one."}
             </p>
+            {activeSessionUsageSummary ? (
+              <p className="truncate text-[11px] text-cyan-300/80">
+                {activeSessionUsageSummary}
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             <div className="md:hidden">

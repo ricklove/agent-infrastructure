@@ -21,6 +21,7 @@ import {
   ensureCodexAppServer,
   interruptCodexTurn,
   runCodexTurn,
+  type CodexTokenUsagePayload,
 } from "./codex-provider.js";
 import {
   loadProcessBlueprintCatalog,
@@ -71,9 +72,26 @@ type SessionActivity = {
   canInterrupt: boolean;
 };
 
+type SessionProviderUsage = {
+  providerKind: AgentChatProviderKind;
+  modelContextWindow: number | null;
+  totalTokens: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cachedInputTokens: number | null;
+  reasoningOutputTokens: number | null;
+  lastTotalTokens: number | null;
+  lastInputTokens: number | null;
+  lastOutputTokens: number | null;
+  lastCachedInputTokens: number | null;
+  lastReasoningOutputTokens: number | null;
+  updatedAtMs: number;
+};
+
 type SessionSummaryResponseItem = StoredSession & {
   activity: SessionActivity;
   queuedMessageCount: number;
+  providerUsage: SessionProviderUsage | null;
 };
 
 type ProcessBlueprintResponseItem = {
@@ -100,6 +118,7 @@ type SessionSnapshotPayload = {
   messages: StoredMessage[];
   queuedMessages: StoredMessage[];
   activity: SessionActivity;
+  providerUsage: SessionProviderUsage | null;
 };
 
 type SessionRuntimeState = SessionActivity & {
@@ -108,6 +127,7 @@ type SessionRuntimeState = SessionActivity & {
   providerKind: AgentChatProviderKind | null;
   providerIdleSinceAtMs: number | null;
   userTypingUntilAtMs: number | null;
+  providerUsage: SessionProviderUsage | null;
 };
 
 type WorkspacePersistenceRequest = {
@@ -213,6 +233,7 @@ function ensureRuntimeState(sessionId: string): SessionRuntimeState {
       providerKind: null,
       providerIdleSinceAtMs: null,
       userTypingUntilAtMs: null,
+      providerUsage: null,
     };
     sessionRuntime.set(sessionId, runtime);
   }
@@ -244,6 +265,7 @@ function toSessionActivity(sessionId: string): SessionActivity {
 }
 
 function buildSessionSummary(session: StoredSession): SessionSummaryResponseItem {
+  const runtime = ensureRuntimeState(session.id);
   const modelRef =
     session.providerKind === "claude-agent-sdk"
       ? normalizeClaudeSessionModelRef(session.modelRef)
@@ -253,6 +275,7 @@ function buildSessionSummary(session: StoredSession): SessionSummaryResponseItem
     modelRef,
     activity: toSessionActivity(session.id),
     queuedMessageCount: store.listQueuedMessages(session.id).length,
+    providerUsage: runtime.providerUsage,
   };
 }
 
@@ -269,6 +292,44 @@ function buildSessionSnapshot(sessionId: string): SessionSnapshotPayload | null 
     messages: store.listMessages(sessionId),
     queuedMessages: store.listQueuedMessages(sessionId),
     activity,
+    providerUsage: ensureRuntimeState(sessionId).providerUsage,
+  };
+}
+
+function numberFromUnknown(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeCodexTokenUsage(
+  tokenUsage: CodexTokenUsagePayload | null,
+): SessionProviderUsage | null {
+  if (!tokenUsage) {
+    return null;
+  }
+
+  const total = tokenUsage.total ?? {};
+  const last = tokenUsage.last ?? {};
+  return {
+    providerKind: "codex-app-server",
+    modelContextWindow: numberFromUnknown(tokenUsage.modelContextWindow),
+    totalTokens: numberFromUnknown(total.totalTokens),
+    inputTokens: numberFromUnknown(total.inputTokens),
+    outputTokens: numberFromUnknown(total.outputTokens),
+    cachedInputTokens: numberFromUnknown(total.cachedInputTokens),
+    reasoningOutputTokens: numberFromUnknown(total.reasoningOutputTokens),
+    lastTotalTokens: numberFromUnknown(last.totalTokens),
+    lastInputTokens: numberFromUnknown(last.inputTokens),
+    lastOutputTokens: numberFromUnknown(last.outputTokens),
+    lastCachedInputTokens: numberFromUnknown(last.cachedInputTokens),
+    lastReasoningOutputTokens: numberFromUnknown(last.reasoningOutputTokens),
+    updatedAtMs: Date.now(),
   };
 }
 
@@ -823,6 +884,28 @@ function providerActivityCallbacks(
         activity: toSessionActivity(sessionId),
       });
     },
+    onTokenUsageUpdated(payload: {
+      threadId: string;
+      turnId: string;
+      tokenUsage: CodexTokenUsagePayload | null;
+    }) {
+      const nextUsage = normalizeCodexTokenUsage(payload.tokenUsage);
+      setRuntimeState(sessionId, (current) => ({
+        ...current,
+        threadId: payload.threadId || current.threadId,
+        turnId: payload.turnId || current.turnId,
+        providerUsage: nextUsage,
+      }));
+      broadcastSession(sessionId, {
+        type: "session.updated",
+        session: store.getSession(sessionId)
+          ? buildSessionSummary(store.getSession(sessionId)!)
+          : null,
+        messages: [],
+        queuedMessages: store.listQueuedMessages(sessionId),
+        activity: toSessionActivity(sessionId),
+      });
+    },
   };
 }
 
@@ -841,7 +924,12 @@ function finalizeIdleRuntimeState(sessionId: string, threadId: string | null) {
     interruptRequested: false,
     providerKind: null,
     providerIdleSinceAtMs: Date.now(),
+    providerUsage: currentSessionUsage(sessionId),
   });
+}
+
+function currentSessionUsage(sessionId: string) {
+  return ensureRuntimeState(sessionId).providerUsage;
 }
 
 function finalizeNonIdleRuntimeState(
@@ -863,6 +951,7 @@ function finalizeNonIdleRuntimeState(
     interruptRequested: false,
     providerKind,
     providerIdleSinceAtMs: null,
+    providerUsage: currentSessionUsage(sessionId),
   });
 }
 
@@ -1085,6 +1174,7 @@ async function runProviderTurnForQueuedMessages(
     interruptRequested: false,
     providerKind: session.providerKind,
     providerIdleSinceAtMs: null,
+    providerUsage: null,
   });
   store.markMessagesSeen(
     sessionId,

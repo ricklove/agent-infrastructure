@@ -10,6 +10,7 @@ const AgentDebugTools = define.blueprint("AgentDebugTools", {
 const Artifact = {
   browserTool: define.document("AgentBrowserTool"),
   renderDiagnostics: define.document("RenderDiagnosticsBlueprint"),
+  codexSessionArtifacts: define.document("CodexSessionArtifacts"),
   screenshot: define.document("DebugScreenshot"),
   snapshot: define.document("BrowserSnapshot"),
   consoleOutput: define.document("BrowserConsoleOutput"),
@@ -27,6 +28,7 @@ const Concept = {
 AgentDebugTools.contains(
   Artifact.browserTool,
   Artifact.renderDiagnostics,
+  Artifact.codexSessionArtifacts,
   Artifact.screenshot,
   Artifact.snapshot,
   Artifact.consoleOutput,
@@ -43,6 +45,7 @@ AgentDebugTools.prescribes(`- UI debugging should begin in the browser with agen
 - agent-browser snapshot, screenshot, console, errors, and eval are the canonical browser-debug surfaces on this machine.
 - A render diagnosis loop should stay narrow: reset counters, perform one isolated interaction, read top counters, identify the hot subtree, then inspect code.
 - agent-browser eval may read the shared render counter registry directly when a visible in-page debug surface does not yet exist.
+- when provider context or token-usage inspection is needed and Agent Chat does not yet surface that data in-product, Codex session artifacts under ~/.codex are the canonical fallback evidence source on this machine.
 - Browser console output and browser error output are useful secondary signals, but visible in-page debug surfaces are preferred when the investigation data should be repeatedly inspectable by agents.
 - Saved screenshots and snapshots should be kept when they materially support a diagnosis or before/after comparison.
 - Debug probes should prefer top-counter summaries over noisy per-render logging.
@@ -51,6 +54,7 @@ AgentDebugTools.prescribes(`- UI debugging should begin in the browser with agen
 AgentDebugTools.defines(`- BrowserFirstDebugging means starting with the actual rendered UI and observed browser behavior before changing code for a UI or rerender issue.
 - IsolatedInteractionLoop means one narrow user action or state change is performed between counter reset and counter read so the hot render path remains attributable.
 - RenderCounterProbe means reading the shared global render counter registry and ranking the highest counters to identify the hottest subtree.
+- CodexSessionArtifacts means the provider-local session logs and related metadata under ~/.codex that may expose token-count, context-window, cached-input, and rate-limit telemetry not yet surfaced in the product UI.
 - VisibleDebugSurfacePreferred means repeated debugging data should ideally be exposed in the page or another directly inspectable surface rather than existing only in transient console output.
 - ConsoleAsSecondarySignal means browser console and uncaught page errors complement render probes but do not replace structured render-count data.`);
 

@@ -30,7 +30,7 @@ type CodexRateLimitsPayload = {
   planType?: string | null;
 };
 
-type CodexTokenUsagePayload = {
+export type CodexTokenUsagePayload = {
   total?: Record<string, unknown>;
   last?: Record<string, unknown>;
   modelContextWindow?: unknown;
@@ -63,6 +63,11 @@ type CodexRunCallbacks = {
     threadId: string;
     turnId: string;
     text: string;
+  }) => void;
+  onTokenUsageUpdated?: (payload: {
+    threadId: string;
+    turnId: string;
+    tokenUsage: CodexTokenUsagePayload | null;
   }) => void;
 };
 
@@ -397,6 +402,11 @@ export async function runCodexTurn(
       if (message.method === "thread/tokenUsage/updated") {
         const params = message.params ?? {};
         latestTokenUsage = (params.tokenUsage as CodexTokenUsagePayload | undefined) ?? null;
+        callbacks.onTokenUsageUpdated?.({
+          threadId: String(params.threadId ?? currentThreadId ?? ""),
+          turnId: String(params.turnId ?? currentTurnId),
+          tokenUsage: latestTokenUsage,
+        });
         return;
       }
 

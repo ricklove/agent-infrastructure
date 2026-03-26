@@ -260,6 +260,23 @@ Observability.watchdogState.means(`
 - should survive backend restarts by re-arming unresolved idle sessions from canonical session state instead of forgetting the pending watchdog episode until a fresh chat request arrives
 `);
 
+Observability.usage.means(`
+- latest provider-reported token-usage and context-window state for the active session when that provider exposes such telemetry
+- should include enough structure to distinguish last-turn usage, accumulated usage, cached-input usage, reasoning-output usage when available, and the model context-window limit
+- should be surfaced through session runtime state and UI rather than existing only as provider-internal adapter data
+- should be presented as latest reported usage rather than as a false claim of timeless exactness when no active provider turn is running
+- Codex-local session artifacts such as ~/.codex session logs may be used as an implementation source when they are the canonical place the provider runtime already emits token-count events
+- provider usage telemetry belongs to inspectable session observability and should remain distinct from canonical transcript content unless the provider reaches an exhaustion or limit state significant enough to become transcript history
+`);
+
+AgentChatImplementationPlan.prescribes(`
+- Provider adapters that already receive token-usage updates should preserve the latest structured usage payload on session runtime state instead of discarding it after completion handling.
+- Session snapshot and websocket update surfaces should carry the latest provider-usage telemetry needed by the browser UI.
+- The UI should expose current or latest-reported token usage in an inspectable session surface, such as the active-session header, settings menu, or another deliberate observability panel.
+- Usage presentation should favor context used, context window, remaining window, and last-turn usage over raw unlabelled counters.
+- When the active provider does not expose usage telemetry, the UI should make that absence explicit instead of showing misleading zero values.
+`);
+
 Provider.binding.means(`
 - provider-specific execution attachment
 - resumable when useful

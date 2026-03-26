@@ -36,6 +36,7 @@ const CurrentReality = {
   typingAwareIdleSuppression: define.concept("TypingAwareIdleSuppression"),
   canonicalActivityHistory: define.concept("CanonicalActivityHistory"),
   providerLimitActivity: define.concept("ProviderLimitActivity"),
+  providerUsageTelemetryGap: define.concept("ProviderUsageTelemetryGap"),
   sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
   threadNavigationGap: define.concept("ThreadNavigationGap"),
   backendOwnedWatchdogContinuity: define.concept("BackendOwnedWatchdogContinuity"),
@@ -87,6 +88,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.typingAwareIdleSuppression,
   CurrentReality.canonicalActivityHistory,
   CurrentReality.providerLimitActivity,
+  CurrentReality.providerUsageTelemetryGap,
   CurrentReality.sessionListWorkflowPolishGap,
   CurrentReality.threadNavigationGap,
   CurrentReality.backendOwnedWatchdogContinuity,
@@ -228,6 +230,13 @@ CurrentReality.providerLimitActivity.means(`
 - the Codex adapter now opts into supported app-server raw status events through the experimental API capability
 - when Codex exposes token-budget, quota, or context-window exhaustion without assistant text, Agent Chat now converts that provider status into canonical transcript activity instead of falling back to an empty assistant response
 - local verification with an isolated fake Codex app-server confirmed that an exhausted-provider completion now records a concrete provider-limit activity message in canonical history
+`);
+
+CurrentReality.providerUsageTelemetryGap.means(`
+- the Codex adapter now surfaces latest token-usage updates into session runtime state instead of keeping them only inside completion-issue interpretation
+- the current browser UI now exposes latest reported context usage, context window, cached-input usage, and last-turn usage for the active session in the thread header
+- current workspace canonical session files still do not persist that provider usage telemetry, so provider-local Codex session artifacts remain the strongest fallback evidence source outside live runtime state
+- the remaining gap is persistence and broader provider coverage, not basic runtime or UI visibility for Codex usage telemetry
 `);
 
 CurrentReality.backendOwnedWatchdogContinuity.means(`
