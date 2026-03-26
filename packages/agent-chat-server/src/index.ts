@@ -79,6 +79,7 @@ type SessionSummaryResponseItem = StoredSession & {
 type ProcessBlueprintResponseItem = {
   id: string;
   title: string;
+  catalogOrder: number;
   expectation: string;
   idlePrompt: string;
   completionMode: "exact_reply";
@@ -283,6 +284,7 @@ function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
   return processBlueprintCatalog.map((entry) => ({
     id: entry.id,
     title: entry.title,
+    catalogOrder: entry.catalogOrder,
     expectation: entry.expectation,
     idlePrompt: entry.idlePrompt,
     completionMode: entry.completionMode,

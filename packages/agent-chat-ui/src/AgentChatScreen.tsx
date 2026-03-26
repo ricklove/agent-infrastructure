@@ -131,6 +131,7 @@ type ProvidersResponse = {
 type ProcessBlueprint = {
   id: string
   title: string
+  catalogOrder: number
   expectation: string
   idlePrompt: string
   completionMode: "exact_reply"

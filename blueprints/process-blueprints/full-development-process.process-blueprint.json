@@ -1,6 +1,7 @@
 {
   "id": "full_development_process",
   "title": "Full Development Process",
+  "catalogOrder": 50,
   "expectation": "Follow the full development-process blueprint through relevant blueprint updates, committed implementation, local verification, release promotion, runtime deploy, and live verification.",
   "idlePrompt": "If you fully completed the development process, reply only with 'done: full development process complete'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: full development process blocked'. Otherwise resume the work immediately and perform the next required implementation, verification, release, deploy, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",

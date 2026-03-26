@@ -1,6 +1,7 @@
 {
   "id": "discuss",
   "title": "Discuss",
+  "catalogOrder": 10,
   "expectation": "Discuss ideas, tradeoffs, and recommendations for the user's request without making implementation changes unless the user explicitly asks for implementation. When the request may depend on repository guidance or architecture rules, search for relevant `blueprints` folders in the workspace and in the project repos before concluding what applies.",
   "idlePrompt": "If the discussion is complete, reply only with 'done: discussion complete'. If you are truly blocked on a needed user decision, reply only with 'blocked: discussion needs user input'. Otherwise resume the discussion immediately and add substantive analysis instead of giving only a status update.",
   "completionMode": "exact_reply",

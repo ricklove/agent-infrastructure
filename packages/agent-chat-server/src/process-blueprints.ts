@@ -4,6 +4,7 @@ import { basename, join, resolve } from "node:path";
 export type ProcessBlueprint = {
   id: string;
   title: string;
+  catalogOrder: number;
   expectation: string;
   idlePrompt: string;
   completionMode: "exact_reply";
@@ -21,6 +22,7 @@ export type ProcessBlueprint = {
 type RawProcessBlueprint = {
   id?: unknown;
   title?: unknown;
+  catalogOrder?: unknown;
   expectation?: unknown;
   idlePrompt?: unknown;
   completionMode?: unknown;
@@ -41,6 +43,7 @@ function defaultBlueprintsDir() {
 function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): ProcessBlueprint {
   const id = typeof raw.id === "string" ? raw.id.trim() : "";
   const title = typeof raw.title === "string" ? raw.title.trim() : "";
+  const catalogOrder = Number(raw.catalogOrder);
   const expectation = typeof raw.expectation === "string" ? raw.expectation.trim() : "";
   const idlePrompt = typeof raw.idlePrompt === "string" ? raw.idlePrompt.trim() : "";
   const completionToken =
@@ -62,6 +65,8 @@ function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): 
   return {
     id,
     title,
+    catalogOrder:
+      Number.isFinite(catalogOrder) && catalogOrder >= 0 ? catalogOrder : Number.MAX_SAFE_INTEGER,
     expectation,
     idlePrompt,
     completionMode,
@@ -100,7 +105,12 @@ export function loadProcessBlueprintCatalog(blueprintsDir?: string): ProcessBlue
         path,
       ),
     )
-    .sort((left, right) => left.title.localeCompare(right.title))
+    .sort((left, right) => {
+      if (left.catalogOrder !== right.catalogOrder) {
+        return left.catalogOrder - right.catalogOrder;
+      }
+      return left.title.localeCompare(right.title);
+    });
 }
 
 export function processBlueprintLabel(processBlueprint: ProcessBlueprint | null | undefined) {

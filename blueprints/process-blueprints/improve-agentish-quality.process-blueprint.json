@@ -1,0 +1,19 @@
+{
+  "id": "improve_agentish_quality",
+  "title": "Improve Agentish Quality",
+  "catalogOrder": 30,
+  "expectation": "Iterate on one target Agentish subject file at a time: reload the Agentish language root, Agentish quality blueprint, and Agentish sections blueprint; evaluate the target file; rewrite it; decide whether another local pass would materially improve quality; then obtain an independent quality evaluation and an independent rewritten blueprint-state to compare downstream quality.",
+  "idlePrompt": "If the Agentish quality-improvement loop for the target file is complete, reply only with 'done: agentish quality improved'. If you are truly blocked on missing target-file, subject-state, or companion-context information, reply only with 'blocked: agentish quality improvement requires clarification'. Otherwise resume the improvement loop immediately and perform the next evaluation, rewrite, or comparison step instead of giving only a status update.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: agentish quality improved",
+  "blockedToken": "blocked: agentish quality improvement requires clarification",
+  "stopConditions": [
+    "agentish quality-improvement loop complete",
+    "missing target-file, subject-state, or companion-context information"
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 90,
+    "maxNudgesPerIdleEpisode": 0
+  }
+}

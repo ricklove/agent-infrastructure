@@ -1,6 +1,7 @@
 {
   "id": "evaluate_agentish_quality",
   "title": "Evaluate Agentish Quality",
+  "catalogOrder": 40,
   "expectation": "Classify one target Agentish file, load only the Agentish quality-evaluation blueprint plus the minimum allowed companion context for that file class, evaluate the file in fresh context, and produce a structured report that separates writing quality from corpus-role or obsolescence concerns.",
   "idlePrompt": "If the Agentish quality evaluation is complete, reply only with 'done: agentish quality evaluated'. If you are truly blocked on missing target-file or companion-context information, reply only with 'blocked: agentish quality evaluation requires clarification'. Otherwise resume the evaluation immediately and produce the next file judgment instead of giving only a status update.",
   "completionMode": "exact_reply",
