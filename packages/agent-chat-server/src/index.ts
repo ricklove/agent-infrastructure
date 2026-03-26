@@ -446,6 +446,29 @@ function queueProcessExpectationForSession(sessionId: string) {
   return { session: updatedSession ?? session, processMessage };
 }
 
+function queuedProcessChangeAwaitingExplicitHumanSend(
+  sessionId: string,
+  session: StoredSession | null,
+) {
+  if (!session?.pendingSystemInstruction) {
+    return false;
+  }
+
+  const hasQueuedProcessInstruction = session.pendingSystemInstruction
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .some((line) => line.startsWith(PROCESS_INSTRUCTION_PREFIX));
+
+  if (!hasQueuedProcessInstruction) {
+    return false;
+  }
+
+  return !store
+    .listQueuedMessages(sessionId)
+    .some((message) => message.providerSeenAtMs === null && message.role === "user");
+}
+
 function runningTurnLooksStalled(runtime: SessionRuntimeState, processBlueprint: ProcessBlueprint) {
   if (runtime.status !== "running") {
     return false;
@@ -481,6 +504,10 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
   }
 
   if (processBlueprintNudgeLimitReached(session, processBlueprint)) {
+    return;
+  }
+
+  if (queuedProcessChangeAwaitingExplicitHumanSend(sessionId, session)) {
     return;
   }
 
@@ -533,6 +560,10 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
   }
 
   if (processBlueprintNudgeLimitReached(session, processBlueprint)) {
+    return;
+  }
+
+  if (queuedProcessChangeAwaitingExplicitHumanSend(sessionId, session)) {
     return;
   }
 
