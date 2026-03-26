@@ -92,6 +92,8 @@ const Observability = {
   inspection: define.entity("ContextInspection"),
 };
 
+const AgentChatImplementationPlan = define.section("AgentChatImplementationPlanSection");
+
 AgentChat.enforces(`
 - AgentChat owns canonical conversation history.
 - Provider state is replaceable, provider-owned, and never canonical.
@@ -421,6 +423,22 @@ AgentChat.prescribes(`
 - Make compaction strategy visible policy and make active retained context inspectable.
 - Optimize Agentish compaction for durable decisions, rationale, unresolved questions, and active next steps.
 - Design imports as normalization into canonical history, not as long-term dependency on provider storage.
+`);
+
+AgentChat.contains(AgentChatImplementationPlan);
+
+AgentChatImplementationPlan.defines(`
+- Agent Chat ships as a real dashboard feature with a feature-owned backend, browser-owned UI state, gateway-proxied transport, and canonical app-owned persistence.
+- The browser owns session list rendering, transcript rendering, composer state, reconnect behavior, queued-message visibility, waiting-state chrome, and provider-setting forms.
+- The backend owns canonical transcript history, provider adapter orchestration, websocket fanout, retry policy, process-blueprint expectation handling, watchdog eligibility, and provider-state normalization into canonical activity.
+- Canonical storage is file-backed durable app data outside state/, with in-memory caches treated as derived and disposable.
+- Provider adapters are explicit runtime bindings for Codex, OpenRouter, Claude Agent SDK, Gemini, and future providers through one provider-agnostic boundary.
+- Provider capability tracking includes multimodal input, image input, native context caching, native thread reuse, and qualified model catalogs.
+- Session configuration owns provider selection, model selection, process-blueprint selection, and workspace-root selection without rewriting canonical session identity.
+- Claude Agent SDK sessions use plan mode for Discuss or no explicit process blueprint, and writable execution mode for blueprint-authoring or implementation-oriented processes.
+- Transport uses HTTP for mutation and query surfaces, websocket streaming for live session updates, and gateway proxying as the browser-facing boundary.
+- The transcript surface keeps assistant prose, canonical system history, and execution activity visually distinct while preserving one canonical ordered history.
+- Image paste is first-class canonical content, unsent drafts are preserved per session, and queued user messages batch into the next provider turn together.
 `);
 
 AgentChat.usesFiles(`

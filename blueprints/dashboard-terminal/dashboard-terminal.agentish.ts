@@ -86,6 +86,10 @@ const Interaction = {
   pasteFromClipboard: define.concept("PasteFromClipboard"),
 };
 
+const DashboardTerminalImplementationPlan = define.section(
+  "DashboardTerminalImplementationPlanSection",
+);
+
 DashboardTerminal.enforces(`
 - Dashboard terminal is an interactive shell feature, not a one-shot command runner.
 - The primary product reason for terminal access is to complete human-in-the-loop authentication and authorization flows that do not fit ordinary dashboard forms.
@@ -243,4 +247,17 @@ DashboardTerminal.prescribes(`
 - Treat Codex CLI auth and Claude CLI auth as required acceptance tests rather than nice-to-have examples.
 - Use a copy-first keyboard model so Ctrl+C copies like a browser app, with an explicit second-press escape hatch for terminal interrupt.
 - Make Ctrl+V paste clipboard text straight into the PTY-backed session so auth codes and login commands can be pasted without friction.
+`);
+
+DashboardTerminal.contains(DashboardTerminalImplementationPlan);
+
+DashboardTerminalImplementationPlan.defines(`
+- Dashboard Terminal ships as a real dashboard plugin with gateway-proxied transport, lazy-loaded UI and backend startup, and feature-owned status items.
+- The backend owns PTY session lifecycle, session registry, attach/input/resize/snapshot/close endpoints, conservative idle cleanup, audit records, and allowed-root validation.
+- Bun is the host runtime, Bun native PTY support is the terminal primitive, and xterm-compatible browser rendering is the frontend interaction surface.
+- V1 execution stays on the manager host, starts in approved workspace roots, and uses declared shell profiles instead of reusing one shared operator shell.
+- Session creation makes cwd and shell profile explicit, transport remains interactive for shell typing and resize latency, and reconnect returns a bounded snapshot plus live stream.
+- Browser UX prioritizes auth-heavy flows such as Codex CLI auth and Claude CLI auth, with reliable paste, clear URL visibility, stable reconnect, and no premature reap during login.
+- Ctrl+C follows a copy-first model with explicit second-press interrupt, and Ctrl+V pastes system clipboard text directly into the live terminal session.
+- V1 stands alone as a first-party dashboard tool while leaving file-browser and agent-chat integration as later follow-on work.
 `);
