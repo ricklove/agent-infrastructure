@@ -1,9 +1,16 @@
-import { Suspense, lazy, useEffect, useMemo, useState, type ComponentType } from "react"
 import type {
   DashboardFeatureIcon,
   DashboardFeatureId,
   DashboardFeatureUiPlugin,
 } from "@agent-infrastructure/dashboard-plugin"
+import {
+  type ComponentType,
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 import { dashboardFeaturePlugins } from "./feature-plugins"
 
 type DashboardConfig = {
@@ -142,6 +149,27 @@ function ProjectsIcon(props: { className?: string }) {
   )
 }
 
+function DesignIcon(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <path d="M4 18.5 10.5 12" />
+      <path d="M8 5h9a2 2 0 0 1 2 2v9" />
+      <path d="M5 8.5V5h3.5" />
+      <path d="m13 4 7 7" />
+      <path d="M5 19h4.5l8.8-8.8a1.8 1.8 0 0 0 0-2.5l-2-2a1.8 1.8 0 0 0-2.5 0L5 14.5Z" />
+    </svg>
+  )
+}
+
 function CopyIcon(props: { className?: string }) {
   return (
     <svg
@@ -193,7 +221,10 @@ function dashboardSessionWebSocketProtocols(sessionToken: string): string[] {
 }
 
 function featureIdFromPath(pathname: string): FeatureId {
-  return dashboardFeaturePlugins.find((plugin) => plugin.route === pathname)?.id ?? "swarm"
+  return (
+    dashboardFeaturePlugins.find((plugin) => plugin.route === pathname)?.id ??
+    "swarm"
+  )
 }
 
 const featureIconMap: Record<
@@ -201,13 +232,16 @@ const featureIconMap: Record<
   (props: { className?: string }) => JSX.Element
 > = {
   swarm: SwarmIcon,
+  design: DesignIcon,
   projects: ProjectsIcon,
   chat: ChatIcon,
   graph: GraphIcon,
   terminal: TerminalIcon,
 }
 
-export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersion?: string }) {
+export function DashboardShell({
+  appVersion = "dashboard-unknown",
+}: { appVersion?: string }) {
   const featureDefinitions: FeatureDefinition[] = useMemo(
     () =>
       dashboardFeaturePlugins.map((plugin) => ({
@@ -218,10 +252,15 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
               const screenProps = plugin.screen?.getProps
                 ? plugin.screen.getProps({
                     windowOrigin: window.location.origin,
-                    windowWsOrigin: window.location.origin.replace(/^http/, "ws"),
+                    windowWsOrigin: window.location.origin.replace(
+                      /^http/,
+                      "ws",
+                    ),
                   })
-                : plugin.screen?.props ?? {}
-              const Screen = module.default as ComponentType<Record<string, unknown>>
+                : (plugin.screen?.props ?? {})
+              const Screen = module.default as ComponentType<
+                Record<string, unknown>
+              >
               return <Screen appVersion={appVersion} {...screenProps} />
             },
           })),
@@ -256,7 +295,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
     () =>
       featureDefinitions.find((feature) => feature.id === activeFeatureId) ??
       featureDefinitions[0],
-    [activeFeatureId],
+    [activeFeatureId, featureDefinitions],
   )
 
   useEffect(() => {
@@ -290,7 +329,10 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
       }))
     }
 
-    window.addEventListener("dashboard-feature-status", handleFeatureStatus as EventListener)
+    window.addEventListener(
+      "dashboard-feature-status",
+      handleFeatureStatus as EventListener,
+    )
     return () => {
       window.removeEventListener(
         "dashboard-feature-status",
@@ -331,7 +373,9 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
           : new WebSocket(wsUrl.toString())
       socket.addEventListener("message", (event) => {
         try {
-          const payload = JSON.parse(String(event.data)) as DashboardGatewayStatusMessage
+          const payload = JSON.parse(
+            String(event.data),
+          ) as DashboardGatewayStatusMessage
           if (payload.type === "dashboard_status") {
             setGatewayBackendVersion(payload.backendVersion)
             setGatewayConnectionStatus("ready")
@@ -383,9 +427,7 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
     gatewayBackendVersion !== "--" && gatewayBackendVersion !== appVersion
   const activeFeatureStatusItems = featureStatuses[activeFeatureId] ?? []
 
-  function toneClassForFeatureStatus(
-    tone: FeatureStatusItem["tone"],
-  ): string {
+  function toneClassForFeatureStatus(tone: FeatureStatusItem["tone"]): string {
     if (tone === "good") {
       return "text-emerald-300"
     }
@@ -540,11 +582,16 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
           >
             AI
           </button>
-          <div className={[
-            "pointer-events-auto absolute left-full top-0 z-50 ml-2 min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur",
-            versionPopupOpen ? "block" : "hidden group-hover:block",
-          ].join(" ")}>
-            <div className="absolute inset-y-0 -left-3 w-3" aria-hidden="true" />
+          <div
+            className={[
+              "pointer-events-auto absolute left-full top-0 z-50 ml-2 min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur",
+              versionPopupOpen ? "block" : "hidden group-hover:block",
+            ].join(" ")}
+          >
+            <div
+              className="absolute inset-y-0 -left-3 w-3"
+              aria-hidden="true"
+            />
             <button
               type="button"
               onClick={copyStatusLabel}
@@ -568,7 +615,9 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
               ) : null}
               <div className="flex items-center justify-between gap-3">
                 <span className="text-stone-500">WS</span>
-                <span className={gatewayConnectionTone}>{gatewayConnectionStatus}</span>
+                <span className={gatewayConnectionTone}>
+                  {gatewayConnectionStatus}
+                </span>
               </div>
               {activeFeatureStatusItems.length > 0 ? (
                 <div className="border-t border-stone-800 pt-1.5">
@@ -624,7 +673,9 @@ export function DashboardShell({ appVersion = "dashboard-unknown" }: { appVersio
         <div className="absolute left-3 top-3 z-20 md:hidden">
           <button
             type="button"
-            aria-label={mobileFeatureMenuOpen ? "Close main menu" : "Open main menu"}
+            aria-label={
+              mobileFeatureMenuOpen ? "Close main menu" : "Open main menu"
+            }
             title={mobileFeatureMenuOpen ? "Close Main Menu" : "Open Main Menu"}
             onClick={() => setMobileFeatureMenuOpen((current) => !current)}
             className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/85 text-slate-200 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur"

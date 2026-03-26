@@ -1,6 +1,18 @@
-export type DashboardFeatureId = "swarm" | "chat" | "graph" | "terminal" | "projects";
+export type DashboardFeatureId =
+  | "swarm"
+  | "chat"
+  | "graph"
+  | "terminal"
+  | "projects"
+  | "design";
 
-export type DashboardFeatureIcon = "swarm" | "chat" | "graph" | "terminal" | "projects";
+export type DashboardFeatureIcon =
+  | "swarm"
+  | "chat"
+  | "graph"
+  | "terminal"
+  | "projects"
+  | "design";
 
 export type DashboardScreenModule = {
   default: unknown;

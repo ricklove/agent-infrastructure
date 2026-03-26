@@ -13,7 +13,8 @@
     "@agent-infrastructure/agent-swarm-ui": "workspace:*",
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
     "@agent-infrastructure/projects-ui": "workspace:*",
-    "@agent-infrastructure/dashboard-terminal-ui": "workspace:*"
+    "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
+    "@agent-infrastructure/ui-design-canvas-ui": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

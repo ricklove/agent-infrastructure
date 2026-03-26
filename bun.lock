@@ -159,6 +159,7 @@
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
         "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
         "@agent-infrastructure/projects-ui": "workspace:*",
+        "@agent-infrastructure/ui-design-canvas-ui": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^20.11.30",
@@ -218,6 +219,7 @@
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
         "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
         "@agent-infrastructure/projects-ui": "workspace:*",
+        "@agent-infrastructure/ui-design-canvas-ui": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
@@ -252,6 +254,20 @@
       "name": "@agent-infrastructure/swarm-manager",
       "devDependencies": {
         "bun-types": "^1.3.10",
+        "typescript": "^5.4.5",
+      },
+    },
+    "packages/ui-design-canvas-ui": {
+      "name": "@agent-infrastructure/ui-design-canvas-ui",
+      "dependencies": {
+        "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "reactflow": "^11.11.4",
+      },
+      "devDependencies": {
+        "@types/react": "^18.3.3",
+        "@types/react-dom": "^18.3.0",
         "typescript": "^5.4.5",
       },
     },
@@ -296,6 +312,8 @@
     "@agent-infrastructure/projects-ui": ["@agent-infrastructure/projects-ui@workspace:packages/projects-ui"],
 
     "@agent-infrastructure/swarm-manager": ["@agent-infrastructure/swarm-manager@workspace:packages/swarm-manager"],
+
+    "@agent-infrastructure/ui-design-canvas-ui": ["@agent-infrastructure/ui-design-canvas-ui@workspace:packages/ui-design-canvas-ui"],
 
     "@anthropic-ai/claude-agent-sdk": ["@anthropic-ai/claude-agent-sdk@0.2.81", "", { "optionalDependencies": { "@img/sharp-darwin-arm64": "^0.34.2", "@img/sharp-darwin-x64": "^0.34.2", "@img/sharp-linux-arm": "^0.34.2", "@img/sharp-linux-arm64": "^0.34.2", "@img/sharp-linux-x64": "^0.34.2", "@img/sharp-linuxmusl-arm64": "^0.34.2", "@img/sharp-linuxmusl-x64": "^0.34.2", "@img/sharp-win32-arm64": "^0.34.2", "@img/sharp-win32-x64": "^0.34.2" }, "peerDependencies": { "zod": "^4.0.0" } }, "sha512-CBeebgibBEN/DWOQGZN67vhuTG55RbI1hlsFSSoZ4uA/Io3lw04eHTE2ISCmdbqyJaefYTt6GKZei1nP0TQMNw=="],
 

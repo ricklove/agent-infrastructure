@@ -16,23 +16,25 @@ const Assessment = {
 };
 
 const CurrentReality = {
-  plannedFeature: define.concept("PlannedDashboardFeature"),
+  dashboardFeatureExists: define.concept("ImplementedDashboardFeature"),
+  localCanvasVerticalSlice: define.concept("LocalCanvasVerticalSlice"),
   canonicalStackFit: define.concept("CanonicalReactFlowFit"),
   pluginArchitectureFit: define.concept("DashboardPluginArchitectureFit"),
-  agentIntegrationDependency: define.concept("AgentChatDependency"),
+  localAgentProjection: define.concept("LocalProjectedAgentLoop"),
   authorityClosedAtBlueprint: define.concept("AuthorityBoundaryClosedInBlueprint"),
   contractsRefinedAtBlueprint: define.concept("RefinedV1Contracts"),
-  missingImplementation: define.concept("NoCurrentFeatureImplementation"),
+  missingPersistenceAndBackend: define.concept("MissingDurableCanvasBackend"),
+  missingCanonicalAgentChatIntegration: define.concept("MissingCanonicalAgentChatProjection"),
   sectionedSubjectBlueprint: define.concept("SectionedSingleSubjectBlueprint"),
 };
 
 UiDesignCanvasBlueprintState.defines(`
-- CurrentImplementationStatus means the subject has been defined at the blueprint layer but does not yet exist as a shipped dashboard feature.
-- AssessmentConfidence is medium because the repository already has the surrounding plugin architecture, React Flow usage, and chat infrastructure inspected directly from source.
-- ImplementationEvidence includes blueprints/tech-stack.agentish.ts, blueprints/dashboard/dashboard-plugins.agentish.ts, blueprints/agent-chat/agent-chat.agentish.ts, and packages/agent-graph-ui as the nearest implemented canvas reference.
+- CurrentImplementationStatus means the UI Design Canvas now exists as a real dashboard feature package and registered dashboard tab, but only as an intentionally local vertical slice rather than a complete persisted product surface.
+- AssessmentConfidence is medium because the current state is grounded in direct source inspection and local worker-host verification, but durable persistence, backend contracts, and live deployed verification still remain unfinished.
+- ImplementationEvidence includes packages/ui-design-canvas-ui, dashboard plugin registration in packages/dashboard-ui and packages/dashboard, dashboard-plugin type expansion, Tailwind source inclusion in apps/dashboard-app/src/styles.css, and the local worker-hosted verification loop.
 - This blueprint-state compares current reality against the canonical UI Design Canvas subject blueprint in ui-design-canvas.agentish.ts.
-- ImplementationGap means prompt-node interaction, background chat attachment, variant review UI, markup-overlay capture, and durable feature persistence remain unimplemented work.
-- KnownIssue means no existing feature package, route registration, backend endpoints, or persisted canvas model currently realizes this subject.
+- ImplementationGap means durable workspace persistence, canonical AgentChat projection, committed review snapshots, and release-grade live verification are not yet complete.
+- KnownIssue means the current feature simulates the background agent loop locally in the UI package instead of projecting from canonical AgentChat turns.
 `);
 
 UiDesignCanvasBlueprintState.contains(
@@ -41,77 +43,89 @@ UiDesignCanvasBlueprintState.contains(
   Assessment.evidence,
   Assessment.gap,
   Assessment.issue,
-  CurrentReality.plannedFeature,
+  CurrentReality.dashboardFeatureExists,
+  CurrentReality.localCanvasVerticalSlice,
   CurrentReality.canonicalStackFit,
   CurrentReality.pluginArchitectureFit,
-  CurrentReality.agentIntegrationDependency,
+  CurrentReality.localAgentProjection,
   CurrentReality.authorityClosedAtBlueprint,
   CurrentReality.contractsRefinedAtBlueprint,
-  CurrentReality.missingImplementation,
+  CurrentReality.missingPersistenceAndBackend,
+  CurrentReality.missingCanonicalAgentChatIntegration,
   CurrentReality.sectionedSubjectBlueprint,
 );
 
-CurrentReality.plannedFeature.means(`
-- the subject exists today as an intended dashboard feature rather than an implemented operator surface
-- the current repository discussion has converged on a high-level design review canvas instead of a granular UI builder
+CurrentReality.dashboardFeatureExists.means(`
+- a first-party UI Design tab now exists in the dashboard plugin registry
+- the dashboard shell now recognizes the `design` feature id and icon
+- the feature ships as packages/ui-design-canvas-ui with plugin and ui-plugin exports
+`);
+
+CurrentReality.localCanvasVerticalSlice.means(`
+- the current screen renders a real React Flow canvas with seeded high-level design variants
+- double-clicking the canvas creates a draft prompt node with Enter-to-submit and Shift+Enter newline behavior
+- submitted prompts transition into visible prompt nodes with pending and resolved visual state
+- draw mode adds a top-level freehand overlay and markup can be cleared or submitted for review
+- the right-side review feed shows the visible human and agent interaction loop for the active canvas session
 `);
 
 CurrentReality.canonicalStackFit.means(`
-- the repository tech-stack blueprint already names React Flow as the canonical graph canvas surface
-- packages/agent-graph-ui provides a nearby implemented reference for custom node and edge rendering patterns
+- the implementation reuses React Flow as the repository's canonical graph surface
+- the feature uses Tailwind utility classes for static styling and keeps runtime styling minimal
 `);
 
 CurrentReality.pluginArchitectureFit.means(`
-- the dashboard blueprints already require feature-owned plugins with lazy UI loading and gateway-owned auth
-- the proposed feature can fit that architecture without changing the shell contract
+- the feature follows the existing feature-owned dashboard plugin model
+- the dashboard shell and gateway register the feature through the same first-party registry path used by other dashboard tabs
+- the current slice remains UI-only and therefore does not yet introduce a feature backend definition
 `);
 
-CurrentReality.agentIntegrationDependency.means(`
-- AgentChat remains the canonical conversation and transcript surface the feature should integrate with
-- the refined blueprint now closes that the canvas owns spatial state while AgentChat owns canonical turn history
-- canvas threads and generated variants should project from AgentChat turns rather than duplicating transcript authority
+CurrentReality.localAgentProjection.means(`
+- the current implementation already distinguishes prompt submission from agent response projection on the canvas
+- local classifier logic currently chooses between comment-thread projection and variant generation so the visible loop is testable before backend integration
+- this loop is intentionally local scaffolding rather than canonical AgentChat-backed execution
 `);
 
 CurrentReality.authorityClosedAtBlueprint.means(`
-- the refined subject blueprint now explicitly closes source-of-truth boundaries between durable canvas state and AgentChat turn authority
-- the refined subject blueprint also closes the append-only v1 mutation policy for generated canvas artifacts
+- the refined subject blueprint explicitly closes canvas spatial authority versus AgentChat turn authority
+- the current implementation follows that blueprint direction conceptually, even though canonical AgentChat projection is not yet wired
 `);
 
 CurrentReality.contractsRefinedAtBlueprint.means(`
-- the refined subject blueprint now defines concrete v1 record and payload shapes for prompt nodes, variant nodes, comment thread projections, review snapshots, submit commands, and classified agent actions
-- implementation still remains pending, but the blueprint no longer leaves those contracts at a purely descriptive level
+- the subject blueprint now includes tighter v1 record and action contracts for prompt, variant, thread, and review snapshot state
+- the current UI slice implements only part of that contract surface today
 `);
 
-CurrentReality.missingImplementation.means(`
-- no packages/ui-design-canvas-ui or corresponding server package exists yet
-- no dashboard feature registry entry currently exposes a UI Design Canvas tab
-- no persisted canvas, overlay, snapshot, or prompt lifecycle model exists in source today
+CurrentReality.missingPersistenceAndBackend.means(`
+- canvas prompts, variants, overlay strokes, and review history are not yet persisted as durable workspace state
+- there is no feature backend package or API surface yet for snapshots, saved canvases, or shared session state
+`);
+
+CurrentReality.missingCanonicalAgentChatIntegration.means(`
+- projected comment and variant nodes do not yet originate from canonical AgentChat sessions or turns
+- the visible review feed is still local UI state rather than a projection of durable chat history
 `);
 
 CurrentReality.sectionedSubjectBlueprint.means(`
-- the canonical subject blueprint now exists as a single sectioned file with Concept, Scenarios, ImplementationPlan, and Contracts
-- future implementation work should update this state file alongside the feature and any resulting blueprint refinements
+- the canonical subject blueprint remains one sectioned file with Concept, Scenarios, ImplementationPlan, and Contracts
+- future implementation work should continue updating this state file alongside feature behavior changes
 `);
 
-when(CurrentReality.plannedFeature.exists())
-  .then(UiDesignCanvasBlueprintState.records(Assessment.status))
-  .and(UiDesignCanvasBlueprintState.treats("UI Design Canvas as blueprint-defined but not yet implemented"));
+when(CurrentReality.dashboardFeatureExists.exists())
+  .then(UiDesignCanvasBlueprintState.records(Assessment.status, Assessment.evidence))
+  .and(UiDesignCanvasBlueprintState.treats("UI Design Canvas as an implemented local dashboard feature slice"));
 
-when(CurrentReality.canonicalStackFit.exists())
+when(CurrentReality.localCanvasVerticalSlice.exists())
   .then(UiDesignCanvasBlueprintState.records(Assessment.evidence))
-  .and(UiDesignCanvasBlueprintState.treats("React Flow reuse as already justified by repository guidance"));
+  .and(UiDesignCanvasBlueprintState.treats("prompt, variant, and markup behavior as locally testable today"));
 
-when(CurrentReality.authorityClosedAtBlueprint.exists())
-  .then(UiDesignCanvasBlueprintState.records(Assessment.evidence))
-  .and(UiDesignCanvasBlueprintState.treats("source-of-truth boundaries as now closed at the blueprint layer"));
-
-when(CurrentReality.contractsRefinedAtBlueprint.exists())
-  .then(UiDesignCanvasBlueprintState.records(Assessment.evidence))
-  .and(UiDesignCanvasBlueprintState.treats("v1 action and persistence contracts as materially tighter than the initial draft"));
-
-when(CurrentReality.missingImplementation.exists())
+when(CurrentReality.missingPersistenceAndBackend.exists())
   .then(UiDesignCanvasBlueprintState.records(Assessment.gap, Assessment.issue))
-  .and(UiDesignCanvasBlueprintState.treats("feature delivery as pending package and dashboard integration work"));
+  .and(UiDesignCanvasBlueprintState.treats("durable backend work as still open against the ideal blueprint"));
+
+when(CurrentReality.missingCanonicalAgentChatIntegration.exists())
+  .then(UiDesignCanvasBlueprintState.records(Assessment.gap, Assessment.issue))
+  .and(UiDesignCanvasBlueprintState.treats("canonical AgentChat projection as unfinished follow-on work"));
 
 when(CurrentReality.sectionedSubjectBlueprint.exists())
   .then(UiDesignCanvasBlueprintState.records(Assessment.evidence))
