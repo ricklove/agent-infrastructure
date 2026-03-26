@@ -112,6 +112,7 @@ AgentChat.enforces(`
 - When more than one human message is queued behind an active run, AgentChat should deliver that queued human batch into the next provider turn together rather than silently serializing them into many one-message follow-up turns.
 - Session process changes should remain queued provider-facing instructions until the next explicit human-send turn consumes them, and that consumption should also become a canonical transcript event so history survives refresh.
 - Changing the session process selector must not submit or otherwise flush the current human draft; the process change remains only a queued next-turn instruction until the operator later sends a real message.
+- A queued process change that is still waiting for that next explicit human send must not by itself arm or trigger idle-watchdog prompting.
 - When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
 - Once a session process is active, it remains unresolved until the agent emits that process blueprint's exact done token or exact blocked token.
 - Once a terminal process state is resolved by a fresh process selection or by new active non-terminal work, the transient Done or Blocked selector state should clear immediately.

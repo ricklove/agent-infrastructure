@@ -185,6 +185,7 @@ CurrentReality.sessionListQuickProcessSet.means(`
 - creating a new chat with a selected process blueprint now emits the waiting expectation entry immediately instead of leaving the fresh transcript blank about the assigned contract
 - changing the process assignment updates the queued next-turn system instruction so the agent sees the updated expectation on the next explicit human-send turn
 - the older bug where a watchdog-only follow-up turn could consume that queued process expectation before the operator's next real send is now closed in the current source implementation
+- the remaining older bug where selecting a process could immediately inherit stale provider-idle state and fire a zero-delay watchdog before the next real send should now be treated as a backend scheduling bug rather than intended behavior
 `);
 
 CurrentReality.processResolutionGuard.means(`

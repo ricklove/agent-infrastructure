@@ -170,6 +170,7 @@ AgentChatDashboardImplementation.enforces(`
 - Creating a new session with a selected process blueprint should immediately emit the queued expectation entry for that chat so the operator can see the assigned contract before sending the first human message.
 - Changing a session's assigned process blueprint should update the queued next-turn system instruction so the agent sees the new expectation contract on the next explicit human-send turn without creating an immediate standalone transcript event.
 - Changing the quick-set process selector must not trigger the composer submit path or send the current draft; it only patches queued process state for the next explicit human message.
+- While that queued process change is still waiting for the next explicit human message, the backend should not treat the session as watchdog-eligible solely because the previous turn had already become provider-idle.
 - When the current process reaches its completion condition, the quick-set control should enter a required unresolved state before the next send.
 - That unresolved state should show Done as red warning text or placeholder treatment inside the selector, but Done must not become a stored process value or selectable option.
 - The unresolved Done state must be backed by a distinct UI sentinel rather than by reusing the current real process option, so the operator can explicitly pick the same prior process again and resolve the guard intentionally.
