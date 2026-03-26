@@ -229,6 +229,7 @@ const minSessionRailWidth = 280
 const maxSessionRailWidth = 520
 const completedProcessResolutionSentinel = "__process_done__"
 const typingHeartbeatMs = 1000
+const composerDraftPersistMs = 250
 const minCollapsedActivityClusterSize = 3
 const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
 const websocketWarningDelayMs = 5_000
@@ -1020,6 +1021,13 @@ const ComposerPanel = memo(function ComposerPanel(props: {
 }) {
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
   const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
+  const draftPersistTimeoutRef = useRef<ReturnType<
+    typeof window.setTimeout
+  > | null>(null)
+  const latestDraftRef = useRef("")
+  const previousSessionIdRef = useRef<string | null>(null)
+  const lastTypingReportAtRef = useRef(0)
+  const typingActiveRef = useRef(false)
   const [composerText, setComposerText] = useState("")
   const [composerImages, setComposerImages] = useState<
     ComposerImageAttachment[]
@@ -1027,20 +1035,105 @@ const ComposerPanel = memo(function ComposerPanel(props: {
 
   useEffect(() => {
     if (!props.activeSession?.id) {
+      if (draftPersistTimeoutRef.current !== null) {
+        window.clearTimeout(draftPersistTimeoutRef.current)
+        draftPersistTimeoutRef.current = null
+      }
+      previousSessionIdRef.current = null
+      latestDraftRef.current = ""
+      lastTypingReportAtRef.current = 0
+      typingActiveRef.current = false
       setComposerText("")
       setComposerImages([])
       return
     }
-    setComposerText(readDraft(props.activeSession.id))
+
+    const previousSessionId = previousSessionIdRef.current
+    if (previousSessionId && previousSessionId !== props.activeSession.id) {
+      writeDraft(previousSessionId, latestDraftRef.current)
+    }
+
+    const nextDraft = readDraft(props.activeSession.id)
+    previousSessionIdRef.current = props.activeSession.id
+    latestDraftRef.current = nextDraft
+    lastTypingReportAtRef.current = 0
+    typingActiveRef.current = false
+    setComposerText(nextDraft)
     setComposerImages([])
   }, [props.activeSession?.id])
 
   useEffect(() => {
+    latestDraftRef.current = composerText
+
     if (!props.activeSession?.id) {
       return
     }
-    writeDraft(props.activeSession.id, composerText)
+
+    if (draftPersistTimeoutRef.current !== null) {
+      window.clearTimeout(draftPersistTimeoutRef.current)
+    }
+
+    const sessionId = props.activeSession.id
+    draftPersistTimeoutRef.current = window.setTimeout(() => {
+      writeDraft(sessionId, latestDraftRef.current)
+      draftPersistTimeoutRef.current = null
+    }, composerDraftPersistMs)
+
+    return () => {
+      if (draftPersistTimeoutRef.current !== null) {
+        window.clearTimeout(draftPersistTimeoutRef.current)
+        draftPersistTimeoutRef.current = null
+      }
+    }
   }, [composerText, props.activeSession?.id])
+
+  useEffect(() => {
+    return () => {
+      if (draftPersistTimeoutRef.current !== null) {
+        window.clearTimeout(draftPersistTimeoutRef.current)
+      }
+      if (previousSessionIdRef.current) {
+        writeDraft(previousSessionIdRef.current, latestDraftRef.current)
+      }
+    }
+  }, [])
+
+  const reportComposerTyping = useCallback(
+    async (active: boolean, options?: { force?: boolean }) => {
+      const sessionId = props.activeSession?.id
+      if (!sessionId) {
+        return
+      }
+
+      if (!active) {
+        typingActiveRef.current = false
+        lastTypingReportAtRef.current = 0
+        await props.onReportTyping(false, {
+          force: options?.force,
+          sessionId,
+        })
+        return
+      }
+
+      const now = Date.now()
+      if (
+        options?.force ||
+        !typingActiveRef.current ||
+        now - lastTypingReportAtRef.current >= typingHeartbeatMs
+      ) {
+        typingActiveRef.current = true
+        lastTypingReportAtRef.current = now
+        await props.onReportTyping(true, {
+          force: options?.force,
+          sessionId,
+        })
+        return
+      }
+
+      typingActiveRef.current = true
+    },
+    [props.activeSession?.id, props.onReportTyping],
+  )
 
   const hasComposerContent =
     composerText.trim().length > 0 || composerImages.length > 0
@@ -1064,16 +1157,16 @@ const ComposerPanel = memo(function ComposerPanel(props: {
     }
     setComposerText("")
     setComposerImages([])
-    await props.onReportTyping(false, { force: true })
+    await reportComposerTyping(false, { force: true })
   }, [
     composerImages,
     composerText,
     hasComposerContent,
     props.activeSession,
-    props.onReportTyping,
     props.onSetError,
     props.onSubmitMessage,
     props.processResolutionRequired,
+    reportComposerTyping,
   ])
 
   const handleComposerKeyDown = useCallback(
@@ -1224,10 +1317,10 @@ const ComposerPanel = memo(function ComposerPanel(props: {
           value={composerText}
           onChange={(event) => {
             setComposerText(event.target.value)
-            void props.onReportTyping(true)
+            void reportComposerTyping(true)
           }}
-          onFocus={() => void props.onReportTyping(true, { force: true })}
-          onBlur={() => void props.onReportTyping(false, { force: true })}
+          onFocus={() => void reportComposerTyping(true, { force: true })}
+          onBlur={() => void reportComposerTyping(false, { force: true })}
           onKeyDown={handleComposerKeyDown}
           onPaste={(event) => {
             void handleComposerPaste(event)
