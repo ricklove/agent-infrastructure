@@ -5,7 +5,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 
 const repoRoot = resolve(import.meta.dir, "..");
 const blueprintsRoot = join(repoRoot, "blueprints");
-const reportsRoot = join(blueprintsRoot, "agentish-quality-reports");
+const reportsRoot = join(repoRoot, "blueprint-reports", "agentish-quality");
 const outputSchemaPath = join(reportsRoot, "_schema.json");
 const rollupPath = join(reportsRoot, "index.json");
 
@@ -130,7 +130,7 @@ function listTargetFiles(root: string): string[] {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const abs = join(current, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === "agentish-quality-reports") {
+        if (entry.name === "blueprint-reports") {
           continue;
         }
         stack.push(abs);
@@ -427,7 +427,7 @@ async function main() {
   const rollup = {
     generated_at: new Date().toISOString(),
     source_root: "blueprints/",
-    reports_root: "blueprints/agentish-quality-reports/",
+    reports_root: "blueprint-reports/agentish-quality/",
     file_count: reports.length,
     by_file_class: countBy(reports.map((report) => report.file_class)),
     recommendations: countBy(reports.map((report) => report.recommendation)),

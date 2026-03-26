@@ -86,7 +86,7 @@ AgentishQualityEvaluation.enforces(`- Every target file must be classified befor
 - Process guides are judged relative to their paired JSON contract rather than as primary machine-readable artifacts.
 - Files with no clear ownership, no evident companion role, and no live-use evidence should be evaluated for obsolescence risk separately from intrinsic writing quality.
 - Reports must separate quality problems from corpus-role problems.
-- The canonical latest per-file reports should live under blueprints/agentish-quality-reports/ with paths that mirror the evaluated blueprint tree.
+- The canonical latest per-file reports should live under blueprint-reports/agentish-quality/ with paths that mirror the evaluated blueprint tree.
 - Reports must distinguish low quality, partial but correct role execution, and likely obsolete or orphaned artifacts.`);
 
 AgentishQualityEvaluation.defines(`- TargetAgentishFile means one repository Agentish artifact under evaluation.
@@ -94,7 +94,7 @@ AgentishQualityEvaluation.defines(`- TargetAgentishFile means one repository Age
 - AgentishLanguageRoot means the shared language-level Agentish definition such as _agentish.ts.
 - AgentishSectionsBlueprint means the repository blueprint that defines the canonical in-file section structure for subject Agentish files.
 - AllowedCompanionContext means only the smallest extra blueprint set needed for a fair role-relative read.
-- AgentishQualityReportCatalog means the durable report tree rooted at blueprints/agentish-quality-reports/ plus its rollup index.
+- AgentishQualityReportCatalog means the durable report tree rooted at blueprint-reports/agentish-quality/ plus its rollup index.
 - StandaloneRead means the file is judged primarily by what a capable reader can recover from the file itself plus the language root.
 - RoleRelativeRead means the file is judged relative to the artifact role and companion artifacts it is supposed to rely on.
 - CorpusUsefulnessRead means the file is judged by whether it improves the larger blueprint graph even if it is intentionally partial in isolation.

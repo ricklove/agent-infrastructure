@@ -1,7 +1,7 @@
 {
   "generated_at": "2026-03-26T03:58:13.705Z",
   "source_root": "blueprints/",
-  "reports_root": "blueprints/agentish-quality-reports/",
+  "reports_root": "blueprint-reports/agentish-quality/",
   "file_count": 36,
   "by_file_class": {
     "language_root": 1,
