@@ -281,6 +281,7 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - composer draft text and pasted-image state now live in an isolated memoized composer panel so ordinary typing no longer requires the main thread surface to own those keystroke updates
 - composer draft persistence now debounces localStorage writes and typing-presence reports now heartbeat locally inside the composer, so long sessions no longer force synchronous storage work and backend typing chatter on every keystroke
 - the active textarea now keeps draft text in a ref-backed input path instead of React state, so ordinary typing no longer re-renders the composer subtree on every character
+- the memoized composer now compares a narrow stable prop surface instead of parent callback identity and broad session object identity, so thread updates no longer invalidate the composer just because the parent rendered again
 - expanded activity rows still use overly generic wording like command execution started or completed instead of foregrounding the actual task identity
 - collapsed activity-cluster summaries still run long and list too much prior event detail instead of one short recent-task summary
 - adjacent low-signal activity items now collapse into grouped transcript cards, but the collapsed summary copy remains too verbose

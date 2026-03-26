@@ -997,477 +997,510 @@ function MessageImageAsset({ path }: { path: string }) {
   )
 }
 
-const ComposerPanel = memo(function ComposerPanel(props: {
-  activeSession: SessionSummary | null
-  sending: boolean
-  interrupting: boolean
-  activity: SessionActivity
-  threadStatusSummary: string[]
-  processResolutionRequired: boolean
-  processTerminalStatus: "completed" | "blocked" | null
-  quickProcessSelectValue: string
-  processBlueprints: ProcessBlueprint[]
-  activeProcessBlueprintId: string | null
-  updatingQuickProcessBlueprint: boolean
-  settingsOpen: boolean
-  onToggleSettings: () => void
-  onQuickProcessChange: (nextProcessBlueprintId: string) => void
-  onInterrupt: () => void
-  onSubmitMessage: (payload: ComposerSubmitPayload) => Promise<boolean>
-  onReportTyping: (
-    active: boolean,
-    options?: { force?: boolean; sessionId?: string },
-  ) => Promise<void>
-  onSetError: (message: string) => void
-}) {
-  const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
-  const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
-  const draftPersistTimeoutRef = useRef<ReturnType<
-    typeof window.setTimeout
-  > | null>(null)
-  const latestDraftRef = useRef("")
-  const previousSessionIdRef = useRef<string | null>(null)
-  const lastTypingReportAtRef = useRef(0)
-  const typingActiveRef = useRef(false)
-  const [hasComposerText, setHasComposerText] = useState(false)
-  const [composerImages, setComposerImages] = useState<
-    ComposerImageAttachment[]
-  >([])
+const ComposerPanel = memo(
+  function ComposerPanel(props: {
+    activeSession: SessionSummary | null
+    sending: boolean
+    interrupting: boolean
+    activity: SessionActivity
+    threadStatusSummary: string[]
+    processResolutionRequired: boolean
+    processTerminalStatus: "completed" | "blocked" | null
+    quickProcessSelectValue: string
+    processBlueprints: ProcessBlueprint[]
+    activeProcessBlueprintId: string | null
+    updatingQuickProcessBlueprint: boolean
+    settingsOpen: boolean
+    onToggleSettings: () => void
+    onQuickProcessChange: (nextProcessBlueprintId: string) => void
+    onInterrupt: () => void
+    onSubmitMessage: (payload: ComposerSubmitPayload) => Promise<boolean>
+    onReportTyping: (
+      active: boolean,
+      options?: { force?: boolean; sessionId?: string },
+    ) => Promise<void>
+    onSetError: (message: string) => void
+  }) {
+    const composerInputRef = useRef<HTMLTextAreaElement | null>(null)
+    const quickProcessSelectRef = useRef<HTMLSelectElement | null>(null)
+    const draftPersistTimeoutRef = useRef<ReturnType<
+      typeof window.setTimeout
+    > | null>(null)
+    const latestDraftRef = useRef("")
+    const previousSessionIdRef = useRef<string | null>(null)
+    const lastTypingReportAtRef = useRef(0)
+    const typingActiveRef = useRef(false)
+    const [hasComposerText, setHasComposerText] = useState(false)
+    const [composerImages, setComposerImages] = useState<
+      ComposerImageAttachment[]
+    >([])
 
-  useEffect(() => {
-    if (!props.activeSession?.id) {
-      if (draftPersistTimeoutRef.current !== null) {
-        window.clearTimeout(draftPersistTimeoutRef.current)
-        draftPersistTimeoutRef.current = null
+    useEffect(() => {
+      if (!props.activeSession?.id) {
+        if (draftPersistTimeoutRef.current !== null) {
+          window.clearTimeout(draftPersistTimeoutRef.current)
+          draftPersistTimeoutRef.current = null
+        }
+        previousSessionIdRef.current = null
+        latestDraftRef.current = ""
+        lastTypingReportAtRef.current = 0
+        typingActiveRef.current = false
+        if (composerInputRef.current) {
+          composerInputRef.current.value = ""
+        }
+        setHasComposerText(false)
+        setComposerImages([])
+        return
       }
-      previousSessionIdRef.current = null
-      latestDraftRef.current = ""
+
+      const previousSessionId = previousSessionIdRef.current
+      if (previousSessionId && previousSessionId !== props.activeSession.id) {
+        writeDraft(previousSessionId, latestDraftRef.current)
+      }
+
+      const nextDraft = readDraft(props.activeSession.id)
+      previousSessionIdRef.current = props.activeSession.id
+      latestDraftRef.current = nextDraft
       lastTypingReportAtRef.current = 0
       typingActiveRef.current = false
+      if (composerInputRef.current) {
+        composerInputRef.current.value = nextDraft
+      }
+      setHasComposerText(nextDraft.trim().length > 0)
+      setComposerImages([])
+    }, [props.activeSession?.id])
+
+    const scheduleDraftPersist = useCallback((sessionId: string) => {
+      if (draftPersistTimeoutRef.current !== null) {
+        window.clearTimeout(draftPersistTimeoutRef.current)
+      }
+
+      draftPersistTimeoutRef.current = window.setTimeout(() => {
+        writeDraft(sessionId, latestDraftRef.current)
+        draftPersistTimeoutRef.current = null
+      }, composerDraftPersistMs)
+    }, [])
+
+    useEffect(() => {
+      return () => {
+        if (draftPersistTimeoutRef.current !== null) {
+          window.clearTimeout(draftPersistTimeoutRef.current)
+        }
+        if (previousSessionIdRef.current) {
+          writeDraft(previousSessionIdRef.current, latestDraftRef.current)
+        }
+      }
+    }, [])
+
+    const reportComposerTyping = useCallback(
+      async (active: boolean, options?: { force?: boolean }) => {
+        const sessionId = props.activeSession?.id
+        if (!sessionId) {
+          return
+        }
+
+        if (!active) {
+          typingActiveRef.current = false
+          lastTypingReportAtRef.current = 0
+          await props.onReportTyping(false, {
+            force: options?.force,
+            sessionId,
+          })
+          return
+        }
+
+        const now = Date.now()
+        if (
+          options?.force ||
+          !typingActiveRef.current ||
+          now - lastTypingReportAtRef.current >= typingHeartbeatMs
+        ) {
+          typingActiveRef.current = true
+          lastTypingReportAtRef.current = now
+          await props.onReportTyping(true, {
+            force: options?.force,
+            sessionId,
+          })
+          return
+        }
+
+        typingActiveRef.current = true
+      },
+      [props.activeSession?.id, props.onReportTyping],
+    )
+
+    const hasComposerContent = hasComposerText || composerImages.length > 0
+
+    const submitComposer = useCallback(async () => {
+      if (!props.activeSession || !hasComposerContent) {
+        return
+      }
+      if (props.processResolutionRequired) {
+        props.onSetError("Choose the next process before sending.")
+        quickProcessSelectRef.current?.focus()
+        return
+      }
+
+      const didSend = await props.onSubmitMessage({
+        text: latestDraftRef.current,
+        images: composerImages,
+      })
+      if (!didSend) {
+        return
+      }
+      latestDraftRef.current = ""
+      if (props.activeSession?.id) {
+        writeDraft(props.activeSession.id, "")
+      }
       if (composerInputRef.current) {
         composerInputRef.current.value = ""
       }
       setHasComposerText(false)
       setComposerImages([])
-      return
-    }
+      await reportComposerTyping(false, { force: true })
+    }, [
+      composerImages,
+      hasComposerContent,
+      props.activeSession,
+      props.onSetError,
+      props.onSubmitMessage,
+      props.processResolutionRequired,
+      reportComposerTyping,
+    ])
 
-    const previousSessionId = previousSessionIdRef.current
-    if (previousSessionId && previousSessionId !== props.activeSession.id) {
-      writeDraft(previousSessionId, latestDraftRef.current)
-    }
+    const handleComposerKeyDown = useCallback(
+      (event: KeyboardEvent<HTMLTextAreaElement>) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault()
+          void submitComposer()
+          return
+        }
 
-    const nextDraft = readDraft(props.activeSession.id)
-    previousSessionIdRef.current = props.activeSession.id
-    latestDraftRef.current = nextDraft
-    lastTypingReportAtRef.current = 0
-    typingActiveRef.current = false
-    if (composerInputRef.current) {
-      composerInputRef.current.value = nextDraft
-    }
-    setHasComposerText(nextDraft.trim().length > 0)
-    setComposerImages([])
-  }, [props.activeSession?.id])
+        if (
+          event.key === "Escape" &&
+          props.activity.canInterrupt &&
+          props.activity.status === "running" &&
+          !props.interrupting
+        ) {
+          event.preventDefault()
+          props.onInterrupt()
+        }
+      },
+      [
+        props.activity.canInterrupt,
+        props.activity.status,
+        props.interrupting,
+        props.onInterrupt,
+        submitComposer,
+      ],
+    )
 
-  const scheduleDraftPersist = useCallback((sessionId: string) => {
-    if (draftPersistTimeoutRef.current !== null) {
-      window.clearTimeout(draftPersistTimeoutRef.current)
-    }
-
-    draftPersistTimeoutRef.current = window.setTimeout(() => {
-      writeDraft(sessionId, latestDraftRef.current)
-      draftPersistTimeoutRef.current = null
-    }, composerDraftPersistMs)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (draftPersistTimeoutRef.current !== null) {
-        window.clearTimeout(draftPersistTimeoutRef.current)
-      }
-      if (previousSessionIdRef.current) {
-        writeDraft(previousSessionIdRef.current, latestDraftRef.current)
-      }
-    }
-  }, [])
-
-  const reportComposerTyping = useCallback(
-    async (active: boolean, options?: { force?: boolean }) => {
-      const sessionId = props.activeSession?.id
-      if (!sessionId) {
-        return
-      }
-
-      if (!active) {
-        typingActiveRef.current = false
-        lastTypingReportAtRef.current = 0
-        await props.onReportTyping(false, {
-          force: options?.force,
-          sessionId,
-        })
-        return
-      }
-
-      const now = Date.now()
-      if (
-        options?.force ||
-        !typingActiveRef.current ||
-        now - lastTypingReportAtRef.current >= typingHeartbeatMs
-      ) {
-        typingActiveRef.current = true
-        lastTypingReportAtRef.current = now
-        await props.onReportTyping(true, {
-          force: options?.force,
-          sessionId,
-        })
-        return
-      }
-
-      typingActiveRef.current = true
-    },
-    [props.activeSession?.id, props.onReportTyping],
-  )
-
-  const hasComposerContent = hasComposerText || composerImages.length > 0
-
-  const submitComposer = useCallback(async () => {
-    if (!props.activeSession || !hasComposerContent) {
-      return
-    }
-    if (props.processResolutionRequired) {
-      props.onSetError("Choose the next process before sending.")
-      quickProcessSelectRef.current?.focus()
-      return
-    }
-
-    const didSend = await props.onSubmitMessage({
-      text: latestDraftRef.current,
-      images: composerImages,
-    })
-    if (!didSend) {
-      return
-    }
-    latestDraftRef.current = ""
-    if (props.activeSession?.id) {
-      writeDraft(props.activeSession.id, "")
-    }
-    if (composerInputRef.current) {
-      composerInputRef.current.value = ""
-    }
-    setHasComposerText(false)
-    setComposerImages([])
-    await reportComposerTyping(false, { force: true })
-  }, [
-    composerImages,
-    hasComposerContent,
-    props.activeSession,
-    props.onSetError,
-    props.onSubmitMessage,
-    props.processResolutionRequired,
-    reportComposerTyping,
-  ])
-
-  const handleComposerKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTextAreaElement>) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-        event.preventDefault()
-        void submitComposer()
-        return
-      }
-
-      if (
-        event.key === "Escape" &&
-        props.activity.canInterrupt &&
-        props.activity.status === "running" &&
-        !props.interrupting
-      ) {
-        event.preventDefault()
-        props.onInterrupt()
-      }
-    },
-    [
-      props.activity.canInterrupt,
-      props.activity.status,
-      props.interrupting,
-      props.onInterrupt,
-      submitComposer,
-    ],
-  )
-
-  const handleComposerPaste = useCallback(
-    async (event: ClipboardEvent<HTMLTextAreaElement>) => {
-      const clipboardItems = Array.from(event.clipboardData.items || [])
-      const imageItems = clipboardItems.filter((item) =>
-        item.type.startsWith("image/"),
-      )
-      if (imageItems.length === 0) {
-        return
-      }
-
-      event.preventDefault()
-      try {
-        const nextImages = await Promise.all(
-          imageItems.map((item, index) =>
-            readClipboardImage(item.getAsFile() as File).then((attachment) => ({
-              ...attachment,
-              id: attachment.id || `${Date.now()}-${index}`,
-            })),
-          ),
+    const handleComposerPaste = useCallback(
+      async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+        const clipboardItems = Array.from(event.clipboardData.items || [])
+        const imageItems = clipboardItems.filter((item) =>
+          item.type.startsWith("image/"),
         )
-        setComposerImages((current) => [...current, ...nextImages])
-      } catch (error) {
-        props.onSetError(
-          error instanceof Error ? error.message : "Image paste failed.",
-        )
-      }
-    },
-    [props.onSetError],
-  )
+        if (imageItems.length === 0) {
+          return
+        }
 
-  return (
-    <>
-      {composerImages.length > 0 ? (
-        <div className="relative z-10 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 shadow-2xl">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
-              Pasted Images
-            </p>
-            <button
-              type="button"
-              onClick={() => setComposerImages([])}
-              className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-100"
-            >
-              Clear all
-            </button>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-3">
-            {composerImages.map((image) => (
-              <div
-                key={image.id}
-                className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70"
+        event.preventDefault()
+        try {
+          const nextImages = await Promise.all(
+            imageItems.map((item, index) =>
+              readClipboardImage(item.getAsFile() as File).then(
+                (attachment) => ({
+                  ...attachment,
+                  id: attachment.id || `${Date.now()}-${index}`,
+                }),
+              ),
+            ),
+          )
+          setComposerImages((current) => [...current, ...nextImages])
+        } catch (error) {
+          props.onSetError(
+            error instanceof Error ? error.message : "Image paste failed.",
+          )
+        }
+      },
+      [props.onSetError],
+    )
+
+    return (
+      <>
+        {composerImages.length > 0 ? (
+          <div className="relative z-10 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                Pasted Images
+              </p>
+              <button
+                type="button"
+                onClick={() => setComposerImages([])}
+                className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-100"
               >
-                <div className="flex min-h-28 min-w-28 items-center justify-center bg-slate-950/80 p-3">
-                  <img
-                    src={image.dataUrl}
-                    alt="Pasted attachment"
-                    className="max-h-28 max-w-28 object-contain"
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
-                  <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                    image
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setComposerImages((current) =>
-                        current.filter(
-                          (attachment) => attachment.id !== image.id,
-                        ),
-                      )
-                    }
-                    className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div
-        className={`relative rounded-none border border-x-0 px-1.5 pb-2 pt-2.5 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] sm:rounded-2xl sm:border-x sm:px-2 sm:pb-2.5 sm:pt-3 md:px-3 md:pb-3 md:pt-4 ${
-          props.processResolutionRequired
-            ? props.processTerminalStatus === "blocked"
-              ? "border-rose-400/35 bg-rose-500/[0.04]"
-              : "border-amber-300/30 bg-slate-900/90"
-            : "border-white/10 bg-slate-900/90"
-        }`}
-      >
-        {props.activeSession ? (
-          <div className="pointer-events-none absolute -top-4.5 left-1.5 z-10 sm:left-2 sm:-top-4 md:-top-3 md:left-3">
-            <div
-              className={`inline-flex max-w-[calc(100vw-7rem)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur ${activityTone(props.activity)}`}
-            >
-              <span className="truncate">
-                {props.threadStatusSummary[0] ?? activityLabel(props.activity)}
-              </span>
-              {props.threadStatusSummary.slice(1, 2).map((item) => (
-                <span
-                  key={item}
-                  className="truncate normal-case tracking-normal"
+                Clear all
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-3">
+              {composerImages.map((image) => (
+                <div
+                  key={image.id}
+                  className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70"
                 >
-                  {item}
-                </span>
+                  <div className="flex min-h-28 min-w-28 items-center justify-center bg-slate-950/80 p-3">
+                    <img
+                      src={image.dataUrl}
+                      alt="Pasted attachment"
+                      className="max-h-28 max-w-28 object-contain"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
+                    <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+                      image
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setComposerImages((current) =>
+                          current.filter(
+                            (attachment) => attachment.id !== image.id,
+                          ),
+                        )
+                      }
+                      className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-slate-300"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
               ))}
-              {props.interrupting ? (
-                <span className="normal-case tracking-normal">
-                  interrupting...
-                </span>
-              ) : null}
             </div>
           </div>
         ) : null}
-        <textarea
-          ref={composerInputRef}
-          defaultValue=""
-          onChange={(event) => {
-            const nextValue = event.target.value
-            latestDraftRef.current = nextValue
-            setHasComposerText((current) => {
-              const nextHasText = nextValue.trim().length > 0
-              return current === nextHasText ? current : nextHasText
-            })
-            if (props.activeSession?.id) {
-              scheduleDraftPersist(props.activeSession.id)
-            }
-            void reportComposerTyping(true)
-          }}
-          onFocus={() => void reportComposerTyping(true, { force: true })}
-          onBlur={() => void reportComposerTyping(false, { force: true })}
-          onKeyDown={handleComposerKeyDown}
-          onPaste={(event) => {
-            void handleComposerPaste(event)
-          }}
-          rows={2}
-          placeholder={
-            props.activeSession
-              ? "Write the next message..."
-              : "Select or create a chat first."
-          }
-          disabled={!props.activeSession || props.sending}
-          className="min-h-[5rem] w-full resize-y border-0 bg-transparent px-0 py-0.5 text-base text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem] md:px-1 md:py-1 md:text-sm"
-        />
-        <div className="mt-1.5 flex items-center gap-1.5 md:mt-2 md:gap-2">
-          <label className="min-w-0 flex-1">
-            <span className="sr-only">Quick set current chat process</span>
-            <div className="relative">
-              <select
-                ref={quickProcessSelectRef}
-                value={props.quickProcessSelectValue}
-                onChange={(event) =>
-                  props.onQuickProcessChange(event.target.value)
-                }
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault()
-                  }
-                }}
-                disabled={
-                  !props.activeSession || props.updatingQuickProcessBlueprint
-                }
-                title="Quick Set Process"
-                className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-base outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-xs ${
-                  props.processResolutionRequired
-                    ? props.processTerminalStatus === "blocked"
-                      ? "border-rose-400/50 bg-rose-500/[0.08] text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.16)]"
-                      : "border-amber-300/45 bg-amber-300/[0.08] text-transparent shadow-[0_0_0_1px_rgba(252,211,77,0.12)]"
-                    : props.activeProcessBlueprintId
-                      ? "border-white/10 bg-slate-900/80 text-slate-200"
-                      : "border-white/10 bg-slate-950/70 text-slate-500"
-                }`}
+
+        <div
+          className={`relative rounded-none border border-x-0 px-1.5 pb-2 pt-2.5 shadow-[0_0_0_1px_rgba(15,23,42,0.22)] sm:rounded-2xl sm:border-x sm:px-2 sm:pb-2.5 sm:pt-3 md:px-3 md:pb-3 md:pt-4 ${
+            props.processResolutionRequired
+              ? props.processTerminalStatus === "blocked"
+                ? "border-rose-400/35 bg-rose-500/[0.04]"
+                : "border-amber-300/30 bg-slate-900/90"
+              : "border-white/10 bg-slate-900/90"
+          }`}
+        >
+          {props.activeSession ? (
+            <div className="pointer-events-none absolute -top-4.5 left-1.5 z-10 sm:left-2 sm:-top-4 md:-top-3 md:left-3">
+              <div
+                className={`inline-flex max-w-[calc(100vw-7rem)] items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] backdrop-blur ${activityTone(props.activity)}`}
               >
-                {props.processResolutionRequired ? (
-                  <option
-                    className="text-slate-950"
-                    value={completedProcessResolutionSentinel}
-                    disabled
+                <span className="truncate">
+                  {props.threadStatusSummary[0] ??
+                    activityLabel(props.activity)}
+                </span>
+                {props.threadStatusSummary.slice(1, 2).map((item) => (
+                  <span
+                    key={item}
+                    className="truncate normal-case tracking-normal"
                   >
-                    {props.processTerminalStatus === "blocked"
-                      ? "Blocked"
-                      : "Done"}
-                  </option>
-                ) : null}
-                <option className="text-slate-950" value="">
-                  none
-                </option>
-                {props.processBlueprints.map((entry) => (
-                  <option
-                    className="text-slate-950"
-                    key={entry.id}
-                    value={entry.id}
-                  >
-                    {entry.title}
-                  </option>
+                    {item}
+                  </span>
                 ))}
-              </select>
-              {props.processResolutionRequired ? (
-                <>
-                  <span
-                    className={`pointer-events-none absolute inset-y-0 left-0 flex items-center gap-1.5 px-3 text-sm font-semibold md:text-xs ${
-                      props.processTerminalStatus === "blocked"
-                        ? "text-rose-200"
-                        : "text-amber-100"
-                    }`}
-                  >
-                    <span
-                      className={`h-2 w-2 rounded-full ${
-                        props.processTerminalStatus === "blocked"
-                          ? "bg-rose-300"
-                          : "bg-amber-200"
-                      }`}
-                    />
-                    {props.processTerminalStatus === "blocked"
-                      ? "Blocked"
-                      : "Done"}
+                {props.interrupting ? (
+                  <span className="normal-case tracking-normal">
+                    interrupting...
                   </span>
-                  <span
-                    title={`Choose the next process before sending. The previous process is ${props.processTerminalStatus === "blocked" ? "blocked" : "done"}.`}
-                    className={`pointer-events-none absolute inset-y-0 right-8 flex items-center text-sm md:text-xs ${
-                      props.processTerminalStatus === "blocked"
-                        ? "text-rose-200"
-                        : "text-amber-100"
-                    }`}
-                  >
-                    !
-                  </span>
-                </>
-              ) : null}
+                ) : null}
+              </div>
             </div>
-          </label>
-          <IconButton
-            label={
-              props.settingsOpen ? "Hide settings menu" : "Show settings menu"
-            }
-            title={props.settingsOpen ? "Hide Menu" : "Menu"}
-            onClick={props.onToggleSettings}
-          >
-            <MenuIcon />
-          </IconButton>
-          {props.activity.canInterrupt &&
-          props.activity.status === "running" ? (
-            <IconButton
-              label={props.interrupting ? "Interrupting run" : "Interrupt run"}
-              title={props.interrupting ? "Interrupting..." : "Interrupt"}
-              onClick={props.onInterrupt}
-              disabled={props.interrupting}
-              tone="danger"
-            >
-              <StopIcon />
-            </IconButton>
           ) : null}
-          <button
-            type="button"
-            aria-label={props.sending ? "Sending message" : "Send message"}
-            title={props.sending ? "Sending..." : "Send"}
-            onClick={() => void submitComposer()}
-            disabled={
-              !props.activeSession ||
-              props.sending ||
-              props.processResolutionRequired ||
-              !hasComposerContent
+          <textarea
+            ref={composerInputRef}
+            defaultValue=""
+            onChange={(event) => {
+              const nextValue = event.target.value
+              latestDraftRef.current = nextValue
+              setHasComposerText((current) => {
+                const nextHasText = nextValue.trim().length > 0
+                return current === nextHasText ? current : nextHasText
+              })
+              if (props.activeSession?.id) {
+                scheduleDraftPersist(props.activeSession.id)
+              }
+              void reportComposerTyping(true)
+            }}
+            onFocus={() => void reportComposerTyping(true, { force: true })}
+            onBlur={() => void reportComposerTyping(false, { force: true })}
+            onKeyDown={handleComposerKeyDown}
+            onPaste={(event) => {
+              void handleComposerPaste(event)
+            }}
+            rows={2}
+            placeholder={
+              props.activeSession
+                ? "Write the next message..."
+                : "Select or create a chat first."
             }
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300 text-slate-950 disabled:cursor-not-allowed disabled:border-cyan-300/20 disabled:bg-cyan-300/40"
-          >
-            <SendIcon />
-          </button>
+            disabled={!props.activeSession || props.sending}
+            className="min-h-[5rem] w-full resize-y border-0 bg-transparent px-0 py-0.5 text-base text-white outline-none disabled:cursor-not-allowed disabled:opacity-50 md:min-h-[6.25rem] md:px-1 md:py-1 md:text-sm"
+          />
+          <div className="mt-1.5 flex items-center gap-1.5 md:mt-2 md:gap-2">
+            <label className="min-w-0 flex-1">
+              <span className="sr-only">Quick set current chat process</span>
+              <div className="relative">
+                <select
+                  ref={quickProcessSelectRef}
+                  value={props.quickProcessSelectValue}
+                  onChange={(event) =>
+                    props.onQuickProcessChange(event.target.value)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault()
+                    }
+                  }}
+                  disabled={
+                    !props.activeSession || props.updatingQuickProcessBlueprint
+                  }
+                  title="Quick Set Process"
+                  className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-base outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-xs ${
+                    props.processResolutionRequired
+                      ? props.processTerminalStatus === "blocked"
+                        ? "border-rose-400/50 bg-rose-500/[0.08] text-transparent shadow-[0_0_0_1px_rgba(251,113,133,0.16)]"
+                        : "border-amber-300/45 bg-amber-300/[0.08] text-transparent shadow-[0_0_0_1px_rgba(252,211,77,0.12)]"
+                      : props.activeProcessBlueprintId
+                        ? "border-white/10 bg-slate-900/80 text-slate-200"
+                        : "border-white/10 bg-slate-950/70 text-slate-500"
+                  }`}
+                >
+                  {props.processResolutionRequired ? (
+                    <option
+                      className="text-slate-950"
+                      value={completedProcessResolutionSentinel}
+                      disabled
+                    >
+                      {props.processTerminalStatus === "blocked"
+                        ? "Blocked"
+                        : "Done"}
+                    </option>
+                  ) : null}
+                  <option className="text-slate-950" value="">
+                    none
+                  </option>
+                  {props.processBlueprints.map((entry) => (
+                    <option
+                      className="text-slate-950"
+                      key={entry.id}
+                      value={entry.id}
+                    >
+                      {entry.title}
+                    </option>
+                  ))}
+                </select>
+                {props.processResolutionRequired ? (
+                  <>
+                    <span
+                      className={`pointer-events-none absolute inset-y-0 left-0 flex items-center gap-1.5 px-3 text-sm font-semibold md:text-xs ${
+                        props.processTerminalStatus === "blocked"
+                          ? "text-rose-200"
+                          : "text-amber-100"
+                      }`}
+                    >
+                      <span
+                        className={`h-2 w-2 rounded-full ${
+                          props.processTerminalStatus === "blocked"
+                            ? "bg-rose-300"
+                            : "bg-amber-200"
+                        }`}
+                      />
+                      {props.processTerminalStatus === "blocked"
+                        ? "Blocked"
+                        : "Done"}
+                    </span>
+                    <span
+                      title={`Choose the next process before sending. The previous process is ${props.processTerminalStatus === "blocked" ? "blocked" : "done"}.`}
+                      className={`pointer-events-none absolute inset-y-0 right-8 flex items-center text-sm md:text-xs ${
+                        props.processTerminalStatus === "blocked"
+                          ? "text-rose-200"
+                          : "text-amber-100"
+                      }`}
+                    >
+                      !
+                    </span>
+                  </>
+                ) : null}
+              </div>
+            </label>
+            <IconButton
+              label={
+                props.settingsOpen ? "Hide settings menu" : "Show settings menu"
+              }
+              title={props.settingsOpen ? "Hide Menu" : "Menu"}
+              onClick={props.onToggleSettings}
+            >
+              <MenuIcon />
+            </IconButton>
+            {props.activity.canInterrupt &&
+            props.activity.status === "running" ? (
+              <IconButton
+                label={
+                  props.interrupting ? "Interrupting run" : "Interrupt run"
+                }
+                title={props.interrupting ? "Interrupting..." : "Interrupt"}
+                onClick={props.onInterrupt}
+                disabled={props.interrupting}
+                tone="danger"
+              >
+                <StopIcon />
+              </IconButton>
+            ) : null}
+            <button
+              type="button"
+              aria-label={props.sending ? "Sending message" : "Send message"}
+              title={props.sending ? "Sending..." : "Send"}
+              onClick={() => void submitComposer()}
+              disabled={
+                !props.activeSession ||
+                props.sending ||
+                props.processResolutionRequired ||
+                !hasComposerContent
+              }
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300 text-slate-950 disabled:cursor-not-allowed disabled:border-cyan-300/20 disabled:bg-cyan-300/40"
+            >
+              <SendIcon />
+            </button>
+          </div>
         </div>
-      </div>
-    </>
-  )
-})
+      </>
+    )
+  },
+  (previousProps, nextProps) => {
+    const previousSessionId = previousProps.activeSession?.id ?? null
+    const nextSessionId = nextProps.activeSession?.id ?? null
+    const previousThreadStatusKey = previousProps.threadStatusSummary.join("|")
+    const nextThreadStatusKey = nextProps.threadStatusSummary.join("|")
+
+    return (
+      previousSessionId == nextSessionId &&
+      previousProps.sending === nextProps.sending &&
+      previousProps.interrupting === nextProps.interrupting &&
+      previousProps.activity.status === nextProps.activity.status &&
+      previousProps.activity.canInterrupt === nextProps.activity.canInterrupt &&
+      previousThreadStatusKey === nextThreadStatusKey &&
+      previousProps.processResolutionRequired ===
+        nextProps.processResolutionRequired &&
+      previousProps.processTerminalStatus === nextProps.processTerminalStatus &&
+      previousProps.quickProcessSelectValue ===
+        nextProps.quickProcessSelectValue &&
+      previousProps.processBlueprints === nextProps.processBlueprints &&
+      previousProps.activeProcessBlueprintId ===
+        nextProps.activeProcessBlueprintId &&
+      previousProps.updatingQuickProcessBlueprint ===
+        nextProps.updatingQuickProcessBlueprint &&
+      previousProps.settingsOpen === nextProps.settingsOpen
+    )
+  },
+)
 
 function sessionCardTone(
   activity: SessionActivity,
