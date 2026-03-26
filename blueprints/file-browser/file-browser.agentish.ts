@@ -1,12 +1,12 @@
 /// <reference path="../_agentish.d.ts" />
 
-// File Browser Dashboard Implementation
+// File Browser
 
 const Agentish = define.language("Agentish");
 
-const FileBrowserDashboardImplementation = define.system("FileBrowserDashboardImplementation", {
+const FileBrowser = define.system("FileBrowser", {
   format: Agentish,
-  role: "Implementation-resolved plan for adding a VS Code-like workspace file browser as a dashboard feature",
+  role: "VS Code-like workspace file browser dashboard feature",
 });
 
 const User = define.actor("DashboardOperator", {
@@ -103,7 +103,7 @@ const Package = {
   dashboardServer: define.package("DashboardGatewayPackage"),
 };
 
-FileBrowserDashboardImplementation.enforces(`
+FileBrowser.enforces(`
 - The file browser is a real dashboard plugin feature rather than a shell-owned special case.
 - The file browser should feel immediately legible to anyone familiar with the VS Code explorer.
 - The main surface is a left-side expandable tree with clear file-versus-folder affordances and compact row density.
@@ -120,7 +120,7 @@ FileBrowserDashboardImplementation.enforces(`
 - The feature should emit its own dashboard status items for root, watch health, and last refresh state.
 `);
 
-FileBrowserDashboardImplementation.defines(`
+FileBrowser.defines(`
 - FileBrowserDashboardPlugin means the dashboard feature definition for the explorer tab, route, icon, screen loader, backend health, and startup.
 - WorkspaceRoot means the top-level directory boundary the explorer is allowed to show and mutate.
 - WorkspaceTree means the lazily loaded hierarchy of directories and files under the selected root.

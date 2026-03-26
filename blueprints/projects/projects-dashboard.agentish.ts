@@ -1,12 +1,12 @@
 /// <reference path="../_agentish.d.ts" />
 
-// Projects Dashboard Implementation
+// Projects Dashboard
 
 const Agentish = define.language("Agentish");
 
-const ProjectsDashboardImplementation = define.system("ProjectsDashboardImplementation", {
+const ProjectsDashboard = define.system("ProjectsDashboard", {
   format: Agentish,
-  role: "Implementation-resolved plan for a dashboard feature that manages workspace projects, GitHub access, and per-project agent process policy",
+  role: "Dashboard feature that manages workspace projects, GitHub access, and per-project agent process policy",
 });
 
 const User = define.actor("DashboardOperator", {
@@ -108,7 +108,7 @@ const Package = {
   dashboardServer: define.package("DashboardGatewayPackage"),
 };
 
-ProjectsDashboardImplementation.enforces(`
+ProjectsDashboard.enforces(`
 - The dashboard must expose a first-party Projects tab rather than relying on ad hoc shell scripts as the primary operator surface.
 - Workspace projects must be explicit dashboard-managed records rather than being inferred only from whichever repos happen to exist on disk.
 - Adding a project must support both cloning a remote repo and registering an already-present local repo.
@@ -134,7 +134,7 @@ ProjectsDashboardImplementation.enforces(`
 - GitHub validation and clone or push capability checks may fail clearly, but they must not mutate repo configuration into an ambiguous partial state.
 `);
 
-ProjectsDashboardImplementation.defines(`
+ProjectsDashboard.defines(`
 - WorkspaceProjectRecord means the canonical app-owned configuration record for one managed repo in the workspace.
 - ProjectIntegrationPolicy means the stored repo-specific integration settings used by the shared development process.
 - ProjectPostMergeBunCommand means the declared bun command to run after code lands on the project's configured base branch.
