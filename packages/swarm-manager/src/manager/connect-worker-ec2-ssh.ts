@@ -101,6 +101,11 @@ type CommandResult = {
   stderr: string;
 };
 
+type GitAuthorship = {
+  userName: string;
+  userEmail: string;
+};
+
 function optionalOne(args: string[], flag: string): string | undefined {
   const index = args.findIndex((value) => value === `--${flag}`);
   if (index === -1) {
@@ -217,6 +222,21 @@ function parseNumber(value: string | undefined, fallback: number): number {
   }
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readRequiredGitConfig(key: string): string {
+  const value = runCommand(["git", "config", "--global", "--get", key]).stdout.trim();
+  if (!value) {
+    fail(`manager git config is missing ${key}`);
+  }
+  return value;
+}
+
+function resolveManagerGitAuthorship(): GitAuthorship {
+  return {
+    userName: readRequiredGitConfig("user.name"),
+    userEmail: readRequiredGitConfig("user.email"),
+  };
 }
 
 function printHelp(): void {
@@ -661,12 +681,21 @@ function ensureSshKey(hostAlias: string, keyPath?: string): { hostAlias: string;
   };
 }
 
-async function bootstrapSsh(config: ParsedArgs, instanceId: string, publicKey: string): Promise<void> {
+async function bootstrapSsh(
+  config: ParsedArgs,
+  instanceId: string,
+  publicKey: string,
+  gitAuthorship: GitAuthorship,
+): Promise<void> {
   const encodedKey = Buffer.from(publicKey, "utf8").toString("base64");
+  const encodedGitUserName = Buffer.from(gitAuthorship.userName, "utf8").toString("base64");
+  const encodedGitUserEmail = Buffer.from(gitAuthorship.userEmail, "utf8").toString("base64");
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 REMOTE_USER='${config.remoteUser}'
 PUBKEY="$(printf '%s' '${encodedKey}' | base64 -d)"
+GIT_USER_NAME="$(printf '%s' '${encodedGitUserName}' | base64 -d)"
+GIT_USER_EMAIL="$(printf '%s' '${encodedGitUserEmail}' | base64 -d)"
 if ! id -u "$REMOTE_USER" >/dev/null 2>&1; then
   echo "remote user $REMOTE_USER does not exist" >&2
   exit 1
@@ -682,6 +711,17 @@ if ! command -v sshd >/dev/null 2>&1; then
     exit 1
   fi
 fi
+if ! command -v git >/dev/null 2>&1; then
+  if command -v dnf >/dev/null 2>&1; then
+    dnf install -y git
+  elif command -v apt-get >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y git
+  else
+    echo "git is not installed and no supported package manager was found" >&2
+    exit 1
+  fi
+fi
 systemctl enable --now sshd 2>/dev/null || systemctl enable --now ssh
 systemctl restart sshd 2>/dev/null || systemctl restart ssh
 HOME_DIR="$(getent passwd "$REMOTE_USER" | cut -d: -f6)"
@@ -690,6 +730,14 @@ touch "$HOME_DIR/.ssh/authorized_keys"
 grep -qxF "$PUBKEY" "$HOME_DIR/.ssh/authorized_keys" || printf '%s\n' "$PUBKEY" >> "$HOME_DIR/.ssh/authorized_keys"
 chown "$REMOTE_USER:$REMOTE_USER" "$HOME_DIR/.ssh/authorized_keys"
 chmod 600 "$HOME_DIR/.ssh/authorized_keys"
+GIT_CONFIG_PATH="$HOME_DIR/.gitconfig"
+if [[ ! -f "$GIT_CONFIG_PATH" ]]; then
+  touch "$GIT_CONFIG_PATH"
+fi
+git config --file "$GIT_CONFIG_PATH" user.name "$GIT_USER_NAME"
+git config --file "$GIT_CONFIG_PATH" user.email "$GIT_USER_EMAIL"
+chown "$REMOTE_USER:$REMOTE_USER" "$GIT_CONFIG_PATH"
+chmod 600 "$GIT_CONFIG_PATH"
 `;
   const encodedScript = Buffer.from(script, "utf8").toString("base64");
   const commandId = runChecked(
@@ -812,13 +860,13 @@ function validateSsh(hostAlias: string): void {
   log(`SSH connected to ${result.stdout.trim()}`);
 }
 
-function openInteractiveSsh(hostAlias: string): never {
+async function openInteractiveSsh(hostAlias: string): Promise<never> {
   const proc = Bun.spawn(["ssh", hostAlias], {
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
   });
-  process.exit(proc.exited);
+  process.exit(await proc.exited);
 }
 
 async function main(): Promise<void> {
@@ -883,7 +931,8 @@ async function main(): Promise<void> {
 
   const hostAlias = config.hostAlias ?? `agent-swarm-worker-${worker.instanceId}`;
   const sshKey = ensureSshKey(hostAlias, config.keyPath);
-  await bootstrapSsh(config, worker.instanceId, sshKey.publicKey);
+  const gitAuthorship = resolveManagerGitAuthorship();
+  await bootstrapSsh(config, worker.instanceId, sshKey.publicKey, gitAuthorship);
   writeSshConfig(hostAlias, worker.privateIp, sshKey.keyPath, config.remoteUser);
   log(`validating SSH connectivity to ${hostAlias} (${worker.privateIp})`);
   validateSsh(hostAlias);
@@ -893,8 +942,8 @@ async function main(): Promise<void> {
   }
 
   if (config.connect) {
-    openInteractiveSsh(hostAlias);
-  }
+  await openInteractiveSsh(hostAlias);
+}
 }
 
 await main();
