@@ -1128,6 +1128,9 @@ export function UiDesignCanvasScreen({
     if (mode === "draw") {
       return;
     }
+    if (event.detail < 2) {
+      return;
+    }
     const target = event.target as HTMLElement | null;
     if (!target) {
       return;
@@ -1476,7 +1479,7 @@ export function UiDesignCanvasScreen({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={handleConnect}
-          onDoubleClick={handlePaneDoubleClick}
+          onPaneClick={handlePaneDoubleClick}
           onSelectionChange={({ nodes: selectedNodes }) => {
             const nextSelectedId = selectedNodes[0]?.id ?? null;
             setSelectedNodeId(nextSelectedId);
