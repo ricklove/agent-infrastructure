@@ -267,6 +267,7 @@ const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
 const websocketWarningDelayMs = 5_000
 const chatSessionQueryParam = "sessionId"
 const chatMessageHashPrefix = "#message-"
+const localFilePreviewPathname = "/local-file-preview"
 const darkNativeSelectClass = "bg-slate-950 text-slate-100 [color-scheme:dark]"
 const darkNativeOptionStyle = {
   backgroundColor: "#020617",
@@ -1067,26 +1068,16 @@ function isLikelyLocalFileReferenceTarget(targetUrl: string) {
   )
 }
 
-async function openLocalFilePreview(pathname: string) {
-  const response = await apiFetch(
-    `/api/local-file-preview?path=${encodeURIComponent(pathname)}`,
-  )
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
-      | null
-    throw new Error(payload?.error ?? "File preview unavailable.")
-  }
+function localFilePreviewUrl(pathname: string) {
+  return `${localFilePreviewPathname}?path=${encodeURIComponent(pathname)}`
+}
 
-  const blob = await response.blob()
-  const objectUrl = URL.createObjectURL(blob)
-  const opened = window.open(objectUrl, "_blank", "noopener,noreferrer")
+async function openLocalFilePreview(pathname: string) {
+  const previewUrl = localFilePreviewUrl(pathname)
+  const opened = window.open(previewUrl, "_blank", "noopener,noreferrer")
   if (!opened) {
-    window.location.href = objectUrl
+    window.location.href = previewUrl
   }
-  window.setTimeout(() => {
-    URL.revokeObjectURL(objectUrl)
-  }, 60_000)
 }
 
 function isLikelyImageTarget(targetUrl: string) {
@@ -1114,7 +1105,7 @@ function FileReferenceLink(props: {
 
   return (
     <a
-      href={props.pathname}
+      href={localFilePreviewUrl(props.pathname)}
       onClick={(event) => void openFile(event)}
       className={
         props.className ??
@@ -1133,6 +1124,15 @@ function renderStyledInlineMarkdown(text: string, keyPrefix: string) {
     .map((segment, index) => {
       const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(segment)
       if (linkMatch) {
+        if (isLikelyLocalFileReferenceTarget(linkMatch[2] ?? "")) {
+          return (
+            <FileReferenceLink
+              key={`${keyPrefix}-link-${index}`}
+              pathname={linkMatch[2] ?? ""}
+              label={linkMatch[1] ?? ""}
+            />
+          )
+        }
         return (
           <a
             key={`${keyPrefix}-link-${index}`}

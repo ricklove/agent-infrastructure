@@ -1028,7 +1028,11 @@ async function handleApi(request: Request): Promise<Response> {
     }
   }
 
-  if (request.method === "GET" && url.pathname === "/api/local-file-preview") {
+  if (
+    request.method === "GET" &&
+    (url.pathname === "/api/local-file-preview" ||
+      url.pathname === "/local-file-preview")
+  ) {
     const requestedPath = url.searchParams.get("path")?.trim() ?? "";
     if (!requestedPath) {
       return jsonResponse({ ok: false, error: "path is required" }, 400);

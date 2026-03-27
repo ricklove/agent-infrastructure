@@ -174,7 +174,7 @@ CurrentReality.transcriptRawViewGap.means(`
 - manager-host live validation also still depends on the referenced image source remaining readable from the deployed host, so worker-local preview paths that no longer exist on the manager still degrade into an unavailable-image state even though the transcript now recognizes them as image links
 - copied per-message links still inherit the current browser origin verbatim, so temporary tunnel domains can leak into shared session/message references and go stale as soon as that preview origin rotates
 - markdown links that reference in-app chat messages still render only as ordinary links today, so pasted `/chat?sessionId=...#message-...` references do not yet preview the target chat and message context inline
-- local filesystem references such as `/home/ec2-user/workspace/...` still render as ordinary text or dead links today, so operators cannot yet open referenced workspace files in the browser directly from the transcript
+- local filesystem references currently surface raw absolute host-path hrefs instead of resolving through a dedicated preview URL, so opening or copying those links can escape the dashboard route model and break navigation
 `);
 
 CurrentReality.archivedSessionOrganization.means(`
