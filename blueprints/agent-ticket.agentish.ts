@@ -58,6 +58,7 @@ const Artifact = {
   checklist: define.document("AgentTicketChecklistState"),
   systemEvent: define.document("AgentTicketSystemEvent"),
   mutation: define.entity("AgentTicketMutation"),
+  index: define.document("AgentTicketStoreIndex"),
 };
 
 const Actor = {
@@ -68,6 +69,7 @@ const Actor = {
 };
 
 const State = {
+  ticketId: define.document("AgentTicketId"),
   status: define.document("AgentTicketStatus"),
   currentStepId: define.document("AgentTicketCurrentStepId"),
   nextStepId: define.document("AgentTicketNextStepId"),
@@ -93,6 +95,7 @@ const EventContract = {
   eventStepLabel: define.document("AgentTicketSystemEventStepLabel"),
   matchedToken: define.document("AgentTicketSystemEventMatchedToken"),
   resolution: define.document("AgentTicketSystemEventResolution"),
+  emissionCause: define.document("AgentTicketSystemEventEmissionCause"),
 };
 
 const MutationContract = {
@@ -125,6 +128,7 @@ AgentTicket.enforces(`
 
 AgentTicket.defines(`
 - AgentTicketRecord means the durable workspace record for one process instance.
+- AgentTicketStoreIndex means the store-owned lookup and addressing layer for ticket records.
 - AgentTicketProcessState means the mutable runtime state including current status, current step, next step, completed steps, blocked steps, execution mode, and terminal resolution.
 - AgentTicketChecklistState means the stateful nested checklist projection of the pinned process outline for one ticket.
 - AgentTicketSystemEvent means the canonical transcript-visible system event emitted when the focused ticket changes state.
@@ -138,6 +142,7 @@ AgentTicket.defines(`
 `);
 
 Artifact.store.contains(Artifact.ticket);
+Artifact.store.contains(Artifact.index);
 Artifact.ticket.contains(
   Artifact.title,
   Artifact.description,
@@ -155,6 +160,7 @@ Artifact.ticket.contains(
 );
 
 Artifact.processState.contains(
+  State.ticketId,
   State.status,
   State.currentStepId,
   State.nextStepId,
@@ -184,6 +190,7 @@ Artifact.systemEvent.contains(
   EventContract.eventStepLabel,
   EventContract.matchedToken,
   EventContract.resolution,
+  EventContract.emissionCause,
 );
 
 Artifact.mutation.contains(
@@ -196,6 +203,12 @@ when(Artifact.ticket.exists())
   .and(AgentTicket.requires(Policy.stateAuthoritative))
   .and(AgentTicket.requires(Policy.minimalCore))
   .and(AgentTicket.requires(Policy.generalReferenceGraph));
+
+when(Artifact.store.exists())
+  .then(Artifact.store.expects(Artifact.index))
+  .and(Artifact.store.expects("one durable ticket record per ticket id"))
+  .and(Artifact.store.expects("addressable lookup by ticket id"))
+  .and(Artifact.store.expects("separate durable storage for pinned process snapshot, mutable process state, and emitted system-event history"));
 
 when(Artifact.ticket.references("a chat message target"))
   .then(Artifact.reference.allows(Artifact.referenceRange))
@@ -213,7 +226,8 @@ when(Actor.orchestrator.manages(Artifact.ticket))
   .and(Artifact.processState.preserves("one authoritative current process state despite several active workers"));
 
 when(Artifact.ticket.uses(Artifact.snapshot))
-  .then(Artifact.processState.expects(State.currentStepId))
+  .then(Artifact.processState.expects(State.ticketId))
+  .and(Artifact.processState.expects(State.currentStepId))
   .and(Artifact.processState.expects(State.nextStepId))
   .and(Artifact.processState.expects(State.status))
   .and(Artifact.ticket.expects(Artifact.checklist));
@@ -221,7 +235,8 @@ when(Artifact.ticket.uses(Artifact.snapshot))
 when(Artifact.mutation.changes(Artifact.processState))
   .then(Artifact.mutation.requires(MutationContract.mutationType))
   .and(Artifact.mutation.requires(MutationContract.mutationReason))
-  .and(Artifact.ticket.emits(Artifact.systemEvent));
+  .and(Artifact.ticket.emits(Artifact.systemEvent))
+  .and(Artifact.systemEvent.describes(EventContract.emissionCause));
 
 when(Artifact.ticket.uses(Artifact.snapshot))
   .then(Artifact.processState.treats(State.nextStepId).as("derived from the pinned snapshot step graph"))
@@ -233,10 +248,10 @@ when(Artifact.mutation.changes(Artifact.processState))
   .and(Artifact.mutation.forbids("completing a step other than the current next step"))
   .and(Artifact.mutation.forbids("skipping required intermediate steps"));
 
-when(Artifact.processState.changes())
-  .then(Artifact.ticket.emits(Artifact.systemEvent))
-  .and(Artifact.systemEvent.describes(State.status))
+when(Artifact.ticket.emits(Artifact.systemEvent))
+  .then(Artifact.systemEvent.describes(State.status))
   .and(Artifact.systemEvent.describes(State.nextStepId))
   .and(Artifact.systemEvent.describes(State.nextStepLabel))
   .and(Artifact.systemEvent.describes(EventContract.matchedToken))
-  .and(Artifact.systemEvent.describes(State.resolution));
+  .and(Artifact.systemEvent.describes(State.resolution))
+  .and(Artifact.systemEvent.treats(EventContract.emissionCause).as("the canonical reason this one event was emitted for the validated ticket mutation"));

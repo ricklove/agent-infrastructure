@@ -62,6 +62,14 @@ const Artifact = {
   watchdogPolicy: define.document("AgentProcessWatchdogPolicy"),
 };
 
+const Watchdog = {
+  idleTimeoutMs: define.document("AgentProcessWatchdogIdleTimeoutMs"),
+  shortTarget: define.document("AgentProcessWatchdogShortTarget"),
+  continuationPrompt: define.document("AgentProcessWatchdogContinuationPrompt"),
+  blockedPrompt: define.document("AgentProcessWatchdogBlockedPrompt"),
+  donePrompt: define.document("AgentProcessWatchdogDonePrompt"),
+};
+
 const Step = {
   node: define.entity("AgentProcessStep"),
   id: define.document("AgentProcessStepId"),
@@ -79,6 +87,7 @@ const Contract = {
   catalogOrder: define.document("AgentProcessCatalogOrder"),
   expectation: define.document("AgentProcessExpectation"),
   completionMode: define.document("AgentProcessCompletionMode"),
+  allowedCompletionMode: define.document("AllowedAgentProcessCompletionMode"),
   completionToken: define.document("AgentProcessCompletionToken"),
   blockedToken: define.document("AgentProcessBlockedToken"),
   stopCondition: define.document("AgentProcessStopCondition"),
@@ -114,10 +123,16 @@ AgentProcess.defines(`
 - AgentProcessOutline means the human-readable ordered step source for the process.
 - AgentProcessSnapshot means the immutable ticket-pinned resolved copy of one process definition.
 - AgentProcessWatchdogPolicy means the process-owned idle, blocked, and completion policy.
+- AgentProcessWatchdogIdleTimeoutMs means the idle duration before the watchdog becomes eligible.
+- AgentProcessWatchdogShortTarget means the compact next-step or process target named in watchdog-facing status surfaces.
+- AgentProcessWatchdogContinuationPrompt means the exact watchdog continuation prompt for unresolved active work.
+- AgentProcessWatchdogBlockedPrompt means the exact watchdog prompt used when the runtime needs blocked-state resolution.
+- AgentProcessWatchdogDonePrompt means the exact watchdog prompt used when the runtime is terminal-ready and expects explicit completion resolution.
 - AgentProcessStep means one named stable step in the process.
 - AgentProcessStepDoneToken means the exact token that marks one step complete when the process uses explicit step tokens.
 - AgentProcessStepBlockedToken means the exact token that marks one step blocked when the process uses explicit step tokens.
 - AgentProcessTransition means an allowed advance, return, branch, or terminal edge between steps.
+- AllowedAgentProcessCompletionMode means one of exact_reply, explicit_step_tokens, or external_resolution.
 - ProcessDefinitionIsStateless means the definition never carries live execution progress.
 - StructuredProcessSource means the authoring source stays explicit enough that the system does not need to infer control flow from large prose paragraphs.
 - ComposableSubsteps means shared process segments may be reused across several process definitions.
@@ -132,6 +147,11 @@ Artifact.definition.contains(
   Artifact.guide,
   Artifact.outline,
   Artifact.watchdogPolicy,
+  Watchdog.idleTimeoutMs,
+  Watchdog.shortTarget,
+  Watchdog.continuationPrompt,
+  Watchdog.blockedPrompt,
+  Watchdog.donePrompt,
   Step.node,
   Step.id,
   Step.title,
@@ -145,6 +165,7 @@ Artifact.definition.contains(
   Contract.catalogOrder,
   Contract.expectation,
   Contract.completionMode,
+  Contract.allowedCompletionMode,
   Contract.completionToken,
   Contract.blockedToken,
   Contract.stopCondition,
@@ -162,6 +183,7 @@ Artifact.machineContract.contains(
   Contract.catalogOrder,
   Contract.expectation,
   Contract.completionMode,
+  Contract.allowedCompletionMode,
   Contract.completionToken,
   Contract.blockedToken,
   Contract.stopCondition,
@@ -169,6 +191,14 @@ Artifact.machineContract.contains(
   Artifact.watchdogPolicy,
   Step.node,
   Step.transition,
+);
+
+Artifact.watchdogPolicy.contains(
+  Watchdog.idleTimeoutMs,
+  Watchdog.shortTarget,
+  Watchdog.continuationPrompt,
+  Watchdog.blockedPrompt,
+  Watchdog.donePrompt,
 );
 
 Step.node.contains(Step.id, Step.title, Step.doneToken, Step.blockedToken, Step.transition);
@@ -208,14 +238,35 @@ when(Artifact.machineContract.exists())
   .then(Artifact.machineContract.expects(Artifact.outline))
   .and(Artifact.machineContract.expects(Contract.expectation))
   .and(Artifact.machineContract.expects(Contract.completionMode))
+  .and(Artifact.machineContract.expects(Contract.allowedCompletionMode))
   .and(Artifact.machineContract.expects(Contract.completionToken))
   .and(Artifact.machineContract.expects(Contract.blockedToken))
-  .and(Artifact.machineContract.expects(Contract.runtimeOutlineRequired));
+  .and(Artifact.machineContract.expects(Contract.runtimeOutlineRequired))
+  .and(Artifact.machineContract.expects(Artifact.watchdogPolicy));
+
+when(Artifact.watchdogPolicy.exists())
+  .then(Artifact.watchdogPolicy.expects(Watchdog.idleTimeoutMs))
+  .and(Artifact.watchdogPolicy.expects(Watchdog.shortTarget))
+  .and(Artifact.watchdogPolicy.expects(Watchdog.continuationPrompt))
+  .and(Artifact.watchdogPolicy.expects(Watchdog.blockedPrompt))
+  .and(Artifact.watchdogPolicy.expects(Watchdog.donePrompt));
+
+when(Contract.completionMode.exists())
+  .then(Contract.completionMode.requires(Contract.allowedCompletionMode));
 
 when(Contract.completionMode.is("exact_reply"))
   .then(Artifact.machineContract.requires(Contract.completionToken))
   .and(Artifact.machineContract.requires(Contract.blockedToken))
   .and(Artifact.machineContract.treats("exact token matching as the terminal process boundary"));
+
+when(Contract.completionMode.is("explicit_step_tokens"))
+  .then(Artifact.machineContract.requires(Step.doneToken))
+  .and(Artifact.machineContract.treats("step tokens as the authoritative legal step-transition boundary"))
+  .and(Artifact.machineContract.allows("process completion only after all required steps are terminally resolved"));
+
+when(Contract.completionMode.is("external_resolution"))
+  .then(Artifact.machineContract.forbids("treating freeform agent text as process completion by itself"))
+  .and(Artifact.machineContract.treats("runtime state validation as the terminal process boundary"));
 
 when(Contract.runtimeOutlineRequired.exists())
   .then(Artifact.snapshot.requires(Artifact.outline))
