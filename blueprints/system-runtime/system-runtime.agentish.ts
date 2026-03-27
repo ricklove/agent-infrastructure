@@ -25,6 +25,7 @@ const Gateway = {
   definition: define.entity("GatewayBackendDefinition"),
   health: define.entity("GatewayBackendHealthCheck"),
   lazyStart: define.entity("GatewayLazyStartRule"),
+  frontendDevProxy: define.entity("GatewayBackedFrontendDevProxy"),
 };
 
 const Host = {
@@ -36,6 +37,13 @@ const Host = {
   service: define.entity("SystemdService"),
   journal: define.document("JournaldLog"),
   logFile: define.document("SystemEventLogFile"),
+  previewTunnel: define.document("WorkerPreviewTunnelUrl"),
+};
+
+const Preview = {
+  dashboard: define.entity("WorkerPreviewDashboard"),
+  vite: define.entity("DashboardFrontendDevServer"),
+  session: define.entity("PreviewDashboardSession"),
 };
 
 const Layout = {
@@ -95,6 +103,8 @@ const Policy = {
   scriptBoundary: define.concept("ScriptBoundaryRule"),
   logging: define.concept("SystemLoggingRule"),
   fullUpdateWorkflow: define.concept("FullManagerUpdateWorkflow"),
+  workerPreviewTopology: define.concept("WorkerPreviewTopology"),
+  gatewayBackedPreview: define.concept("GatewayBackedPreviewMode"),
 };
 
 const Eventing = {
@@ -139,7 +149,12 @@ SystemRuntime.enforces(`
 - A worker promoted into an active development surface should use its own worker-local workspace root and worker-local runtime root rather than sharing manager-host runtime or shared integration checkouts.
 - Worker-host development surfaces must not have direct write access to the manager host shared repository checkout or runtime checkout.
 - Manager-host git credentials and canonical repository authority must remain on the manager integration surface unless an explicit controlled handoff path is invoked.
-- Prompt-driven exploratory surfaces on workers should create AgentChat sessions in the `Discuss` process by default so they do not begin code-changing work implicitly.
+- Prompt-driven exploratory surfaces on workers should create AgentChat sessions in the Discuss process by default so they do not begin code-changing work implicitly.
+- Supported worker dashboard preview should run as a worker-local replica of the dashboard runtime rather than as raw Vite exposed directly to the operator.
+- Supported worker dashboard preview should keep the same dashboard, backend, and feature-service port topology as the manager runtime unless a more specific runtime blueprint explicitly closes a different preview topology.
+- Supported worker dashboard preview should use the Bun dashboard gateway as the public origin and may proxy frontend development traffic to a worker-local Vite dev server so HMR remains available.
+- Supported worker dashboard preview should route temporary public ingress to the worker Bun dashboard gateway rather than directly to the Vite dev server.
+- Supported worker dashboard preview should preserve the normal dashboard session bootstrap and gateway-owned auth flow unless an explicit local-only exception is closed elsewhere.
 - If the active development worker becomes unhealthy or unreachable, the normal recovery path is to repair it, reboot it, or create a replacement worker rather than resuming heavy development on the manager runtime host by default.
 - Once a replacement worker is healthy and active, superseded unused worker instances should be disposed so the swarm does not accumulate stale development hosts.
 `);
@@ -151,7 +166,9 @@ SystemRuntime.defines(`
 - Worker development readiness means the worker has git plus copied commit authorship identity so it can behave like a remote execution worktree while the manager host remains the authenticated integration surface.
 - Worker-local workspace root means the checkout and working directory used for worker editing live on the worker and are replaceable without mutating manager-host canonical surfaces.
 - Worker-local runtime root means worker-side services and temporary runtime state stay on the worker rather than sharing the manager runtime tree.
-- Discuss-first exploratory session means a prompt-driven design or critique interaction starts in the `Discuss` process and only moves into implementation when the operator explicitly asks for that escalation.
+- Discuss-first exploratory session means a prompt-driven design or critique interaction starts in the Discuss process and only moves into implementation when the operator explicitly asks for that escalation.
+- WorkerPreviewTopology means a worker preview uses the same dashboard runtime topology as the manager, with Bun as the public gateway entrypoint and Vite hidden behind a frontend dev proxy when HMR is needed.
+- GatewayBackedPreviewMode means preview requests, API traffic, and websocket upgrades all enter through the Bun dashboard gateway even while frontend assets come from a proxied Vite dev server.
 - Worker recovery means restoring a usable development worker by repair, reboot, or replacement before resuming heavy development work.
 - Superseded worker disposal means removing stale unused worker instances after a healthy replacement worker takes over the active development role.
 - PackageTools means package-local assets or workflow helpers that remain internal to a package.
@@ -176,6 +193,8 @@ Host.manager.contains(
   Host.logFile,
   Gateway.dashboard,
 );
+
+Host.worker.contains(Preview.dashboard, Preview.vite, Preview.session, Host.previewTunnel);
 
 Host.runtime.contains(Layout.scripts, Layout.tools, Layout.packageScripts);
 Layout.scripts.contains(
@@ -205,7 +224,13 @@ Entrypoint.workerMonitor.contains(RuntimeCode.workerAgent);
 Entrypoint.issueDashboardSession.contains(RuntimeCode.dashboardRuntime);
 Entrypoint.launchWorker.contains(Layout.bootstrapAsset);
 Entrypoint.askpass.contains(Integration.githubAppTokenResolution);
-Gateway.dashboard.contains(Gateway.backend, Gateway.definition, Gateway.health, Gateway.lazyStart);
+Gateway.dashboard.contains(
+  Gateway.backend,
+  Gateway.definition,
+  Gateway.health,
+  Gateway.lazyStart,
+  Gateway.frontendDevProxy,
+);
 Gateway.backend.contains(RuntimeCode.graphServer);
 
 Host.state.contains(Layout.envFile, Layout.unitFile, Host.logFile);
@@ -218,6 +243,7 @@ SystemRuntime.means(`
 - a deployment workflow contract
 - a system-level logging contract
 - a lazy gateway-backend contract
+- a worker preview dashboard contract
 - a swarm-monitor observability contract
 `);
 
@@ -263,6 +289,21 @@ Policy.fullUpdateWorkflow.means(`
 - use bun run agent:connect-worker-ec2-ssh as the normal repository command for reaching a reusable or newly launched worker
 - treat any frontend-backend version mismatch as a failed rollout state
 - treat durable app data under state/ as a failed architecture state
+`);
+
+Policy.workerPreviewTopology.means(`
+- same dashboard-facing ports as the manager runtime
+- Bun dashboard gateway as the public preview origin
+- Vite dev server only as the frontend development upstream
+- worker-local feature APIs and websockets still entering through Bun
+- preview tunnel aimed at Bun rather than raw Vite
+`);
+
+Policy.gatewayBackedPreview.means(`
+- browser session bootstrap still uses the dashboard gateway
+- API and websocket auth stay gateway-owned
+- frontend HMR may traverse the Bun-to-Vite proxy path
+- preview URLs are temporary worker-local review surfaces rather than canonical dashboard release URLs
 `);
 
 Integration.managerController.means(`
@@ -361,6 +402,15 @@ when(Operator.requests("the full manager development process"))
   .and(SystemRuntime.requires("blueprint review before implementation changes"))
   .and(SystemRuntime.requires("post-deploy checks before declaring success"))
   .and(SystemRuntime.requires("browser-tool verification with screenshots for UI-facing changes"));
+
+when(Operator.runs("a worker dashboard preview workflow"))
+  .then(SystemRuntime.requires(Policy.workerPreviewTopology))
+  .and(SystemRuntime.requires(Policy.gatewayBackedPreview))
+  .and(SystemRuntime.expects(Preview.dashboard))
+  .and(SystemRuntime.expects(Preview.vite))
+  .and(SystemRuntime.expects(Host.previewTunnel))
+  .and(SystemRuntime.expects("the preview tunnel to terminate at the worker Bun dashboard gateway"))
+  .and(SystemRuntime.expects("worker preview auth and websocket upgrades to continue through the Bun dashboard gateway"));
 
 when(Operator.changes("manager or dashboard behavior"))
   .then(SystemRuntime.requires("checking the relevant blueprints first"))

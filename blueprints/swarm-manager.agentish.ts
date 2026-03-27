@@ -38,6 +38,9 @@ const WorkerDevEnvironment = define.entity("WorkerDevEnvironment");
 const WorkerWorkspace = define.entity("WorkerWorkspace");
 const WorkerRuntimeSurface = define.entity("WorkerRuntimeSurface");
 const WorkerPromptSession = define.entity("WorkerPromptSession");
+const WorkerPreviewDashboard = define.entity("WorkerPreviewDashboard");
+const WorkerPreviewTunnel = define.entity("WorkerPreviewTunnel");
+const WorkerPreviewGatewayProxy = define.entity("WorkerPreviewGatewayProxy");
 
 const Truth = {
   inventory: define.entity("AwsInventory"),
@@ -89,6 +92,8 @@ const Policy = {
   workerOwnsIsolatedWorkspace: define.concept("WorkerOwnsIsolatedWorkspace"),
   noManagerRepoWriteAccessOnWorker: define.concept("NoManagerRepoWriteAccessOnWorker"),
   discussDefaultForPromptSurfaces: define.concept("DiscussDefaultForPromptSurfaces"),
+  workerPreviewMatchesManagerTopology: define.concept("WorkerPreviewMatchesManagerTopology"),
+  gatewayEntrypointForPreview: define.concept("GatewayEntrypointForPreview"),
   workerRecoveryBeforeManagerFallback: define.concept("WorkerRecoveryBeforeManagerFallback"),
   disposeUnusedWorkers: define.concept("DisposeUnusedWorkers"),
 };
@@ -110,6 +115,8 @@ SwarmManager.enforces(Policy.managerOwnsExternalGitAuth);
 SwarmManager.enforces(Policy.workerOwnsIsolatedWorkspace);
 SwarmManager.enforces(Policy.noManagerRepoWriteAccessOnWorker);
 SwarmManager.enforces(Policy.discussDefaultForPromptSurfaces);
+SwarmManager.enforces(Policy.workerPreviewMatchesManagerTopology);
+SwarmManager.enforces(Policy.gatewayEntrypointForPreview);
 SwarmManager.prefers(Policy.workerRecoveryBeforeManagerFallback);
 SwarmManager.prefers(Policy.disposeUnusedWorkers);
 
@@ -247,6 +254,21 @@ when(SwarmManager.prepares(WorkerWorkspace).for(Worker))
   .and(Worker.creates("an isolated runtime root"))
   .and(Worker.avoids("mounting or reusing the manager host shared checkout as the worker editing surface"))
   .and(Worker.avoids("direct write access to canonical manager runtime files"));
+
+when(SwarmManager.prepares(WorkerPreviewDashboard).for(Worker))
+  .then(Worker.starts(WorkerPreviewDashboard))
+  .and(Worker.starts(WorkerPreviewGatewayProxy))
+  .and(Worker.mayStart("a worker-local Vite dev server for frontend HMR"))
+  .and(WorkerPreviewDashboard.uses("the same dashboard-facing ports as the manager runtime"))
+  .and(WorkerPreviewGatewayProxy.routes("public preview traffic").through("the Bun dashboard gateway"))
+  .and(WorkerPreviewGatewayProxy.proxies("frontend dev traffic").to("the worker-local Vite server"))
+  .and(SwarmManager.keeps(Policy.workerPreviewMatchesManagerTopology))
+  .and(SwarmManager.keeps(Policy.gatewayEntrypointForPreview));
+
+when(SwarmManager.issues(WorkerPreviewTunnel).for(WorkerPreviewDashboard))
+  .then(WorkerPreviewTunnel.targets(WorkerPreviewDashboard))
+  .and(WorkerPreviewTunnel.avoids("targeting raw Vite directly"))
+  .and(WorkerPreviewTunnel.treats("the preview URL as a temporary worker review surface rather than a canonical release URL"));
 
 when(SwarmManager.creates(WorkerPromptSession).for("a prompt-driven board or critique surface"))
   .then(WorkerPromptSession.uses("the `Discuss` process blueprint by default"))

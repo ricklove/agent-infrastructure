@@ -1,0 +1,19 @@
+{
+  "id": "live_peer_development",
+  "title": "Live Peer Development",
+  "catalogOrder": 45,
+  "expectation": "Follow the development-process blueprint through relevant blueprint updates, worker-backed feature-branch setup, local implementation and verification, committed milestone updates, and live worker preview sharing with the user. Keep the work on the feature branch with a working worker dashboard preview URL, expect continued user feedback while the preview is live, and stop before merge, release promotion, runtime deploy, and manager-host live validation unless the user explicitly switches to Full Development Process.",
+  "idlePrompt": "If the current live peer development milestone is complete, reply only with 'done: live peer development complete'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: live peer development blocked'. Otherwise resume the work immediately and perform the next required blueprint, implementation, verification, commit, preview, or validation step instead of giving only a status update.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: live peer development complete",
+  "blockedToken": "blocked: live peer development blocked",
+  "stopConditions": [
+    "live peer development complete",
+    "blocked on user or environment dependency"
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 120,
+    "maxNudgesPerIdleEpisode": 0
+  }
+}
