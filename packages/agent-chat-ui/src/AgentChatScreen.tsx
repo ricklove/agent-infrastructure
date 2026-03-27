@@ -70,6 +70,31 @@ type SessionWatchdogState = {
   completedAtMs: number | null
 }
 
+type AgentTicketStep = {
+  id: string
+  title: string
+  status: "pending" | "active" | "completed" | "blocked"
+  doneToken: string | null
+  blockedToken: string | null
+}
+
+type AgentTicket = {
+  id: string
+  sessionId: string
+  title: string
+  description: string
+  processBlueprintId: string
+  processTitle: string
+  status: "active" | "completed" | "blocked"
+  currentStepId: string | null
+  nextStepId: string | null
+  nextStepLabel: string | null
+  checklist: AgentTicketStep[]
+  resolution: string | null
+  createdAtMs: number
+  updatedAtMs: number
+}
+
 type SessionSummary = {
   id: string
   title: string
@@ -89,6 +114,7 @@ type SessionSummary = {
   activity: SessionActivity
   queuedMessageCount: number
   providerUsage: SessionProviderUsage | null
+  activeTicket: AgentTicket | null
 }
 
 type SessionMessage = {
@@ -176,6 +202,12 @@ type ProcessBlueprint = {
   completionToken: string
   blockedToken: string
   stopConditions: string[]
+  steps: Array<{
+    id: string
+    title: string
+    doneToken: string | null
+    blockedToken: string | null
+  }>
   watchdog: {
     enabled: boolean
     idleTimeoutSeconds: number
@@ -807,6 +839,23 @@ function watchdogAttentionLabel(watchdogState: SessionWatchdogState) {
     return "Blocked"
   }
   return null
+}
+
+function activeTicketStatusLabel(activeTicket: AgentTicket | null) {
+  if (!activeTicket) {
+    return null
+  }
+  if (activeTicket.status === "completed") {
+    return "Ticket complete"
+  }
+  if (activeTicket.status === "blocked") {
+    return activeTicket.nextStepLabel
+      ? `Blocked: ${activeTicket.nextStepLabel}`
+      : "Ticket blocked"
+  }
+  return activeTicket.nextStepLabel
+    ? `Next: ${activeTicket.nextStepLabel}`
+    : activeTicket.title
 }
 
 function formatCompactInteger(value: number | null) {
@@ -2697,6 +2746,11 @@ const MainSessionCard = memo(
             {props.processTitle ? (
               <p className="mt-2 truncate text-[11px] text-cyan-200/80">
                 {props.processTitle}
+              </p>
+            ) : null}
+            {activeTicketStatusLabel(props.session.activeTicket) ? (
+              <p className="mt-1 truncate text-[11px] text-emerald-200/80">
+                {activeTicketStatusLabel(props.session.activeTicket)}
               </p>
             ) : null}
           </div>
@@ -5526,6 +5580,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             {activeSessionProcessBlueprint.title}
                           </p>
                         ) : null}
+                        {activeSession?.activeTicket ? (
+                          <p className="mt-2 text-xs text-emerald-200/80">
+                            {activeTicketStatusLabel(activeSession.activeTicket)}
+                          </p>
+                        ) : null}
                       </div>
                       {activeSession ? (
                         <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3">
@@ -5609,6 +5668,36 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                           <p className="mt-2 text-xs text-slate-500">
                             {activeSessionProcessBlueprint.expectation}
                           </p>
+                        ) : null}
+                        {activeSession?.activeTicket ? (
+                          <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                              Ticket Checklist
+                            </p>
+                            <p className="mt-2 text-xs text-emerald-200/80">
+                              {activeTicketStatusLabel(activeSession.activeTicket)}
+                            </p>
+                            <div className="mt-3 space-y-2">
+                              {activeSession.activeTicket.checklist.map((step) => (
+                                <p
+                                  key={step.id}
+                                  className={`text-xs ${
+                                    step.status === "completed"
+                                      ? "text-slate-400 line-through"
+                                      : step.status === "active"
+                                        ? "text-white"
+                                        : step.status === "blocked"
+                                          ? "text-rose-200"
+                                          : "text-slate-400"
+                                  }`}
+                                >
+                                  {step.status === "completed" ? "[x]" : "[ ]"} {step.title}
+                                  {step.status === "active" ? " <- current" : ""}
+                                  {step.status === "blocked" ? " (blocked)" : ""}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
                         ) : null}
                         {processResolutionRequired ? (
                           <p className="mt-2 text-xs font-semibold text-rose-200">

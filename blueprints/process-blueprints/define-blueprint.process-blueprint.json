@@ -11,6 +11,12 @@
     "blueprint work complete",
     "missing information from the user"
   ],
+  "steps": [
+    { "id": "create_worktree_surface", "title": "Create or use the feature-branch worktree surface" },
+    { "id": "review_existing_blueprints", "title": "Review relevant existing blueprints and Agentish sections" },
+    { "id": "update_blueprint_layer", "title": "Create or update the needed blueprint layer" },
+    { "id": "stop_before_implementation", "title": "Stop before implementation unless the user explicitly asks for implementation" }
+  ],
   "watchdog": {
     "enabled": true,
     "idleTimeoutSeconds": 90,

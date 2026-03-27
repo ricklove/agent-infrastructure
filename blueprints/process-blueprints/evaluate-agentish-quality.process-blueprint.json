@@ -11,6 +11,12 @@
     "agentish quality evaluation complete",
     "missing target-file or companion-context information"
   ],
+  "steps": [
+    { "id": "classify_target", "title": "Classify the target Agentish file" },
+    { "id": "load_minimum_context", "title": "Load only the minimum allowed companion context" },
+    { "id": "evaluate_in_fresh_context", "title": "Evaluate the file in fresh context" },
+    { "id": "produce_structured_report", "title": "Produce the structured report" }
+  ],
   "watchdog": {
     "enabled": true,
     "idleTimeoutSeconds": 90,

@@ -11,6 +11,13 @@
     "agentish quality-improvement loop complete",
     "missing target-file, subject-state, or companion-context information"
   ],
+  "steps": [
+    { "id": "evaluate_target", "title": "Evaluate the target Agentish file" },
+    { "id": "rewrite_target", "title": "Rewrite the target file in the worktree" },
+    { "id": "run_blind_evaluation", "title": "Obtain independent fresh-context evaluation" },
+    { "id": "compare_downstream_quality", "title": "Compare quality and blueprint-state downstream effects" },
+    { "id": "conclude_loop", "title": "Conclude or repeat the quality-improvement loop" }
+  ],
   "watchdog": {
     "enabled": true,
     "idleTimeoutSeconds": 90,

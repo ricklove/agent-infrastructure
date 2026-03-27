@@ -26,7 +26,12 @@ import {
 import {
   loadProcessBlueprintCatalog,
   type ProcessBlueprint,
+  type ProcessBlueprintStep,
 } from "./process-blueprints.js";
+import {
+  AgentTicketStore,
+  type StoredAgentTicket,
+} from "./agent-tickets.js";
 import {
   normalizeClaudeSessionModelRef,
   primeClaudeModelCatalogRefresh,
@@ -96,6 +101,7 @@ type SessionSummaryResponseItem = StoredSession & {
   activity: SessionActivity;
   queuedMessageCount: number;
   providerUsage: SessionProviderUsage | null;
+  activeTicket: StoredAgentTicket | null;
 };
 
 type ProcessBlueprintResponseItem = {
@@ -108,6 +114,7 @@ type ProcessBlueprintResponseItem = {
   completionToken: string;
   blockedToken: string;
   stopConditions: string[];
+  steps: ProcessBlueprintStep[];
   watchdog: {
     enabled: boolean;
     idleTimeoutSeconds: number;
@@ -184,6 +191,12 @@ function requestWorkspacePersistence(reason: string) {
 const store = new AgentChatStore({
   dataDir: appDataDir,
   legacySqlitePath: legacyDbPath,
+  onCanonicalWrite(event) {
+    requestWorkspacePersistence(`agent-chat:${event.reason}:${event.sessionId}`);
+  },
+});
+const ticketStore = new AgentTicketStore({
+  dataDir: appDataDir,
   onCanonicalWrite(event) {
     requestWorkspacePersistence(`agent-chat:${event.reason}:${event.sessionId}`);
   },
@@ -280,6 +293,7 @@ function buildSessionSummary(session: StoredSession): SessionSummaryResponseItem
     activity: toSessionActivity(session.id),
     queuedMessageCount: store.listQueuedMessages(session.id).length,
     providerUsage: runtime.providerUsage,
+    activeTicket: ticketStore.getActiveTicketForSession(session.id),
   };
 }
 
@@ -534,6 +548,7 @@ function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
     completionToken: entry.completionToken,
     blockedToken: entry.blockedToken,
     stopConditions: [...entry.stopConditions],
+    steps: entry.steps.map((step) => ({ ...step })),
     watchdog: {
       enabled: entry.watchdog.enabled,
       idleTimeoutSeconds: entry.watchdog.idleTimeoutSeconds,
@@ -548,6 +563,42 @@ function getSessionProcessBlueprint(session: StoredSession | null | undefined): 
     return null;
   }
   return processBlueprintById.get(session.processBlueprintId) ?? null;
+}
+
+function formatTicketChecklist(ticket: StoredAgentTicket) {
+  return ticket.checklist
+    .map((step) => {
+      const prefix = step.status === "completed" ? "- [x]" : "- [ ]";
+      const suffix =
+        step.status === "active"
+          ? " <- current"
+          : step.status === "blocked"
+            ? " (blocked)"
+            : "";
+      return `${prefix} ${step.title}${suffix}`;
+    })
+    .join("\n");
+}
+
+function buildProcessExpectationInstruction(
+  processBlueprint: ProcessBlueprint | null,
+  ticket: StoredAgentTicket | null,
+) {
+  if (!processBlueprint) {
+    return `${PROCESS_INSTRUCTION_PREFIX}none. Continue based on the latest explicit user request and current transcript context.`;
+  }
+
+  const outline = ticket ? formatTicketChecklist(ticket) : "";
+  const nextStep = ticket?.nextStepLabel ? `\n\nNext step: ${ticket.nextStepLabel}` : "";
+  const outlineBlock = outline ? `\n\nProcess outline:\n${outline}` : "";
+  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${nextStep}${outlineBlock}`;
+}
+
+function buildWatchdogPrompt(processBlueprint: ProcessBlueprint, ticket: StoredAgentTicket | null) {
+  if (!ticket?.nextStepLabel) {
+    return processBlueprint.idlePrompt;
+  }
+  return `${processBlueprint.idlePrompt}\n\nNext step: ${ticket.nextStepLabel}`;
 }
 
 function cancelSessionWatchdog(sessionId: string) {
@@ -587,6 +638,7 @@ function maybeMarkProcessBlueprintTerminal(
 
   const normalizedText = assistantText.trim();
   if (normalizedText === processBlueprint.completionToken) {
+    ticketStore.resolveActiveTicket(sessionId, "completed", normalizedText);
     setSessionWatchdogState(sessionId, {
       status: "completed",
       nudgeCount: session.watchdogState.nudgeCount,
@@ -597,6 +649,7 @@ function maybeMarkProcessBlueprintTerminal(
   }
 
   if (normalizedText === processBlueprint.blockedToken) {
+    ticketStore.resolveActiveTicket(sessionId, "blocked", normalizedText);
     setSessionWatchdogState(sessionId, {
       status: "blocked",
       nudgeCount: session.watchdogState.nudgeCount,
@@ -607,14 +660,6 @@ function maybeMarkProcessBlueprintTerminal(
   }
 
   return null;
-}
-
-function buildProcessExpectationInstruction(processBlueprint: ProcessBlueprint | null) {
-  if (!processBlueprint) {
-    return `${PROCESS_INSTRUCTION_PREFIX}none. Continue based on the latest explicit user request and current transcript context.`;
-  }
-
-  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}`;
 }
 
 function persistedIdleWatchdogAnchorMs(session: StoredSession) {
@@ -673,10 +718,12 @@ function queueProcessExpectationForSession(sessionId: string) {
   const session = store.getSession(sessionId);
   const processBlueprint = getSessionProcessBlueprint(session);
   if (!session || !processBlueprint) {
+    ticketStore.clearActiveTicketForSession(sessionId);
     return { session, processMessage: null as StoredMessage | null };
   }
 
-  const expectationText = buildProcessExpectationInstruction(processBlueprint);
+  const ticket = ticketStore.createOrReplaceSessionTicket(sessionId, processBlueprint);
+  const expectationText = buildProcessExpectationInstruction(processBlueprint, ticket);
   store.markQueuedSystemMessagesSeenByPrefix(sessionId, PROCESS_INSTRUCTION_PREFIX);
   const processMessage = store.appendMessage(sessionId, {
     role: "system",
@@ -764,7 +811,7 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
     role: "system",
     kind: "watchdogPrompt",
     providerSeenAtMs: null,
-    content: [{ type: "text", text: processBlueprint.idlePrompt }],
+    content: [{ type: "text", text: buildWatchdogPrompt(processBlueprint, ticketStore.getActiveTicketForSession(sessionId)) }],
   });
 
   setSessionWatchdogState(sessionId, {
