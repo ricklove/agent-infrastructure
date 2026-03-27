@@ -145,6 +145,9 @@ type MarkdownRenderContext = {
   messageId: string
   apiRootUrl: string
   onImageKept: (payload: SessionSnapshotResponse) => void
+  activeSessionId: string
+  sessionMap: Map<string, SessionSummary>
+  messageMap: Map<string, SessionMessage>
 }
 
 type SessionsResponse = {
@@ -999,6 +1002,40 @@ function parseStandaloneMarkdownLinkLine(line: string) {
   }
 }
 
+function parseChatReferenceTarget(targetUrl: string) {
+  const normalizedTarget = targetUrl.trim()
+  if (!normalizedTarget) {
+    return null
+  }
+
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(normalizedTarget, "http://agent-chat.local")
+  } catch {
+    return null
+  }
+
+  if (parsedUrl.pathname !== "/chat") {
+    return null
+  }
+
+  const sessionId = parsedUrl.searchParams.get(chatSessionQueryParam)?.trim() ?? ""
+  const hash = parsedUrl.hash.trim()
+  if (!sessionId || !hash.startsWith(chatMessageHashPrefix)) {
+    return null
+  }
+
+  const messageId = hash.slice(chatMessageHashPrefix.length).trim()
+  if (!messageId) {
+    return null
+  }
+
+  return {
+    sessionId,
+    messageId,
+  }
+}
+
 function isLikelyImageTarget(targetUrl: string) {
   const normalizedTarget = normalizeMarkdownImageSource(targetUrl).toLowerCase()
   return /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/.test(normalizedTarget)
@@ -1168,27 +1205,53 @@ function renderMarkdownBlocks(
 
     if (lines.length === 1) {
       const standaloneLink = parseStandaloneMarkdownLinkLine(lines[0] ?? "")
-      if (standaloneLink && isLikelyImageTarget(standaloneLink.targetUrl)) {
-        nodes.push(
-          <div
-            key={`${keyPrefix}-linked-image-${blockIndex}`}
-            className="space-y-2"
-          >
-            <p className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
-              {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
-            </p>
-            <MessageImageAsset
-              sessionId={context.sessionId}
-              messageId={context.messageId}
-              apiRootUrl={context.apiRootUrl}
-              sourceUrl={standaloneLink.targetUrl}
-              altText={standaloneLink.label || "Linked image"}
-              onImageKept={context.onImageKept}
-            />
-          </div>,
-        )
-        blockIndex += 1
-        return
+      if (standaloneLink) {
+        if (isLikelyImageTarget(standaloneLink.targetUrl)) {
+          nodes.push(
+            <div
+              key={`${keyPrefix}-linked-image-${blockIndex}`}
+              className="space-y-2"
+            >
+              <p className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
+                {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
+              </p>
+              <MessageImageAsset
+                sessionId={context.sessionId}
+                messageId={context.messageId}
+                apiRootUrl={context.apiRootUrl}
+                sourceUrl={standaloneLink.targetUrl}
+                altText={standaloneLink.label || "Linked image"}
+                onImageKept={context.onImageKept}
+              />
+            </div>,
+          )
+          blockIndex += 1
+          return
+        }
+
+        const chatReference = parseChatReferenceTarget(standaloneLink.targetUrl)
+        if (chatReference) {
+          nodes.push(
+            <div
+              key={`${keyPrefix}-chat-reference-${blockIndex}`}
+              className="space-y-2"
+            >
+              <p className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
+                {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
+              </p>
+              <ChatReferenceAsset
+                targetUrl={standaloneLink.targetUrl}
+                targetSessionId={chatReference.sessionId}
+                targetMessageId={chatReference.messageId}
+                activeSessionId={context.activeSessionId}
+                sessionMap={context.sessionMap}
+                messageMap={context.messageMap}
+              />
+            </div>,
+          )
+          blockIndex += 1
+          return
+        }
       }
     }
 
@@ -1294,6 +1357,73 @@ function renderRawMessageContent(message: SessionMessage) {
           </pre>
         ),
       )}
+    </div>
+  )
+}
+
+function ChatReferenceAsset(props: {
+  targetUrl: string
+  targetSessionId: string
+  targetMessageId: string
+  activeSessionId: string
+  sessionMap: Map<string, SessionSummary>
+  messageMap: Map<string, SessionMessage>
+}) {
+  const session = props.sessionMap.get(props.targetSessionId) ?? null
+  const message =
+    props.targetSessionId === props.activeSessionId
+      ? (props.messageMap.get(props.targetMessageId) ?? null)
+      : null
+  const preview = message ? summarizeMessageContent(message.content, 140) : ""
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-cyan-300/15 bg-cyan-400/[0.04]">
+      <div className="border-b border-cyan-300/10 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+              Chat reference
+            </span>
+            {session ? (
+              <span className="min-w-0 truncate text-xs text-slate-200">
+                {session.title}
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400">
+                Chat reference unavailable
+              </span>
+            )}
+          </div>
+          <a
+            href={props.targetUrl}
+            className="text-xs text-cyan-200 underline decoration-cyan-400/50 underline-offset-2 hover:text-cyan-100"
+          >
+            Open chat
+          </a>
+        </div>
+      </div>
+      <div className="space-y-1 px-3 py-2 text-xs text-slate-300">
+        <p>
+          Session:{" "}
+          <span className="font-mono text-slate-200">{props.targetSessionId}</span>
+        </p>
+        <p>
+          Message:{" "}
+          <span className="font-mono text-slate-200">{props.targetMessageId}</span>
+        </p>
+        {message ? (
+          <>
+            <p>
+              {message.role} · {formatTime(message.createdAtMs)}
+            </p>
+            {preview ? <p className="text-slate-200">{preview}</p> : null}
+          </>
+        ) : (
+          <p className="text-slate-400">
+            Open that chat to load the referenced message preview.
+          </p>
+        )}
+      </div>
     </div>
   )
 }
@@ -2457,6 +2587,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     () =>
       messages.find((message) => message.id === replyTargetMessageId) ?? null,
     [messages, replyTargetMessageId],
+  )
+
+  const sessionMap = useMemo(
+    () => new Map(sessions.map((session) => [session.id, session])),
+    [sessions],
   )
 
   const messageMap = useMemo(
@@ -4701,6 +4836,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                             messageId: message.id,
                                             apiRootUrl: props.apiRootUrl,
                                             onImageKept: applySessionSnapshot,
+                                            activeSessionId,
+                                            sessionMap,
+                                            messageMap,
                                           },
                                         )}
                                       </div>
@@ -4730,6 +4868,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                           messageId: message.id,
                                           apiRootUrl: props.apiRootUrl,
                                           onImageKept: applySessionSnapshot,
+                                          activeSessionId,
+                                          sessionMap,
+                                          messageMap,
                                         },
                                       )}
                                     </div>
@@ -4787,6 +4928,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 messageId: "streaming-assistant",
                                 apiRootUrl: props.apiRootUrl,
                                 onImageKept: applySessionSnapshot,
+                                activeSessionId,
+                                sessionMap,
+                                messageMap,
                               },
                             )}
                           </div>
