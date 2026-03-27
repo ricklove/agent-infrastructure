@@ -35,6 +35,9 @@ const ManagerRuntime = define.entity("ManagerRuntime");
 const BunService = define.entity("BunService");
 const BenchmarkRun = define.entity("BenchmarkRun");
 const WorkerDevEnvironment = define.entity("WorkerDevEnvironment");
+const WorkerWorkspace = define.entity("WorkerWorkspace");
+const WorkerRuntimeSurface = define.entity("WorkerRuntimeSurface");
+const WorkerPromptSession = define.entity("WorkerPromptSession");
 
 const Truth = {
   inventory: define.entity("AwsInventory"),
@@ -83,6 +86,9 @@ const Policy = {
   repeatedManualSSMOperations: define.concept("RepeatedManualSSMOperations"),
   workerReuseBeforeLaunch: define.concept("WorkerReuseBeforeLaunch"),
   managerOwnsExternalGitAuth: define.concept("ManagerOwnsExternalGitAuth"),
+  workerOwnsIsolatedWorkspace: define.concept("WorkerOwnsIsolatedWorkspace"),
+  noManagerRepoWriteAccessOnWorker: define.concept("NoManagerRepoWriteAccessOnWorker"),
+  discussDefaultForPromptSurfaces: define.concept("DiscussDefaultForPromptSurfaces"),
   workerRecoveryBeforeManagerFallback: define.concept("WorkerRecoveryBeforeManagerFallback"),
   disposeUnusedWorkers: define.concept("DisposeUnusedWorkers"),
 };
@@ -101,6 +107,9 @@ SwarmManager.owns("LifecycleExecution", "ImagePromotion", "BenchmarkExecution", 
 SwarmManager.minimizes(Policy.repeatedManualSSMOperations);
 SwarmManager.prefers(Policy.workerReuseBeforeLaunch);
 SwarmManager.enforces(Policy.managerOwnsExternalGitAuth);
+SwarmManager.enforces(Policy.workerOwnsIsolatedWorkspace);
+SwarmManager.enforces(Policy.noManagerRepoWriteAccessOnWorker);
+SwarmManager.enforces(Policy.discussDefaultForPromptSurfaces);
 SwarmManager.prefers(Policy.workerRecoveryBeforeManagerFallback);
 SwarmManager.prefers(Policy.disposeUnusedWorkers);
 
@@ -224,10 +233,26 @@ when(BunService.uses(StartupPaths.mutable))
 
 when(SwarmManager.prepares(WorkerDevEnvironment).for(Worker))
   .then(Worker.installs(Git))
+  .and(Worker.provisions(WorkerWorkspace))
+  .and(Worker.provisions(WorkerRuntimeSurface))
   .and(Worker.copies("CommitAuthorshipConfig").from("ManagerHost"))
   .and(Worker.commits("BranchLocalChanges"))
   .and(SwarmManager.fetches("CommittedWorkerBranchState").into(ManagerRuntime))
-  .and(SwarmManager.keeps(Policy.managerOwnsExternalGitAuth));
+  .and(SwarmManager.keeps(Policy.managerOwnsExternalGitAuth))
+  .and(SwarmManager.keeps(Policy.workerOwnsIsolatedWorkspace))
+  .and(SwarmManager.keeps(Policy.noManagerRepoWriteAccessOnWorker));
+
+when(SwarmManager.prepares(WorkerWorkspace).for(Worker))
+  .then(Worker.creates("an isolated workspace root"))
+  .and(Worker.creates("an isolated runtime root"))
+  .and(Worker.avoids("mounting or reusing the manager host shared checkout as the worker editing surface"))
+  .and(Worker.avoids("direct write access to canonical manager runtime files"));
+
+when(SwarmManager.creates(WorkerPromptSession).for("a prompt-driven board or critique surface"))
+  .then(WorkerPromptSession.uses("the `Discuss` process blueprint by default"))
+  .and(WorkerPromptSession.targets(WorkerWorkspace))
+  .and(WorkerPromptSession.avoids("implicitly starting code-changing work against manager-host repositories"))
+  .and(SwarmManager.keeps(Policy.discussDefaultForPromptSurfaces));
 
 when(SwarmManager.keeps(Policy.disposeUnusedWorkers))
   .then(SwarmManager.terminates("UnusedWorkerInstances"))

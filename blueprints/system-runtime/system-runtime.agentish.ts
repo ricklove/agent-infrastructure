@@ -136,6 +136,10 @@ SystemRuntime.enforces(`
 - Workspace durability for canonical app data should be handled by the manager controller's workspace-persistence domain rather than by browser clients or ad hoc cron glue.
 - Heavy repository development work should prefer worker hosts over the manager runtime host so the control plane remains available for deploy and verification.
 - A worker promoted into an active development surface should include git and copied commit authorship so it can create branch-local commits without receiving long-lived external repository credentials.
+- A worker promoted into an active development surface should use its own worker-local workspace root and worker-local runtime root rather than sharing manager-host runtime or shared integration checkouts.
+- Worker-host development surfaces must not have direct write access to the manager host shared repository checkout or runtime checkout.
+- Manager-host git credentials and canonical repository authority must remain on the manager integration surface unless an explicit controlled handoff path is invoked.
+- Prompt-driven exploratory surfaces on workers should create AgentChat sessions in the `Discuss` process by default so they do not begin code-changing work implicitly.
 - If the active development worker becomes unhealthy or unreachable, the normal recovery path is to repair it, reboot it, or create a replacement worker rather than resuming heavy development on the manager runtime host by default.
 - Once a replacement worker is healthy and active, superseded unused worker instances should be disposed so the swarm does not accumulate stale development hosts.
 `);
@@ -145,6 +149,9 @@ SystemRuntime.defines(`
 - RepoTools means repository helper scripts used by developers or operators but not part of the deployed host runtime boundary.
 - ConnectWorkerEc2SshTool means the repository helper that reuses low-load swarm workers when possible, launches a worker when needed, bootstraps SSH, and then connects directly to the worker private IP.
 - Worker development readiness means the worker has git plus copied commit authorship identity so it can behave like a remote execution worktree while the manager host remains the authenticated integration surface.
+- Worker-local workspace root means the checkout and working directory used for worker editing live on the worker and are replaceable without mutating manager-host canonical surfaces.
+- Worker-local runtime root means worker-side services and temporary runtime state stay on the worker rather than sharing the manager runtime tree.
+- Discuss-first exploratory session means a prompt-driven design or critique interaction starts in the `Discuss` process and only moves into implementation when the operator explicitly asks for that escalation.
 - Worker recovery means restoring a usable development worker by repair, reboot, or replacement before resuming heavy development work.
 - Superseded worker disposal means removing stale unused worker instances after a healthy replacement worker takes over the active development role.
 - PackageTools means package-local assets or workflow helpers that remain internal to a package.

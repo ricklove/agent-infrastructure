@@ -4,7 +4,7 @@ const Agentish = define.language("Agentish");
 
 const UiDesignCanvas = define.system("UiDesignCanvas", {
   format: Agentish,
-  role: "Dashboard feature for spatial human and agent UI design direction, variant review, and markup-driven feedback",
+  role: "Dashboard feature for high-level UI design direction, spatial prompting, variant review, and markup-driven critique",
 });
 
 const SectionMap = define.document("SectionMap");
@@ -17,11 +17,11 @@ const Section = {
 };
 
 const User = define.actor("DesignOperator", {
-  role: "Human operator directing high-level UI design exploration on the canvas",
+  role: "Human operator directing high-level UI design exploration on the board",
 });
 
 const Agent = define.actor("DesignAgent", {
-  role: "Background agent that interprets prompts, review markup, and visible variant context",
+  role: "Background agent that interprets prompts, review markup, and visible board context",
 });
 
 const Dashboard = {
@@ -33,71 +33,65 @@ const Dashboard = {
   status: define.entity("UiDesignCanvasStatusItems"),
 };
 
-const Canvas = {
-  workspace: define.workspace("DesignCanvasWorkspace"),
-  plane: define.concept("SharedCanvasPlane"),
-  viewport: define.entity("VisibleCanvasViewport"),
-  mode: define.entity("CanvasInteractionMode"),
-  selectionMode: define.entity("SelectMode"),
-  promptMode: define.entity("PromptMode"),
-  drawMode: define.entity("DrawMode"),
-  overlay: define.entity("ReviewMarkupOverlay"),
+const Board = {
+  workspace: define.workspace("DesignBoardWorkspace"),
+  canvas: define.concept("SpatialPromptCanvas"),
+  viewport: define.entity("VisibleBoardViewport"),
+  markup: define.entity("ReviewMarkupOverlay"),
   snapshot: define.document("ViewportReviewSnapshot"),
-  intent: define.concept("SpatialPromptCanvas"),
-};
-
-const Variant = {
-  board: define.workspace("VariantBoard"),
-  node: define.graphNode("DesignVariantNode"),
-  cluster: define.graphLayer("VariantCluster"),
-  preview: define.document("VariantPreviewArtifact"),
-  rationale: define.entity("VariantRationale"),
-  status: define.entity("VariantStatus"),
-  derivation: define.graphEdge("VariantDerivationEdge"),
+  persistedState: define.concept("DurableBoardState"),
+  ephemeralState: define.concept("EphemeralBrowserState"),
 };
 
 const Prompt = {
-  draftNode: define.graphNode("DraftPromptNode"),
-  node: define.graphNode("PromptNode"),
-  thread: define.graphNode("CommentThreadNode"),
-  response: define.graphNode("AgentResponseNode"),
-  relation: define.graphEdge("PromptRelationEdge"),
+  draft: define.graphNode("DraftPromptNode"),
+  anchor: define.graphNode("PromptAnchorNode"),
+  thread: define.graphNode("ProjectedCommentThreadNode"),
   state: define.entity("PromptLifecycleState"),
+  relation: define.graphEdge("PromptRelationEdge"),
+};
+
+const Variant = {
+  node: define.graphNode("DesignVariantNode"),
+  cluster: define.graphLayer("VariantCluster"),
+  preview: define.document("VariantPreviewArtifact"),
+  derivation: define.graphEdge("VariantDerivationEdge"),
+  status: define.entity("VariantStatus"),
 };
 
 const Review = {
-  annotation: define.entity("FreehandAnnotationStroke"),
   event: define.entity("CanvasReviewEvent"),
-  screenshotContext: define.entity("VisibleReviewContext"),
-  feedback: define.entity("ReviewFeedback"),
   bundle: define.document("ReviewInputBundle"),
+  context: define.entity("VisibleReviewContext"),
 };
 
-const Interaction = {
-  submit: define.entity("SubmitPromptAction"),
-  classify: define.entity("AgentIntentClassification"),
-  commentAction: define.entity("CommentOnPromptAction"),
-  generateVariantAction: define.entity("GenerateVariantAction"),
-  reviseVariantAction: define.entity("ReviseVariantAction"),
-  summarizeAction: define.entity("SummarizeVariantsAction"),
-  recommendAction: define.entity("RecommendVariantAction"),
-  attachMarkupAction: define.entity("ApplyMarkupFeedbackAction"),
-  branchPolicy: define.concept("BranchFirstVariantPolicy"),
-  appendOnlyCanvas: define.concept("AppendOnlyCanvasMutationPolicy"),
+const Authority = {
+  canvas: define.concept("CanvasOwnsCanonicalSpatialState"),
+  agentChat: define.concept("AgentChatOwnsCanonicalTurnHistory"),
+  projection: define.concept("AgentTurnProjectionBoundary"),
+  workerSurface: define.concept("WorkerHostedExplorationSurface"),
 };
 
-const Scope = {
-  highLevelOnly: define.concept("HighLevelDesignDirection"),
-  nonGranular: define.concept("NoLowLevelUiBuilder"),
-  immutablePromptAnchor: define.concept("ImmutablePromptAnchor"),
-  reviewMarkupInput: define.concept("ReviewMarkupAsInterpretiveInput"),
-  semanticCanvas: define.concept("SemanticCanvasState"),
-  viewportBoundAgentContext: define.concept("ViewportBoundAgentContext"),
-  canvasAuthority: define.concept("CanvasAsCanonicalSpatialAuthority"),
-  chatAuthority: define.concept("AgentChatAsCanonicalTurnAuthority"),
-  projectionBoundary: define.concept("ChatToCanvasProjectionBoundary"),
-  persistedCanvasState: define.concept("DurableCanvasWorkspaceState"),
-  ephemeralUiState: define.concept("EphemeralBrowserUiState"),
+const Policy = {
+  highLevelOnly: define.concept("HighLevelDesignDirectionOnly"),
+  noBuilder: define.concept("NoLowLevelUiBuilder"),
+  immutablePrompt: define.concept("ImmutablePromptAnchor"),
+  markupAsInput: define.concept("MarkupAsInterpretiveInput"),
+  appendOnly: define.concept("AppendOnlyCanvasMutation"),
+  branchFirst: define.concept("BranchFirstVariantGeneration"),
+  visibleContext: define.concept("ViewportBoundAgentContext"),
+  discussDefault: define.concept("DiscussProcessDefault"),
+};
+
+const Action = {
+  submitPrompt: define.entity("SubmitPromptAction"),
+  classifyIntent: define.entity("AgentIntentClassification"),
+  comment: define.entity("CommentOnPromptAction"),
+  generateVariant: define.entity("GenerateVariantAction"),
+  reviseVariant: define.entity("ReviseVariantAction"),
+  summarizeVariants: define.entity("SummarizeVariantsAction"),
+  recommendVariant: define.entity("RecommendVariantAction"),
+  projectTurn: define.entity("ProjectAgentTurnAction"),
 };
 
 const Package = {
@@ -128,215 +122,255 @@ Section.concept.precedes(Section.scenarios);
 Section.scenarios.precedes(Section.implementationPlan);
 Section.implementationPlan.precedes(Section.contracts);
 
+// Concept
+
 UiDesignCanvas.enforces(`
-- The feature is a high-level UI design direction surface, not a granular component builder.
-- Design work happens as spatial prompts, variant boards, review comments, and markup-driven critique.
-- React Flow remains the canonical semantic canvas surface for node and relationship interaction.
-- Freehand drawing is an overlay review layer above the graph, not the authoritative design model.
-- The original user prompt remains a first-class anchor after submission rather than mutating into a different concept.
-- Agent output must remain legible on the canvas by attaching comments, responses, or derived variant clusters back to their originating prompt.
-- If agent intent is ambiguous, the agent should comment or ask for clarification before generating a new variant.
-- Variant generation should branch by default rather than destructively mutating the active accepted direction.
-- Agent context should be bounded to the visible viewport, active selection, nearby prompt history, and current markup snapshot rather than the entire workspace by default.
-- Dashboard session auth remains gateway-owned; the feature must not introduce its own browser auth model.
-- The canvas owns canonical spatial artifacts such as prompt anchors, variants, clusters, node positions, overlay strokes, and review snapshots.
-- AgentChat owns canonical agent-turn execution history, provider activity, and transcript semantics for background agent work initiated by the feature.
-- Canvas comment or response nodes are projections from canonical agent turns rather than a second independent conversation history.
-- V1 canvas mutation should be append-only for prompt, comment, and variant creation except for explicit status updates and operator-authored repositioning.
+- The feature is a high-level UI design direction surface, not a granular UI builder.
+- The board exists to let humans and agents discuss design direction in place through prompts, variants, and review markup.
+- The primary authoring gesture is immediate prompt entry on the canvas rather than a separate form or chat-first workflow.
+- Freehand markup is review evidence, not the authoritative design model.
+- Submitted prompts remain durable anchors even when later comments, variants, or recommendations attach to them.
+- Agent output must stay legible on the board by projecting comments or variants back to the originating prompt.
+- Variant generation should branch by default rather than destructively replacing the prior accepted direction.
+- Agent context should begin from the visible viewport, visible markup, active selection, and nearby prompt history rather than the entire workspace by default.
+- The board owns canonical spatial state while AgentChat owns canonical background turn history.
+- Projected board comments and variant outcomes must retain references to the canonical originating AgentChat turn.
+- Auto-created prompt sessions must start in the `Discuss` process by default so the board does not begin code-changing work implicitly.
+- Worker-hosted board sessions should target isolated worker workspace surfaces rather than manager-host canonical repositories by default.
 `);
 
 UiDesignCanvas.defines(`
-- SpatialPromptCanvas means the design canvas is simultaneously a review surface and a conversational prompt surface.
-- DesignVariantNode means one coarse design direction such as a screen concept, flow direction, or alternative composition rather than a low-level UI element.
-- VariantCluster means the grouped set of artifacts and notes produced for one design direction.
-- VariantPreviewArtifact means a thumbnail, mock screenshot, or other preview representation attached to a variant.
-- DraftPromptNode means the transient text node created by direct canvas intent entry before submission.
-- PromptNode means the committed user-authored prompt anchored at a specific canvas position.
-- CommentThreadNode means the visible conversational thread attached to a prompt or variant.
-- AgentResponseNode means a compact agent-authored explanation, rationale, or generation summary anchored on the canvas.
+- SpatialPromptCanvas means the board is simultaneously a design review surface and a conversational prompt surface.
+- DraftPromptNode means the transient text node created directly on the canvas before submission.
+- PromptAnchorNode means the committed user-authored prompt anchored at a specific board position.
+- ProjectedCommentThreadNode means the visible board-side projection of a canonical AgentChat turn or thread outcome.
+- DesignVariantNode means one coarse design direction such as a screen concept, flow direction, or alternative composition rather than a low-level component part.
+- VariantCluster means the grouped board artifacts produced for one design direction or branch.
 - ViewportReviewSnapshot means the image and semantic context bundle the feature sends to the agent for one review event.
-- ReviewMarkupOverlay means the top-most freehand critique layer drawn over the current viewport.
-- VisibleReviewContext means the specific selected nodes, visible variants, viewport bounds, and markup that the agent sees for one interaction.
-- HighLevelDesignDirection means composition, hierarchy, tone, and concept decisions remain in scope while pixel-level builder concerns remain out of scope.
-- NoLowLevelUiBuilder means the feature should not model every nested DOM or component detail as individual edit nodes.
-- ImmutablePromptAnchor means a submitted prompt stays durable even when later comments, variants, or recommendations are attached to it.
-- ReviewMarkupAsInterpretiveInput means freehand strokes are evidence for the agent to read, not semantic canvas objects that become the main source of truth.
-- SemanticCanvasState means node identity, variant relationships, review history, and prompt lifecycle remain structured app state independent of the freehand overlay.
-- ViewportBoundAgentContext means each background agent turn begins from what the operator is currently showing and discussing rather than from the full universe of possible context.
-- CanvasAsCanonicalSpatialAuthority means the feature's persisted canvas model is the source of truth for spatial prompt anchors, variant cards, derivation links, overlay annotations, and review snapshots.
-- AgentChatAsCanonicalTurnAuthority means background agent execution, tool activity, transcript turns, and provider-owned state remain canonical in AgentChat rather than being reimplemented in the canvas feature.
-- ChatToCanvasProjectionBoundary means the canvas projects selected agent outputs into visible nodes and comments while retaining references back to the originating canonical chat turn.
-- DurableCanvasWorkspaceState means prompt nodes, variant nodes, variant clusters, node positions, status labels, committed overlay strokes, review snapshots, and chat-turn references persist as workspace feature state.
-- EphemeralBrowserUiState means draft prompt text, transient hover state, in-progress strokes, temporary selection affordances, and unsent markup stay browser-local until explicitly committed.
+- ReviewInputBundle means the combined prompt text, viewport bounds, visible selection, markup, and board references that define one agent turn.
+- CanvasOwnsCanonicalSpatialState means prompt anchors, variant nodes, variant positions, derivation links, markup submissions, and review snapshots are canonical board records.
+- AgentChatOwnsCanonicalTurnHistory means background agent execution, tool activity, provider state, and transcript ordering remain canonical in AgentChat.
+- AgentTurnProjectionBoundary means the board surfaces selected chat outcomes as spatial artifacts without becoming a second independent chat authority.
+- WorkerHostedExplorationSurface means prompt-driven board interactions should run against an isolated worker workspace surface instead of the manager host integration checkout.
+- HighLevelDesignDirectionOnly means composition, hierarchy, tone, information architecture, and concept remain in scope while low-level builder concerns remain out of scope.
+- MarkupAsInterpretiveInput means strokes are feedback for interpretation rather than semantic layout entities that replace the board model.
+- DiscussProcessDefault means board-created sessions begin as critique, recommendation, and direction conversations unless the operator explicitly escalates into implementation work.
 `);
 
-Dashboard.plugin.contains(Dashboard.route, Dashboard.screen, Dashboard.status);
-Dashboard.screen.contains(Canvas.workspace, Variant.board, Canvas.overlay);
-Canvas.workspace.contains(
-  Canvas.plane,
-  Canvas.viewport,
-  Canvas.mode,
-  Canvas.selectionMode,
-  Canvas.promptMode,
-  Canvas.drawMode,
-  Canvas.snapshot,
-  Prompt.draftNode,
-  Prompt.node,
+Board.workspace.contains(
+  Board.canvas,
+  Board.viewport,
+  Board.markup,
+  Board.snapshot,
+  Prompt.draft,
+  Prompt.anchor,
   Prompt.thread,
-  Prompt.response,
+  Prompt.state,
   Prompt.relation,
   Variant.node,
   Variant.cluster,
   Variant.preview,
-  Variant.rationale,
-  Variant.status,
   Variant.derivation,
-  Review.annotation,
+  Variant.status,
   Review.event,
-  Review.feedback,
-  Review.screenshotContext,
   Review.bundle,
+  Review.context,
+  Authority.canvas,
+  Authority.agentChat,
+  Authority.projection,
+  Authority.workerSurface,
+  Policy.highLevelOnly,
+  Policy.noBuilder,
+  Policy.immutablePrompt,
+  Policy.markupAsInput,
+  Policy.appendOnly,
+  Policy.branchFirst,
+  Policy.visibleContext,
+  Policy.discussDefault,
+  Action.submitPrompt,
+  Action.classifyIntent,
+  Action.comment,
+  Action.generateVariant,
+  Action.reviseVariant,
+  Action.summarizeVariants,
+  Action.recommendVariant,
+  Action.projectTurn,
 );
-Canvas.workspace.contains(
-  Scope.highLevelOnly,
-  Scope.nonGranular,
-  Scope.immutablePromptAnchor,
-  Scope.reviewMarkupInput,
-  Scope.semanticCanvas,
-  Scope.viewportBoundAgentContext,
-  Scope.canvasAuthority,
-  Scope.chatAuthority,
-  Scope.projectionBoundary,
-  Scope.persistedCanvasState,
-  Scope.ephemeralUiState,
-  Interaction.branchPolicy,
-  Interaction.appendOnlyCanvas,
-);
 
-when(User.doubleClicks(Canvas.plane))
-  .then(UiDesignCanvas.creates(Prompt.draftNode))
-  .and(User.starts("direct text entry at the clicked location"));
+// Scenarios
 
-when(User.submits(Prompt.draftNode))
-  .then(UiDesignCanvas.commits(Prompt.node))
-  .and(UiDesignCanvas.removes(Prompt.draftNode))
-  .and(UiDesignCanvas.creates(Review.event))
-  .and(UiDesignCanvas.captures(Canvas.snapshot))
-  .and(UiDesignCanvas.creates(Review.bundle))
-  .and(Agent.receives(Review.screenshotContext));
+when(User.doubleClicks(Board.canvas))
+  .then(UiDesignCanvas.creates(Prompt.draft))
+  .and(User.starts("inline text entry at the clicked location"));
 
-when(User.presses("Enter"))
-  .then(UiDesignCanvas.applies(Interaction.submit).to(Prompt.draftNode))
-  .and(UiDesignCanvas.treats("Shift+Enter as newline rather than submit"));
+when(User.submits(Prompt.draft))
+  .then(UiDesignCanvas.commits(Prompt.anchor))
+  .and(UiDesignCanvas.captures(Board.snapshot))
+  .and(UiDesignCanvas.creates(Review.event, Review.bundle))
+  .and(Agent.receives(Review.context))
+  .and(UiDesignCanvas.requires(Policy.discussDefault));
 
-when(Agent.receives(Review.screenshotContext))
-  .then(Agent.classifies(Interaction.classify))
-  .and(Agent.considers(Scope.viewportBoundAgentContext))
-  .and(Agent.considers(Scope.reviewMarkupInput));
+when(Agent.receives(Review.context))
+  .then(Agent.classifies(Action.classifyIntent))
+  .and(Agent.considers(Policy.visibleContext))
+  .and(Agent.considers(Policy.markupAsInput));
 
-when(Agent.classifies(Interaction.commentAction))
+when(Agent.classifies(Action.comment))
   .then(UiDesignCanvas.creates(Prompt.thread))
-  .and(UiDesignCanvas.links(Prompt.thread).to(Prompt.node).through(Prompt.relation))
-  .and(UiDesignCanvas.references("the originating AgentChat turn from the projected canvas thread"))
-  .and(UiDesignCanvas.preserves(Scope.immutablePromptAnchor));
+  .and(UiDesignCanvas.links(Prompt.thread).to(Prompt.anchor).through(Prompt.relation))
+  .and(UiDesignCanvas.preserves(Policy.immutablePrompt))
+  .and(UiDesignCanvas.references(Authority.agentChat));
 
-when(Agent.classifies(Interaction.generateVariantAction))
-  .then(UiDesignCanvas.creates(Variant.cluster))
-  .and(UiDesignCanvas.creates(Variant.node))
-  .and(UiDesignCanvas.links(Variant.cluster).to(Prompt.node).through(Prompt.relation))
-  .and(UiDesignCanvas.references("the originating AgentChat turn from the generated variant cluster"))
-  .and(UiDesignCanvas.attaches(Variant.preview, Variant.rationale, Variant.status).to(Variant.node));
-
-when(User.drawsOn(Canvas.overlay))
-  .then(UiDesignCanvas.records(Review.annotation))
-  .and(UiDesignCanvas.treats(Canvas.overlay).as(Scope.reviewMarkupInput))
-  .and(UiDesignCanvas.avoids("promoting freehand strokes into authoritative semantic layout state"));
+when(Agent.classifies(Action.generateVariant))
+  .then(UiDesignCanvas.creates(Variant.cluster, Variant.node))
+  .and(UiDesignCanvas.links(Variant.cluster).to(Prompt.anchor).through(Prompt.relation))
+  .and(UiDesignCanvas.preserves(Policy.branchFirst))
+  .and(UiDesignCanvas.references(Authority.agentChat));
 
 when(User.submits("markup-backed feedback"))
-  .then(UiDesignCanvas.captures(Canvas.snapshot))
+  .then(UiDesignCanvas.captures(Board.snapshot))
   .and(UiDesignCanvas.creates(Review.bundle))
-  .and(Canvas.snapshot.includes(Canvas.viewport, Review.annotation, Prompt.node, Variant.node))
-  .and(Agent.receives(Review.screenshotContext));
+  .and(Board.snapshot.includes(Board.viewport, Board.markup, Prompt.anchor, Variant.node))
+  .and(Agent.receives(Review.context));
 
-when(User.selects(Variant.node))
-  .then(UiDesignCanvas.reveals(Variant.preview, Variant.rationale, Variant.status))
-  .and(User.mayRequest(Interaction.reviseVariantAction, Interaction.summarizeAction, Interaction.recommendAction));
+when(Agent.applies(Action.reviseVariant))
+  .then(UiDesignCanvas.creates(Variant.derivation, Variant.cluster, Variant.node))
+  .and(UiDesignCanvas.preserves(Policy.branchFirst))
+  .and(UiDesignCanvas.preserves(Policy.appendOnly));
 
-when(Agent.applies(Interaction.reviseVariantAction))
-  .then(UiDesignCanvas.prefers(Interaction.branchPolicy))
-  .and(UiDesignCanvas.creates(Variant.derivation))
-  .and(UiDesignCanvas.preserves(Interaction.appendOnlyCanvas))
-  .and(UiDesignCanvas.avoids("silent in-place destruction of the prior accepted variant"));
+when(UiDesignCanvas.applies(Action.projectTurn))
+  .then(UiDesignCanvas.projects("comment or generation outcome onto the board"))
+  .and(UiDesignCanvas.retains("a reference to the canonical AgentChat turn"))
+  .and(UiDesignCanvas.avoids("creating a second independent conversation history"));
 
-when(User.switches(Canvas.mode))
-  .then(UiDesignCanvas.distinguishes(Canvas.selectionMode, Canvas.promptMode, Canvas.drawMode))
-  .and(UiDesignCanvas.mustPrevent("draw-select-pan ambiguity"));
+when(User.reopens(Board.workspace))
+  .then(UiDesignCanvas.restores(Prompt.anchor, Variant.node, Variant.derivation, Board.snapshot))
+  .and(UiDesignCanvas.restores("references to projected AgentChat outcomes"))
+  .and(User.recovers("the last accepted visible design direction"));
+
+// ImplementationPlan
+
+Dashboard.plugin.contains(Dashboard.route, Dashboard.screen, Dashboard.status);
+Dashboard.screen.contains(Board.workspace);
 
 Package.featureUi.dependsOn(Package.dashboardUi, Package.agentGraphUi, Package.agentChat);
 Package.featureServer.dependsOn(Package.dashboardServer, Package.agentChat);
 
 UiDesignCanvas.implementsThrough(`
-- A dedicated dashboard feature package should own the UI Design Canvas plugin definition, screen composition, and canvas interaction state.
-- The feature UI should reuse the repository React Flow surface and established custom node-renderer patterns rather than introducing a second graph framework.
+- A dedicated dashboard feature package owns the UI Design Canvas plugin definition, screen composition, and board interaction state.
+- The feature reuses React Flow as the canonical semantic canvas surface and the repository's existing custom graph-node patterns.
+- The main route should be canvas-first, with utility surfaces such as tools, review feed, and inspector presented as movable floating panels above the board rather than as permanent sidebars.
+- Freehand markup should render in board coordinates so it scales and pans with the visible canvas rather than acting as a separate screen-space overlay.
+- Double-click zoom behavior should not preempt prompt creation on empty canvas space.
 - The feature should reuse AgentChat as the canonical background conversation and transcript surface rather than inventing a hidden one-off chat system.
-- The feature backend should store durable canvas workspace state and review artifacts while persisting references to originating AgentChat sessions and turns instead of duplicating transcript history.
-- The dashboard shell should continue to lazy-load the feature screen through the existing first-party plugin registry.
-- The gateway should proxy any feature backend traffic through the existing dashboard session model.
-- The feature should separate semantic canvas state from review-overlay raster or stroke data so prompts, variants, and review snapshots remain inspectable and durable.
+- Board-created AgentChat sessions should default to the `Discuss` process blueprint and should require explicit operator intent before switching into a code-changing process.
+- Board-created AgentChat sessions should target isolated worker workspace surfaces by default rather than manager-host canonical repositories.
+- The feature backend owns durable board state, snapshot storage, and references to AgentChat turns rather than duplicating transcript history.
+- The dashboard shell continues to lazy-load the screen through the first-party plugin registry and the gateway continues to own browser session auth.
 `);
 
 UiDesignCanvas.definesUiComponents(`
-- UiDesignCanvasScreen composes the overall dashboard feature shell.
-- DesignCanvasPlane owns the React Flow workspace and prompt or variant node rendering.
-- ReviewMarkupLayer owns freehand overlay drawing above the canvas plane.
-- VariantInspector owns preview, rationale, recommendation, and selection detail for the active variant.
-- PromptComposer owns draft-node entry, submit behavior, and pending-agent visual state.
-- ReviewTimeline owns visible prompt, comment, and generation history for the active canvas context.
+- UiDesignCanvasScreen composes the route and board shell.
+- DesignBoardCanvas owns the React Flow surface and prompt or variant node rendering.
+- BoardMarkupLayer owns freehand review strokes in board coordinates.
+- FloatingToolPalette owns draw controls and global board actions.
+- FloatingReviewFeed owns visible projected prompt and agent activity for the active board context.
+- FloatingInspector owns selection detail, variant rationale, and recommendation state for the active focus.
 `);
 
 UiDesignCanvas.definesStoreSlices(`
-- canvas slice for viewport, node positions, selection, and interaction mode
-- prompt slice for draft, submitted, pending, commented, and resolved prompt lifecycle state
+- board slice for viewport, node positions, selection, and floating panel placement
+- prompt slice for draft, committed, pending, and resolved prompt lifecycle state
 - variant slice for variant cards, preview artifacts, derivation links, and review status
-- markup slice for active overlay strokes and committed review snapshots
-- agent slice for current background run, visible status, last classified action, and AgentChat turn references
+- markup slice for in-progress strokes and committed review submissions
+- agent slice for current background run, visible status, and AgentChat turn references
 `);
 
 UiDesignCanvas.definesStoreActions(`
 - createDraftPromptAtPosition
 - updateDraftPromptText
 - submitDraftPrompt
-- switchCanvasMode
 - beginMarkupStroke
 - appendMarkupStrokePoint
 - commitMarkupStroke
-- clearActiveMarkupOverlay
+- clearMarkupOverlay
 - captureViewportReviewSnapshot
-- createCommentThreadForPrompt
+- createProjectedCommentThread
 - createDerivedVariantCluster
-- reviseVariantByBranch
-- summarizeVariantDifferences
-- recommendPreferredVariant
-- projectAgentChatTurnToCanvas
-- updatePromptLifecycleState
-- updateVariantStatus
+- projectAgentChatTurnToBoard
 `);
 
-UiDesignCanvas.definesContracts(`
-- Canvas interaction modes are `select`, `prompt`, and `draw`.
-- Prompt lifecycle states are `draft`, `pending`, `commented`, `generated`, `resolved`, and `failed`.
-- Variant status values are `idea`, `refined`, `candidate`, `approved`, and `rejected`.
-- Agent action kinds are `comment`, `generate_variant`, `revise_variant`, `summarize_variants`, `recommend_variant`, and `apply_markup_feedback`.
-- Durable canvas workspace state includes prompt nodes, variant nodes, variant clusters, committed overlay strokes, committed review snapshots, node positions, status values, and references to originating AgentChat sessions and turns.
-- Ephemeral browser UI state includes draft prompt text, in-progress overlay strokes, hover or focus affordances, and transient selection chrome that has not yet been committed into workspace state.
-- A prompt node record includes `promptId`, `canvasId`, `text`, `position`, `createdAt`, `createdBy`, `lifecycleState`, `originatingSnapshotId | null`, and `agentChatSessionId | null`.
-- A variant node record includes `variantId`, `clusterId`, `title`, `summary`, `status`, `position`, `previewArtifactIds[]`, `derivedFromVariantId | null`, `originatingPromptId | null`, and `originatingAgentTurnId | null`.
-- A comment thread projection record includes `threadNodeId`, `anchorPromptId | null`, `anchorVariantId | null`, `agentChatSessionId`, `agentChatTurnIds[]`, and `latestSummary`.
-- A committed review snapshot payload includes `snapshotId`, `canvasId`, `viewportBounds`, `selectedNodeIds[]`, `visiblePromptIds[]`, `visibleVariantIds[]`, `overlayStrokeIds[]`, `renderedCanvasImageArtifact`, and `createdAt`.
-- A review input bundle sent to background agent work includes the committed review snapshot plus nearby prompt summaries, nearby variant summaries, active selection, and the triggering operator instruction when one exists.
-- A submit-prompt command payload includes `canvasId`, `draftPromptId`, `text`, `position`, `selectionNodeIds[]`, and `commitOverlayStrokeIds[]`.
-- An agent action classification payload includes `actionKind`, `targetPromptId | null`, `targetVariantId | null`, `targetSnapshotId`, `confidence`, and `reasonSummary`.
-- A generate-variant result payload includes `sourcePromptId`, `newClusterId`, `newVariantIds[]`, `previewArtifactRefs[]`, `summary`, and `originatingAgentTurnId`.
-- A comment projection result payload includes `sourcePromptId | null`, `sourceVariantId | null`, `threadNodeId`, `agentChatSessionId`, `agentChatTurnId`, and `summary`.
-- V1 canvas mutation policy is append-only for prompt, comment, thread, cluster, variant, and snapshot creation, while status changes and operator-directed movement remain allowed updates.
+// Contracts
+
+UiDesignCanvas.definesRecords(`
+- DraftPromptRecord
+  - id
+  - boardPosition
+  - draftText
+- PromptAnchorRecord
+  - id
+  - boardPosition
+  - promptText
+  - lifecycleState
+  - createdAtMs
+- DesignVariantRecord
+  - id
+  - clusterId
+  - boardPosition
+  - title
+  - summary
+  - status
+  - sourcePromptId
+  - sourceTurnId
+- ReviewSnapshotRecord
+  - id
+  - viewportBounds
+  - selectedNodeIds
+  - visibleNodeIds
+  - markupStrokeIds
+  - imageArtifactId
+  - createdAtMs
+- ProjectedThreadRecord
+  - id
+  - sourcePromptId
+  - sourceTurnId
+  - projectedKind
+  - boardPosition
+`);
+
+UiDesignCanvas.definesCommands(`
+- SubmitPromptCommand
+  - draftPromptId
+- SubmitMarkupReviewCommand
+  - snapshotId
+  - optionalPromptId
+- ReviseVariantCommand
+  - sourceVariantId
+  - optionalPromptId
+`);
+
+UiDesignCanvas.definesAgentResults(`
+- AgentIntentResult
+  - action
+  - confidence
+  - rationale
+- CommentProjectionResult
+  - sourceTurnId
+  - sourcePromptId
+  - threadTitle
+  - threadBody
+- VariantProjectionResult
+  - sourceTurnId
+  - sourcePromptId
+  - clusterTitle
+  - variantTitle
+  - variantSummary
+  - variantStatus
+`);
+
+UiDesignCanvas.definesStateBoundaries(`
+- Durable board state includes prompt anchors, variant records, derivation links, committed review snapshots, committed markup submissions, and AgentChat turn references.
+- Projected records include board comment threads and generation outcomes that point back to canonical AgentChat turns.
+- Ephemeral browser state includes active textarea text, temporary selection affordances, in-progress markup strokes, drag state, and hover state.
+- Gateway auth state and canonical transcript state remain outside the board feature.
 `);

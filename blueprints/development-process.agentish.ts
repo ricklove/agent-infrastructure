@@ -78,10 +78,15 @@ DevelopmentProcess.enforces(`
 - Code-changing implementation work should use a swarm worker as the active development host rather than the manager runtime host.
 - New features, broad refactors, dependency installation, workspace builds, workspace checks, and other substantial implementation loops are always worker-host work and must not run on the manager host.
 - When a swarm worker is used for development, the worker checkout is the only active mutable implementation surface for that branch and should be treated as a remote worktree.
+- When a swarm worker is used for development, that worker should have its own isolated workspace checkout and its own worker-local runtime surface rather than sharing the manager host runtime or canonical shared checkout.
+- A worker-host implementation surface must not have direct write access to the manager host shared repository checkout or runtime checkout.
+- A worker-host implementation surface must not inherit long-lived manager git credentials or ambient git authority for canonical manager repositories.
 - When a swarm worker is used for development, the manager host remains the integration, GitHub push, release, deploy, and live-verification surface rather than a parallel editing surface.
 - The manager host must not be used as the active mutable implementation surface for code-changing feature or fix work.
 - Development on a swarm worker should happen through persistent worker terminals rather than one-off ssh command invocations for routine edit and verification loops.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
+- Worker-host exploratory or UI-directed agent-chat sessions should default to the `Discuss` process blueprint unless an operator explicitly requests an implementation-oriented process.
+- A prompt-driven design or critique surface must not auto-create coding-capable sessions against the manager workspace by default.
 - The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
 - If an active feature branch falls behind the current base branch or the release branch, it should be refreshed by merging those branches into the feature branch with normal merge commits as needed rather than relying on rebases.
@@ -116,6 +121,9 @@ DevelopmentProcess.defines(`
 - For UI verification on this machine, `agent-browser` is the expected browser tool for both behavior verification and visual verification, including small, medium, and wide viewport checks, unless a more specific documented workspace replacement supersedes it.
 - IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and the normal setup path is to create the worktree and feature branch together from the base branch.
 - WorkerBackedDevelopment means code-changing implementation work belongs on a swarm worker host whose checkout serves as the active remote worktree for that branch, with the manager host reserved for integration, deployment, and live verification.
+- WorkerIsolatedWorkspace means a development worker keeps its own workspace checkout and worker-local runtime surface instead of sharing the manager runtime tree or shared integration checkout.
+- ManagerGitAuthorityBoundary means manager-host git credentials and canonical repository authority stay on the manager integration surface and are not ambiently copied onto worker development surfaces.
+- DiscussByDefaultForExploration means agent-chat sessions created from exploratory prompt canvases, critique tools, or similar high-level interactive design surfaces start in the `Discuss` process unless the operator explicitly selects a code-changing process.
 - PersistentWorkerTerminalWorkflow means worker-host development should use long-lived interactive worker terminals for normal editing and verification loops instead of repeated one-off ssh command execution.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
@@ -217,12 +225,21 @@ when(Actor.operator.starts("code-changing implementation on a feature or fix"))
   .and(DevelopmentProcess.expects("feature-branch creation to leave the shared checkout on the base branch"))
   .and(DevelopmentProcess.expects("the normal setup command to be `git worktree add -b <feature-branch> <worktree-path> <base-branch>`"))
   .and(DevelopmentProcess.expects("the active branch workspace to live on a worker checkout for implementation work"))
+  .and(DevelopmentProcess.expects("the worker checkout to be isolated from the manager runtime checkout and shared integration checkout"))
+  .and(DevelopmentProcess.expects("the worker runtime and workspace surfaces to be disposable or replaceable without mutating manager-host canonical surfaces"))
+  .and(DevelopmentProcess.expects("manager-host git authority to remain outside the worker unless an explicit promotion or fetch path is invoked"))
   .and(DevelopmentProcess.expects("worker-host development to keep the manager host as the integration-only surface until fetch, push, deploy, or live verification is needed"))
   .and(DevelopmentProcess.expects("worker-host development to use persistent worker terminals for routine editing and verification"))
   .and(DevelopmentProcess.expects("feature-branch refresh to use normal merges from the relevant base or release branches when the feature branch falls behind"))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.baseBranch))
   .and(DevelopmentProcess.associates(Artifact.implementationWorktree).with(Artifact.featureBranch))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.sourceRepo));
+
+when(Actor.operator.creates("an exploratory prompt-driven agent session on a worker-host board or critique surface"))
+  .then(DevelopmentProcess.requires(Artifact.processBlueprint))
+  .and(DevelopmentProcess.expects("the selected process blueprint to default to `Discuss`"))
+  .and(DevelopmentProcess.expects("an implementation-oriented process to require explicit operator intent"))
+  .and(DevelopmentProcess.expects("the default working directory for that exploratory session to stay on the worker surface rather than the manager workspace"));
 
 when(Actor.operator.finishes("code-changing implementation on a feature branch"))
   .then(DevelopmentProcess.prefers(Artifact.featureBranch))
