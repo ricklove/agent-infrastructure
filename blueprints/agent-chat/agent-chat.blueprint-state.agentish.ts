@@ -115,6 +115,7 @@ CurrentReality.viewportBoundLayout.means(`
 - short transcripts remain visible with the composer in the same viewport rather than creating a tall dead zone between the first message and the input
 - the dashboard shell main-menu rail is now hidden by default on mobile and opens as an overlay drawer instead of permanently stealing horizontal space from feature content
 - mobile transcript cards that represent assistant stream checkpoints or thought checkpoints now use the full available thread width instead of collapsing into a narrow unreadable column
+- the mobile session rail overlay still has a layering bug where the floating composer dock can remain above the drawer and block menu content, so the current mobile overlay behavior is still partial rather than complete
 - this specific behavior was verified in-browser at small, medium, and wide viewport sizes
 `);
 
