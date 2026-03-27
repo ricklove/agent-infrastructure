@@ -1472,7 +1472,7 @@ export function UiDesignCanvasScreen({
 
   return (
     <div className="relative h-full min-h-0 w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.12),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.12),transparent_28%),linear-gradient(180deg,#0e1116,#040506)] text-stone-100">
-      <div className="absolute inset-0">
+      <div className="absolute inset-0" onDoubleClick={handlePaneDoubleClick}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
