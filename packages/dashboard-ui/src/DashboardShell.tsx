@@ -577,7 +577,7 @@ export function DashboardShell({
       ) : null}
       <aside
         className={[
-          "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:static md:z-auto md:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 overflow-visible border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:relative md:z-30 md:translate-x-0",
           mobileFeatureMenuOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
@@ -595,7 +595,7 @@ export function DashboardShell({
           </button>
           <div
             className={[
-              "pointer-events-auto absolute left-full top-0 z-50 ml-2 min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur",
+              "pointer-events-auto absolute left-full top-0 z-[70] ml-2 min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur",
               versionPopupOpen ? "block" : "hidden group-hover:block",
             ].join(" ")}
           >

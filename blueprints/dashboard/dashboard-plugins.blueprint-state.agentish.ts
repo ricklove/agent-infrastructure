@@ -42,6 +42,10 @@ properly defined, startup-policy driven, and integrated with both shell and gate
   click-to-toggle, but when opened on mobile and then the mobile menu is closed, the popup remains
   open creating orphaned UI. The popup should automatically close when the mobile menu closes to
   maintain clean UI state.
+- **Dashboard Version Popup Mid-Width Layering (2026-03-27)**: The AI status/version popup can fall
+  behind the active feature surface on non-wide layouts, making the copied status summary effectively
+  unreadable unless the screen is very small. The shell needs a stable positioned stacking context
+  for this popup above feature content.
 
 ### Recently Fixed Issues (Continued)
 - **Agent Swarm Process Color Distribution (2026-03-23)**: Colors are keyed by PID with preset
