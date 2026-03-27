@@ -1030,8 +1030,7 @@ async function handleApi(request: Request): Promise<Response> {
 
   if (
     request.method === "GET" &&
-    (url.pathname === "/api/local-file-preview" ||
-      url.pathname === "/local-file-preview")
+    url.pathname === "/api/local-file-preview"
   ) {
     const requestedPath = url.searchParams.get("path")?.trim() ?? "";
     if (!requestedPath) {
@@ -1258,10 +1257,7 @@ const server = Bun.serve<DashboardWsData>({
       return new Response("upgrade failed", { status: 500 });
     }
 
-    if (
-      url.pathname.startsWith("/api/") ||
-      url.pathname === "/local-file-preview"
-    ) {
+    if (url.pathname.startsWith("/api/")) {
       return handleApi(request);
     }
 
