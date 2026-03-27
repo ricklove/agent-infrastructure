@@ -939,6 +939,14 @@ function normalizeActivitySummaryText(text: string) {
     .trim()
 }
 
+function shouldKeepExpandedActivityMessage(message: SessionMessage) {
+  const text = firstTextBlock(message)
+  if (!text) {
+    return false
+  }
+  return text.length <= 28
+}
+
 function summarizeActivityCluster(messages: SessionMessage[]) {
   const latestLabel = [...messages]
     .reverse()
@@ -947,6 +955,10 @@ function summarizeActivityCluster(messages: SessionMessage[]) {
 
   if (!latestLabel) {
     return `${messages.length} activity events`
+  }
+
+  if (latestLabel.length <= 64) {
+    return latestLabel
   }
 
   return clipText(normalizeActivitySummaryText(latestLabel), 64)
@@ -3076,6 +3088,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
     const flushActivityMessages = () => {
       if (pendingActivityMessages.length === 0) {
+        return
+      }
+      if (
+        pendingActivityMessages.length === 1 &&
+        shouldKeepExpandedActivityMessage(pendingActivityMessages[0]!)
+      ) {
+        items.push({
+          type: "message",
+          message: pendingActivityMessages[0]!,
+          precedingStreamCheckpoints: [],
+        })
+        pendingActivityMessages = []
         return
       }
       items.push({
