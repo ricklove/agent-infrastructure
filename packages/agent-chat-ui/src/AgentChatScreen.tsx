@@ -277,12 +277,32 @@ function preferredChatOrigin() {
   return window.location.origin
 }
 
+function isEphemeralChatOrigin(origin: string) {
+  if (!origin) {
+    return true
+  }
+  let url: URL
+  try {
+    url = new URL(origin)
+  } catch {
+    return true
+  }
+
+  const hostname = url.hostname.toLowerCase()
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".trycloudflare.com") ||
+    hostname.endsWith(".baseconnect-agents.com")
+  )
+}
+
 function buildMessagePermalink(sessionId: string, messageId: string) {
   const origin = preferredChatOrigin()
   const url = new URL("/chat", origin || "http://127.0.0.1:3000")
   url.searchParams.set(chatSessionQueryParam, sessionId)
   url.hash = `message-${messageId}`
-  return origin
+  return origin && !isEphemeralChatOrigin(origin)
     ? `${url.origin}${url.pathname}${url.search}${url.hash}`
     : `${url.pathname}${url.search}${url.hash}`
 }
