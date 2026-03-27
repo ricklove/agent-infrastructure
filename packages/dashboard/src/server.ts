@@ -1254,7 +1254,10 @@ const server = Bun.serve<DashboardWsData>({
       return new Response("upgrade failed", { status: 500 });
     }
 
-    if (url.pathname.startsWith("/api/")) {
+    if (
+      url.pathname.startsWith("/api/") ||
+      url.pathname === "/local-file-preview"
+    ) {
       return handleApi(request);
     }
 
