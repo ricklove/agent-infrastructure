@@ -127,6 +127,7 @@ AgentChat.enforces(`
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
 - Provider quota exhaustion, token-budget exhaustion, and context-window exhaustion should surface as canonical transcript activity when the provider exposes those states, even when no assistant text is produced.
 - Transcript markdown should render common operator-facing structures, including links, inline code, fenced code blocks, and markdown image references, as visible content rather than raw markdown syntax.
+- Rendered markdown should remain switchable back to the canonical raw message text for any individual transcript item so the operator can inspect the original provider-emitted formatting when needed.
 - Each canonical chat message should have a stable direct-link address that the operator can copy and later reopen to the same session and message anchor.
 - Opening a direct-linked chat message should restore the owning session, scroll that message into view, and make the target message visually discoverable instead of dropping the operator at an unrelated point in the thread.
 - Agent-authored generated images should be referenced as markdown image URLs that point at the approved temporary image space under ~/temp until the operator explicitly keeps them.
