@@ -3078,23 +3078,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       if (pendingActivityMessages.length === 0) {
         return
       }
-      if (
-        pendingActivityMessages.length === 1 ||
-        pendingActivityMessages.length >= minCollapsedActivityClusterSize
-      ) {
-        items.push({
-          type: "activityCluster",
-          messages: pendingActivityMessages,
-        })
-      } else {
-        for (const activityMessage of pendingActivityMessages) {
-          items.push({
-            type: "message",
-            message: activityMessage,
-            precedingStreamCheckpoints: [],
-          })
-        }
-      }
+      items.push({
+        type: "activityCluster",
+        messages: pendingActivityMessages,
+      })
       pendingActivityMessages = []
     }
 

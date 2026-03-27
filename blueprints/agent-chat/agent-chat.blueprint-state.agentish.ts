@@ -308,8 +308,7 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - the memoized composer now compares a narrow stable prop surface instead of parent callback identity and broad session object identity, so thread updates no longer invalidate the composer just because the parent rendered again
 - expanded activity rows still use overly generic wording like command execution started or completed instead of foregrounding the actual task identity
 - collapsed activity-cluster summaries still run long and list too much prior event detail instead of one short recent-task summary
-- adjacent low-signal activity items now collapse into grouped transcript cards, but the collapsed summary copy remains too verbose
-- single low-signal activity items still render as fully expanded cards instead of using the same collapsed chrome as grouped activity with a singleton Show affordance
+- activity transcript items still do not collapse consistently; singleton items can collapse, but adjacent pairs can still fall through as expanded activity messages instead of using the shared collapsed chrome
 - provider-originated run events are still not consistently persisted into canonical Agent Chat history, so the transcript cannot yet be replayed solely from app-owned records for every surfaced provider event
 - the current stream-history presentation still mislabels observed provider text as draft semantics and needs cleaner stream-specific wording
 - internal stream checkpoint storage still leaks too directly into operator-facing transcript concepts and needs cleaner presentation boundaries
