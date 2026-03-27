@@ -1129,7 +1129,14 @@ export function UiDesignCanvasScreen({
       return;
     }
     const target = event.target as HTMLElement | null;
-    if (!target?.closest(".react-flow__pane")) {
+    if (!target) {
+      return;
+    }
+    if (
+      target.closest(".react-flow__node") ||
+      target.closest(".react-flow__controls") ||
+      target.closest(".react-flow__minimap")
+    ) {
       return;
     }
     const position = reactFlowRef.current?.screenToFlowPosition({
