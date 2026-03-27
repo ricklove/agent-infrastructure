@@ -13,6 +13,7 @@ import {
   useRef,
   useState,
 } from "react"
+import { createPortal } from "react-dom"
 
 type ProviderKind =
   | "codex-app-server"
@@ -145,9 +146,14 @@ type MarkdownRenderContext = {
   messageId: string
   apiRootUrl: string
   onImageKept: (payload: SessionSnapshotResponse) => void
+  onOpenFileReference: (pathname: string) => void
   activeSessionId: string
   sessionMap: Map<string, SessionSummary>
   messageMap: Map<string, SessionMessage>
+}
+
+type FileReferenceModalState = {
+  pathname: string
 }
 
 type SessionsResponse = {
@@ -267,7 +273,6 @@ const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
 const websocketWarningDelayMs = 5_000
 const chatSessionQueryParam = "sessionId"
 const chatMessageHashPrefix = "#message-"
-const localFilePreviewPathname = "/local-file-preview"
 const darkNativeSelectClass = "bg-slate-950 text-slate-100 [color-scheme:dark]"
 const darkNativeOptionStyle = {
   backgroundColor: "#020617",
@@ -407,6 +412,24 @@ const MenuIcon = memo(function MenuIcon() {
       <path d="M4 7h16" />
       <path d="M4 12h16" />
       <path d="M4 17h16" />
+    </svg>
+  )
+})
+
+const CopyIcon = memo(function CopyIcon() {
+  useRenderCounter("CopyIcon")
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="9" y="9" width="10" height="10" rx="2" />
+      <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
     </svg>
   )
 })
@@ -1068,18 +1091,6 @@ function isLikelyLocalFileReferenceTarget(targetUrl: string) {
   )
 }
 
-function localFilePreviewUrl(pathname: string) {
-  return `${localFilePreviewPathname}?path=${encodeURIComponent(pathname)}`
-}
-
-async function openLocalFilePreview(pathname: string) {
-  const previewUrl = localFilePreviewUrl(pathname)
-  const opened = window.open(previewUrl, "_blank", "noopener,noreferrer")
-  if (!opened) {
-    window.location.href = previewUrl
-  }
-}
-
 function isLikelyImageTarget(targetUrl: string) {
   const normalizedTarget = normalizeMarkdownImageSource(targetUrl).toLowerCase()
   return /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/.test(normalizedTarget)
@@ -1089,23 +1100,16 @@ function FileReferenceLink(props: {
   pathname: string
   label: string
   className?: string
-  onOpenError?: (message: string) => void
+  onOpenFileReference: (pathname: string) => void
 }) {
-  const openFile = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+  const openFile = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
-    try {
-      await openLocalFilePreview(props.pathname)
-      props.onOpenError?.("")
-    } catch (error) {
-      props.onOpenError?.(
-        error instanceof Error ? error.message : "File preview unavailable.",
-      )
-    }
+    props.onOpenFileReference(props.pathname)
   }
 
   return (
-    <a
-      href={localFilePreviewUrl(props.pathname)}
+    <button
+      type="button"
       onClick={(event) => void openFile(event)}
       className={
         props.className ??
@@ -1113,11 +1117,15 @@ function FileReferenceLink(props: {
       }
     >
       {props.label}
-    </a>
+    </button>
   )
 }
 
-function renderStyledInlineMarkdown(text: string, keyPrefix: string) {
+function renderStyledInlineMarkdown(
+  text: string,
+  keyPrefix: string,
+  onOpenFileReference: (pathname: string) => void,
+) {
   return text
     .split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*)/g)
     .filter(Boolean)
@@ -1130,6 +1138,7 @@ function renderStyledInlineMarkdown(text: string, keyPrefix: string) {
               key={`${keyPrefix}-link-${index}`}
               pathname={linkMatch[2] ?? ""}
               label={linkMatch[1] ?? ""}
+              onOpenFileReference={onOpenFileReference}
             />
           )
         }
@@ -1170,7 +1179,11 @@ function renderStyledInlineMarkdown(text: string, keyPrefix: string) {
     })
 }
 
-function renderInlineMarkdown(text: string, keyPrefix: string) {
+function renderInlineMarkdown(
+  text: string,
+  keyPrefix: string,
+  onOpenFileReference: (pathname: string) => void,
+) {
   return text
     .split(/(`[^`]+`)/g)
     .filter(Boolean)
@@ -1191,17 +1204,29 @@ function renderInlineMarkdown(text: string, keyPrefix: string) {
       }
       return (
         <Fragment key={`${keyPrefix}-segment-${index}`}>
-          {renderStyledInlineMarkdown(segment, `${keyPrefix}-${index}`)}
+          {renderStyledInlineMarkdown(
+            segment,
+            `${keyPrefix}-${index}`,
+            onOpenFileReference,
+          )}
         </Fragment>
       )
     })
 }
 
-function renderMarkdownParagraph(lines: string[], keyPrefix: string) {
+function renderMarkdownParagraph(
+  lines: string[],
+  keyPrefix: string,
+  onOpenFileReference: (pathname: string) => void,
+) {
   return lines.map((line, index) => (
     <Fragment key={`${keyPrefix}-line-${line}`}>
       {index > 0 ? <br /> : null}
-      {renderInlineMarkdown(line, `${keyPrefix}-${line}`)}
+      {renderInlineMarkdown(
+        line,
+        `${keyPrefix}-${line}`,
+        onOpenFileReference,
+      )}
     </Fragment>
   ))
 }
@@ -1241,6 +1266,7 @@ function renderMarkdownBlocks(
           {renderInlineMarkdown(
             headingMatch[2],
             `${keyPrefix}-heading-${blockIndex}`,
+            context.onOpenFileReference,
           )}
         </p>,
       )
@@ -1259,6 +1285,7 @@ function renderMarkdownBlocks(
               {renderInlineMarkdown(
                 line.replace(/^[-*]\s+/, ""),
                 `${keyPrefix}-ul-${blockIndex}-${line}`,
+                context.onOpenFileReference,
               )}
             </li>
           ))}
@@ -1279,6 +1306,7 @@ function renderMarkdownBlocks(
               {renderInlineMarkdown(
                 line.replace(/^\d+\.\s+/, ""),
                 `${keyPrefix}-ol-${blockIndex}-${line}`,
+                context.onOpenFileReference,
               )}
             </li>
           ))}
@@ -1298,7 +1326,11 @@ function renderMarkdownBlocks(
               className="space-y-2"
             >
               <p className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
-                {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
+                {renderMarkdownParagraph(
+                  lines,
+                  `${keyPrefix}-p-${blockIndex}`,
+                  context.onOpenFileReference,
+                )}
               </p>
               <MessageImageAsset
                 sessionId={context.sessionId}
@@ -1322,7 +1354,11 @@ function renderMarkdownBlocks(
               className="space-y-2"
             >
               <p className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
-                {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
+                {renderMarkdownParagraph(
+                  lines,
+                  `${keyPrefix}-p-${blockIndex}`,
+                  context.onOpenFileReference,
+                )}
               </p>
               <ChatReferenceAsset
                 targetUrl={standaloneLink.targetUrl}
@@ -1348,9 +1384,13 @@ function renderMarkdownBlocks(
                 <FileReferenceLink
                   pathname={standaloneLink.targetUrl}
                   label={standaloneLink.label}
+                  onOpenFileReference={context.onOpenFileReference}
                 />
               </p>
-              <FileReferenceAsset pathname={standaloneLink.targetUrl} />
+              <FileReferenceAsset
+                pathname={standaloneLink.targetUrl}
+                onOpenFileReference={context.onOpenFileReference}
+              />
             </div>,
           )
           blockIndex += 1
@@ -1364,7 +1404,11 @@ function renderMarkdownBlocks(
         key={`${keyPrefix}-p-${blockIndex}`}
         className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100"
       >
-        {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
+        {renderMarkdownParagraph(
+          lines,
+          `${keyPrefix}-p-${blockIndex}`,
+          context.onOpenFileReference,
+        )}
       </p>,
     )
     blockIndex += 1
@@ -1417,9 +1461,13 @@ function renderMarkdownBlocks(
                 <FileReferenceLink
                   pathname={localFileReference}
                   label={localFileReference}
+                  onOpenFileReference={context.onOpenFileReference}
                 />
               </p>
-              <FileReferenceAsset pathname={localFileReference} />
+              <FileReferenceAsset
+                pathname={localFileReference}
+                onOpenFileReference={context.onOpenFileReference}
+              />
             </div>,
           )
           blockIndex += 1
@@ -1552,8 +1600,262 @@ function ChatReferenceAsset(props: {
   )
 }
 
-function FileReferenceAsset(props: { pathname: string }) {
+function detectFileReferenceLanguage(pathname: string) {
+  const normalized = pathname.toLowerCase()
+  if (normalized.endsWith(".tsx") || normalized.endsWith(".ts")) {
+    return "typescript"
+  }
+  if (
+    normalized.endsWith(".jsx") ||
+    normalized.endsWith(".js") ||
+    normalized.endsWith(".mjs") ||
+    normalized.endsWith(".cjs")
+  ) {
+    return "javascript"
+  }
+  if (normalized.endsWith(".json")) {
+    return "json"
+  }
+  if (normalized.endsWith(".md") || normalized.endsWith(".agentish.ts")) {
+    return "markdown"
+  }
+  if (
+    normalized.endsWith(".sh") ||
+    normalized.endsWith(".bash") ||
+    normalized.endsWith(".zsh")
+  ) {
+    return "shell"
+  }
+  return "text"
+}
+
+function highlightFileReferenceLine(line: string, language: string, keyPrefix: string) {
+  const keywordPattern =
+    language === "json"
+      ? /\b(true|false|null)\b/g
+      : /\b(const|let|var|function|return|if|else|switch|case|break|for|while|import|from|export|default|type|interface|extends|implements|async|await|try|catch|throw|new)\b/g
+  const commentPattern =
+    language === "shell" ? /(#.*$)/g : /(\/\/.*$)/g
+  const stringPattern = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g
+  const numberPattern = /\b\d+(?:\.\d+)?\b/g
+  const pattern = new RegExp(
+    [commentPattern.source, stringPattern.source, keywordPattern.source, numberPattern.source].join("|"),
+    "g",
+  )
+  const nodes: ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null = null
+  let tokenIndex = 0
+  while ((match = pattern.exec(line))) {
+    if (match.index > lastIndex) {
+      nodes.push(
+        <Fragment key={`${keyPrefix}-text-${tokenIndex}`}>
+          {line.slice(lastIndex, match.index)}
+        </Fragment>,
+      )
+      tokenIndex += 1
+    }
+    const token = match[0] ?? ""
+    const className = token.match(new RegExp(`^${commentPattern.source.replace(/\$$/, "")}`))
+      ? "text-emerald-300"
+      : token.match(new RegExp(`^${stringPattern.source}`))
+        ? "text-amber-200"
+        : token.match(new RegExp(`^${numberPattern.source}`))
+          ? "text-fuchsia-200"
+          : "text-cyan-200"
+    nodes.push(
+      <span key={`${keyPrefix}-token-${tokenIndex}`} className={className}>
+        {token}
+      </span>,
+    )
+    tokenIndex += 1
+    lastIndex = match.index + token.length
+  }
+  if (lastIndex < line.length) {
+    nodes.push(
+      <Fragment key={`${keyPrefix}-tail-${tokenIndex}`}>
+        {line.slice(lastIndex)}
+      </Fragment>,
+    )
+  }
+  return nodes
+}
+
+function renderHighlightedFileReferenceContent(
+  content: string,
+  language: string,
+  keyPrefix: string,
+) {
+  return content.split("\n").map((line, index) => (
+    <div key={`${keyPrefix}-line-${index}`} className="flex min-w-max gap-4">
+      <span className="select-none text-right text-slate-600">{index + 1}</span>
+      <code className="whitespace-pre text-slate-100">
+        {highlightFileReferenceLine(line, language, `${keyPrefix}-${index}`)}
+      </code>
+    </div>
+  ))
+}
+
+function FileReferenceModal(props: {
+  pathname: string
+  onClose: () => void
+}) {
+  const [content, setContent] = useState("")
   const [error, setError] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [copiedPath, setCopiedPath] = useState(false)
+  const [copiedContents, setCopiedContents] = useState(false)
+  const language = detectFileReferenceLanguage(props.pathname)
+
+  useEffect(() => {
+    let active = true
+    async function loadFileReference() {
+      setLoading(true)
+      setError("")
+      try {
+        const response = await apiFetch(
+          `/api/local-file-preview?path=${encodeURIComponent(props.pathname)}`,
+        )
+        const text = await response.text()
+        if (!active) {
+          return
+        }
+        if (!response.ok) {
+          setError(text || "File preview unavailable.")
+          setContent("")
+          return
+        }
+        setContent(text)
+      } catch (nextError) {
+        if (!active) {
+          return
+        }
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "File preview unavailable.",
+        )
+        setContent("")
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadFileReference()
+    return () => {
+      active = false
+    }
+  }, [props.pathname])
+
+  useEffect(() => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        props.onClose()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [props.onClose])
+
+  const copyPath = useCallback(async () => {
+    await navigator.clipboard.writeText(props.pathname)
+    setCopiedPath(true)
+    window.setTimeout(() => setCopiedPath(false), 1200)
+  }, [props.pathname])
+
+  const copyContents = useCallback(async () => {
+    await navigator.clipboard.writeText(content)
+    setCopiedContents(true)
+    window.setTimeout(() => setCopiedContents(false), 1200)
+  }, [content])
+
+  if (typeof document === "undefined") {
+    return null
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+      onClick={props.onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.98))] shadow-[0_24px_100px_rgba(0,0,0,0.55)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">
+                File viewer
+              </p>
+              <div className="mt-3 flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-xs text-slate-100">
+                  {props.pathname}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => void copyPath()}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
+                  title={copiedPath ? "Copied path" : "Copy path"}
+                >
+                  <CopyIcon />
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={props.onClose}
+              className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.16em] text-slate-300 hover:bg-white/5"
+            >
+              Close
+            </button>
+          </div>
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
+              {language}
+            </span>
+            <button
+              type="button"
+              onClick={() => void copyContents()}
+              disabled={loading || !!error || !content}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CopyIcon />
+              {copiedContents ? "Copied" : "Copy contents"}
+            </button>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-slate-950/70 px-4 py-4">
+          {loading ? (
+            <p className="text-sm text-slate-400">Loading file…</p>
+          ) : error ? (
+            <p className="text-sm text-rose-300">{error}</p>
+          ) : (
+            <div className="min-w-max font-mono text-[13px] leading-6">
+              {renderHighlightedFileReferenceContent(
+                content,
+                language,
+                props.pathname,
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function FileReferenceAsset(props: {
+  pathname: string
+  onOpenFileReference: (pathname: string) => void
+}) {
   const allowed = isAllowedLocalFileReference(props.pathname)
   const segments = props.pathname.split("/").filter(Boolean)
   const basename = segments.at(-1) ?? props.pathname
@@ -1573,8 +1875,8 @@ function FileReferenceAsset(props: { pathname: string }) {
           {allowed ? (
             <FileReferenceLink
               pathname={props.pathname}
-              label="Open file"
-              onOpenError={setError}
+              label="Open"
+              onOpenFileReference={props.onOpenFileReference}
               className="text-xs text-emerald-200 underline decoration-emerald-400/50 underline-offset-2 hover:text-emerald-100"
             />
           ) : (
@@ -1589,7 +1891,6 @@ function FileReferenceAsset(props: { pathname: string }) {
             File preview is limited to allowed local workspace roots.
           </p>
         ) : null}
-        {error ? <p className="text-rose-300">{error}</p> : null}
       </div>
     </div>
   )
@@ -2666,6 +2967,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   const [rawTranscriptMessageIds, setRawTranscriptMessageIds] = useState<
     Record<string, boolean>
   >({})
+  const [fileReferenceModal, setFileReferenceModal] =
+    useState<FileReferenceModalState | null>(null)
   const [highlightedMessageId, setHighlightedMessageId] = useState("")
   const [composerDockHeight, setComposerDockHeight] = useState(0)
   const [transcriptRenderLimit, setTranscriptRenderLimit] = useState(
@@ -3083,6 +3386,17 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     },
     [],
   )
+
+  const openFileReferenceModal = useCallback((pathname: string) => {
+    if (!isAllowedLocalFileReference(pathname)) {
+      return
+    }
+    setFileReferenceModal({ pathname })
+  }, [])
+
+  const closeFileReferenceModal = useCallback(() => {
+    setFileReferenceModal(null)
+  }, [])
 
   const toggleRawTranscriptMessage = useCallback((messageId: string) => {
     setRawTranscriptMessageIds((current) => ({
@@ -5008,6 +5322,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                             messageId: message.id,
                                             apiRootUrl: props.apiRootUrl,
                                             onImageKept: applySessionSnapshot,
+                                            onOpenFileReference:
+                                              openFileReferenceModal,
                                             activeSessionId,
                                             sessionMap,
                                             messageMap,
@@ -5040,6 +5356,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                           messageId: message.id,
                                           apiRootUrl: props.apiRootUrl,
                                           onImageKept: applySessionSnapshot,
+                                          onOpenFileReference:
+                                            openFileReferenceModal,
                                           activeSessionId,
                                           sessionMap,
                                           messageMap,
@@ -5100,6 +5418,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 messageId: "streaming-assistant",
                                 apiRootUrl: props.apiRootUrl,
                                 onImageKept: applySessionSnapshot,
+                                onOpenFileReference: openFileReferenceModal,
                                 activeSessionId,
                                 sessionMap,
                                 messageMap,
@@ -5497,6 +5816,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
           </div>
         </div>
       </main>
+      {fileReferenceModal ? (
+        <FileReferenceModal
+          pathname={fileReferenceModal.pathname}
+          onClose={closeFileReferenceModal}
+        />
+      ) : null}
     </div>
   )
 }
