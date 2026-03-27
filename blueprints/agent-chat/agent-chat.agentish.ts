@@ -129,6 +129,7 @@ AgentChat.enforces(`
 - Transcript markdown should render common operator-facing structures, including links, inline code, fenced code blocks, and markdown image references, as visible content rather than raw markdown syntax.
 - Rendered markdown should remain switchable back to the canonical raw message text for any individual transcript item so the operator can inspect the original provider-emitted formatting when needed.
 - Each canonical chat message should have a stable direct-link address that the operator can copy and later reopen to the same session and message anchor.
+- Copied chat-message permalinks should avoid embedding known-ephemeral tunnel origins such as temporary preview domains and should fall back to an app-relative `/chat?...#message-...` address when the current host is not stable.
 - Opening a direct-linked chat message should restore the owning session, scroll that message into view, and make the target message visually discoverable instead of dropping the operator at an unrelated point in the thread.
 - Agent-authored generated images should be referenced as markdown image URLs that point at the approved temporary image space under ~/temp until the operator explicitly keeps them.
 - Temporary image paths under ~/temp are acceptable transient transcript media and should render inline with a clear temporary indicator.

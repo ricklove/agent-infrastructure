@@ -172,6 +172,7 @@ CurrentReality.clipboardImagePaste.means(`
 CurrentReality.transcriptRawViewGap.means(`
 - the current transcript still lacks a per-message raw-text toggle, so once markdown rendering or image-link expansion kicks in the operator cannot yet inspect the original unrendered message body inline
 - manager-host live validation also still depends on the referenced image source remaining readable from the deployed host, so worker-local preview paths that no longer exist on the manager still degrade into an unavailable-image state even though the transcript now recognizes them as image links
+- copied per-message links still inherit the current browser origin verbatim, so temporary tunnel domains can leak into shared session/message references and go stale as soon as that preview origin rotates
 `);
 
 CurrentReality.archivedSessionOrganization.means(`
