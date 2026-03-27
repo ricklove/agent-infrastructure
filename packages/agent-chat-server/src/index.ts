@@ -386,6 +386,10 @@ function inferImageMediaType(sourceUrl: string, fallback: string | null = null) 
   return "image/png";
 }
 
+function isLikelyLocalImagePath(sourceUrl: string) {
+  return /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(sourceUrl);
+}
+
 async function readImageSource(
   sourceUrl: string,
 ): Promise<{
@@ -417,6 +421,19 @@ async function readImageSource(
     return {
       normalizedSource,
       provenance: "temp",
+      mediaType: inferImageMediaType(normalizedSource, file.type),
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    };
+  }
+
+  if (normalizedSource.startsWith("/") && existsSync(normalizedSource)) {
+    if (!isLikelyLocalImagePath(normalizedSource)) {
+      throw new Error("Unsupported local image source.");
+    }
+    const file = Bun.file(normalizedSource);
+    return {
+      normalizedSource,
+      provenance: "external",
       mediaType: inferImageMediaType(normalizedSource, file.type),
       bytes: new Uint8Array(await file.arrayBuffer()),
     };
