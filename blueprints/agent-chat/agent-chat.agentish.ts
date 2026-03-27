@@ -136,6 +136,8 @@ AgentChat.enforces(`
 - Any markdown image reference that is neither a canonical chat attachment nor an approved temporary image path should render with a clear external-source warning indicator.
 - Ordinary markdown links whose targets resolve to image media should remain visible as links but should also render the target image inline with the same provenance and Keep image behavior as explicit markdown image syntax.
 - Markdown links that point at in-app chat message references such as `/chat?sessionId=...#message-...` should remain visible as links and should also render a compact chat-reference preview that shows the referenced chat and message context when that target is locally resolvable.
+- Standalone local file references and markdown links that target allowed local workspace files should remain visible as links and should also render a compact file-reference preview with an authenticated open-in-browser action.
+- File-reference opening from Agent Chat must stay inside declared allowed local roots rather than silently exposing arbitrary host filesystem paths through the dashboard.
 - Non-attached transcript images should expose one immediate Keep image action that imports or copies that image into canonical chat attachments without a confirmation dialog.
 - Keeping an image should promote it into canonical attachment storage for the current chat and update the rendered image reference so the transcript resolves through the durable attachment URL afterward.
 - Agents must not write images directly into chat attachment storage or guess session attachment paths; attachment promotion is a system-owned capability rather than an agent filesystem convention.
