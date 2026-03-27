@@ -1479,7 +1479,6 @@ export function UiDesignCanvasScreen({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={handleConnect}
-          onPaneClick={handlePaneDoubleClick}
           onSelectionChange={({ nodes: selectedNodes }) => {
             const nextSelectedId = selectedNodes[0]?.id ?? null;
             setSelectedNodeId(nextSelectedId);
