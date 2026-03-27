@@ -140,6 +140,13 @@ type SessionSnapshotResponse = {
   providerUsage?: SessionProviderUsage | null
 }
 
+type MarkdownRenderContext = {
+  sessionId: string
+  messageId: string
+  apiRootUrl: string
+  onImageKept: (payload: SessionSnapshotResponse) => void
+}
+
 type SessionsResponse = {
   ok: boolean
   sessions: SessionSummary[]
@@ -880,11 +887,98 @@ function waitingSummaryLabel(
   return null
 }
 
+function normalizeMarkdownImageSource(sourceUrl: string) {
+  const trimmed = sourceUrl.trim()
+  if (!trimmed) {
+    return ""
+  }
+  if (trimmed.startsWith("~/")) {
+    return `/home/ec2-user/${trimmed.slice(2)}`
+  }
+  return trimmed
+}
+
+function markdownImageProvenance(
+  sessionId: string,
+  sourceUrl: string,
+): "attachment" | "temp" | "external" {
+  const normalizedSourceUrl = normalizeMarkdownImageSource(sourceUrl)
+  if (
+    normalizedSourceUrl.startsWith(
+      `/api/agent-chat/sessions/${encodeURIComponent(sessionId)}/attachments/`,
+    )
+  ) {
+    return "attachment"
+  }
+  if (
+    normalizedSourceUrl === "/home/ec2-user/temp" ||
+    normalizedSourceUrl.startsWith("/home/ec2-user/temp/")
+  ) {
+    return "temp"
+  }
+  return "external"
+}
+
+function parseMarkdownImageLine(line: string) {
+  const match = /^\s*!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)\s*$/.exec(line)
+  if (!match) {
+    return null
+  }
+  return {
+    altText: match[1] ?? "Shared image",
+    sourceUrl: match[2] ?? "",
+  }
+}
+
+function renderStyledInlineMarkdown(text: string, keyPrefix: string) {
+  return text
+    .split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*)/g)
+    .filter(Boolean)
+    .map((segment, index) => {
+      const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(segment)
+      if (linkMatch) {
+        return (
+          <a
+            key={`${keyPrefix}-link-${index}`}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noreferrer"
+            className="text-cyan-200 underline decoration-cyan-400/50 underline-offset-2 hover:text-cyan-100"
+          >
+            {linkMatch[1]}
+          </a>
+        )
+      }
+
+      if (segment.startsWith("**") && segment.endsWith("**")) {
+        return (
+          <strong key={`${keyPrefix}-strong-${index}`} className="font-semibold text-white">
+            {segment.slice(2, -2)}
+          </strong>
+        )
+      }
+
+      if (
+        segment.startsWith("*") &&
+        segment.endsWith("*") &&
+        segment.length > 2
+      ) {
+        return (
+          <em key={`${keyPrefix}-em-${index}`} className="italic text-slate-50">
+            {segment.slice(1, -1)}
+          </em>
+        )
+      }
+
+      return <Fragment key={`${keyPrefix}-text-${index}`}>{segment}</Fragment>
+    })
+}
+
 function renderInlineMarkdown(text: string, keyPrefix: string) {
   return text
     .split(/(`[^`]+`)/g)
     .filter(Boolean)
-    .map((segment, _index) => {
+    .map((segment, index) => {
       if (
         segment.startsWith("`") &&
         segment.endsWith("`") &&
@@ -899,7 +993,11 @@ function renderInlineMarkdown(text: string, keyPrefix: string) {
           </code>
         )
       }
-      return <Fragment key={`${keyPrefix}-text-${segment}`}>{segment}</Fragment>
+      return (
+        <Fragment key={`${keyPrefix}-segment-${index}`}>
+          {renderStyledInlineMarkdown(segment, `${keyPrefix}-${index}`)}
+        </Fragment>
+      )
     })
 }
 
@@ -912,7 +1010,11 @@ function renderMarkdownParagraph(lines: string[], keyPrefix: string) {
   ))
 }
 
-function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
+function renderMarkdownBlocks(
+  text: string,
+  keyPrefix: string,
+  context: MarkdownRenderContext,
+): ReactNode[] {
   const normalized = text.replace(/\r\n/g, "\n").trim()
   if (!normalized) {
     return []
@@ -924,6 +1026,83 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
   let match: RegExpExecArray | null = null
   let blockIndex = 0
 
+  const pushStructuredTextBlock = (lines: string[]) => {
+    if (lines.length === 0) {
+      return
+    }
+
+    const headingMatch = /^(#{1,3})\s+(.*)$/.exec(lines[0] ?? "")
+    if (headingMatch && lines.length === 1) {
+      const level = headingMatch[1].length
+      const headingClass =
+        level === 1
+          ? "text-lg font-semibold text-white"
+          : level === 2
+            ? "text-base font-semibold text-slate-100"
+            : "text-sm font-semibold uppercase tracking-[0.12em] text-slate-300"
+      nodes.push(
+        <p key={`${keyPrefix}-heading-${blockIndex}`} className={headingClass}>
+          {renderInlineMarkdown(
+            headingMatch[2],
+            `${keyPrefix}-heading-${blockIndex}`,
+          )}
+        </p>,
+      )
+      blockIndex += 1
+      return
+    }
+
+    if (lines.every((line) => /^[-*]\s+/.test(line))) {
+      nodes.push(
+        <ul
+          key={`${keyPrefix}-ul-${blockIndex}`}
+          className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-disc"
+        >
+          {lines.map((line) => (
+            <li key={`${keyPrefix}-ul-${blockIndex}-${line}`}>
+              {renderInlineMarkdown(
+                line.replace(/^[-*]\s+/, ""),
+                `${keyPrefix}-ul-${blockIndex}-${line}`,
+              )}
+            </li>
+          ))}
+        </ul>,
+      )
+      blockIndex += 1
+      return
+    }
+
+    if (lines.every((line) => /^\d+\.\s+/.test(line))) {
+      nodes.push(
+        <ol
+          key={`${keyPrefix}-ol-${blockIndex}`}
+          className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-decimal"
+        >
+          {lines.map((line) => (
+            <li key={`${keyPrefix}-ol-${blockIndex}-${line}`}>
+              {renderInlineMarkdown(
+                line.replace(/^\d+\.\s+/, ""),
+                `${keyPrefix}-ol-${blockIndex}-${line}`,
+              )}
+            </li>
+          ))}
+        </ol>,
+      )
+      blockIndex += 1
+      return
+    }
+
+    nodes.push(
+      <p
+        key={`${keyPrefix}-p-${blockIndex}`}
+        className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100"
+      >
+        {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
+      </p>,
+    )
+    blockIndex += 1
+  }
+
   const pushTextBlocks = (chunk: string) => {
     const trimmed = chunk.trim()
     if (!trimmed) {
@@ -932,79 +1111,37 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
     const blocks = trimmed.split(/\n\s*\n/g).filter(Boolean)
     for (const block of blocks) {
       const lines = block.split("\n")
-      const headingMatch = /^(#{1,3})\s+(.*)$/.exec(lines[0] ?? "")
-      if (headingMatch && lines.length === 1) {
-        const level = headingMatch[1].length
-        const headingClass =
-          level === 1
-            ? "text-lg font-semibold text-white"
-            : level === 2
-              ? "text-base font-semibold text-slate-100"
-              : "text-sm font-semibold uppercase tracking-[0.12em] text-slate-300"
-        nodes.push(
-          <p
-            key={`${keyPrefix}-heading-${blockIndex}`}
-            className={headingClass}
-          >
-            {renderInlineMarkdown(
-              headingMatch[2],
-              `${keyPrefix}-heading-${blockIndex}`,
-            )}
-          </p>,
-        )
-        blockIndex += 1
-        continue
+      const pendingTextLines: string[] = []
+      const flushPendingTextLines = () => {
+        if (pendingTextLines.length === 0) {
+          return
+        }
+        pushStructuredTextBlock([...pendingTextLines])
+        pendingTextLines.length = 0
       }
 
-      if (lines.every((line) => /^[-*]\s+/.test(line))) {
-        nodes.push(
-          <ul
-            key={`${keyPrefix}-ul-${blockIndex}`}
-            className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-disc"
-          >
-            {lines.map((line) => (
-              <li key={`${keyPrefix}-ul-${blockIndex}-${line}`}>
-                {renderInlineMarkdown(
-                  line.replace(/^[-*]\s+/, ""),
-                  `${keyPrefix}-ul-${blockIndex}-${line}`,
-                )}
-              </li>
-            ))}
-          </ul>,
-        )
-        blockIndex += 1
-        continue
+      for (const line of lines) {
+        const markdownImage = parseMarkdownImageLine(line)
+        if (markdownImage) {
+          flushPendingTextLines()
+          nodes.push(
+            <MessageImageAsset
+              key={`${keyPrefix}-image-${blockIndex}`}
+              sessionId={context.sessionId}
+              messageId={context.messageId}
+              apiRootUrl={context.apiRootUrl}
+              sourceUrl={markdownImage.sourceUrl}
+              altText={markdownImage.altText}
+              onImageKept={context.onImageKept}
+            />,
+          )
+          blockIndex += 1
+          continue
+        }
+        pendingTextLines.push(line)
       }
 
-      if (lines.every((line) => /^\d+\.\s+/.test(line))) {
-        nodes.push(
-          <ol
-            key={`${keyPrefix}-ol-${blockIndex}`}
-            className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-decimal"
-          >
-            {lines.map((line) => (
-              <li key={`${keyPrefix}-ol-${blockIndex}-${line}`}>
-                {renderInlineMarkdown(
-                  line.replace(/^\d+\.\s+/, ""),
-                  `${keyPrefix}-ol-${blockIndex}-${line}`,
-                )}
-              </li>
-            ))}
-          </ol>,
-        )
-        blockIndex += 1
-        continue
-      }
-
-      nodes.push(
-        <p
-          key={`${keyPrefix}-p-${blockIndex}`}
-          className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100"
-        >
-          {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
-        </p>,
-      )
-      blockIndex += 1
+      flushPendingTextLines()
     }
   }
 
@@ -1037,10 +1174,20 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
   return nodes
 }
 
-function MessageImageAsset({ path }: { path: string }) {
+function MessageImageAsset(props: {
+  sessionId: string
+  messageId: string
+  apiRootUrl: string
+  sourceUrl: string
+  altText: string
+  onImageKept: (payload: SessionSnapshotResponse) => void
+}) {
   useRenderCounter("MessageImageAsset")
   const [assetUrl, setAssetUrl] = useState("")
   const [error, setError] = useState("")
+  const [keeping, setKeeping] = useState(false)
+  const normalizedSourceUrl = normalizeMarkdownImageSource(props.sourceUrl)
+  const provenance = markdownImageProvenance(props.sessionId, props.sourceUrl)
 
   useEffect(() => {
     let active = true
@@ -1048,10 +1195,16 @@ function MessageImageAsset({ path }: { path: string }) {
 
     async function loadAsset() {
       try {
-        const response = await apiFetch(path)
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${props.sessionId}/media?source=${encodeURIComponent(normalizedSourceUrl)}`,
+        )
         if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null
           throw new Error(
-            `Image request failed with status ${response.status}.`,
+            payload?.error ??
+              `Image request failed with status ${response.status}.`,
           )
         }
 
@@ -1085,7 +1238,52 @@ function MessageImageAsset({ path }: { path: string }) {
         URL.revokeObjectURL(nextObjectUrl)
       }
     }
-  }, [path])
+  }, [normalizedSourceUrl, props.apiRootUrl, props.sessionId])
+
+  const keepImage = async () => {
+    setKeeping(true)
+    setError("")
+    try {
+      const response = await apiFetch(
+        `${props.apiRootUrl}/sessions/${props.sessionId}/messages/${props.messageId}/keep-image`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            sourceUrl: props.sourceUrl,
+          }),
+        },
+      )
+      const payload = (await response.json()) as
+        | (SessionSnapshotResponse & { error?: string })
+        | { error?: string }
+      if (!response.ok || !("ok" in payload) || !payload.ok) {
+        throw new Error(payload.error ?? "Image could not be kept.")
+      }
+      props.onImageKept(payload)
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error ? nextError.message : "Image could not be kept.",
+      )
+    } finally {
+      setKeeping(false)
+    }
+  }
+
+  const provenanceLabel =
+    provenance === "attachment"
+      ? "Attached"
+      : provenance === "temp"
+        ? "Temp image"
+        : "External image"
+  const provenanceClassName =
+    provenance === "attachment"
+      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-100"
+      : provenance === "temp"
+        ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-100"
+        : "border-amber-400/30 bg-amber-400/10 text-amber-100"
 
   return (
     <div className="block overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60">
@@ -1094,7 +1292,7 @@ function MessageImageAsset({ path }: { path: string }) {
           <a href={assetUrl} target="_blank" rel="noreferrer">
             <img
               src={assetUrl}
-              alt="User supplied"
+              alt={props.altText || "Shared image"}
               className="max-h-[calc(28rem-1.5rem)] max-w-full object-contain"
             />
           </a>
@@ -1105,13 +1303,35 @@ function MessageImageAsset({ path }: { path: string }) {
         )}
       </div>
       <div className="border-t border-white/10 px-3 py-2 text-xs text-slate-300">
-        {assetUrl ? (
-          <a href={assetUrl} target="_blank" rel="noreferrer">
-            Open image
-          </a>
-        ) : (
-          "Image preview"
-        )}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${provenanceClassName}`}
+            >
+              {provenanceLabel}
+            </span>
+            {error ? <span className="text-rose-300">{error}</span> : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {assetUrl ? (
+              <a href={assetUrl} target="_blank" rel="noreferrer">
+                Open image
+              </a>
+            ) : (
+              <span>Image preview</span>
+            )}
+            {provenance !== "attachment" ? (
+              <button
+                type="button"
+                onClick={() => void keepImage()}
+                disabled={keeping}
+                className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {keeping ? "Keeping..." : "Keep image"}
+              </button>
+            ) : null}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -3158,6 +3378,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     [setSessionArchived],
   )
 
+  const applySessionSnapshot = useCallback(
+    (payload: SessionSnapshotResponse) => {
+      mergeSession(payload.session)
+      if (payload.session.id === activeSessionId) {
+        setMessages(payload.messages)
+        setQueuedMessages(payload.queuedMessages)
+        setActivity(payload.activity)
+      }
+    },
+    [activeSessionId, mergeSession],
+  )
+
   async function createSession(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setCreating(true)
@@ -4199,6 +4431,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                         {renderMarkdownBlocks(
                                           block.text,
                                           `${message.id}-${index}`,
+                                          {
+                                            sessionId: message.sessionId,
+                                            messageId: message.id,
+                                            apiRootUrl: props.apiRootUrl,
+                                            onImageKept: applySessionSnapshot,
+                                          },
                                         )}
                                       </div>
                                     ) : null,
@@ -4222,12 +4460,23 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                       {renderMarkdownBlocks(
                                         block.text,
                                         `${message.id}-${index}`,
+                                        {
+                                          sessionId: message.sessionId,
+                                          messageId: message.id,
+                                          apiRootUrl: props.apiRootUrl,
+                                          onImageKept: applySessionSnapshot,
+                                        },
                                       )}
                                     </div>
                                   ) : (
                                     <MessageImageAsset
                                       key={`${message.id}-${block.url}`}
-                                      path={block.url}
+                                      sessionId={message.sessionId}
+                                      messageId={message.id}
+                                      apiRootUrl={props.apiRootUrl}
+                                      sourceUrl={block.url}
+                                      altText="Shared image"
+                                      onImageKept={applySessionSnapshot}
                                     />
                                   ),
                                 )}
@@ -4268,6 +4517,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             {renderMarkdownBlocks(
                               streamingAssistantText,
                               "streaming",
+                              {
+                                sessionId: activeSessionId,
+                                messageId: "streaming-assistant",
+                                apiRootUrl: props.apiRootUrl,
+                                onImageKept: applySessionSnapshot,
+                              },
                             )}
                           </div>
                         </article>

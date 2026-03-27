@@ -49,11 +49,15 @@ const workspacePersistenceRequestPath =
 const processBlueprintsDir =
   process.env.AGENT_PROCESS_BLUEPRINTS_DIR?.trim() ||
   resolve(import.meta.dir, "../../../blueprints/process-blueprints");
+const approvedTempImageDir = resolve(
+  process.env.AGENT_CHAT_TEMP_IMAGE_DIR?.trim() || "/home/ec2-user/temp",
+);
 const DIRECTORY_QUEUE_PREFIX = "Directory will switch to ";
 const TITLE_QUEUE_PREFIX = "Chat title will change to ";
 const DIRECTORY_INSTRUCTION_PREFIX = "Working directory changed to ";
 const TITLE_INSTRUCTION_PREFIX = "Chat title changed to ";
 const PROCESS_INSTRUCTION_PREFIX = "Session process expectation changed to ";
+const markdownImagePattern = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 
 type ChatSocketData = {
   socketId: string;
@@ -339,6 +343,167 @@ function normalizeProviderModelRef(providerKind: AgentChatProviderKind, modelRef
     return normalizeClaudeSessionModelRef(trimmed);
   }
   return trimmed;
+}
+
+function normalizeImageSource(sourceUrl: string) {
+  const trimmed = sourceUrl.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.startsWith("~/")) {
+    return resolve("/home/ec2-user", trimmed.slice(2));
+  }
+  return trimmed;
+}
+
+function isApprovedTempImagePath(path: string) {
+  const resolvedPath = resolve(path);
+  return (
+    resolvedPath === approvedTempImageDir ||
+    resolvedPath.startsWith(`${approvedTempImageDir}/`)
+  );
+}
+
+function inferImageMediaType(sourceUrl: string, fallback: string | null = null) {
+  const normalizedFallback = fallback?.split(";")[0]?.trim() || "";
+  if (normalizedFallback.startsWith("image/")) {
+    return normalizedFallback;
+  }
+
+  const lowerSource = sourceUrl.toLowerCase();
+  if (lowerSource.endsWith(".jpg") || lowerSource.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (lowerSource.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (lowerSource.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (lowerSource.endsWith(".svg")) {
+    return "image/svg+xml";
+  }
+  return "image/png";
+}
+
+async function readImageSource(
+  sourceUrl: string,
+): Promise<{
+  normalizedSource: string;
+  provenance: "attachment" | "temp" | "external";
+  mediaType: string;
+  bytes: Uint8Array;
+}> {
+  const normalizedSource = normalizeImageSource(sourceUrl);
+  if (!normalizedSource) {
+    throw new Error("Image source required.");
+  }
+
+  const attachment = store.readAttachmentBytes(normalizedSource);
+  if (attachment) {
+    return {
+      normalizedSource,
+      provenance: "attachment",
+      mediaType: attachment.attachment.mediaType,
+      bytes: attachment.bytes,
+    };
+  }
+
+  if (isApprovedTempImagePath(normalizedSource)) {
+    if (!existsSync(normalizedSource)) {
+      throw new Error("Temporary image not found.");
+    }
+    const file = Bun.file(normalizedSource);
+    return {
+      normalizedSource,
+      provenance: "temp",
+      mediaType: inferImageMediaType(normalizedSource, file.type),
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    };
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(normalizedSource);
+  } catch {
+    throw new Error("Unsupported image source.");
+  }
+
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    throw new Error("External images must use http or https URLs.");
+  }
+
+  const response = await fetch(parsedUrl);
+  if (!response.ok) {
+    throw new Error(`External image request failed with status ${response.status}.`);
+  }
+
+  return {
+    normalizedSource,
+    provenance: "external",
+    mediaType: inferImageMediaType(
+      normalizedSource,
+      response.headers.get("content-type"),
+    ),
+    bytes: new Uint8Array(await response.arrayBuffer()),
+  };
+}
+
+function replaceMarkdownImageSourceInText(
+  text: string,
+  sourceUrl: string,
+  nextSourceUrl: string,
+) {
+  let replaced = false;
+  const nextText = text.replace(markdownImagePattern, (match, altText, currentSource) => {
+    if (normalizeImageSource(String(currentSource)) !== sourceUrl) {
+      return match;
+    }
+    replaced = true;
+    return `![${String(altText)}](${nextSourceUrl})`;
+  });
+  return {
+    text: nextText,
+    replaced,
+  };
+}
+
+function promoteMarkdownImageReference(
+  sessionId: string,
+  messageId: string,
+  sourceUrl: string,
+  nextSourceUrl: string,
+) {
+  const message = store.listMessages(sessionId).find((entry) => entry.id === messageId);
+  if (!message) {
+    return null;
+  }
+
+  let replacedAny = false;
+  const nextContent = message.content.map((block) => {
+    if (block.type !== "text") {
+      return block;
+    }
+    const replacement = replaceMarkdownImageSourceInText(
+      block.text,
+      sourceUrl,
+      nextSourceUrl,
+    );
+    if (replacement.replaced) {
+      replacedAny = true;
+      return {
+        type: "text" as const,
+        text: replacement.text,
+      };
+    }
+    return block;
+  });
+
+  if (!replacedAny) {
+    return null;
+  }
+
+  return store.updateMessageContent(sessionId, messageId, nextContent);
 }
 
 function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
@@ -1441,6 +1606,34 @@ const server = Bun.serve<ChatSocketData>({
       });
     }
 
+    const mediaMatch = /^\/api\/agent-chat\/sessions\/([^/]+)\/media$/.exec(url.pathname);
+    if (mediaMatch && request.method === "GET") {
+      const sessionId = decodeURIComponent(mediaMatch[1]!);
+      if (!store.getSession(sessionId)) {
+        return notFound();
+      }
+      const sourceUrl = url.searchParams.get("source")?.trim() || "";
+      try {
+        const resolvedImage = await readImageSource(sourceUrl);
+        return new Response(resolvedImage.bytes, {
+          status: 200,
+          headers: {
+            "content-type": resolvedImage.mediaType,
+            "cache-control": "no-store",
+          },
+        });
+      } catch (error) {
+        return jsonResponse(
+          {
+            ok: false,
+            error:
+              error instanceof Error ? error.message : "Image could not be loaded.",
+          },
+          400,
+        );
+      }
+    }
+
     if (url.pathname === "/api/agent-chat/ws") {
       const sessionId = url.searchParams.get("sessionId");
       if (!sessionId || !store.getSession(sessionId)) {
@@ -1832,6 +2025,10 @@ const server = Bun.serve<ChatSocketData>({
     }
 
     const messagesMatch = /^\/api\/agent-chat\/sessions\/([^/]+)\/messages$/.exec(url.pathname);
+    const keepImageMatch =
+      /^\/api\/agent-chat\/sessions\/([^/]+)\/messages\/([^/]+)\/keep-image$/.exec(
+        url.pathname,
+      );
     const typingMatch = /^\/api\/agent-chat\/sessions\/([^/]+)\/typing$/.exec(url.pathname);
     if (typingMatch && request.method === "POST") {
       const sessionId = decodeURIComponent(typingMatch[1]!);
@@ -1842,6 +2039,78 @@ const server = Bun.serve<ChatSocketData>({
         const payload = body as { active?: boolean };
         setUserTypingState(sessionId, payload.active !== false);
         return jsonResponse({ ok: true, activity: toSessionActivity(sessionId) });
+      });
+    }
+
+    if (keepImageMatch && request.method === "POST") {
+      const sessionId = decodeURIComponent(keepImageMatch[1]!);
+      const messageId = decodeURIComponent(keepImageMatch[2]!);
+      if (!store.getSession(sessionId)) {
+        return notFound();
+      }
+
+      return request.json().then(async (body: unknown) => {
+        const payload = body as {
+          sourceUrl?: string;
+        };
+        const rawSourceUrl = payload.sourceUrl?.trim() || "";
+        if (!rawSourceUrl) {
+          return jsonResponse({ ok: false, error: "sourceUrl required" }, 400);
+        }
+
+        try {
+          const resolvedImage = await readImageSource(rawSourceUrl);
+          if (
+            resolvedImage.provenance === "attachment" &&
+            resolvedImage.normalizedSource.startsWith(
+              `/api/agent-chat/sessions/${encodeURIComponent(sessionId)}/attachments/`,
+            )
+          ) {
+            const snapshot = buildSessionSnapshot(sessionId);
+            return snapshot ? jsonResponse(snapshot) : notFound();
+          }
+
+          const attachmentReference = store.persistAttachment(sessionId, {
+            mediaType: resolvedImage.mediaType,
+            bytes: resolvedImage.bytes,
+          });
+          const updatedMessage = promoteMarkdownImageReference(
+            sessionId,
+            messageId,
+            resolvedImage.normalizedSource,
+            attachmentReference.url,
+          );
+          if (!updatedMessage) {
+            return jsonResponse(
+              {
+                ok: false,
+                error: "Markdown image reference was not found in that message.",
+              },
+              409,
+            );
+          }
+
+          const snapshot = buildSessionSnapshot(sessionId);
+          broadcastSession(sessionId, {
+            type: "session.updated",
+            session: store.getSession(sessionId)
+              ? buildSessionSummary(store.getSession(sessionId)!)
+              : null,
+            messages: [updatedMessage],
+            queuedMessages: store.listQueuedMessages(sessionId),
+            activity: toSessionActivity(sessionId),
+          });
+          return snapshot ? jsonResponse(snapshot) : notFound();
+        } catch (error) {
+          return jsonResponse(
+            {
+              ok: false,
+              error:
+                error instanceof Error ? error.message : "Image could not be kept.",
+            },
+            400,
+          );
+        }
       });
     }
 
