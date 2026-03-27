@@ -33,6 +33,7 @@ const Store = {
 
 const UI = {
   machineTimeline: define.entity("MachineTimelineScreen"),
+  machineSelector: define.entity("MachineTimelineSelector"),
   cpuSeries: define.entity("MachineCpuSeries"),
   memorySeries: define.entity("MachineMemorySeries"),
   processSeries: define.entity("TopProcessSeries"),
@@ -73,6 +74,7 @@ SwarmMonitor.enforces(`
 - The monitor should preserve lead-up context before crashes, not only post-failure fragments.
 - Machine-level monitoring and process-level context belong in the same metrics history.
 - The swarm UI should expose machine timelines and top-process trends directly.
+- The machine timeline should present machine selection as an explicit primary control rather than a hidden secondary filter.
 - EC2 worker inventory reconciliation is a zombie-detection path, not a live-health path.
 - Healthy workers should be tracked primarily from heartbeats, not from frequent EC2 polling.
 `);
@@ -84,6 +86,7 @@ SwarmMonitor.defines(`
 - ProcessRingBuffer means the worker-side bounded memory of recent process windows before persistence.
 - TopProcessSnapshot means a persisted process entry with pid, comm, cpu percent, rss bytes, and state.
 - MachineTimelineScreen means a per-machine timeline view for CPU, RAM, and top processes.
+- MachineTimelineSelector means an explicit machine picker labeled for the operator, ordered with the manager first by default, and annotated with each machine role.
 - TopProcessSeries means a line graph that tracks one ranked process trend across time.
 - SparseProcessSampling means process scanning at a lower cadence such as 5s, 10s, or 15s rather than every second.
 - NoBurstOnlyCapture means spike capture cannot depend on starting extra work at the moment the host is already distressed.
@@ -93,7 +96,7 @@ SwarmMonitor.defines(`
 Worker.contains(Host.sample, Host.containerSample, Host.processRingBuffer, Host.processWindow);
 Host.processWindow.contains(Host.processSnapshot, Host.processCpuRank, Host.processMemoryRank);
 Manager.contains(Store.metricsDb, Store.workerSamples, Store.containerSamples, Store.processSamples);
-Dashboard.contains(UI.machineTimeline, UI.cpuSeries, UI.memorySeries, UI.processSeries, UI.processLegend, UI.processDrilldown);
+Dashboard.contains(UI.machineTimeline, UI.machineSelector, UI.cpuSeries, UI.memorySeries, UI.processSeries, UI.processLegend, UI.processDrilldown);
 
 SwarmMonitor.means(`
 - low-overhead host sampling
@@ -188,13 +191,16 @@ when(Manager.receives(Host.processSnapshot))
   .and(Manager.associates(Host.processSnapshot).with(Host.sample));
 
 when(Dashboard.renders(UI.machineTimeline))
-  .then(UI.machineTimeline.includes(UI.cpuSeries))
+  .then(UI.machineTimeline.includes(UI.machineSelector))
+  .and(UI.machineTimeline.includes(UI.cpuSeries))
   .and(UI.machineTimeline.includes(UI.memorySeries))
   .and(UI.machineTimeline.includes(UI.processSeries))
   .and(UI.machineTimeline.includes(UI.processLegend));
 
 when(Dashboard.focuses("a machine"))
-  .then(UI.machineTimeline.shows("machine CPU over time"))
+  .then(UI.machineSelector.shows("an explicit machine label with role and machine identity"))
+  .and(UI.machineSelector.defaults("the manager timeline when available"))
+  .and(UI.machineTimeline.shows("machine CPU over time"))
   .and(UI.machineTimeline.shows("machine RAM over time"))
   .and(UI.machineTimeline.shows("top-process CPU lines over time"))
   .and(UI.machineTimeline.shows("top-process RSS lines over time"))

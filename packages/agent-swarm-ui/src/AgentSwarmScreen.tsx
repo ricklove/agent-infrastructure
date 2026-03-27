@@ -527,6 +527,48 @@ function buildTimelineQueryParams(
   return params.toString()
 }
 
+function timelineWorkerStatusPriority(status: string): number {
+  switch (status) {
+    case "connected":
+      return 0
+    case "hibernated":
+      return 1
+    case "hibernating":
+      return 2
+    case "booting":
+      return 3
+    case "wakeup":
+      return 4
+    case "stale":
+      return 5
+    case "disconnected":
+      return 6
+    case "zombie":
+      return 7
+    default:
+      return 8
+  }
+}
+
+function compareTimelineWorkers(left: Worker, right: Worker): number {
+  if (left.nodeRole !== right.nodeRole) {
+    return left.nodeRole === "manager" ? -1 : 1
+  }
+
+  const statusDelta =
+    timelineWorkerStatusPriority(left.status) -
+    timelineWorkerStatusPriority(right.status)
+  if (statusDelta !== 0) {
+    return statusDelta
+  }
+
+  return left.workerId.localeCompare(right.workerId)
+}
+
+function formatTimelineMachineLabel(worker: Worker): string {
+  return `${worker.nodeRole} · ${worker.workerId}`
+}
+
 // Preset hue slots for better color distribution (same as agent-graph-ui)
 const PROCESS_HUE_SLOTS = [
   4, 18, 32, 46, 60, 74, 88, 104, 122, 140, 158, 176, 194, 210, 226, 242, 258,
@@ -603,6 +645,16 @@ export function AgentSwarmScreen({
   const [timeline, setTimeline] = useState<WorkerTimelineResponse | null>(null)
   const [error, setError] = useState("")
   const [authMessage, setAuthMessage] = useState("")
+  const sortedWorkers = useMemo(
+    () => [...workers].sort(compareTimelineWorkers),
+    [workers],
+  )
+  const selectedWorker = useMemo(
+    () =>
+      sortedWorkers.find((worker) => worker.workerId === selectedWorkerId) ??
+      null,
+    [selectedWorkerId, sortedWorkers],
+  )
   const hostChartMeasure = useMeasuredWidth()
   const processCpuChartMeasure = useMeasuredWidth()
   const processMemoryChartMeasure = useMeasuredWidth()
@@ -693,18 +745,18 @@ export function AgentSwarmScreen({
   }, [error, health])
 
   useEffect(() => {
-    if (!selectedWorkerId && workers.length > 0) {
-      setSelectedWorkerId(workers[0]?.workerId ?? "")
+    if (!selectedWorkerId && sortedWorkers.length > 0) {
+      setSelectedWorkerId(sortedWorkers[0]?.workerId ?? "")
       return
     }
 
     if (
       selectedWorkerId &&
-      !workers.some((worker) => worker.workerId === selectedWorkerId)
+      !sortedWorkers.some((worker) => worker.workerId === selectedWorkerId)
     ) {
-      setSelectedWorkerId(workers[0]?.workerId ?? "")
+      setSelectedWorkerId(sortedWorkers[0]?.workerId ?? "")
     }
-  }, [selectedWorkerId, workers])
+  }, [selectedWorkerId, sortedWorkers])
 
   useEffect(() => {
     if (!selectedWorkerId) {
@@ -1220,27 +1272,34 @@ export function AgentSwarmScreen({
         </div>
 
         <section className="rounded-2xl border border-white/10 bg-[#0f1724]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-300">
-                Machine Timeline
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Host CPU and RAM with sparse top-process sampling.
-              </p>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
+            <div className="flex min-w-0 flex-1 flex-wrap items-start gap-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-300">
+                  Machine Timeline
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Host CPU and RAM with sparse top-process sampling.
+                </p>
+              </div>
+              <label className="flex min-w-[18rem] flex-col gap-1">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Machine
+                </span>
+                <select
+                  className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
+                  onChange={(event) => setSelectedWorkerId(event.target.value)}
+                  value={selectedWorkerId}
+                >
+                  {sortedWorkers.map((worker) => (
+                    <option key={worker.workerId} value={worker.workerId}>
+                      {formatTimelineMachineLabel(worker)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <select
-                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
-                onChange={(event) => setSelectedWorkerId(event.target.value)}
-                value={selectedWorkerId}
-              >
-                {workers.map((worker) => (
-                  <option key={worker.workerId} value={worker.workerId}>
-                    {worker.workerId}
-                  </option>
-                ))}
-              </select>
               <select
                 className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white"
                 onChange={(event) => {
@@ -1372,7 +1431,10 @@ export function AgentSwarmScreen({
                       Host Utilization
                     </h3>
                     <p className="mt-1 text-xs text-slate-500">
-                      CPU and memory percent for {timeline.workerId}
+                      CPU and memory percent for{" "}
+                      {selectedWorker
+                        ? formatTimelineMachineLabel(selectedWorker)
+                        : timeline.workerId}
                     </p>
                   </div>
                   <div className="text-right text-xs text-slate-400">
