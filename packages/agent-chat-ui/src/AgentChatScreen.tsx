@@ -3547,6 +3547,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     queuedMessages.length,
     nowMs,
   )
+  const hideComposerDockForMobileSessionRail = mobileSessionsOpen
 
   return (
     <div className="flex h-full min-h-0 bg-slate-950 text-slate-100">
@@ -4284,7 +4285,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
 
           <div
             ref={composerDockRef}
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-0 pb-[env(safe-area-inset-bottom)] sm:px-3 sm:pb-3 md:px-6"
+            className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 px-0 pb-[env(safe-area-inset-bottom)] sm:px-3 sm:pb-3 md:px-6 ${
+              hideComposerDockForMobileSessionRail ? "hidden md:block" : ""
+            }`}
           >
             <div className="mx-auto flex w-full max-w-[78rem]">
               <div className="pointer-events-auto mx-auto flex w-full max-w-4xl flex-col gap-2.5">
