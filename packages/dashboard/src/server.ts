@@ -9,7 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DashboardFeatureBackendDefinition } from "@agent-infrastructure/dashboard-plugin";
 import { dashboardFeaturePlugins } from "./feature-plugins.js";
@@ -167,6 +167,11 @@ const sessionStorePath =
   process.env.DASHBOARD_SESSION_STORE_PATH?.trim() ||
   "/home/ec2-user/state/dashboard-sessions.json";
 const port = Number.parseInt(process.env.DASHBOARD_PORT ?? "3000", 10);
+const localFilePreviewAllowedRoots = [
+  "/home/ec2-user/workspace",
+  "/home/ec2-user/runtime",
+] as const;
+const localFilePreviewMaxBytes = 1_000_000;
 const browserSessionIdleTimeoutMs =
   Math.max(
     60,
@@ -1023,6 +1028,48 @@ async function handleApi(request: Request): Promise<Response> {
     }
   }
 
+  if (request.method === "GET" && url.pathname === "/api/local-file-preview") {
+    const requestedPath = url.searchParams.get("path")?.trim() ?? "";
+    if (!requestedPath) {
+      return jsonResponse({ ok: false, error: "path is required" }, 400);
+    }
+
+    const resolvedPath = resolve(requestedPath);
+    if (!isAllowedLocalFilePreviewPath(resolvedPath)) {
+      return jsonResponse(
+        { ok: false, error: "path is outside allowed preview roots" },
+        403,
+      );
+    }
+
+    if (!existsSync(resolvedPath)) {
+      return jsonResponse({ ok: false, error: "file not found" }, 404);
+    }
+
+    const stats = statSync(resolvedPath);
+    if (!stats.isFile()) {
+      return jsonResponse({ ok: false, error: "path is not a file" }, 400);
+    }
+
+    if (stats.size > localFilePreviewMaxBytes) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: `file is too large to preview (${stats.size} bytes)`,
+        },
+        413,
+      );
+    }
+
+    return new Response(Bun.file(resolvedPath), {
+      headers: {
+        "content-type": contentTypeForPath(resolvedPath),
+        "content-disposition": `inline; filename="${basename(resolvedPath)}"`,
+        "cache-control": "no-store",
+      },
+    });
+  }
+
   const featureBackend = findApiBackend(url.pathname);
   if (featureBackend) {
     try {
@@ -1073,6 +1120,18 @@ async function handleApi(request: Request): Promise<Response> {
 }
 
 function contentTypeForPath(pathname: string): string {
+  if (
+    pathname.endsWith(".ts") ||
+    pathname.endsWith(".tsx") ||
+    pathname.endsWith(".js") ||
+    pathname.endsWith(".jsx") ||
+    pathname.endsWith(".mjs") ||
+    pathname.endsWith(".cjs") ||
+    pathname.endsWith(".md") ||
+    pathname.endsWith(".txt")
+  ) {
+    return "text/plain; charset=utf-8";
+  }
   if (pathname.endsWith(".html")) {
     return "text/html; charset=utf-8";
   }
@@ -1092,6 +1151,12 @@ function contentTypeForPath(pathname: string): string {
     return "image/png";
   }
   return "application/octet-stream";
+}
+
+function isAllowedLocalFilePreviewPath(pathname: string): boolean {
+  return localFilePreviewAllowedRoots.some((rootPath) => {
+    return pathname === rootPath || pathname.startsWith(`${rootPath}/`);
+  });
 }
 
 async function serveStatic(url: URL): Promise<Response> {

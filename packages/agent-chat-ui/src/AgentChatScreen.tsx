@@ -272,6 +272,10 @@ const darkNativeOptionStyle = {
   backgroundColor: "#020617",
   color: "#f8fafc",
 } as const
+const localFileReferenceAllowedRoots = [
+  "/home/ec2-user/workspace",
+  "/home/ec2-user/runtime",
+] as const
 
 function preferredChatOrigin() {
   if (typeof window === "undefined") {
@@ -1036,9 +1040,90 @@ function parseChatReferenceTarget(targetUrl: string) {
   }
 }
 
+function parseStandaloneLocalFileLine(line: string) {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith("/")) {
+    return null
+  }
+  if (/\s/.test(trimmed)) {
+    return null
+  }
+  return trimmed
+}
+
+function isAllowedLocalFileReference(pathname: string) {
+  return localFileReferenceAllowedRoots.some((rootPath) => {
+    return pathname === rootPath || pathname.startsWith(`${rootPath}/`)
+  })
+}
+
+function isLikelyLocalFileReferenceTarget(targetUrl: string) {
+  const trimmed = targetUrl.trim()
+  return (
+    trimmed.startsWith("/") &&
+    trimmed !== "/chat" &&
+    !trimmed.startsWith("/chat?") &&
+    !/\s/.test(trimmed)
+  )
+}
+
+async function openLocalFilePreview(pathname: string) {
+  const response = await apiFetch(
+    `/api/local-file-preview?path=${encodeURIComponent(pathname)}`,
+  )
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(payload?.error ?? "File preview unavailable.")
+  }
+
+  const blob = await response.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const opened = window.open(objectUrl, "_blank", "noopener,noreferrer")
+  if (!opened) {
+    window.location.href = objectUrl
+  }
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl)
+  }, 60_000)
+}
+
 function isLikelyImageTarget(targetUrl: string) {
   const normalizedTarget = normalizeMarkdownImageSource(targetUrl).toLowerCase()
   return /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/.test(normalizedTarget)
+}
+
+function FileReferenceLink(props: {
+  pathname: string
+  label: string
+  className?: string
+  onOpenError?: (message: string) => void
+}) {
+  const openFile = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault()
+    try {
+      await openLocalFilePreview(props.pathname)
+      props.onOpenError?.("")
+    } catch (error) {
+      props.onOpenError?.(
+        error instanceof Error ? error.message : "File preview unavailable.",
+      )
+    }
+  }
+
+  return (
+    <a
+      href={props.pathname}
+      onClick={(event) => void openFile(event)}
+      className={
+        props.className ??
+        "text-cyan-200 underline decoration-cyan-400/50 underline-offset-2 hover:text-cyan-100"
+      }
+    >
+      {props.label}
+    </a>
+  )
 }
 
 function renderStyledInlineMarkdown(text: string, keyPrefix: string) {
@@ -1252,6 +1337,25 @@ function renderMarkdownBlocks(
           blockIndex += 1
           return
         }
+
+        if (isLikelyLocalFileReferenceTarget(standaloneLink.targetUrl)) {
+          nodes.push(
+            <div
+              key={`${keyPrefix}-file-reference-${blockIndex}`}
+              className="space-y-2"
+            >
+              <p className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
+                <FileReferenceLink
+                  pathname={standaloneLink.targetUrl}
+                  label={standaloneLink.label}
+                />
+              </p>
+              <FileReferenceAsset pathname={standaloneLink.targetUrl} />
+            </div>,
+          )
+          blockIndex += 1
+          return
+        }
       }
     }
 
@@ -1297,6 +1401,26 @@ function renderMarkdownBlocks(
               altText={markdownImage.altText}
               onImageKept={context.onImageKept}
             />,
+          )
+          blockIndex += 1
+          continue
+        }
+        const localFileReference = parseStandaloneLocalFileLine(line)
+        if (localFileReference) {
+          flushPendingTextLines()
+          nodes.push(
+            <div
+              key={`${keyPrefix}-raw-file-${blockIndex}`}
+              className="space-y-2"
+            >
+              <p className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
+                <FileReferenceLink
+                  pathname={localFileReference}
+                  label={localFileReference}
+                />
+              </p>
+              <FileReferenceAsset pathname={localFileReference} />
+            </div>,
           )
           blockIndex += 1
           continue
@@ -1423,6 +1547,49 @@ function ChatReferenceAsset(props: {
             Open that chat to load the referenced message preview.
           </p>
         )}
+      </div>
+    </div>
+  )
+}
+
+function FileReferenceAsset(props: { pathname: string }) {
+  const [error, setError] = useState("")
+  const allowed = isAllowedLocalFileReference(props.pathname)
+  const segments = props.pathname.split("/").filter(Boolean)
+  const basename = segments.at(-1) ?? props.pathname
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-emerald-300/15 bg-emerald-400/[0.04]">
+      <div className="border-b border-emerald-300/10 px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-100">
+              File reference
+            </span>
+            <span className="min-w-0 truncate text-xs text-slate-200">
+              {basename}
+            </span>
+          </div>
+          {allowed ? (
+            <FileReferenceLink
+              pathname={props.pathname}
+              label="Open file"
+              onOpenError={setError}
+              className="text-xs text-emerald-200 underline decoration-emerald-400/50 underline-offset-2 hover:text-emerald-100"
+            />
+          ) : (
+            <span className="text-xs text-slate-400">Unavailable</span>
+          )}
+        </div>
+      </div>
+      <div className="space-y-1 px-3 py-2 text-xs text-slate-300">
+        <p className="font-mono text-slate-200">{props.pathname}</p>
+        {!allowed ? (
+          <p className="text-slate-400">
+            File preview is limited to allowed local workspace roots.
+          </p>
+        ) : null}
+        {error ? <p className="text-rose-300">{error}</p> : null}
       </div>
     </div>
   )
