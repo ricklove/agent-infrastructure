@@ -39,6 +39,7 @@ const CurrentReality = {
   providerUsageTelemetryGap: define.concept("ProviderUsageTelemetryGap"),
   sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
   threadNavigationGap: define.concept("ThreadNavigationGap"),
+  transcriptRawViewGap: define.concept("TranscriptRawViewGap"),
   backendOwnedWatchdogContinuity: define.concept("BackendOwnedWatchdogContinuity"),
   settingsAndMessageStateGap: define.concept("SettingsAndMessageStateGap"),
   genericSessionActivity: define.concept("GenericSessionActivityOnly"),
@@ -91,6 +92,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.providerUsageTelemetryGap,
   CurrentReality.sessionListWorkflowPolishGap,
   CurrentReality.threadNavigationGap,
+  CurrentReality.transcriptRawViewGap,
   CurrentReality.backendOwnedWatchdogContinuity,
   CurrentReality.settingsAndMessageStateGap,
   CurrentReality.genericSessionActivity,
@@ -165,6 +167,11 @@ CurrentReality.clipboardImagePaste.means(`
 - sending a message with pasted images stores those images durably under canonical app data rather than leaving them in browser-only blob state
 - transcript rendering now shows stored image blocks inline rather than reducing them to raw URL text
 - the current Codex and Claude provider adapters now receive structured image input derived from the canonical image blocks
+`);
+
+CurrentReality.transcriptRawViewGap.means(`
+- the current transcript still lacks a per-message raw-text toggle, so once markdown rendering or image-link expansion kicks in the operator cannot yet inspect the original unrendered message body inline
+- manager-host live validation also still depends on the referenced image source remaining readable from the deployed host, so worker-local preview paths that no longer exist on the manager still degrade into an unavailable-image state even though the transcript now recognizes them as image links
 `);
 
 CurrentReality.archivedSessionOrganization.means(`
@@ -278,8 +285,7 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - transcript text still renders mostly as plain paragraphs, so markdown structure and code blocks are harder to read than intended
 - transcript markdown still does not render markdown image references, inline links, and related provenance affordances as first-class content, so generated screenshots and shared image references still degrade into raw markdown or ambiguous URLs
 - the current implementation also lacks a Keep image promotion flow for temp or external markdown images, so agents still have too much incentive to rely on ad hoc filesystem paths instead of a user-controlled attachment promotion path
-- the current transcript surface still lacks copyable per-message permalinks, so operators cannot yet reopen a specific comment directly from a pasted session/message reference
-- ordinary markdown links that point at image files still render only as links today rather than keeping the link and showing the image inline, so comments that share screenshot paths through standard link syntax still feel incomplete
+- the current transcript surface still lacks a per-message raw-text view, so richer markdown rendering can still make it harder to inspect exact provider output during debugging
 - very long threads now render through a bounded recent-item window with an explicit `Show earlier items` affordance so the live transcript DOM stays smaller while the operator is typing in active sessions
 - the main activity status now uses a compact composer-border treatment instead of a separate footer card
 - the bottom composer stack now floats over the thread instead of sitting inside a dedicated footer slab, and the transcript adds measured bottom spacer so the latest message stays visible above the composer
