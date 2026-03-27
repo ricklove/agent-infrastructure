@@ -138,6 +138,7 @@ AgentChat.enforces(`
 - Markdown links that point at in-app chat message references such as `/chat?sessionId=...#message-...` should remain visible as links and should also render a compact chat-reference preview that shows the referenced chat and message context when that target is locally resolvable.
 - Standalone local file references and markdown links that target allowed local workspace files should remain visible as links and should also render a compact file-reference preview with an authenticated open-in-browser action.
 - Local file-reference links must resolve through a dedicated dashboard preview path that carries the filesystem path in a query string rather than exposing the raw absolute host path as the clickable href.
+- File-preview content-type handling must stay isolated from dashboard static-asset content-type handling so preview support cannot corrupt JavaScript, CSS, or other shipped app asset responses.
 - File-reference opening from Agent Chat must stay inside declared allowed local roots rather than silently exposing arbitrary host filesystem paths through the dashboard.
 - Non-attached transcript images should expose one immediate Keep image action that imports or copies that image into canonical chat attachments without a confirmation dialog.
 - Keeping an image should promote it into canonical attachment storage for the current chat and update the rendered image reference so the transcript resolves through the durable attachment URL afterward.
