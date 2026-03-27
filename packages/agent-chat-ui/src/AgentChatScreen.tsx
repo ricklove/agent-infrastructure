@@ -1254,6 +1254,30 @@ function renderMarkdownBlocks(
   return nodes
 }
 
+function renderRawMessageContent(message: SessionMessage) {
+  return (
+    <div className="space-y-2">
+      {message.content.map((block, index) =>
+        block.type === "text" ? (
+          <pre
+            key={`${message.id}-raw-text-${index}`}
+            className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/85 px-3 py-3 text-[13px] leading-6 text-slate-100 whitespace-pre-wrap"
+          >
+            <code className="font-mono">{block.text}</code>
+          </pre>
+        ) : (
+          <pre
+            key={`${message.id}-raw-image-${index}`}
+            className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/85 px-3 py-3 text-[13px] leading-6 text-slate-100 whitespace-pre-wrap"
+          >
+            <code className="font-mono">{block.url}</code>
+          </pre>
+        ),
+      )}
+    </div>
+  )
+}
+
 function MessageImageAsset(props: {
   sessionId: string
   messageId: string
@@ -1268,6 +1292,9 @@ function MessageImageAsset(props: {
   const [keeping, setKeeping] = useState(false)
   const normalizedSourceUrl = normalizeMarkdownImageSource(props.sourceUrl)
   const provenance = markdownImageProvenance(props.sessionId, props.sourceUrl)
+  const canDirectRenderExternal =
+    provenance === "external" &&
+    /^https?:\/\//i.test(normalizedSourceUrl)
 
   useEffect(() => {
     let active = true
@@ -1303,6 +1330,12 @@ function MessageImageAsset(props: {
           return
         }
 
+        if (canDirectRenderExternal) {
+          setAssetUrl(normalizedSourceUrl)
+          setError("")
+          return
+        }
+
         setAssetUrl("")
         setError(
           nextError instanceof Error ? nextError.message : "Image unavailable.",
@@ -1318,7 +1351,12 @@ function MessageImageAsset(props: {
         URL.revokeObjectURL(nextObjectUrl)
       }
     }
-  }, [normalizedSourceUrl, props.apiRootUrl, props.sessionId])
+  }, [
+    canDirectRenderExternal,
+    normalizedSourceUrl,
+    props.apiRootUrl,
+    props.sessionId,
+  ])
 
   const keepImage = async () => {
     setKeeping(true)
@@ -2308,6 +2346,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   ] = useState<Record<string, boolean>>({})
   const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] =
     useState<Record<string, boolean>>({})
+  const [rawTranscriptMessageIds, setRawTranscriptMessageIds] = useState<
+    Record<string, boolean>
+  >({})
   const [highlightedMessageId, setHighlightedMessageId] = useState("")
   const [composerDockHeight, setComposerDockHeight] = useState(0)
   const [transcriptRenderLimit, setTranscriptRenderLimit] = useState(
@@ -2717,6 +2758,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     },
     [],
   )
+
+  const toggleRawTranscriptMessage = useCallback((messageId: string) => {
+    setRawTranscriptMessageIds((current) => ({
+      ...current,
+      [messageId]: !current[messageId],
+    }))
+  }, [])
 
   const toggleExpandedReplacedStreams = useCallback((messageId: string) => {
     setExpandedReplacedStreamMessageIds((current) => ({
@@ -4455,6 +4503,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         const queueLabel = threadMessageQueueLabel(message)
                         const replacedStreamsExpanded =
                           !!expandedReplacedStreamMessageIds[message.id]
+                        const rawTranscriptVisible =
+                          !!rawTranscriptMessageIds[message.id]
 
                         return (
                           <article
@@ -4544,6 +4594,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 <button
                                   type="button"
                                   onClick={() =>
+                                    toggleRawTranscriptMessage(message.id)
+                                  }
+                                  className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-400 hover:border-white/20 hover:text-slate-200"
+                                >
+                                  {rawTranscriptVisible ? "Rendered" : "Raw"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
                                     void copyMessageLink(
                                       message.sessionId,
                                       message.id,
@@ -4598,7 +4657,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                               </div>
                             ) : null}
 
-                            {message.kind === "thought" ? (
+                            {rawTranscriptVisible ? (
+                              <div className="mt-2.5">
+                                {renderRawMessageContent(message)}
+                              </div>
+                            ) : message.kind === "thought" ? (
                               <details className="mt-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300">
                                 <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                                   Collapsed Thought Checkpoint
