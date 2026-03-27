@@ -2,7 +2,7 @@
   "id": "define_blueprint",
   "title": "Define Blueprint",
   "catalogOrder": 20,
-  "expectation": "Review relevant existing blueprints, including the canonical Agentish sections blueprint when defining or restructuring a subject blueprint, create or update the blueprint layer needed for the task, and stop before implementation unless the user explicitly asks for implementation.",
+  "expectation": "Use a feature-branch worktree under the canonical worktree location as the only mutable surface for this process; never edit blueprint files from the shared repository checkout. Review relevant existing blueprints, including the canonical Agentish sections blueprint when defining or restructuring a subject blueprint, create or update the blueprint layer needed for the task from that worktree branch, and stop before implementation unless the user explicitly asks for implementation.",
   "idlePrompt": "If the blueprint work is complete, reply only with 'done: blueprint defined'. If you are truly blocked on missing user information, reply only with 'blocked: blueprint clarification required'. Otherwise resume the blueprint work immediately and make real progress instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: blueprint defined",
