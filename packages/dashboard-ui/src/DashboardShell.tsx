@@ -426,6 +426,7 @@ export function DashboardShell({
   const backendVersionMismatch =
     gatewayBackendVersion !== "--" && gatewayBackendVersion !== appVersion
   const activeFeatureStatusItems = featureStatuses[activeFeatureId] ?? []
+  const isCanvasFirstFeature = activeFeatureId === "design"
 
   function toneClassForFeatureStatus(tone: FeatureStatusItem["tone"]): string {
     if (tone === "good") {
@@ -567,6 +568,7 @@ export function DashboardShell({
       <aside
         className={[
           "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:static md:z-auto md:translate-x-0",
+          isCanvasFirstFeature ? "hidden md:hidden" : "",
           mobileFeatureMenuOpen ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
@@ -670,7 +672,7 @@ export function DashboardShell({
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <div className="absolute left-3 top-3 z-20 md:hidden">
+        {!isCanvasFirstFeature ? <div className="absolute left-3 top-3 z-20 md:hidden">
           <button
             type="button"
             aria-label={
@@ -682,7 +684,7 @@ export function DashboardShell({
           >
             <MenuIcon className="h-4 w-4" />
           </button>
-        </div>
+        </div> : null}
         <main className="min-h-0 flex-1">
           <Suspense
             fallback={
