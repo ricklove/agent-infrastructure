@@ -135,6 +135,7 @@ AgentChat.enforces(`
 - Temporary image paths under ~/temp are acceptable transient transcript media and should render inline with a clear temporary indicator.
 - Any markdown image reference that is neither a canonical chat attachment nor an approved temporary image path should render with a clear external-source warning indicator.
 - Ordinary markdown links whose targets resolve to image media should remain visible as links but should also render the target image inline with the same provenance and Keep image behavior as explicit markdown image syntax.
+- Markdown links that point at in-app chat message references such as `/chat?sessionId=...#message-...` should remain visible as links and should also render a compact chat-reference preview that shows the referenced chat and message context when that target is locally resolvable.
 - Non-attached transcript images should expose one immediate Keep image action that imports or copies that image into canonical chat attachments without a confirmation dialog.
 - Keeping an image should promote it into canonical attachment storage for the current chat and update the rendered image reference so the transcript resolves through the durable attachment URL afterward.
 - Agents must not write images directly into chat attachment storage or guess session attachment paths; attachment promotion is a system-owned capability rather than an agent filesystem convention.
