@@ -1,0 +1,30 @@
+{
+  "id": "define_process",
+  "title": "Define Process",
+  "catalogOrder": 25,
+  "expectation": "Use a feature-branch worktree under the canonical worktree location as the only mutable surface for this process; never edit process definition files from the shared repository checkout. Review relevant existing blueprints, process definitions, and Agentish sections when defining or restructuring a process, create or update the needed process definition layer from that worktree branch, commit the changes, merge the branch into development, push development to origin, deploy the runtime, and verify the new process is available in the live system.",
+  "idlePrompt": "If the process-definition work is complete, reply only with 'done: process defined'. If you are truly blocked on missing user information or an environment dependency, reply only with 'blocked: process definition requires clarification'. Otherwise resume the process-definition work immediately and perform the next required blueprint, integration, deploy, or validation step instead of giving only a status update.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: process defined",
+  "blockedToken": "blocked: process definition requires clarification",
+  "stopConditions": [
+    "process-definition work complete",
+    "missing information from the user",
+    "blocked on an environment dependency"
+  ],
+  "steps": [
+    { "id": "create_worktree_surface", "title": "Create or use the feature-branch worktree surface" },
+    { "id": "review_existing_process_context", "title": "Review relevant existing process definitions, blueprints, and Agentish sections" },
+    { "id": "update_process_definition_layer", "title": "Create or update the needed process definition layer" },
+    { "id": "commit_process_changes", "title": "Commit the process-definition changes" },
+    { "id": "merge_into_development", "title": "Merge the branch into development" },
+    { "id": "push_development_to_origin", "title": "Push development to origin" },
+    { "id": "deploy_runtime", "title": "Deploy the runtime" },
+    { "id": "verify_live_process", "title": "Verify the new process is available in the live system" }
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 90,
+    "maxNudgesPerIdleEpisode": 0
+  }
+}
