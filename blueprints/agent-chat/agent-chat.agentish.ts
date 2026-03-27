@@ -126,6 +126,13 @@ AgentChat.enforces(`
 - Transient websocket disconnects should be retried automatically with backoff, and disconnect warning chrome should wait through a short grace period so brief reconnects do not flash noisy error banners.
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
 - Provider quota exhaustion, token-budget exhaustion, and context-window exhaustion should surface as canonical transcript activity when the provider exposes those states, even when no assistant text is produced.
+- Transcript markdown should render common operator-facing structures, including links, inline code, fenced code blocks, and markdown image references, as visible content rather than raw markdown syntax.
+- Agent-authored generated images should be referenced as markdown image URLs that point at the approved temporary image space under ~/temp until the operator explicitly keeps them.
+- Temporary image paths under ~/temp are acceptable transient transcript media and should render inline with a clear temporary indicator.
+- Any markdown image reference that is neither a canonical chat attachment nor an approved temporary image path should render with a clear external-source warning indicator.
+- Non-attached transcript images should expose one immediate Keep image action that imports or copies that image into canonical chat attachments without a confirmation dialog.
+- Keeping an image should promote it into canonical attachment storage for the current chat and update the rendered image reference so the transcript resolves through the durable attachment URL afterward.
+- Agents must not write images directly into chat attachment storage or guess session attachment paths; attachment promotion is a system-owned capability rather than an agent filesystem convention.
 - All surfaced agent activity must become canonical transcript history, including tool calls, sub-agent work, retries, waiting states, approvals, provider limit status, and future surfaced activity classes.
 - Canonical system-injected history, assistant prose, and agent execution activity should remain visually distinguishable presentation classes even when they share the same transcript.
 - When many adjacent low-signal activity items accumulate in the transcript, AgentChat may collapse that activity cluster by default as long as the underlying canonical history and ordering remain intact.
