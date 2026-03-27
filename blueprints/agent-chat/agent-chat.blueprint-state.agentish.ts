@@ -174,7 +174,7 @@ CurrentReality.transcriptRawViewGap.means(`
 - manager-host live validation also still depends on the referenced image source remaining readable from the deployed host, so worker-local preview paths that no longer exist on the manager still degrade into an unavailable-image state even though the transcript now recognizes them as image links
 - copied per-message links still inherit the current browser origin verbatim, so temporary tunnel domains can leak into shared session/message references and go stale as soon as that preview origin rotates
 - markdown links that reference in-app chat messages still render only as ordinary links today, so pasted `/chat?sessionId=...#message-...` references do not yet preview the target chat and message context inline
-- local filesystem references currently surface raw absolute host-path hrefs instead of resolving through a dedicated preview URL, so opening or copying those links can escape the dashboard route model and break navigation
+- the current dashboard server shares one content-type helper between static assets and local file previews, so the file-reference release can misclassify shipped JavaScript assets as preview text and blank the dashboard
 `);
 
 CurrentReality.archivedSessionOrganization.means(`
