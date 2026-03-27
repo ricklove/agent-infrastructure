@@ -131,6 +131,7 @@ AgentChat.enforces(`
 - When many adjacent low-signal activity items accumulate in the transcript, AgentChat may collapse that activity cluster by default as long as the underlying canonical history and ordering remain intact.
 - When collapsed activity is expanded, the transcript should foreground the actual task identity or work item rather than generic lifecycle wording such as started or completed without context.
 - Composer warning and activity-state affordances may use compact border-attached or floating treatments to preserve mobile space, but they must remain readable, tappable when interactive, and must not occlude message text or send controls.
+- When a mobile-only session rail, drawer, or menu overlay is open, floating composer chrome and footer-attached controls must yield to that overlay instead of remaining visually or interactively above it.
 `);
 
 Workspace.shell.contains(
