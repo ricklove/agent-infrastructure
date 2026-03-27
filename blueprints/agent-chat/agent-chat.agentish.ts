@@ -147,7 +147,7 @@ AgentChat.enforces(`
 - All surfaced agent activity must become canonical transcript history, including tool calls, sub-agent work, retries, waiting states, approvals, provider limit status, and future surfaced activity classes.
 - Canonical system-injected history, assistant prose, and agent execution activity should remain visually distinguishable presentation classes even when they share the same transcript.
 - A single low-signal activity item may use the same collapsed transcript treatment as a multi-item activity cluster when that keeps the thread compact without hiding meaningful result content.
-- When many adjacent low-signal activity items accumulate in the transcript, AgentChat may collapse that activity cluster by default as long as the underlying canonical history and ordering remain intact.
+- Adjacent low-signal activity items may collapse into one transcript cluster by default even when the cluster only contains a pair, as long as the underlying canonical history and ordering remain intact.
 - Singleton collapsed activity should use a Show affordance, while grouped collapsed activity should continue to expose Show N.
 - When collapsed activity is expanded, the transcript should foreground the actual task identity or work item rather than generic lifecycle wording such as started or completed without context.
 - Composer warning and activity-state affordances may use compact border-attached or floating treatments to preserve mobile space, but they must remain readable, tappable when interactive, and must not occlude message text or send controls.
