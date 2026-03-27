@@ -9,6 +9,7 @@ const EvaluateAgentishQualityGuide = define.system("EvaluateAgentishQualityGuide
 
 EvaluateAgentishQualityGuide.enforces(`
 - Evaluate one target file per fresh context.
+- Evaluate Agentish Quality is a read-only process and must not mutate the shared checkout, a worktree, or a worker checkout.
 - Always load the Agentish language root and the Agentish quality-evaluation blueprint.
 - Load only the minimum legitimate companion context for the target file class.
 - Do not let earlier file styles or earlier judgments leak into the next target evaluation.

@@ -9,6 +9,7 @@ const ImproveAgentishQualityGuide = define.system("ImproveAgentishQualityGuide",
 
 ImproveAgentishQualityGuide.enforces(`
 - Improve one subject file per run.
+- Improve Agentish Quality uses a feature-branch worktree as its only mutable surface and does not rewrite blueprint files from the shared checkout.
 - Begin each run by rereading the Agentish language root, the Agentish quality-evaluation blueprint, and the Agentish sections blueprint.
 - Evaluate before rewriting.
 - Rewrite from the evaluation rather than from unfocused style preference.
