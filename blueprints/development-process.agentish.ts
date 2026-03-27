@@ -107,6 +107,9 @@ DevelopmentProcess.enforces(`
 - If an active feature branch falls behind the current base branch or the release branch, it should be refreshed by merging those branches into the feature branch with normal merge commits as needed rather than relying on rebases.
 - Normal merge commits are an acceptable and preferred way to refresh a feature branch during active work; rebasing is optional and never required by this process.
 - Completed feature branch work should be committed and merged back into the base branch before release promotion proceeds.
+- Promotion from a feature branch into the base branch should use a normal merge commit rather than fast-forwarding away the branch-stage transition.
+- Promotion from the base branch into the release branch should use a normal merge commit rather than fast-forwarding away the release-stage transition.
+- Fast-forward-only promotion is not an acceptable substitute for the required merge-stage commits in this workflow.
 - Once a feature branch is merged and no longer needed, the local feature branch should be deleted unless it is explicitly preserved for a recorded reason.
 - Once a merged worktree is clean and no longer needed, that worktree should be removed.
 - A merged worktree that still contains local changes must be reconciled deliberately or explicitly recorded as preserved unfinished work rather than being left behind silently.
@@ -145,6 +148,7 @@ DevelopmentProcess.defines(`
 - PersistentWorkerTerminalWorkflow means worker-host development should use long-lived interactive worker terminals for normal editing and verification loops instead of repeated one-off ssh command execution.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
+- MergeCommitPromotion means branch-stage transitions stay visible as normal merge commits rather than being collapsed into fast-forward updates.
 - FeatureBranchRefreshByMerge means an active feature branch may be updated from development, main, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
 - ReleaseBranch means `main` is the canonical release branch for runtime deployment.
 - ReleaseGitTag means an immutable git tag created from the promoted release commit and used as the runtime deploy target.
