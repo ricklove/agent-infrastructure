@@ -1067,7 +1067,7 @@ async function handleApi(request: Request): Promise<Response> {
 
     return new Response(Bun.file(resolvedPath), {
       headers: {
-        "content-type": contentTypeForPath(resolvedPath),
+        "content-type": contentTypeForLocalFilePreview(resolvedPath),
         "content-disposition": `inline; filename="${basename(resolvedPath)}"`,
         "cache-control": "no-store",
       },
@@ -1123,7 +1123,7 @@ async function handleApi(request: Request): Promise<Response> {
   return jsonResponse({ ok: false, error: "not found" }, 404);
 }
 
-function contentTypeForPath(pathname: string): string {
+function contentTypeForLocalFilePreview(pathname: string): string {
   if (
     pathname.endsWith(".ts") ||
     pathname.endsWith(".tsx") ||
@@ -1136,6 +1136,10 @@ function contentTypeForPath(pathname: string): string {
   ) {
     return "text/plain; charset=utf-8";
   }
+  return contentTypeForStaticPath(pathname);
+}
+
+function contentTypeForStaticPath(pathname: string): string {
   if (pathname.endsWith(".html")) {
     return "text/html; charset=utf-8";
   }
@@ -1185,7 +1189,7 @@ async function serveStatic(url: URL): Promise<Response> {
 
   return new Response(file, {
     headers: {
-      "content-type": contentTypeForPath(selectedPath),
+      "content-type": contentTypeForStaticPath(selectedPath),
       "cache-control": selectedPath.endsWith("index.html")
         ? "no-store"
         : "public, max-age=300",
