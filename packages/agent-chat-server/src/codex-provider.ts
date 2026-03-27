@@ -266,7 +266,7 @@ export async function ensureCodexAppServer(log: (message: string) => void) {
       log(`start codex app-server listen=${codexWsUrl}`);
       const logFile = Bun.file(codexLogPath);
       const processHandle = Bun.spawn(
-        ["codex", "app-server", "--listen", codexWsUrl, "--session-source", "vscode"],
+        ["codex", "app-server", "--listen", codexWsUrl],
         {
           stdout: logFile,
           stderr: logFile,
