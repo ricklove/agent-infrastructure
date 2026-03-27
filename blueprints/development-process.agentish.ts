@@ -22,6 +22,8 @@ const Artifact = {
   implementationWorktree: define.workspace("ImplementationWorktree"),
   workerDevelopmentHost: define.workspace("WorkerDevelopmentHost"),
   workerCheckout: define.workspace("WorkerCheckout"),
+  workerPreviewDashboard: define.workspace("WorkerPreviewDashboard"),
+  workerPreviewTunnel: define.document("WorkerPreviewTunnelUrl"),
   runtimeCheckout: define.workspace("RuntimeCheckout"),
   temporaryState: define.workspace("TemporaryRuntimeState"),
   appData: define.workspace("DurableAppData"),
@@ -45,6 +47,9 @@ const Rule = {
   worktreeIsolation: define.concept("IsolatedGitWorktreeDevelopment"),
   workerBackedDevelopment: define.concept("WorkerBackedDevelopment"),
   persistentWorkerTerminals: define.concept("PersistentWorkerTerminalWorkflow"),
+  workerPreviewMode: define.concept("WorkerDashboardPreviewMode"),
+  livePeerDevelopment: define.concept("LivePeerDevelopment"),
+  stableMilestoneCommits: define.concept("StableMilestoneCommits"),
   mergeIntoBase: define.concept("FeatureBranchMergesIntoBase"),
   runtimeReadonly: define.concept("RuntimeReadonlyCheckout"),
   stateTemporaryOnly: define.concept("TemporaryStateOnly"),
@@ -85,8 +90,18 @@ DevelopmentProcess.enforces(`
 - The manager host must not be used as the active mutable implementation surface for code-changing feature or fix work.
 - Development on a swarm worker should happen through persistent worker terminals rather than one-off ssh command invocations for routine edit and verification loops.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
-- Worker-host exploratory or UI-directed agent-chat sessions should default to the `Discuss` process blueprint unless an operator explicitly requests an implementation-oriented process.
+- Supported dashboard preview on a worker should run as a worker-local dashboard replica whose public entrypoint is the Bun dashboard gateway rather than raw Vite.
+- Supported dashboard preview on a worker should preserve the manager dashboard port topology unless a more specific runtime blueprint explicitly closes a different preview shape.
+- Supported dashboard preview on a worker may proxy frontend development traffic from the Bun dashboard gateway to a worker-local Vite server so HMR remains available without exposing raw Vite as the public dashboard origin.
+- Supported worker preview tunnels should target the worker Bun dashboard gateway rather than the raw Vite dev server.
+- Worker-host exploratory or UI-directed agent-chat sessions should default to the Discuss process blueprint unless an operator explicitly requests an implementation-oriented process.
 - A prompt-driven design or critique surface must not auto-create coding-capable sessions against the manager workspace by default.
+- Live Peer Development is a sanctioned alternative to the full release workflow for iterative worker-host feature development with an actively shared worker preview dashboard.
+- Live Peer Development should still follow blueprint-first worker-backed feature-branch development, local verification, and committed milestone updates.
+- Live Peer Development should stop before merge into the base branch, release promotion, release tagging, runtime deploy, and manager-host live validation unless the operator explicitly switches back to the full development process.
+- Live Peer Development should provide the worker preview URL to the operator and should expect continued operator feedback while the worker preview remains the active review surface.
+- Live Peer Development should record stable milestones as feature-branch commits rather than leaving iterative preview work only in uncommitted worker state.
+- Live Peer Development may include high-level dashboard UI iteration, mockups, or exploratory design outputs in addition to implementation changes, but any code-changing work still belongs on the worker feature branch.
 - The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
 - If an active feature branch falls behind the current base branch or the release branch, it should be refreshed by merging those branches into the feature branch with normal merge commits as needed rather than relying on rebases.
@@ -123,6 +138,9 @@ DevelopmentProcess.defines(`
 - WorkerBackedDevelopment means code-changing implementation work belongs on a swarm worker host whose checkout serves as the active remote worktree for that branch, with the manager host reserved for integration, deployment, and live verification.
 - WorkerIsolatedWorkspace means a development worker keeps its own workspace checkout and worker-local runtime surface instead of sharing the manager runtime tree or shared integration checkout.
 - ManagerGitAuthorityBoundary means manager-host git credentials and canonical repository authority stay on the manager integration surface and are not ambiently copied onto worker development surfaces.
+- WorkerDashboardPreviewMode means a worker-host development session may expose a worker-local dashboard replica through the Bun dashboard gateway while forwarding frontend development traffic to Vite for HMR.
+- LivePeerDevelopment means a worker-backed feature branch stays in active iterative development with a live worker preview shared to the operator, while merge, release promotion, deploy, and manager live validation remain deferred.
+- StableMilestoneCommits means preview-driven feature work is checkpointed as deliberate feature-branch commits whenever the operator reaches a coherent testing milestone.
 - DiscussByDefaultForExploration means agent-chat sessions created from exploratory prompt canvases, critique tools, or similar high-level interactive design surfaces start in the `Discuss` process unless the operator explicitly selects a code-changing process.
 - PersistentWorkerTerminalWorkflow means worker-host development should use long-lived interactive worker terminals for normal editing and verification loops instead of repeated one-off ssh command execution.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
@@ -146,6 +164,8 @@ DevelopmentProcess.contains(
   Artifact.implementationWorktree,
   Artifact.workerDevelopmentHost,
   Artifact.workerCheckout,
+  Artifact.workerPreviewDashboard,
+  Artifact.workerPreviewTunnel,
   Artifact.runtimeCheckout,
   Artifact.temporaryState,
   Artifact.appData,
@@ -166,6 +186,9 @@ DevelopmentProcess.contains(
   Rule.worktreeIsolation,
   Rule.workerBackedDevelopment,
   Rule.persistentWorkerTerminals,
+  Rule.workerPreviewMode,
+  Rule.livePeerDevelopment,
+  Rule.stableMilestoneCommits,
   Rule.mergeIntoBase,
   Rule.runtimeReadonly,
   Rule.stateTemporaryOnly,
@@ -256,6 +279,29 @@ when(Actor.operator.runs("development or local verification for a feature branch
   .and(DevelopmentProcess.treats("the implementation worktree or worker checkout as the editable development surface depending on where the active branch is hosted"))
   .and(DevelopmentProcess.treats("a worker checkout as the required editable development surface for code-changing work"))
   .and(DevelopmentProcess.treats("persistent worker terminals as the preferred control loop when the active branch is hosted on a worker"));
+
+when(Actor.operator.runs("supported dashboard preview mode on a worker"))
+  .then(DevelopmentProcess.requires(Rule.workerBackedDevelopment))
+  .and(DevelopmentProcess.requires(Rule.workerPreviewMode))
+  .and(DevelopmentProcess.expects(Artifact.workerCheckout))
+  .and(DevelopmentProcess.expects(Artifact.workerPreviewDashboard))
+  .and(DevelopmentProcess.expects(Artifact.workerPreviewTunnel))
+  .and(DevelopmentProcess.expects("the worker Bun dashboard gateway to be the public preview entrypoint"))
+  .and(DevelopmentProcess.expects("frontend HMR to arrive through a Bun-to-Vite dev proxy rather than by exposing raw Vite directly"))
+  .and(DevelopmentProcess.expects("the preview surface to stay isolated on the worker host rather than the manager runtime host"));
+
+when(Actor.operator.assigns("the Live Peer Development process"))
+  .then(DevelopmentProcess.requires(Rule.livePeerDevelopment))
+  .and(DevelopmentProcess.requires(Rule.workerBackedDevelopment))
+  .and(DevelopmentProcess.requires(Rule.stableMilestoneCommits))
+  .and(DevelopmentProcess.expects(Artifact.featureBranch))
+  .and(DevelopmentProcess.expects(Artifact.workerCheckout))
+  .and(DevelopmentProcess.expects(Artifact.workerPreviewDashboard))
+  .and(DevelopmentProcess.expects(Artifact.workerPreviewTunnel))
+  .and(DevelopmentProcess.expects("stable milestone commits on the feature branch during iterative user testing"))
+  .and(DevelopmentProcess.expects("continued operator feedback against the worker preview as part of normal process flow"))
+  .and(DevelopmentProcess.avoids("merge into the base branch before the operator explicitly leaves live peer development"))
+  .and(DevelopmentProcess.avoids("release promotion, deploy, or manager live validation before the operator explicitly leaves live peer development"));
 
 when(Artifact.blueprint.exists())
   .then(DevelopmentProcess.expects(Artifact.blueprintState))
