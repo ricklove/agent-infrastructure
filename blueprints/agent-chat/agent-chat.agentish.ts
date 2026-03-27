@@ -127,9 +127,12 @@ AgentChat.enforces(`
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
 - Provider quota exhaustion, token-budget exhaustion, and context-window exhaustion should surface as canonical transcript activity when the provider exposes those states, even when no assistant text is produced.
 - Transcript markdown should render common operator-facing structures, including links, inline code, fenced code blocks, and markdown image references, as visible content rather than raw markdown syntax.
+- Each canonical chat message should have a stable direct-link address that the operator can copy and later reopen to the same session and message anchor.
+- Opening a direct-linked chat message should restore the owning session, scroll that message into view, and make the target message visually discoverable instead of dropping the operator at an unrelated point in the thread.
 - Agent-authored generated images should be referenced as markdown image URLs that point at the approved temporary image space under ~/temp until the operator explicitly keeps them.
 - Temporary image paths under ~/temp are acceptable transient transcript media and should render inline with a clear temporary indicator.
 - Any markdown image reference that is neither a canonical chat attachment nor an approved temporary image path should render with a clear external-source warning indicator.
+- Ordinary markdown links whose targets resolve to image media should remain visible as links but should also render the target image inline with the same provenance and Keep image behavior as explicit markdown image syntax.
 - Non-attached transcript images should expose one immediate Keep image action that imports or copies that image into canonical chat attachments without a confirmation dialog.
 - Keeping an image should promote it into canonical attachment storage for the current chat and update the rendered image reference so the transcript resolves through the durable attachment URL afterward.
 - Agents must not write images directly into chat attachment storage or guess session attachment paths; attachment promotion is a system-owned capability rather than an agent filesystem convention.

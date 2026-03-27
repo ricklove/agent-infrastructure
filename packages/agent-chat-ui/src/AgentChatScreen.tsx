@@ -262,11 +262,49 @@ const transcriptRenderPageSize = 200
 const minCollapsedActivityClusterSize = 3
 const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
 const websocketWarningDelayMs = 5_000
+const chatSessionQueryParam = "sessionId"
+const chatMessageHashPrefix = "#message-"
 const darkNativeSelectClass = "bg-slate-950 text-slate-100 [color-scheme:dark]"
 const darkNativeOptionStyle = {
   backgroundColor: "#020617",
   color: "#f8fafc",
 } as const
+
+function preferredChatOrigin() {
+  if (typeof window === "undefined") {
+    return ""
+  }
+  return window.location.origin
+}
+
+function buildMessagePermalink(sessionId: string, messageId: string) {
+  const origin = preferredChatOrigin()
+  const url = new URL("/chat", origin || "http://127.0.0.1:3000")
+  url.searchParams.set(chatSessionQueryParam, sessionId)
+  url.hash = `message-${messageId}`
+  return origin
+    ? `${url.origin}${url.pathname}${url.search}${url.hash}`
+    : `${url.pathname}${url.search}${url.hash}`
+}
+
+function readRequestedSessionIdFromLocation() {
+  if (typeof window === "undefined") {
+    return ""
+  }
+  const params = new URLSearchParams(window.location.search)
+  return params.get(chatSessionQueryParam)?.trim() || ""
+}
+
+function readRequestedMessageIdFromLocation() {
+  if (typeof window === "undefined") {
+    return ""
+  }
+  const hash = window.location.hash || ""
+  if (!hash.startsWith(chatMessageHashPrefix)) {
+    return ""
+  }
+  return hash.slice(chatMessageHashPrefix.length).trim()
+}
 
 function iconButtonChildType(child: ReactNode) {
   return isValidElement(child) ? child.type : child
@@ -930,6 +968,22 @@ function parseMarkdownImageLine(line: string) {
   }
 }
 
+function parseStandaloneMarkdownLinkLine(line: string) {
+  const match = /^\s*\[([^\]]+)\]\(([^)]+)\)\s*$/.exec(line)
+  if (!match) {
+    return null
+  }
+  return {
+    label: match[1] ?? "",
+    targetUrl: match[2] ?? "",
+  }
+}
+
+function isLikelyImageTarget(targetUrl: string) {
+  const normalizedTarget = normalizeMarkdownImageSource(targetUrl).toLowerCase()
+  return /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/.test(normalizedTarget)
+}
+
 function renderStyledInlineMarkdown(text: string, keyPrefix: string) {
   return text
     .split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*)/g)
@@ -1090,6 +1144,32 @@ function renderMarkdownBlocks(
       )
       blockIndex += 1
       return
+    }
+
+    if (lines.length === 1) {
+      const standaloneLink = parseStandaloneMarkdownLinkLine(lines[0] ?? "")
+      if (standaloneLink && isLikelyImageTarget(standaloneLink.targetUrl)) {
+        nodes.push(
+          <div
+            key={`${keyPrefix}-linked-image-${blockIndex}`}
+            className="space-y-2"
+          >
+            <p className="break-words whitespace-pre-wrap text-sm leading-6 text-slate-100">
+              {renderMarkdownParagraph(lines, `${keyPrefix}-p-${blockIndex}`)}
+            </p>
+            <MessageImageAsset
+              sessionId={context.sessionId}
+              messageId={context.messageId}
+              apiRootUrl={context.apiRootUrl}
+              sourceUrl={standaloneLink.targetUrl}
+              altText={standaloneLink.label || "Linked image"}
+              onImageKept={context.onImageKept}
+            />
+          </div>,
+        )
+        blockIndex += 1
+        return
+      }
     }
 
     nodes.push(
@@ -2145,6 +2225,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     active: boolean
   } | null>(null)
   const messageElementRefs = useRef(new Map<string, HTMLElement>())
+  const requestedMessageIdRef = useRef(readRequestedMessageIdFromLocation())
+  const requestedSessionIdRef = useRef(readRequestedSessionIdFromLocation())
   const sessionRailResizeRef = useRef<{
     startX: number
     startWidth: number
@@ -2226,6 +2308,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   ] = useState<Record<string, boolean>>({})
   const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] =
     useState<Record<string, boolean>>({})
+  const [highlightedMessageId, setHighlightedMessageId] = useState("")
   const [composerDockHeight, setComposerDockHeight] = useState(0)
   const [transcriptRenderLimit, setTranscriptRenderLimit] = useState(
     transcriptRenderPageSize,
@@ -2601,6 +2684,40 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     [],
   )
 
+  const scrollMessageIntoView = useCallback((messageId: string) => {
+    if (!messageId) {
+      return
+    }
+    const element = messageElementRefs.current.get(messageId)
+    if (!element) {
+      return
+    }
+    element.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    })
+    setHighlightedMessageId(messageId)
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        setHighlightedMessageId((current) =>
+          current === messageId ? "" : current,
+        )
+      }, 2500)
+    }
+  }, [])
+
+  const copyMessageLink = useCallback(
+    async (sessionId: string, messageId: string) => {
+      if (typeof navigator === "undefined" || !sessionId || !messageId) {
+        return
+      }
+      await navigator.clipboard.writeText(
+        buildMessagePermalink(sessionId, messageId),
+      )
+    },
+    [],
+  )
+
   const toggleExpandedReplacedStreams = useCallback((messageId: string) => {
     setExpandedReplacedStreamMessageIds((current) => ({
       ...current,
@@ -2913,7 +3030,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         setProviders(providersResponse.providers)
         setProcessBlueprints(processBlueprintsResponse.processBlueprints)
         setSessions(sessionsResponse.sessions)
+        const requestedSessionId = requestedSessionIdRef.current
         const initialSession =
+          sessionsResponse.sessions.find(
+            (session) => session.id === requestedSessionId,
+          ) ??
           sessionsResponse.sessions.find((session) => !session.archived) ??
           sessionsResponse.sessions[0]
         if (initialSession) {
@@ -3013,6 +3134,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
               session.id === payload.session.id ? payload.session : session,
             ),
           )
+          if (requestedMessageIdRef.current) {
+            window.requestAnimationFrame(() => {
+              scrollMessageIntoView(requestedMessageIdRef.current)
+            })
+          }
         }
       } catch (nextError) {
         if (!cancelled) {
@@ -3030,7 +3156,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     return () => {
       cancelled = true
     }
-  }, [activeSessionId, props.apiRootUrl])
+  }, [activeSessionId, props.apiRootUrl, scrollMessageIntoView])
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -3117,6 +3243,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
               session.id === payload.session.id ? payload.session : session,
             ),
           )
+          if (requestedMessageIdRef.current) {
+            window.requestAnimationFrame(() => {
+              scrollMessageIntoView(requestedMessageIdRef.current)
+            })
+          }
           return
         }
 
@@ -3300,6 +3431,38 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setActiveSessionId(sessionId)
     setMobileSessionsOpen(false)
   }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !activeSessionId) {
+      return
+    }
+    const currentUrl = new URL(window.location.href)
+    currentUrl.searchParams.set(chatSessionQueryParam, activeSessionId)
+    if (!window.location.hash.startsWith(chatMessageHashPrefix)) {
+      currentUrl.hash = ""
+    }
+    window.history.replaceState(
+      {},
+      "",
+      `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`,
+    )
+  }, [activeSessionId])
+
+  useEffect(() => {
+    const requestedMessageId = requestedMessageIdRef.current
+    if (!requestedMessageId) {
+      return
+    }
+    if (!messages.some((message) => message.id === requestedMessageId)) {
+      return
+    }
+    const handle = window.requestAnimationFrame(() => {
+      scrollMessageIntoView(requestedMessageId)
+    })
+    return () => {
+      window.cancelAnimationFrame(handle)
+    }
+  }, [messages, scrollMessageIntoView])
 
   const setSessionArchived = useCallback(
     async (sessionId: string, archived: boolean) => {
@@ -4296,6 +4459,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         return (
                           <article
                             key={message.id}
+                            id={`message-${message.id}`}
                             ref={(element) =>
                               setMessageElementRef(message.id, element)
                             }
@@ -4311,6 +4475,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                   : message.role === "system"
                                     ? "w-full border-slate-300/15 bg-slate-300/[0.04]"
                                     : "w-full border-white/10 bg-white/5 md:max-w-[88%]"
+                            } ${
+                              highlightedMessageId === message.id
+                                ? "ring-2 ring-cyan-300/40"
+                                : ""
                             }`}
                           >
                             <div className="flex items-center justify-between gap-3">
@@ -4369,9 +4537,23 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                   </button>
                                 ) : null}
                               </div>
-                              <p className="text-xs text-slate-500">
-                                {formatTime(message.createdAtMs)}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs text-slate-500">
+                                  {formatTime(message.createdAtMs)}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void copyMessageLink(
+                                      message.sessionId,
+                                      message.id,
+                                    )
+                                  }
+                                  className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-400 hover:border-white/20 hover:text-slate-200"
+                                >
+                                  Copy link
+                                </button>
+                              </div>
                             </div>
 
                             {replyTarget ? (
