@@ -11,6 +11,14 @@
     "live peer development complete",
     "blocked on user or environment dependency"
   ],
+  "steps": [
+    { "id": "review_relevant_blueprints", "title": "Review and update relevant blueprints" },
+    { "id": "setup_worker_surface", "title": "Set up the worker-backed feature-branch surface" },
+    { "id": "implement_iteration", "title": "Implement and refine the current milestone" },
+    { "id": "run_worker_preview", "title": "Run and verify the worker preview" },
+    { "id": "share_and_collect_feedback", "title": "Share the preview and collect operator feedback" },
+    { "id": "checkpoint_milestone", "title": "Commit the stable milestone on the feature branch" }
+  ],
   "watchdog": {
     "enabled": true,
     "idleTimeoutSeconds": 120,

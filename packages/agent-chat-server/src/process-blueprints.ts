@@ -1,6 +1,13 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
+export type ProcessBlueprintStep = {
+  id: string;
+  title: string;
+  doneToken: string | null;
+  blockedToken: string | null;
+};
+
 export type ProcessBlueprint = {
   id: string;
   title: string;
@@ -11,12 +18,20 @@ export type ProcessBlueprint = {
   completionToken: string;
   blockedToken: string;
   stopConditions: string[];
+  steps: ProcessBlueprintStep[];
   watchdog: {
     enabled: boolean;
     idleTimeoutSeconds: number;
     maxNudgesPerIdleEpisode: number;
   };
   companionPath: string | null;
+};
+
+type RawProcessBlueprintStep = {
+  id?: unknown;
+  title?: unknown;
+  doneToken?: unknown;
+  blockedToken?: unknown;
 };
 
 type RawProcessBlueprint = {
@@ -29,6 +44,7 @@ type RawProcessBlueprint = {
   completionToken?: unknown;
   blockedToken?: unknown;
   stopConditions?: unknown;
+  steps?: unknown;
   watchdog?: {
     enabled?: unknown;
     idleTimeoutSeconds?: unknown;
@@ -40,6 +56,35 @@ function defaultBlueprintsDir() {
   return resolve(import.meta.dir, "../../../blueprints/process-blueprints");
 }
 
+function normalizeProcessBlueprintSteps(rawSteps: unknown): ProcessBlueprintStep[] {
+  if (!Array.isArray(rawSteps)) {
+    return [];
+  }
+
+  return rawSteps
+    .map((entry) => {
+      const raw = entry as RawProcessBlueprintStep;
+      const id = typeof raw.id === "string" ? raw.id.trim() : "";
+      const title = typeof raw.title === "string" ? raw.title.trim() : "";
+      if (!id || !title) {
+        return null;
+      }
+      return {
+        id,
+        title,
+        doneToken:
+          typeof raw.doneToken === "string" && raw.doneToken.trim()
+            ? raw.doneToken.trim()
+            : null,
+        blockedToken:
+          typeof raw.blockedToken === "string" && raw.blockedToken.trim()
+            ? raw.blockedToken.trim()
+            : null,
+      } satisfies ProcessBlueprintStep;
+    })
+    .filter((entry): entry is ProcessBlueprintStep => entry !== null);
+}
+
 function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): ProcessBlueprint {
   const id = typeof raw.id === "string" ? raw.id.trim() : "";
   const title = typeof raw.title === "string" ? raw.title.trim() : "";
@@ -49,8 +94,8 @@ function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): 
   const completionToken =
     typeof raw.completionToken === "string" ? raw.completionToken.trim() : "";
   const blockedToken = typeof raw.blockedToken === "string" ? raw.blockedToken.trim() : "";
-  const completionMode =
-    raw.completionMode === "exact_reply" ? "exact_reply" : null;
+  const completionMode = raw.completionMode === "exact_reply" ? "exact_reply" : null;
+  const steps = normalizeProcessBlueprintSteps(raw.steps);
 
   if (!id || !title || !expectation || !idlePrompt || !completionToken || !blockedToken || !completionMode) {
     throw new Error(`Invalid process blueprint: ${jsonPath}`);
@@ -77,6 +122,7 @@ function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): 
           .map((value) => (typeof value === "string" ? value.trim() : ""))
           .filter(Boolean)
       : [],
+    steps,
     watchdog: {
       enabled: watchDogEnabled,
       idleTimeoutSeconds:

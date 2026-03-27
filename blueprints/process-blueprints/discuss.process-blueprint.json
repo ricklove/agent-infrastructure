@@ -11,6 +11,12 @@
     "discussion complete",
     "waiting for user decision"
   ],
+  "steps": [
+    { "id": "clarify_request", "title": "Clarify the user's request" },
+    { "id": "discuss_tradeoffs", "title": "Discuss options, tradeoffs, and recommendations" },
+    { "id": "review_context_if_needed", "title": "Review relevant blueprint or repo context when needed" },
+    { "id": "conclude_discussion", "title": "Conclude the discussion or switch processes" }
+  ],
   "watchdog": {
     "enabled": false,
     "idleTimeoutSeconds": 90,
