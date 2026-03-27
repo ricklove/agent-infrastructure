@@ -309,6 +309,7 @@ CurrentReality.settingsAndMessageStateGap.means(`
 - expanded activity rows still use overly generic wording like command execution started or completed instead of foregrounding the actual task identity
 - collapsed activity-cluster summaries still run long and list too much prior event detail instead of one short recent-task summary
 - activity transcript items still do not collapse consistently; singleton items can collapse, but adjacent pairs can still fall through as expanded activity messages instead of using the shared collapsed chrome
+- very short singleton activity items now over-collapse into less informative summaries like `Provider`, where leaving the original short text expanded would be clearer
 - provider-originated run events are still not consistently persisted into canonical Agent Chat history, so the transcript cannot yet be replayed solely from app-owned records for every surfaced provider event
 - the current stream-history presentation still mislabels observed provider text as draft semantics and needs cleaner stream-specific wording
 - internal stream checkpoint storage still leaks too directly into operator-facing transcript concepts and needs cleaner presentation boundaries
