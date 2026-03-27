@@ -45,6 +45,7 @@ DashboardPlugins.enforces(`
 - UI screens are lazy by default.
 - Feature backends must declare an explicit startup policy of `lazy` or `always`.
 - Browser-session authentication should remain a gateway concern shared across features rather than a per-plugin auth scheme.
+- Dashboard-shell status popups and shell-owned utility surfaces must remain visually above feature content across mobile and non-wide layouts instead of disappearing behind the active feature pane.
 `);
 
 DashboardPlugins.defines(`
