@@ -2775,7 +2775,10 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       if (pendingActivityMessages.length === 0) {
         return
       }
-      if (pendingActivityMessages.length >= minCollapsedActivityClusterSize) {
+      if (
+        pendingActivityMessages.length === 1 ||
+        pendingActivityMessages.length >= minCollapsedActivityClusterSize
+      ) {
         items.push({
           type: "activityCluster",
           messages: pendingActivityMessages,
@@ -4788,7 +4791,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 >
                                   {expanded
                                     ? "Collapse"
-                                    : `Show ${item.messages.length}`}
+                                    : item.messages.length === 1
+                                      ? "Show"
+                                      : `Show ${item.messages.length}`}
                                 </button>
                               </div>
 
