@@ -58,7 +58,7 @@ ProcessBlueprints.defines(`
 - SessionScopedExpectation means the selected process blueprint belongs to the session rather than to the provider runtime globally.
 - ExpectationDrivenIdleWatchdog means the idle watchdog asks expectation-specific completion or continuation prompts based on the assigned process blueprint.
 - ExpectationStartEvent means process start should surface one initial canonical event that shows both the selected expectation and the full step outline.
-- ProgressiveProcessCatalogOrder means the process list should move from least-committal and most discussion-oriented choices toward more structured blueprint and implementation workflows, with Discuss first after the unassigned none state.
+- ProgressiveProcessCatalogOrder means the process list should move from least-committal and most discussion-oriented choices toward more structured blueprint, process-definition, and implementation workflows, with Discuss first after the unassigned none state.
 `);
 
 ProcessBlueprints.contains(
