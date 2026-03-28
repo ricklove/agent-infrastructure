@@ -893,33 +893,33 @@ function normalizeTransitionDetail(
   return detail;
 }
 
-function buildTicketTransitionEventTexts(
+function buildTicketTransitionEventText(
   previousTicket: StoredAgentTicket | null,
   transition: StoredAgentTicketTransition,
 ) {
   const previousStep = findCurrentTicketStep(previousTicket);
   const detail = normalizeTransitionDetail(previousStep, transition.detail);
   const stepTitle = previousStep?.title ?? transition.stepTitle ?? transition.ticket.processTitle;
-  const eventTexts: string[] = [];
+  const lines: string[] = [];
 
   if (previousStep?.kind === "decision" && detail) {
-    eventTexts.push(`Ticket decision chosen: ${stepTitle}. Outcome: ${detail}`);
+    lines.push(`Ticket decision chosen: ${stepTitle}. Outcome: ${detail}`);
   }
 
   if (transition.kind === "stepCompleted" || transition.kind === "ticketCompleted") {
-    eventTexts.push(`Ticket step completed: ${stepTitle}`);
+    lines.push(`Ticket step completed: ${stepTitle}`);
     if (transition.kind === "stepCompleted" && transition.ticket.nextStepLabel) {
-      eventTexts.push(buildStartedStepEventText(transition.ticket));
+      lines.push(buildStartedStepEventText(transition.ticket));
     }
     if (transition.kind === "ticketCompleted") {
-      eventTexts.push(buildTicketStateEventText(transition.ticket, "completed"));
+      lines.push(buildTicketStateEventText(transition.ticket, "completed"));
     }
-    return eventTexts;
+    return lines.join("\n\n");
   }
 
-  eventTexts.push(`Ticket step blocked: ${stepTitle}`);
-  eventTexts.push(buildTicketStateEventText(transition.ticket, "blocked"));
-  return eventTexts;
+  lines.push(`Ticket step blocked: ${stepTitle}`);
+  lines.push(buildTicketStateEventText(transition.ticket, "blocked"));
+  return lines.join("\n\n");
 }
 
 function maybeApplyTicketStepTransition(
@@ -932,9 +932,12 @@ function maybeApplyTicketStepTransition(
     return { status: null, messages: [] };
   }
 
-  const messages = buildTicketTransitionEventTexts(previousTicket, transition).map((text) =>
-    appendTicketEventMessage(sessionId, text),
-  );
+  const messages = [
+    appendTicketEventMessage(
+      sessionId,
+      buildTicketTransitionEventText(previousTicket, transition),
+    ),
+  ];
 
   if (transition.kind === "ticketCompleted") {
     const session = store.getSession(sessionId);
