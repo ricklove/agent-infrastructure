@@ -67,7 +67,7 @@ DeployManagerRuntime.defines(`
 - TunnelUntouchedByDeploy means deploy never kills, replaces, rotates, or otherwise manages the dashboard tunnel.
 - In named tunnel mode, TunnelUntouchedByDeploy also means deploy does not recreate the persistent named tunnel connector; only the controller manages connector health for the stable stack-owned hostname path.
 - ControllerOwnsTunnelLifecycle means only the dashboard controller or its recovery policy decides tunnel repair or replacement.
-- ReturnToDevelopmentProcessVerification means rollout hands back to the normal post-deploy verification flow for runtime revision and version checks, health checks, browser verification at the public Cloudflare manager dashboard URL, and manager-dashboard screenshots posted into the chat.
+- ReturnToDevelopmentProcessVerification means rollout hands back to the normal post-deploy verification flow for runtime revision and version checks, health checks, browser verification at the public Cloudflare manager dashboard URL, and manager-dashboard screenshots posted into the chat as markdown images from the approved temporary image space under `~/temp`.
 `);
 
 DeployManagerRuntime.contains(
