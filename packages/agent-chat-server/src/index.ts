@@ -1089,12 +1089,19 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
     return;
   }
 
-  const watchdogMessage = store.appendMessage(sessionId, {
-    role: "system",
-    kind: "watchdogPrompt",
-    providerSeenAtMs: null,
-    content: [{ type: "text", text: buildWatchdogPrompt(processBlueprint, ticketStore.getActiveTicketForSession(sessionId)) ?? processBlueprint.idlePrompt }],
-  });
+  const activeTicket = ticketStore.getActiveTicketForSession(sessionId);
+  const watchdogMessage =
+    activeTicket?.status === "active" && activeTicket.currentStepId
+      ? appendTicketEventMessage(sessionId, buildStartedStepEventText(activeTicket))
+      : store.appendMessage(sessionId, {
+          role: "system",
+          kind: "watchdogPrompt",
+          providerSeenAtMs: null,
+          content: [{
+            type: "text",
+            text: buildWatchdogPrompt(processBlueprint, activeTicket) ?? processBlueprint.idlePrompt,
+          }],
+        });
 
   setSessionWatchdogState(sessionId, {
     status: "nudged",
