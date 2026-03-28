@@ -666,6 +666,11 @@ function maybeMarkProcessBlueprintTerminal(
     return null;
   }
 
+  const activeTicket = ticketStore.getActiveTicketForSession(sessionId);
+  if (activeTicket?.status === "active" && activeTicket.currentStepId) {
+    return null;
+  }
+
   const normalizedText = assistantText.trim();
   if (normalizedText === processBlueprint.completionToken) {
     const ticket = ticketStore.resolveActiveTicket(sessionId, "completed", normalizedText);
