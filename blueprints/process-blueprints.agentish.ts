@@ -42,6 +42,7 @@ ProcessBlueprints.enforces(`
 - A session may select one process blueprint as its active expectation contract.
 - Session selection should resolve into a ticket-pinned process snapshot before long-running runtime work depends on that process.
 - Starting a process should emit one canonical expectation event that includes the expectation message and the full process outline for the newly focused ticket.
+- Process steps may represent ordinary work, waiting states, or constrained decision points.
 - Idle watchdog behavior should use the selected process blueprint rather than a generic one-size-fits-all idle prompt.
 - Idle watchdog continuation should name the next actionable ticket step rather than only the coarse process name when ticket step state is available.
 - Different process blueprints may define different completion criteria, idle prompts, and stop conditions.
@@ -58,6 +59,8 @@ ProcessBlueprints.defines(`
 - SessionScopedExpectation means the selected process blueprint belongs to the session rather than to the provider runtime globally.
 - ExpectationDrivenIdleWatchdog means the idle watchdog asks expectation-specific completion or continuation prompts based on the assigned process blueprint.
 - ExpectationStartEvent means process start should surface one initial canonical event that shows both the selected expectation and the full step outline.
+- ProcessDecisionStep means one named step whose allowed outcomes are explicitly enumerated in the machine contract rather than improvised from transcript prose.
+- ProcessWaitStep means one named step whose purpose is to remain in a waiting state until an external event or user response arrives.
 - ProgressiveProcessCatalogOrder means the process list should move from least-committal and most discussion-oriented choices toward more structured blueprint, process-definition, and implementation workflows, with Discuss first after the unassigned none state.
 `);
 

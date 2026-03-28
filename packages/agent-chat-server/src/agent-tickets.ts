@@ -9,9 +9,19 @@ export type StoredAgentTicketStepStatus = "pending" | "active" | "completed" | "
 export type StoredAgentTicketStep = {
   id: string;
   title: string;
+  kind: "task" | "wait" | "decision";
   status: StoredAgentTicketStepStatus;
   doneToken: string | null;
   blockedToken: string | null;
+  decision: {
+    prompt: string;
+    options: Array<{
+      id: string;
+      title: string;
+      goto: string | null;
+      complete: boolean;
+    }>;
+  } | null;
 };
 
 export type StoredAgentTicket = {
@@ -52,9 +62,16 @@ function buildChecklist(processBlueprint: ProcessBlueprint): StoredAgentTicketSt
   return processBlueprint.steps.map((step, index) => ({
     id: step.id,
     title: step.title,
+    kind: step.kind,
     status: index === 0 ? "active" : "pending",
     doneToken: step.doneToken,
     blockedToken: step.blockedToken,
+    decision: step.decision
+      ? {
+          prompt: step.decision.prompt,
+          options: step.decision.options.map((option) => ({ ...option })),
+        }
+      : null,
   }));
 }
 

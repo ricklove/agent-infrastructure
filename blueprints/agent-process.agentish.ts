@@ -74,6 +74,13 @@ const Step = {
   node: define.entity("AgentProcessStep"),
   id: define.document("AgentProcessStepId"),
   title: define.document("AgentProcessStepTitle"),
+  nodeKind: define.document("AgentProcessStepKind"),
+  decisionPrompt: define.document("AgentProcessDecisionPrompt"),
+  decisionOption: define.entity("AgentProcessDecisionOption"),
+  decisionOptionId: define.document("AgentProcessDecisionOptionId"),
+  decisionOptionTitle: define.document("AgentProcessDecisionOptionTitle"),
+  decisionOptionGoto: define.document("AgentProcessDecisionOptionGoto"),
+  decisionOptionCompletes: define.document("AgentProcessDecisionOptionCompletesProcess"),
   doneToken: define.document("AgentProcessStepDoneToken"),
   blockedToken: define.document("AgentProcessStepBlockedToken"),
   transition: define.entity("AgentProcessTransition"),
@@ -129,6 +136,9 @@ AgentProcess.defines(`
 - AgentProcessWatchdogBlockedPrompt means the exact watchdog prompt used when the runtime needs blocked-state resolution.
 - AgentProcessWatchdogDonePrompt means the exact watchdog prompt used when the runtime is terminal-ready and expects explicit completion resolution.
 - AgentProcessStep means one named stable step in the process.
+- AgentProcessStepKind means one of task, wait, or decision.
+- AgentProcessDecisionPrompt means the exact constrained question asked when a decision step becomes active.
+- AgentProcessDecisionOption means one allowed answer to a decision step.
 - AgentProcessStepDoneToken means the exact token that marks one step complete when the process uses explicit step tokens.
 - AgentProcessStepBlockedToken means the exact token that marks one step blocked when the process uses explicit step tokens.
 - AgentProcessTransition means an allowed advance, return, branch, or terminal edge between steps.
@@ -155,6 +165,13 @@ Artifact.definition.contains(
   Step.node,
   Step.id,
   Step.title,
+  Step.nodeKind,
+  Step.decisionPrompt,
+  Step.decisionOption,
+  Step.decisionOptionId,
+  Step.decisionOptionTitle,
+  Step.decisionOptionGoto,
+  Step.decisionOptionCompletes,
   Step.doneToken,
   Step.blockedToken,
   Step.transition,
@@ -201,7 +218,22 @@ Artifact.watchdogPolicy.contains(
   Watchdog.donePrompt,
 );
 
-Step.node.contains(Step.id, Step.title, Step.doneToken, Step.blockedToken, Step.transition);
+Step.node.contains(
+  Step.id,
+  Step.title,
+  Step.nodeKind,
+  Step.decisionPrompt,
+  Step.decisionOption,
+  Step.doneToken,
+  Step.blockedToken,
+  Step.transition,
+);
+Step.decisionOption.contains(
+  Step.decisionOptionId,
+  Step.decisionOptionTitle,
+  Step.decisionOptionGoto,
+  Step.decisionOptionCompletes,
+);
 Step.transition.contains(Step.kind, Step.target);
 
 when(Artifact.catalog.contains(Artifact.definition))
@@ -216,7 +248,12 @@ when(Policy.stateless.exists())
 when(Artifact.outline.defines(Step.node))
   .then(Step.node.expects(Step.id))
   .and(Step.node.expects(Step.title))
+  .and(Step.node.expects(Step.nodeKind))
   .and(Step.transition.avoids("implicit prose-only control flow"));
+
+when(Step.nodeKind.is("decision"))
+  .then(Step.node.expects(Step.decisionPrompt))
+  .and(Step.node.expects(Step.decisionOption));
 
 when(Actor.operator.selects(Artifact.definition))
   .then(Actor.ticket.requires(Artifact.snapshot))

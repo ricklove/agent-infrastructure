@@ -12,12 +12,59 @@
     "blocked on user or environment dependency"
   ],
   "steps": [
-    { "id": "review_relevant_blueprints", "title": "Review and update relevant blueprints" },
-    { "id": "setup_worker_surface", "title": "Set up the worker-backed feature-branch surface" },
-    { "id": "implement_iteration", "title": "Implement and refine the current milestone" },
-    { "id": "run_worker_preview", "title": "Run and verify the worker preview" },
-    { "id": "share_and_collect_feedback", "title": "Share the preview and collect operator feedback" },
-    { "id": "checkpoint_milestone", "title": "Commit the stable milestone on the feature branch" }
+    {
+      "id": "setup_worker_surface",
+      "title": "Set up the worker-backed feature-branch surface"
+    },
+    {
+      "id": "share_tunnel_link",
+      "title": "Share the tunnel link with a fresh session token"
+    },
+    {
+      "id": "review_relevant_blueprints",
+      "title": "Review and update relevant blueprints"
+    },
+    {
+      "id": "implement_revision",
+      "title": "Implement the current revision on the worker branch"
+    },
+    {
+      "id": "run_worker_preview",
+      "title": "Run and verify the worker preview"
+    },
+    {
+      "id": "commit_milestone",
+      "title": "Commit the stable milestone on the feature branch"
+    },
+    {
+      "id": "summarize_changes",
+      "title": "Summarize changes"
+    },
+    {
+      "id": "wait_for_feedback",
+      "title": "Wait for feedback",
+      "kind": "wait"
+    },
+    {
+      "id": "decide_feedback_outcome",
+      "title": "What is the feedback outcome?",
+      "kind": "decision",
+      "decision": {
+        "prompt": "What is the feedback outcome?",
+        "options": [
+          {
+            "id": "no_changes_needed",
+            "title": "No changes needed",
+            "complete": true
+          },
+          {
+            "id": "more_changes_needed",
+            "title": "More changes needed",
+            "goto": "review_relevant_blueprints"
+          }
+        ]
+      }
+    }
   ],
   "watchdog": {
     "enabled": true,

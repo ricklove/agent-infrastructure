@@ -73,9 +73,19 @@ type SessionWatchdogState = {
 type AgentTicketStep = {
   id: string
   title: string
+  kind: "task" | "wait" | "decision"
   status: "pending" | "active" | "completed" | "blocked"
   doneToken: string | null
   blockedToken: string | null
+  decision: {
+    prompt: string
+    options: Array<{
+      id: string
+      title: string
+      goto: string | null
+      complete: boolean
+    }>
+  } | null
 }
 
 type AgentTicket = {
@@ -205,8 +215,18 @@ type ProcessBlueprint = {
   steps: Array<{
     id: string
     title: string
+    kind: "task" | "wait" | "decision"
     doneToken: string | null
     blockedToken: string | null
+    decision: {
+      prompt: string
+      options: Array<{
+        id: string
+        title: string
+        goto: string | null
+        complete: boolean
+      }>
+    } | null
   }>
   watchdog: {
     enabled: boolean
@@ -856,6 +876,16 @@ function activeTicketStatusLabel(activeTicket: AgentTicket | null) {
   return activeTicket.nextStepLabel
     ? `Next: ${activeTicket.nextStepLabel}`
     : activeTicket.title
+}
+
+function ticketStepKindLabel(step: AgentTicketStep) {
+  if (step.kind === "wait") {
+    return " [wait]"
+  }
+  if (step.kind === "decision") {
+    return " [decision]"
+  }
+  return ""
 }
 
 function formatCompactInteger(value: number | null) {
@@ -5692,6 +5722,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                   }`}
                                 >
                                   {step.status === "completed" ? "[x]" : "[ ]"} {step.title}
+                                  {ticketStepKindLabel(step)}
                                   {step.status === "active" ? " <- current" : ""}
                                   {step.status === "blocked" ? " (blocked)" : ""}
                                 </p>
