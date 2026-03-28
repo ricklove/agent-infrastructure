@@ -767,14 +767,31 @@ function findCurrentTicketStep(ticket: StoredAgentTicket | null) {
   return ticket.checklist.find((step) => step.id === ticket.currentStepId) ?? null;
 }
 
+function buildStartedStepEventText(ticket: StoredAgentTicket) {
+  const currentStep = findCurrentTicketStep(ticket);
+  if (!currentStep) {
+    return `Ticket started: ${ticket.processTitle}`;
+  }
+  if (currentStep.kind === "decision" && currentStep.decision) {
+    return [
+      `Started ${currentStep.id}`,
+      `- ${currentStep.title}`,
+      `- reply with: ${currentStep.decision.options.map((option) => option.id).join(" | ")}`,
+    ].join("\n");
+  }
+  return [
+    `Started ${currentStep.id}`,
+    `- ${currentStep.title}`,
+    `- say "done: ${currentStep.id}" when done`,
+  ].join("\n");
+}
+
 function buildTicketStateEventText(
   ticket: StoredAgentTicket,
   event: "created" | "completed" | "blocked",
 ) {
   if (event === "created") {
-    return ticket.nextStepLabel
-      ? `Ticket started: ${ticket.processTitle}. Next step: ${ticket.nextStepLabel}`
-      : `Ticket started: ${ticket.processTitle}`;
+    return buildStartedStepEventText(ticket);
   }
   if (event === "completed") {
     return ticket.resolution
@@ -890,7 +907,7 @@ function buildTicketTransitionEventTexts(
   if (transition.kind === "stepCompleted" || transition.kind === "ticketCompleted") {
     eventTexts.push(`Ticket step completed: ${stepTitle}`);
     if (transition.kind === "stepCompleted" && transition.ticket.nextStepLabel) {
-      eventTexts.push(`Ticket next step changed: ${transition.ticket.nextStepLabel}`);
+      eventTexts.push(buildStartedStepEventText(transition.ticket));
     }
     if (transition.kind === "ticketCompleted") {
       eventTexts.push(buildTicketStateEventText(transition.ticket, "completed"));
