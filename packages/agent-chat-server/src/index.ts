@@ -1259,6 +1259,22 @@ function shouldRetryProviderError(errorText: string, attempt: number) {
   return isRetryableProviderError(errorText) && attempt < retryBackoffMs.length + 1;
 }
 
+function requestProviderInterrupt(
+  sessionId: string,
+  session: StoredSession,
+  providerKind: AgentChatProviderKind,
+  threadId: string | null,
+  turnId: string | null,
+) {
+  if (providerKind === "codex-app-server") {
+    if (!threadId || !turnId) {
+      return Promise.reject(new Error("No active turn to interrupt"));
+    }
+    return interruptCodexTurn(session, threadId, turnId);
+  }
+  return interruptClaudeTurn(sessionId);
+}
+
 function providerActivityCallbacks(
   sessionId: string,
   currentSession: StoredSession,
@@ -1271,15 +1287,19 @@ function providerActivityCallbacks(
   return {
     onRunStarted(payload: { threadId: string; turnId: string }) {
       const startedActivity = appendActivityMessage(sessionId, "Provider turn started.");
-      setRuntimeState(sessionId, (current) => ({
-        ...current,
-        status: "running",
-        startedAtMs: current.startedAtMs ?? Date.now(),
-        lastVisibleActivityAtMs: Date.now(),
-        providerIdleSinceAtMs: null,
-        threadId: payload.threadId,
-        turnId: payload.turnId,
-      }));
+      let shouldInterruptImmediately = false;
+      setRuntimeState(sessionId, (current) => {
+        shouldInterruptImmediately = current.interruptRequested;
+        return {
+          ...current,
+          status: "running",
+          startedAtMs: current.startedAtMs ?? Date.now(),
+          lastVisibleActivityAtMs: Date.now(),
+          providerIdleSinceAtMs: null,
+          threadId: payload.threadId,
+          turnId: payload.turnId,
+        };
+      });
       broadcastSession(sessionId, {
         type: "run.started",
         sessionId,
@@ -1291,6 +1311,23 @@ function providerActivityCallbacks(
         activity: toSessionActivity(sessionId),
       });
       broadcastSingleMessageUpdate(sessionId, startedActivity);
+      if (shouldInterruptImmediately) {
+        void requestProviderInterrupt(
+          sessionId,
+          currentSession,
+          currentSession.providerKind,
+          payload.threadId,
+          payload.turnId,
+        ).catch((error) => {
+          const errorText =
+            error instanceof Error ? error.message : "Interrupt request failed.";
+          const failureMessage = appendActivityMessage(
+            sessionId,
+            `Interrupt request failed: ${errorText}`,
+          );
+          broadcastSingleMessageUpdate(sessionId, failureMessage);
+        });
+      }
     },
     onThreadStatusChanged(payload: { threadId: string; flags: string[] }) {
       let statusMessage: StoredMessage | null = null;
@@ -2410,12 +2447,28 @@ const server = Bun.serve<ChatSocketData>({
         return jsonResponse({ ok: false, error: "No active turn to interrupt" }, 409);
       }
 
-      const interruptPromise =
-        interruptProviderKind === "codex-app-server"
-          ? !runtime.turnId || !runtime.threadId
-            ? Promise.reject(new Error("No active turn to interrupt"))
-            : interruptCodexTurn(session, runtime.threadId, runtime.turnId)
-          : interruptClaudeTurn(sessionId);
+      if (
+        interruptProviderKind === "codex-app-server" &&
+        (!runtime.turnId || !runtime.threadId)
+      ) {
+        setRuntimeState(sessionId, (current) => ({
+          ...current,
+          interruptRequested: true,
+          canInterrupt: false,
+          lastVisibleActivityAtMs: Date.now(),
+          providerIdleSinceAtMs: null,
+        }));
+        broadcastActivity(sessionId);
+        return jsonResponse({ ok: true, activity: toSessionActivity(sessionId) });
+      }
+
+      const interruptPromise = requestProviderInterrupt(
+        sessionId,
+        session,
+        interruptProviderKind,
+        runtime.threadId,
+        runtime.turnId,
+      );
 
       return interruptPromise
         .then(() => {
