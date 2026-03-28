@@ -23,11 +23,13 @@ export type StoredAgentTicketDecisionOption = {
 
 export type StoredAgentTicketStep = {
   id: string;
+  tokenId: string;
   title: string;
   kind: "task" | "wait" | "decision";
   status: StoredAgentTicketStepStatus;
   doneToken: string | null;
   blockedToken: string | null;
+  steps: StoredAgentTicketStep[];
   decision: {
     prompt: string;
     options: StoredAgentTicketDecisionOption[];
@@ -77,6 +79,8 @@ function safeJsonParse<T>(raw: string): T {
 
 function buildDecisionOptions(
   options: ProcessBlueprintDecisionOption[],
+  parentPath: string[] = [],
+  activationState: { claimed: boolean } = { claimed: false },
 ): StoredAgentTicketDecisionOption[] {
   return options.map((option) => ({
     id: option.id,
@@ -85,30 +89,44 @@ function buildDecisionOptions(
     next: option.next,
     block: option.block,
     complete: option.complete,
-    steps: buildChecklist(option.steps),
+    steps: buildChecklist(option.steps, parentPath, activationState),
   }));
 }
 
 function buildChecklist(
   steps: ProcessBlueprintStep[],
-  activeIndex: number | null = null,
+  parentPath: string[] = [],
+  activationState: { claimed: boolean } = { claimed: false },
 ): StoredAgentTicketStep[] {
-  return steps.map((step, index) => ({
-    id: step.id,
-    title: step.title,
-    kind: step.kind,
-    status: activeIndex !== null && index === activeIndex ? "active" : "pending",
-    doneToken: step.doneToken,
-    blockedToken: step.blockedToken,
-    decision: step.decision
-      ? {
-          prompt: step.decision.prompt,
-          options: buildDecisionOptions(step.decision.options),
-        }
-      : null,
-  }));
-}
+  return steps.map((step) => {
+    const currentPath = [...parentPath, step.id];
+    const nestedSteps = buildChecklist(step.steps, currentPath, activationState);
+    const executable = step.kind === "decision" || nestedSteps.length === 0;
+    const status: StoredAgentTicketStepStatus =
+      executable && !activationState.claimed ? "active" : "pending";
 
+    if (status === "active") {
+      activationState.claimed = true;
+    }
+
+    return {
+      id: currentPath.join("."),
+      tokenId: step.id,
+      title: step.title,
+      kind: step.kind,
+      status,
+      doneToken: step.doneToken,
+      blockedToken: step.blockedToken,
+      steps: nestedSteps,
+      decision: step.decision
+        ? {
+            prompt: step.decision.prompt,
+            options: buildDecisionOptions(step.decision.options, currentPath, activationState),
+          }
+        : null,
+    };
+  });
+}
 
 function cloneDecisionOptions(
   options: StoredAgentTicketDecisionOption[],
@@ -122,6 +140,7 @@ function cloneDecisionOptions(
 function cloneChecklist(steps: StoredAgentTicketStep[]): StoredAgentTicketStep[] {
   return steps.map((step) => ({
     ...step,
+    steps: cloneChecklist(step.steps),
     decision: step.decision
       ? {
           prompt: step.decision.prompt,
@@ -131,6 +150,213 @@ function cloneChecklist(steps: StoredAgentTicketStep[]): StoredAgentTicketStep[]
   }));
 }
 
+function findStepById(
+  steps: StoredAgentTicketStep[],
+  stepId: string | null,
+): StoredAgentTicketStep | null {
+  if (!stepId) {
+    return null;
+  }
+  for (const step of steps) {
+    if (step.id === stepId) {
+      return step;
+    }
+    const nested = findStepById(step.steps, stepId);
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+}
+
+function findStepByReference(
+  steps: StoredAgentTicketStep[],
+  stepReference: string | null,
+): StoredAgentTicketStep | null {
+  if (!stepReference) {
+    return null;
+  }
+  return (
+    findStepById(steps, stepReference) ??
+    flattenExecutableSteps(steps).find((step) => step.tokenId === stepReference) ??
+    null
+  );
+}
+
+function flattenExecutableSteps(steps: StoredAgentTicketStep[]): StoredAgentTicketStep[] {
+  const flattened: StoredAgentTicketStep[] = [];
+  for (const step of steps) {
+    const executable = step.kind === "decision" || step.steps.length === 0;
+    if (executable) {
+      flattened.push(step);
+    }
+    flattened.push(...flattenExecutableSteps(step.steps));
+  }
+  return flattened;
+}
+
+function updateStepById(
+  steps: StoredAgentTicketStep[],
+  stepId: string,
+  updater: (step: StoredAgentTicketStep) => StoredAgentTicketStep,
+): StoredAgentTicketStep[] {
+  return steps.map((step) => {
+    if (step.id === stepId) {
+      return updater({
+        ...step,
+        steps: cloneChecklist(step.steps),
+      });
+    }
+    if (step.steps.length === 0) {
+      return step;
+    }
+    return {
+      ...step,
+      steps: updateStepById(step.steps, stepId, updater),
+    };
+  });
+}
+
+function updateDecisionOptionSteps(
+  options: StoredAgentTicketDecisionOption[],
+  targetOptionId: string,
+  replacementSteps: StoredAgentTicketStep[],
+): StoredAgentTicketDecisionOption[] {
+  return options.map((option) =>
+    option.id === targetOptionId
+      ? { ...option, steps: replacementSteps }
+      : { ...option, steps: cloneChecklist(option.steps) },
+  );
+}
+
+function insertStepsAfterDecision(
+  steps: StoredAgentTicketStep[],
+  decisionStepId: string,
+  optionId: string,
+  insertedSteps: StoredAgentTicketStep[],
+): StoredAgentTicketStep[] {
+  return steps.map((step) => {
+    if (step.id === decisionStepId && step.decision) {
+      return {
+        ...step,
+        decision: {
+          ...step.decision,
+          options: updateDecisionOptionSteps(step.decision.options, optionId, insertedSteps),
+        },
+      };
+    }
+    if (step.steps.length === 0) {
+      return step;
+    }
+    return {
+      ...step,
+      steps: insertStepsAfterDecision(step.steps, decisionStepId, optionId, insertedSteps),
+    };
+  });
+}
+
+function recomputeContainerStatuses(steps: StoredAgentTicketStep[]): StoredAgentTicketStep[] {
+  return steps.map((step) => {
+    const nestedSteps = recomputeContainerStatuses(step.steps);
+    if (nestedSteps.length === 0 || step.kind === "decision") {
+      return {
+        ...step,
+        steps: nestedSteps,
+      };
+    }
+    const nestedStatuses = nestedSteps.map((entry) => entry.status);
+    const status: StoredAgentTicketStepStatus = nestedStatuses.every((entry) => entry === "completed")
+      ? "completed"
+      : nestedStatuses.some((entry) => entry === "active")
+        ? "active"
+        : nestedStatuses.some((entry) => entry === "blocked")
+          ? "blocked"
+          : "pending";
+    return {
+      ...step,
+      status,
+      steps: nestedSteps,
+    };
+  });
+}
+
+function markAllStepsStatus(
+  steps: StoredAgentTicketStep[],
+  status: StoredAgentTicketStepStatus,
+): StoredAgentTicketStep[] {
+  return steps.map((step) => ({
+    ...step,
+    status,
+    steps: markAllStepsStatus(step.steps, status),
+    decision: step.decision
+      ? {
+          ...step.decision,
+          options: step.decision.options.map((option) => ({
+            ...option,
+            steps: markAllStepsStatus(option.steps, status),
+          })),
+        }
+      : null,
+  }));
+}
+
+function normalizeStoredTicketDecisionOptions(
+  options: StoredAgentTicketDecisionOption[] | null | undefined,
+  parentPath: string[],
+): StoredAgentTicketDecisionOption[] {
+  if (!Array.isArray(options)) {
+    return [];
+  }
+  return options.map((option) => ({
+    id: String(option.id),
+    title: String(option.title),
+    goto: option.goto ? String(option.goto) : null,
+    next: option.next === true,
+    block: option.block === true,
+    complete: option.complete === true,
+    steps: normalizeStoredTicketSteps(option.steps, parentPath),
+  }));
+}
+
+function normalizeStoredTicketSteps(
+  steps: StoredAgentTicketStep[] | null | undefined,
+  parentPath: string[] = [],
+): StoredAgentTicketStep[] {
+  if (!Array.isArray(steps)) {
+    return [];
+  }
+  return steps.map((step) => {
+    const tokenId = typeof step.tokenId === "string" && step.tokenId.trim() ? step.tokenId : String(step.id);
+    const fullId =
+      typeof step.id === "string" && step.id.includes(".")
+        ? step.id
+        : [...parentPath, tokenId].join(".");
+    const currentPath = fullId.split(".");
+    return {
+      id: fullId,
+      tokenId,
+      title: String(step.title),
+      kind: step.kind === "wait" || step.kind === "decision" ? step.kind : "task",
+      status:
+        step.status === "active" ||
+        step.status === "completed" ||
+        step.status === "blocked"
+          ? step.status
+          : "pending",
+      doneToken: typeof step.doneToken === "string" && step.doneToken.trim() ? step.doneToken : null,
+      blockedToken:
+        typeof step.blockedToken === "string" && step.blockedToken.trim() ? step.blockedToken : null,
+      steps: normalizeStoredTicketSteps(step.steps, currentPath),
+      decision: step.decision
+        ? {
+            prompt: String(step.decision.prompt),
+            options: normalizeStoredTicketDecisionOptions(step.decision.options, currentPath),
+          }
+        : null,
+    };
+  });
+}
+
 function ticketWithNextStep(
   current: StoredAgentTicket,
   checklist: StoredAgentTicketStep[],
@@ -138,16 +364,15 @@ function ticketWithNextStep(
   resolution: string | null,
   status: StoredAgentTicketStatus = "active",
 ): StoredAgentTicket {
-  const currentStep = currentStepId
-    ? checklist.find((step) => step.id === currentStepId) ?? null
-    : null;
+  const normalizedChecklist = recomputeContainerStatuses(checklist);
+  const currentStep = findStepById(normalizedChecklist, currentStepId);
   return {
     ...current,
     status,
     currentStepId,
     nextStepId: currentStep?.id ?? null,
     nextStepLabel: currentStep?.title ?? null,
-    checklist,
+    checklist: normalizedChecklist,
     resolution,
     updatedAtMs: Date.now(),
   };
@@ -182,9 +407,9 @@ export class AgentTicketStore {
   createOrReplaceSessionTicket(sessionId: string, processBlueprint: ProcessBlueprint): StoredAgentTicket {
     const now = Date.now();
     const checklist = isProceduralProcessBlueprint(processBlueprint)
-      ? buildChecklist(processBlueprint.steps, processBlueprint.steps.length > 0 ? 0 : null)
+      ? buildChecklist(processBlueprint.steps)
       : [];
-    const firstActiveStep = checklist.find((step) => step.status === "active") ?? null;
+    const firstActiveStep = flattenExecutableSteps(checklist).find((step) => step.status === "active") ?? null;
     const ticket: StoredAgentTicket = {
       id: randomUUID(),
       sessionId,
@@ -216,15 +441,16 @@ export class AgentTicketStore {
       return null;
     }
 
-    const currentIndex = current.checklist.findIndex((step) => step.id === current.currentStepId);
+    const executableSteps = flattenExecutableSteps(current.checklist);
+    const currentIndex = executableSteps.findIndex((step) => step.id === current.currentStepId);
     if (currentIndex < 0) {
       return null;
     }
 
-    const currentStep = current.checklist[currentIndex]!;
+    const currentStep = executableSteps[currentIndex]!;
     const normalizedText = assistantText.trim();
-    const genericDoneToken = `done: ${currentStep.id}`;
-    const genericBlockedToken = `blocked: ${currentStep.id}`;
+    const genericDoneToken = `done: ${currentStep.tokenId}`;
+    const genericBlockedToken = `blocked: ${currentStep.tokenId}`;
 
     if (
       (currentStep.doneToken && normalizedText === currentStep.doneToken) ||
@@ -259,23 +485,20 @@ export class AgentTicketStore {
       return null;
     }
 
-    const nextChecklist = cloneChecklist(current.checklist).map((step) => {
-      if (status === "completed") {
-        return {
-          ...step,
-          status: "completed" as const,
-        };
-      }
-      if (step.id === current.currentStepId) {
-        return {
-          ...step,
-          status: "blocked" as const,
-        };
-      }
-      return step;
-    });
+    const nextChecklist =
+      status === "completed"
+        ? markAllStepsStatus(cloneChecklist(current.checklist), "completed")
+        : cloneChecklist(current.checklist);
 
-    const updated = ticketWithNextStep(current, nextChecklist, null, resolution, status);
+    const resolvedChecklist =
+      status === "blocked" && current.currentStepId
+        ? updateStepById(nextChecklist, current.currentStepId, (step) => ({
+            ...step,
+            status: "blocked",
+          }))
+        : nextChecklist;
+
+    const updated = ticketWithNextStep(current, resolvedChecklist, null, resolution, status);
     this.persistTicket(updated);
     return updated;
   }
@@ -286,18 +509,25 @@ export class AgentTicketStore {
     currentStep: StoredAgentTicketStep,
     detail: string | null,
   ): StoredAgentTicketTransition {
-    const nextChecklist = cloneChecklist(current.checklist);
-    nextChecklist[currentIndex] = {
-      ...nextChecklist[currentIndex]!,
+    const completedChecklist = updateStepById(cloneChecklist(current.checklist), currentStep.id, (step) => ({
+      ...step,
       status: "completed",
-    };
-
-    const nextIndex = nextChecklist.findIndex(
+    }));
+    const nextExecutableSteps = flattenExecutableSteps(completedChecklist);
+    const nextStep = nextExecutableSteps.find(
       (step, index) => index > currentIndex && step.status === "pending",
     );
 
-    if (nextIndex === -1) {
-      const updated = ticketWithNextStep(current, nextChecklist, null, detail, "completed");
+    if (!nextStep) {
+      const finalizedChecklist = nextExecutableSteps.reduce(
+        (acc, step) =>
+          updateStepById(acc, step.id, (entry) => ({
+            ...entry,
+            status: "completed",
+          })),
+        completedChecklist,
+      );
+      const updated = ticketWithNextStep(current, finalizedChecklist, null, detail, "completed");
       this.persistTicket(updated);
       return {
         ticket: updated,
@@ -307,11 +537,11 @@ export class AgentTicketStore {
       };
     }
 
-    nextChecklist[nextIndex] = {
-      ...nextChecklist[nextIndex]!,
+    const activatedChecklist = updateStepById(completedChecklist, nextStep.id, (step) => ({
+      ...step,
       status: "active",
-    };
-    const updated = ticketWithNextStep(current, nextChecklist, nextChecklist[nextIndex]!.id, detail);
+    }));
+    const updated = ticketWithNextStep(current, activatedChecklist, nextStep.id, detail);
     this.persistTicket(updated);
     return {
       ticket: updated,
@@ -327,11 +557,11 @@ export class AgentTicketStore {
     currentStep: StoredAgentTicketStep,
     detail: string | null,
   ): StoredAgentTicketTransition {
-    const nextChecklist = cloneChecklist(current.checklist);
-    nextChecklist[currentIndex] = {
-      ...nextChecklist[currentIndex]!,
+    void currentIndex;
+    const nextChecklist = updateStepById(cloneChecklist(current.checklist), currentStep.id, (step) => ({
+      ...step,
       status: "active",
-    };
+    }));
     const updated = ticketWithNextStep(current, nextChecklist, currentStep.id, detail, "active");
     this.persistTicket(updated);
     return {
@@ -348,14 +578,13 @@ export class AgentTicketStore {
     currentStep: StoredAgentTicketStep,
     option: StoredAgentTicketDecisionOption,
   ): StoredAgentTicketTransition {
-    const nextChecklist = cloneChecklist(current.checklist);
-    nextChecklist[currentIndex] = {
-      ...nextChecklist[currentIndex]!,
+    const baseChecklist = updateStepById(cloneChecklist(current.checklist), currentStep.id, (step) => ({
+      ...step,
       status: option.block ? "active" : "completed",
-    };
+    }));
 
     if (option.block) {
-      const updated = ticketWithNextStep(current, nextChecklist, currentStep.id, option.title, "active");
+      const updated = ticketWithNextStep(current, baseChecklist, currentStep.id, option.title, "active");
       this.persistTicket(updated);
       return {
         ticket: updated,
@@ -366,7 +595,7 @@ export class AgentTicketStore {
     }
 
     if (option.complete) {
-      const updated = ticketWithNextStep(current, nextChecklist, null, option.title, "completed");
+      const updated = ticketWithNextStep(current, baseChecklist, null, option.title, "completed");
       this.persistTicket(updated);
       return {
         ticket: updated,
@@ -378,18 +607,25 @@ export class AgentTicketStore {
 
     if (option.steps.length > 0) {
       const inserted = cloneChecklist(option.steps);
-      inserted[0] = {
-        ...inserted[0]!,
-        status: "active",
-      };
-      for (let index = 1; index < inserted.length; index += 1) {
-        inserted[index] = {
-          ...inserted[index]!,
-          status: "pending",
-        };
-      }
-      nextChecklist.splice(currentIndex + 1, 0, ...inserted);
-      const updated = ticketWithNextStep(current, nextChecklist, inserted[0]!.id, option.title);
+      const activatedChecklist = insertStepsAfterDecision(
+        baseChecklist,
+        currentStep.id,
+        option.id,
+        inserted,
+      );
+      const insertedExecutables = flattenExecutableSteps(inserted);
+      const firstInserted = insertedExecutables[0] ?? null;
+      const updated = ticketWithNextStep(
+        current,
+        firstInserted
+          ? updateStepById(activatedChecklist, firstInserted.id, (step) => ({
+              ...step,
+              status: "active",
+            }))
+          : activatedChecklist,
+        firstInserted?.id ?? null,
+        option.title,
+      );
       this.persistTicket(updated);
       return {
         ticket: updated,
@@ -400,13 +636,17 @@ export class AgentTicketStore {
     }
 
     if (option.goto) {
-      const gotoIndex = nextChecklist.findIndex((step) => step.id === option.goto);
-      if (gotoIndex >= 0) {
-        nextChecklist[gotoIndex] = {
-          ...nextChecklist[gotoIndex]!,
-          status: "active",
-        };
-        const updated = ticketWithNextStep(current, nextChecklist, nextChecklist[gotoIndex]!.id, option.title);
+      const gotoStep = findStepByReference(baseChecklist, option.goto);
+      if (gotoStep) {
+        const updated = ticketWithNextStep(
+          current,
+          updateStepById(baseChecklist, gotoStep.id, (step) => ({
+            ...step,
+            status: "active",
+          })),
+          gotoStep.id,
+          option.title,
+        );
         this.persistTicket(updated);
         return {
           ticket: updated,
@@ -418,15 +658,20 @@ export class AgentTicketStore {
     }
 
     if (option.next) {
-      const nextIndex = nextChecklist.findIndex(
+      const nextExecutableSteps = flattenExecutableSteps(baseChecklist);
+      const nextStep = nextExecutableSteps.find(
         (step, index) => index > currentIndex && step.status === "pending",
       );
-      if (nextIndex >= 0) {
-        nextChecklist[nextIndex] = {
-          ...nextChecklist[nextIndex]!,
-          status: "active",
-        };
-        const updated = ticketWithNextStep(current, nextChecklist, nextChecklist[nextIndex]!.id, option.title);
+      if (nextStep) {
+        const updated = ticketWithNextStep(
+          current,
+          updateStepById(baseChecklist, nextStep.id, (step) => ({
+            ...step,
+            status: "active",
+          })),
+          nextStep.id,
+          option.title,
+        );
         this.persistTicket(updated);
         return {
           ticket: updated,
@@ -437,7 +682,7 @@ export class AgentTicketStore {
       }
     }
 
-    const updated = ticketWithNextStep(current, nextChecklist, null, option.title, "completed");
+    const updated = ticketWithNextStep(current, baseChecklist, null, option.title, "completed");
     this.persistTicket(updated);
     return {
       ticket: updated,
@@ -546,6 +791,7 @@ export class AgentTicketStore {
         description: String(parsed.description),
         processBlueprintId: String(parsed.processBlueprintId),
         processTitle: String(parsed.processTitle),
+        checklist: normalizeStoredTicketSteps(parsed.checklist),
       };
     } catch {
       return null;

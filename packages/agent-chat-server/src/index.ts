@@ -535,7 +535,7 @@ function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
           completionToken: entry.completionToken,
           blockedToken: entry.blockedToken,
           stopConditions: [...entry.stopConditions],
-          steps: entry.steps.map((step) => ({ ...step })),
+          steps: JSON.parse(JSON.stringify(entry.steps)),
           watchdog: {
             enabled: entry.watchdog.enabled,
             idleTimeoutSeconds: entry.watchdog.idleTimeoutSeconds,
@@ -564,36 +564,44 @@ function getSessionProcessBlueprint(session: StoredSession | null | undefined): 
 function formatTicketChecklistStepLines(
   steps: StoredAgentTicket["checklist"],
   indentLevel = 0,
+  currentStepId: string | null = null,
 ): string[] {
-  return steps.map((step) => {
+  return steps.flatMap((step) => {
     const prefix = step.status === "completed" ? "- [x]" : "- [ ]";
     const kindLabel = step.kind === "wait" ? " [wait]" : step.kind === "decision" ? " [decision]" : "";
     const suffix =
-      step.status === "active"
+      step.id === currentStepId
         ? " <- current"
         : step.status === "blocked"
           ? " (blocked)"
           : "";
-    return `${"  ".repeat(indentLevel)}${prefix} ${step.title}${kindLabel}${suffix}`;
+    return [
+      `${"  ".repeat(indentLevel)}${prefix} ${step.title}${kindLabel}${suffix}`,
+      ...formatTicketChecklistStepLines(step.steps, indentLevel + 1, currentStepId),
+    ];
   });
 }
 
 function formatTicketChecklist(ticket: StoredAgentTicket) {
-  return formatTicketChecklistStepLines(ticket.checklist).join("\n");
+  return formatTicketChecklistStepLines(ticket.checklist, 0, ticket.currentStepId).join("\n");
 }
 
 function currentTicketStepTokenHint(ticket: StoredAgentTicket | null) {
   if (!ticket?.currentStepId) {
     return "";
   }
-  return `\n\nIf you complete the current step in this reply, end your final line with exactly one of: done: ${ticket.currentStepId} | blocked: ${ticket.currentStepId}`;
+  const currentStep = findCurrentTicketStep(ticket);
+  if (!currentStep) {
+    return "";
+  }
+  return `\n\nIf you complete the current step in this reply, end your final line with exactly one of: done: ${currentStep.tokenId} | blocked: ${currentStep.tokenId}`;
 }
 
 function currentDecisionOptionHint(ticket: StoredAgentTicket | null) {
   if (!ticket?.currentStepId) {
     return "";
   }
-  const currentStep = ticket.checklist.find((step) => step.id === ticket.currentStepId) ?? null;
+  const currentStep = findCurrentTicketStep(ticket);
   if (!currentStep?.decision || currentStep.decision.options.length === 0) {
     return "";
   }
@@ -777,10 +785,28 @@ function appendTicketEventMessage(sessionId: string, text: string) {
 }
 
 function findCurrentTicketStep(ticket: StoredAgentTicket | null) {
+  const findNestedStep = (
+    steps: StoredAgentTicket["checklist"],
+    stepId: string | null,
+  ): StoredAgentTicket["checklist"][number] | null => {
+    if (!stepId) {
+      return null;
+    }
+    for (const step of steps) {
+      if (step.id === stepId) {
+        return step;
+      }
+      const nested = findNestedStep(step.steps, stepId);
+      if (nested) {
+        return nested;
+      }
+    }
+    return null;
+  };
   if (!ticket?.currentStepId) {
     return null;
   }
-  return ticket.checklist.find((step) => step.id === ticket.currentStepId) ?? null;
+  return findNestedStep(ticket.checklist, ticket.currentStepId);
 }
 
 function buildStartedStepEventText(ticket: StoredAgentTicket) {
@@ -798,7 +824,7 @@ function buildStartedStepEventText(ticket: StoredAgentTicket) {
   return [
     `Started ${currentStep.id}`,
     `- ${currentStep.title}`,
-    `- say "done: ${currentStep.id}" when done`,
+    `- say "done: ${currentStep.tokenId}" when done`,
   ].join("\n");
 }
 
@@ -869,8 +895,8 @@ function extractAssistantProcessSignal(
 
   const signalText = lines[signalLineIndex].trim();
   const allowedSignals = new Set<string>([
-    `done: ${currentStep.id}`,
-    `blocked: ${currentStep.id}`,
+    `done: ${currentStep.tokenId}`,
+    `blocked: ${currentStep.tokenId}`,
     ...(currentStep.doneToken ? [currentStep.doneToken] : []),
     ...(currentStep.blockedToken ? [currentStep.blockedToken] : []),
     ...(currentStep.decision?.options.flatMap((option) => [option.id, option.title]) ?? []),
@@ -897,8 +923,8 @@ function normalizeTransitionDetail(
     return detail;
   }
   if (
-    detail === `done: ${step.id}` ||
-    detail === `blocked: ${step.id}` ||
+    detail === `done: ${step.tokenId}` ||
+    detail === `blocked: ${step.tokenId}` ||
     detail === step.doneToken ||
     detail === step.blockedToken
   ) {

@@ -1,0 +1,22 @@
+{
+  "id": "release_deploy_runtime_validation",
+  "title": "Release, deploy, and runtime validation",
+  "steps": [
+    {
+      "id": "promote_release",
+      "title": "Promote the release"
+    },
+    {
+      "id": "deploy_runtime",
+      "title": "Deploy the runtime"
+    },
+    {
+      "id": "verify_runtime_revision_and_versions",
+      "title": "Verify the runtime checkout revision match and frontend-backend version match"
+    },
+    {
+      "id": "perform_live_health_verification",
+      "title": "Perform live health verification"
+    }
+  ]
+}

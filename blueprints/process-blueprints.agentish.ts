@@ -12,6 +12,7 @@ const ProcessBlueprints = define.system("ProcessBlueprints", {
 const Artifact = {
   catalog: define.workspace("BlueprintCatalog"),
   processBlueprint: define.document("ProcessBlueprintJson"),
+  processStepBundle: define.document("ProcessStepBundleJson"),
   companionGuide: define.document("ProcessBlueprintGuide"),
   sessionAssignment: define.document("SessionProcessBlueprintAssignment"),
   catalogOrder: define.document("ProcessBlueprintCatalogOrder"),
@@ -43,6 +44,8 @@ ProcessBlueprints.enforces(`
 - Session selection should resolve into a ticket-pinned process snapshot before long-running runtime work depends on that process.
 - Starting a process should emit one canonical expectation event that includes the expectation message and the full process outline for the newly focused ticket.
 - Process steps may represent ordinary work, waiting states, or constrained decision points.
+- Process steps may also contain nested substeps that remain hierarchical in the outline while executing depth-first like ordinary steps.
+- Reusable process-step bundles may be imported into a process or nested step tree without duplicating the step definitions inline.
 - Decision-step options may advance to the next step, jump to an explicit step id, complete the process, or block the process.
 - Immediate idle continuation should use the selected process blueprint rather than a generic one-size-fits-all prompt.
 - When ticket step state exists, immediate idle continuation should surface as a system ticket message that names the next actionable step rather than only the coarse process name.
@@ -62,6 +65,7 @@ ProcessBlueprints.defines(`
 - ExpectationDrivenIdleWatchdog means immediate idle continuation remains process-specific, ticket-aware, and owned by the assigned process blueprint rather than by a generic legacy watchdog path.
 - ExpectationStartEvent means process start should surface one initial canonical event that shows both the selected expectation and the full step outline.
 - ProcessDecisionStep means one named step whose allowed outcomes are explicitly enumerated in the machine contract rather than improvised from transcript prose.
+- ProcessStepBundleJson means one reusable machine-readable step bundle that may be imported into one or more process definitions.
 - ProcessWaitStep means one named step whose purpose is to remain in a waiting state until an external event or user response arrives.
 - ProcessDecisionNextOutcome means a decision option that advances to the immediately following step without naming a separate target id.
 - ProcessDecisionBlockOutcome means a decision option that blocks the process instead of advancing.
@@ -73,6 +77,7 @@ ProcessBlueprints.defines(`
 ProcessBlueprints.contains(
   Artifact.catalog,
   Artifact.processBlueprint,
+  Artifact.processStepBundle,
   Artifact.companionGuide,
   Artifact.sessionAssignment,
   Artifact.catalogOrder,
