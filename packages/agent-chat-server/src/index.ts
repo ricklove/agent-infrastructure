@@ -628,7 +628,7 @@ function buildWatchdogPrompt(processBlueprint: ProcessBlueprint, ticket: StoredA
   if (!ticket?.nextStepLabel) {
     return processBlueprint.idlePrompt;
   }
-  return `Resume the current required step immediately.\n\nNext step: ${ticket.nextStepLabel}${currentTicketStepTokenHint(ticket)}${currentDecisionOptionHint(ticket)}`;
+  return `Continue\n\nNext step: ${ticket.nextStepLabel}${currentTicketStepTokenHint(ticket)}${currentDecisionOptionHint(ticket)}`;
 }
 
 function cancelSessionWatchdog(sessionId: string) {
@@ -663,6 +663,11 @@ function maybeMarkProcessBlueprintTerminal(
   const session = store.getSession(sessionId);
   const processBlueprint = getSessionProcessBlueprint(session);
   if (!session || !processBlueprint || !isProceduralProcessBlueprint(processBlueprint)) {
+    return null;
+  }
+
+  const activeTicket = ticketStore.getActiveTicketForSession(sessionId);
+  if (activeTicket?.status === "active" && activeTicket.currentStepId) {
     return null;
   }
 
@@ -1119,7 +1124,11 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
   if (operatorTypingActive(runtime)) {
     delayMs = Math.max((runtime.userTypingUntilAtMs ?? Date.now()) - Date.now(), 0);
   } else if (runtime.status === "idle") {
-    if (runtime.providerIdleSinceAtMs !== null && session.watchdogState.nudgeCount === 0) {
+    const activeTicket = ticketStore.getActiveTicketForSession(sessionId);
+    const activeStepAwaitingProgress = activeTicket?.status === "active" && !!activeTicket.currentStepId;
+    if (activeStepAwaitingProgress) {
+      delayMs = 0;
+    } else if (runtime.providerIdleSinceAtMs !== null && session.watchdogState.nudgeCount === 0) {
       delayMs = 0;
     } else {
       delayMs = Math.max(
