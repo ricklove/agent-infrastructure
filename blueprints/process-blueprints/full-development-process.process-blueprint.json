@@ -97,7 +97,7 @@
       "title": "Perform real browser verification at the public Cloudflare manager dashboard URL using the issued manager-dashboard session URL"
     },
     {
-      "id": "save_manager_dashboard_screenshot",
+      "id": "post_manager_dashboard_screenshot",
       "title": "Post a screenshot into the chat of the changes on the manager dashboard at the public Cloudflare manager dashboard URL"
     },
     {
@@ -108,8 +108,8 @@
         "prompt": "What is the manager-dashboard screenshot outcome?",
         "options": [
           {
-            "id": "manager_dashboard_screenshot_saved",
-            "title": "Manager-dashboard screenshot saved",
+            "id": "manager_dashboard_screenshot_posted",
+            "title": "Manager-dashboard screenshot posted into the chat",
             "complete": true
           },
           {

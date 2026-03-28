@@ -70,7 +70,7 @@
     },
     {
       "id": "save_manager_dashboard_screenshot",
-      "title": "Post a screenshot into the chat of the changes on the manager dashboard at the public Cloudflare manager dashboard URL"
+      "title": "Save a screenshot from the working manager dashboard at the public Cloudflare manager dashboard URL"
     },
     {
       "id": "assess_manager_dashboard_screenshot",

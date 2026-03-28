@@ -14,6 +14,7 @@ FullDevelopmentProcessGuide.enforces(`
 - Full Development Process uses a worker-hosted feature-branch worktree as its active mutable implementation surface and does not use the manager host shared checkout, a manager-hosted worktree, or a worker shared checkout as an editing surface.
 - The process should not reuse an existing feature branch or worktree unless the agent created it earlier in the current process and has already verified that it is the intended mutable surface.
 - After creating the worker-hosted feature-branch worktree, the agent should merge any relevant upstream from `origin/development` or `origin/main` into that branch before continuing with implementation work.
+- Completion requires manager-dashboard screenshot verification at the public Cloudflare manager dashboard URL and posting that screenshot into the chat before cleanup can finish.
 - Completion means blueprint work, implementation, verification, release promotion, runtime deployment, and live validation are all finished.
 - The process remains unresolved until the agent emits either the exact full-development-process done token or the exact full-development-process blocked token.
 - A watchdog prompt for this process should cause resumed execution work by default, not merely a textual status reply.

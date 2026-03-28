@@ -126,9 +126,9 @@ when(Artifact.verification.records("post-deploy outcome"))
   .and(DeployManagerRuntime.expects("live health verification"))
   .and(DeployManagerRuntime.expects("issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`"))
   .and(DeployManagerRuntime.expects("real browser verification at the public Cloudflare manager dashboard URL using the issued manager-dashboard session URL"))
-  .and(DeployManagerRuntime.expects("a screenshot posted into the chat showing the changes on the manager dashboard at the public Cloudflare manager dashboard URL"));
+  .and(DeployManagerRuntime.expects("a manager-dashboard screenshot from the working public Cloudflare manager dashboard URL posted into the chat"));
 
-when(Actor.operator.cannot("post a manager-dashboard screenshot into the chat for the new release"))
+when(Actor.operator.cannot("produce a manager-dashboard screenshot for the new release"))
   .then(DeployManagerRuntime.treats("the rollout as failed"))
   .and(DeployManagerRuntime.requires("rollback to an earlier known-good release tag"))
   .and(DeployManagerRuntime.requires("continued screenshot verification until a stable working release is found"))

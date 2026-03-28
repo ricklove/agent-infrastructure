@@ -889,9 +889,14 @@ function activeTicketStatusLabel(activeTicket: AgentTicket | null) {
     return null
   }
   if (activeTicket.status === "completed") {
-    return "Ticket complete"
+    return activeTicket.resolution
+      ? `Done: ${activeTicket.resolution}`
+      : "Ticket complete"
   }
   if (activeTicket.status === "blocked") {
+    if (activeTicket.resolution) {
+      return `Blocked: ${activeTicket.resolution}`
+    }
     return activeTicket.nextStepLabel
       ? `Blocked: ${activeTicket.nextStepLabel}`
       : "Ticket blocked"

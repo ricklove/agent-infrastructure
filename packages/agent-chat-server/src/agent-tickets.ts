@@ -53,7 +53,7 @@ export type StoredAgentTicket = {
 
 export type StoredAgentTicketTransition = {
   ticket: StoredAgentTicket;
-  kind: "stepCompleted" | "stepBlocked" | "ticketCompleted";
+  kind: "stepCompleted" | "stepBlocked" | "ticketCompleted" | "ticketBlocked";
   stepTitle: string | null;
   detail: string | null;
 };
@@ -330,9 +330,9 @@ export class AgentTicketStore {
     const nextChecklist = cloneChecklist(current.checklist);
     nextChecklist[currentIndex] = {
       ...nextChecklist[currentIndex]!,
-      status: "blocked",
+      status: "active",
     };
-    const updated = ticketWithNextStep(current, nextChecklist, null, detail, "blocked");
+    const updated = ticketWithNextStep(current, nextChecklist, currentStep.id, detail, "active");
     this.persistTicket(updated);
     return {
       ticket: updated,
@@ -351,11 +351,11 @@ export class AgentTicketStore {
     const nextChecklist = cloneChecklist(current.checklist);
     nextChecklist[currentIndex] = {
       ...nextChecklist[currentIndex]!,
-      status: option.block ? "blocked" : "completed",
+      status: option.block ? "active" : "completed",
     };
 
     if (option.block) {
-      const updated = ticketWithNextStep(current, nextChecklist, null, option.title, "blocked");
+      const updated = ticketWithNextStep(current, nextChecklist, currentStep.id, option.title, "active");
       this.persistTicket(updated);
       return {
         ticket: updated,
