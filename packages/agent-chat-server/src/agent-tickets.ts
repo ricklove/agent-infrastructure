@@ -53,7 +53,7 @@ export type StoredAgentTicket = {
 
 export type StoredAgentTicketTransition = {
   ticket: StoredAgentTicket;
-  kind: "stepCompleted" | "stepBlocked" | "ticketCompleted" | "ticketBlocked";
+  kind: "stepCompleted" | "stepBlocked" | "ticketCompleted";
   stepTitle: string | null;
   detail: string | null;
 };
@@ -336,7 +336,7 @@ export class AgentTicketStore {
     this.persistTicket(updated);
     return {
       ticket: updated,
-      kind: "ticketBlocked",
+      kind: "stepBlocked",
       stepTitle: currentStep.title,
       detail,
     };
@@ -359,7 +359,7 @@ export class AgentTicketStore {
       this.persistTicket(updated);
       return {
         ticket: updated,
-        kind: "ticketBlocked",
+        kind: "stepBlocked",
         stepTitle: currentStep.title,
         detail: option.title,
       };

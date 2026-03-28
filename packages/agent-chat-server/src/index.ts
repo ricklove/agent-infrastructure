@@ -796,9 +796,9 @@ function buildTicketTransitionEventText(transition: StoredAgentTicketTransition)
       ? `Ticket completed: ${transition.ticket.processTitle}. ${transition.ticket.resolution}`
       : `Ticket completed: ${transition.ticket.processTitle}`;
   }
-  return transition.ticket.resolution
-    ? `Ticket blocked: ${transition.ticket.processTitle}. ${transition.ticket.resolution}`
-    : `Ticket blocked: ${transition.ticket.processTitle}`;
+  return transition.detail
+    ? `Ticket step blocked: ${transition.stepTitle ?? transition.ticket.processTitle}. ${transition.detail}`
+    : `Ticket step blocked: ${transition.stepTitle ?? transition.ticket.processTitle}`;
 }
 
 function maybeApplyTicketStepTransition(
@@ -828,7 +828,7 @@ function maybeApplyTicketStepTransition(
     return { status: "completed", message };
   }
 
-  if (transition.kind === "ticketBlocked" || transition.kind === "stepBlocked") {
+  if (transition.kind === "stepBlocked") {
     const session = store.getSession(sessionId);
     if (session) {
       setSessionWatchdogState(sessionId, {
