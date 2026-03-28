@@ -956,13 +956,13 @@ function maybeApplyTicketStepTransition(
     const session = store.getSession(sessionId);
     if (session) {
       setSessionWatchdogState(sessionId, {
-        status: "blocked",
+        status: "unresolved",
         nudgeCount: session.watchdogState.nudgeCount,
         lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
-        completedAtMs: Date.now(),
+        completedAtMs: null,
       });
     }
-    return { status: "blocked", messages };
+    return { status: null, messages };
   }
 
   return { status: null, messages };
