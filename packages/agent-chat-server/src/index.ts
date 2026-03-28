@@ -666,6 +666,11 @@ function maybeMarkProcessBlueprintTerminal(
     return null;
   }
 
+  const activeTicket = ticketStore.getActiveTicketForSession(sessionId);
+  if (activeTicket?.status === "active" && activeTicket.currentStepId) {
+    return null;
+  }
+
   const normalizedText = assistantText.trim();
   if (normalizedText === processBlueprint.completionToken) {
     const ticket = ticketStore.resolveActiveTicket(sessionId, "completed", normalizedText);
@@ -1119,7 +1124,11 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
   if (operatorTypingActive(runtime)) {
     delayMs = Math.max((runtime.userTypingUntilAtMs ?? Date.now()) - Date.now(), 0);
   } else if (runtime.status === "idle") {
-    if (runtime.providerIdleSinceAtMs !== null && session.watchdogState.nudgeCount === 0) {
+    const activeTicket = ticketStore.getActiveTicketForSession(sessionId);
+    const activeStepAwaitingProgress = activeTicket?.status === "active" && !!activeTicket.currentStepId;
+    if (activeStepAwaitingProgress) {
+      delayMs = 0;
+    } else if (runtime.providerIdleSinceAtMs !== null && session.watchdogState.nudgeCount === 0) {
       delayMs = 0;
     } else {
       delayMs = Math.max(
