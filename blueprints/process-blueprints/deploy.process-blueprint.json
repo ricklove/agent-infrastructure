@@ -1,0 +1,73 @@
+{
+  "id": "deploy",
+  "title": "Deploy",
+  "catalogOrder": 47,
+  "expectation": "Use the manager project repository as the integration, release, deploy, and live-validation surface for this process. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then pull the changes back into the manager project repository before continuing. Follow the deploy process through manager-side branch integration, release promotion, runtime deploy, live verification, cleanup of the feature branch and worktree, and a final summary.",
+  "idlePrompt": "If deployment is complete, reply only with 'done: deploy complete'. If you are truly blocked on a missing focused feature branch, user decision, or environment dependency, reply only with 'blocked: deploy blocked'. Otherwise resume the deploy process immediately and perform the next required integration, release, deploy, cleanup, or validation step instead of giving only a status update.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: deploy complete",
+  "blockedToken": "blocked: deploy blocked",
+  "stopConditions": [
+    "deploy process complete",
+    "blocked on focused feature branch, user decision, or environment dependency"
+  ],
+  "steps": [
+    {
+      "id": "check_focused_feature_branch",
+      "title": "Is there a focused feature branch?",
+      "kind": "decision",
+      "decision": {
+        "prompt": "Is there a focused feature branch?",
+        "options": [
+          {
+            "id": "focused_feature_branch_exists",
+            "title": "Focused feature branch exists",
+            "next": true
+          },
+          {
+            "id": "no_focused_feature_branch",
+            "title": "No focused feature branch",
+            "block": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "pull_worker_branch_to_manager",
+      "title": "Pull the changes from the focused worker feature branch back to the project repo on the manager"
+    },
+    {
+      "id": "merge_into_development",
+      "title": "Merge the feature branch into development"
+    },
+    {
+      "id": "push_development_to_origin",
+      "title": "Push development to origin"
+    },
+    {
+      "id": "promote_release",
+      "title": "Promote the release"
+    },
+    {
+      "id": "deploy_runtime",
+      "title": "Deploy the runtime"
+    },
+    {
+      "id": "perform_live_verification",
+      "title": "Perform live verification"
+    },
+    {
+      "id": "cleanup_feature_branch_and_worktree",
+      "title": "Clean up the feature branch and worktree"
+    },
+    {
+      "id": "summarize_changes",
+      "title": "Summarize changes"
+    }
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 120,
+    "maxNudgesPerIdleEpisode": 0
+  }
+}

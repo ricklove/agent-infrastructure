@@ -13,6 +13,8 @@ export type ProcessBlueprintStep = {
       id: string;
       title: string;
       goto: string | null;
+      next: boolean;
+      block: boolean;
       complete: boolean;
     }>;
   } | null;
@@ -41,6 +43,8 @@ type RawProcessBlueprintDecisionOption = {
   id?: unknown;
   title?: unknown;
   goto?: unknown;
+  next?: unknown;
+  block?: unknown;
   complete?: unknown;
 };
 
@@ -115,6 +119,8 @@ function normalizeProcessBlueprintSteps(rawSteps: unknown): ProcessBlueprintStep
                           typeof rawOption.goto === "string" && rawOption.goto.trim()
                             ? rawOption.goto.trim()
                             : null,
+                        next: rawOption.next === true,
+                        block: rawOption.block === true,
                         complete: rawOption.complete === true,
                       };
                     })
@@ -124,6 +130,8 @@ function normalizeProcessBlueprintSteps(rawSteps: unknown): ProcessBlueprintStep
                       id: string;
                       title: string;
                       goto: string | null;
+                      next: boolean;
+                      block: boolean;
                       complete: boolean;
                     } => option !== null)
                 : [],
