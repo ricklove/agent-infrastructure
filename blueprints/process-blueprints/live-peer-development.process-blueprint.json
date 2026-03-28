@@ -25,10 +25,6 @@
       "title": "Connect through a persistent SSH session into the worker instance"
     },
     {
-      "id": "share_tunnel_link",
-      "title": "Share the tunnel link with a fresh session token"
-    },
-    {
       "id": "review_relevant_blueprints",
       "title": "Review and update relevant blueprints"
     },
@@ -39,6 +35,10 @@
     {
       "id": "run_worker_preview",
       "title": "Run and verify the worker preview"
+    },
+    {
+      "id": "share_tunnel_link",
+      "title": "Share the tunnel link with a fresh session token"
     },
     {
       "id": "commit_milestone",
