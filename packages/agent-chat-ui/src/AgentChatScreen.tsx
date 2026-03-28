@@ -4703,7 +4703,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   )
 
   const interruptRun = useCallback(async () => {
-    if (!activeSessionId || !activity.canInterrupt || !activity.turnId) {
+    if (
+      !activeSessionId ||
+      !activity.canInterrupt ||
+      activity.status !== "running"
+    ) {
       return
     }
 
@@ -4736,7 +4740,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [
     activeSessionId,
     activity.canInterrupt,
-    activity.turnId,
+    activity.status,
     props.apiRootUrl,
   ])
 
