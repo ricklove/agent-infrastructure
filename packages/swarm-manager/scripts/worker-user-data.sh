@@ -27,7 +27,6 @@ WORKSPACE_ROOT="/home/ec2-user/workspace"
 PENDING_EVENT_FILE="${STATE_ROOT}/pending-worker-events.jsonl"
 WORKER_IMAGE_PROFILE_PATH="${STATE_ROOT}/worker-image-profile.json"
 WORKER_MONITOR_ENV_PATH="${STATE_ROOT}/agent-swarm-worker-monitor.env"
-AGENT_BROWSER_IDLE_TIMEOUT_MS="__AGENT_BROWSER_IDLE_TIMEOUT_MS__"
 
 json_escape() {
   local value="$1"
@@ -162,6 +161,17 @@ emit_event docker_ready "{}"
 system_event_log "worker-user-data.sh" "exit" "docker_enable exit_code=0"
 
 mkdir -p "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
+
+cat > /etc/profile.d/agent-browser-idle-timeout.sh <<'EOF'
+export AGENT_BROWSER_IDLE_TIMEOUT_MS="${AGENT_BROWSER_IDLE_TIMEOUT_MS:-300000}"
+EOF
+chmod 0644 /etc/profile.d/agent-browser-idle-timeout.sh
+if grep -q '^AGENT_BROWSER_IDLE_TIMEOUT_MS=' /etc/environment; then
+  sed -i 's/^AGENT_BROWSER_IDLE_TIMEOUT_MS=.*/AGENT_BROWSER_IDLE_TIMEOUT_MS=300000/' /etc/environment
+else
+  printf '\nAGENT_BROWSER_IDLE_TIMEOUT_MS=300000\n' >> /etc/environment
+fi
+
 emit_event runtime_download_started "{\"bucket\":\"__WORKER_RUNTIME_RELEASE_BUCKET__\",\"key\":\"__WORKER_RUNTIME_RELEASE_KEY__\"}"
 system_event_log "worker-user-data.sh" "start" "runtime_download"
 aws s3 cp "s3://__WORKER_RUNTIME_RELEASE_BUCKET__/__WORKER_RUNTIME_RELEASE_KEY__" "${STATE_ROOT}/runtime.zip" --region "__REGION__"
@@ -175,7 +185,6 @@ cat > "${WORKER_MONITOR_ENV_PATH}" <<'ENVFILE'
 MONITOR_MANAGER_URL=ws://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/workers/stream
 MONITOR_SHARED_TOKEN=__SWARM_SHARED_TOKEN__
 MONITOR_RECONNECT_DELAY_MS=1000
-AGENT_BROWSER_IDLE_TIMEOUT_MS=__AGENT_BROWSER_IDLE_TIMEOUT_MS__
 ENVFILE
 
 cat > /etc/systemd/system/agent-swarm-worker-monitor.service <<'SERVICE'

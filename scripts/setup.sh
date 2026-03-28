@@ -76,12 +76,21 @@ export AGENT_WORKSPACE_DIR="${WORKSPACE_ROOT}"
 export NVM_DIR="${AGENT_HOME}/.nvm"
 export NODE_VERSION="24"
 export HOME="${AGENT_HOME}"
-export AGENT_BROWSER_IDLE_TIMEOUT_MS="${AGENT_BROWSER_IDLE_TIMEOUT_MS:-300000}"
 
 agent_user="$(stat -c '%U' "${AGENT_HOME}")"
 agent_group="$(stat -c '%G' "${AGENT_HOME}")"
 
 mkdir -p "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
+
+cat > /etc/profile.d/agent-browser-idle-timeout.sh <<'EOF'
+export AGENT_BROWSER_IDLE_TIMEOUT_MS="${AGENT_BROWSER_IDLE_TIMEOUT_MS:-300000}"
+EOF
+chmod 0644 /etc/profile.d/agent-browser-idle-timeout.sh
+if grep -q '^AGENT_BROWSER_IDLE_TIMEOUT_MS=' /etc/environment; then
+  sed -i 's/^AGENT_BROWSER_IDLE_TIMEOUT_MS=.*/AGENT_BROWSER_IDLE_TIMEOUT_MS=300000/' /etc/environment
+else
+  printf '\nAGENT_BROWSER_IDLE_TIMEOUT_MS=300000\n' >> /etc/environment
+fi
 
 system_event_run "scripts/setup.sh" "target=dnf-install-packages" \
   dnf install -y awscli git jq unzip zip openssl
@@ -118,6 +127,11 @@ if ! grep -q 'export NVM_DIR="' "${agent_shell_profile}"; then
 export NVM_DIR="${NVM_DIR}"
 [ -s "\$NVM_DIR/nvm.sh" ] && \. "\$NVM_DIR/nvm.sh"
 [ -s "\$NVM_DIR/bash_completion" ] && \. "\$NVM_DIR/bash_completion"
+EOF
+fi
+if ! grep -q 'AGENT_BROWSER_IDLE_TIMEOUT_MS' "${agent_shell_profile}"; then
+  cat >>"${agent_shell_profile}" <<'EOF'
+export AGENT_BROWSER_IDLE_TIMEOUT_MS="${AGENT_BROWSER_IDLE_TIMEOUT_MS:-300000}"
 EOF
 fi
 chown -R "${agent_user}:${agent_group}" "${NVM_DIR}" "${agent_shell_profile}"
