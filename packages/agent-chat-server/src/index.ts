@@ -779,6 +779,28 @@ function buildTicketStateEventText(
     : `Ticket blocked: ${ticket.processTitle}`;
 }
 
+function buildProcessSelectionEventText(
+  previousProcessTitle: string | null,
+  nextProcessTitle: string | null,
+  mode: "changed" | "reapplied",
+) {
+  if (mode === "reapplied") {
+    return nextProcessTitle
+      ? `Process reapplied: ${nextProcessTitle}. This overrides prior ticket state for the session.`
+      : "Process cleared. This overrides prior ticket state for the session.";
+  }
+
+  if (!previousProcessTitle) {
+    return nextProcessTitle
+      ? `Process selected: ${nextProcessTitle}. This overrides prior ticket state for the session.`
+      : "Process cleared. This overrides prior ticket state for the session.";
+  }
+
+  return nextProcessTitle
+    ? `Process changed: ${previousProcessTitle} -> ${nextProcessTitle}. This overrides prior ticket state for the session.`
+    : `Process cleared: ${previousProcessTitle}. This overrides prior ticket state for the session.`;
+}
+
 function buildTicketTransitionEventText(transition: StoredAgentTicketTransition) {
   if (transition.kind === "stepCompleted") {
     const detail = transition.detail ? ` Outcome: ${transition.detail}.` : "";
@@ -2076,9 +2098,15 @@ const server = Bun.serve<ChatSocketData>({
             return jsonResponse({ ok: false, error: "unknown process blueprint" }, 400);
           }
           const previousProcessBlueprintId = session.processBlueprintId;
+          const previousProcessTitle = getSessionProcessBlueprint(session)?.title ?? null;
+          const nextProcessTitle = nextProcessBlueprintId
+            ? (processBlueprintById.get(nextProcessBlueprintId)?.title ?? null)
+            : null;
           const shouldReapplyProcessBlueprint =
             previousProcessBlueprintId === (nextProcessBlueprintId ?? null) &&
             forceProcessBlueprintReapply;
+          const processBlueprintChanged =
+            previousProcessBlueprintId !== (nextProcessBlueprintId ?? null);
           const updatedSession = store.updateSessionProcessBlueprint(
             sessionId,
             nextProcessBlueprintId ?? null,
@@ -2092,10 +2120,20 @@ const server = Bun.serve<ChatSocketData>({
               session = resetSession;
             }
           }
-          if (
-            previousProcessBlueprintId !== (nextProcessBlueprintId ?? null) ||
-            shouldReapplyProcessBlueprint
-          ) {
+          if (processBlueprintChanged || shouldReapplyProcessBlueprint) {
+            store.markQueuedSystemMessagesSeen(sessionId);
+            cancelSessionWatchdog(sessionId);
+            ticketStore.clearActiveTicketForSession(sessionId);
+            queuedMessages.push(
+              appendTicketEventMessage(
+                sessionId,
+                buildProcessSelectionEventText(
+                  previousProcessTitle,
+                  nextProcessTitle,
+                  shouldReapplyProcessBlueprint ? "reapplied" : "changed",
+                ),
+              ),
+            );
             const queuedExpectation = queueProcessExpectationForSession(sessionId);
             if (queuedExpectation.processMessage) {
               queuedMessages.push(queuedExpectation.processMessage);
