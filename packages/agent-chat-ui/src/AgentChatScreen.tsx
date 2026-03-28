@@ -70,6 +70,16 @@ type SessionWatchdogState = {
   completedAtMs: number | null
 }
 
+type AgentTicketDecisionOption = {
+  id: string
+  title: string
+  goto: string | null
+  next: boolean
+  block: boolean
+  complete: boolean
+  steps: AgentTicketStep[]
+}
+
 type AgentTicketStep = {
   id: string
   title: string
@@ -79,14 +89,7 @@ type AgentTicketStep = {
   blockedToken: string | null
   decision: {
     prompt: string
-    options: Array<{
-      id: string
-      title: string
-      goto: string | null
-      next: boolean
-      block: boolean
-      complete: boolean
-    }>
+    options: AgentTicketDecisionOption[]
   } | null
 }
 
@@ -204,41 +207,56 @@ type ProvidersResponse = {
   providers: ProviderCatalogEntry[]
 }
 
-type ProcessBlueprint = {
+type ProcessBlueprintDecisionOption = {
   id: string
   title: string
-  catalogOrder: number
-  expectation: string
-  idlePrompt: string
-  completionMode: "exact_reply"
-  completionToken: string
-  blockedToken: string
-  stopConditions: string[]
-  steps: Array<{
-    id: string
-    title: string
-    kind: "task" | "wait" | "decision"
-    doneToken: string | null
-    blockedToken: string | null
-    decision: {
-      prompt: string
-      options: Array<{
-        id: string
-        title: string
-        goto: string | null
-        next: boolean
-        block: boolean
-        complete: boolean
-      }>
-    } | null
-  }>
-  watchdog: {
-    enabled: boolean
-    idleTimeoutSeconds: number
-    maxNudgesPerIdleEpisode: number
-  }
-  companionPath: string | null
+  goto: string | null
+  next: boolean
+  block: boolean
+  complete: boolean
+  steps: ProcessBlueprintStep[]
 }
+
+type ProcessBlueprintStep = {
+  id: string
+  title: string
+  kind: "task" | "wait" | "decision"
+  doneToken: string | null
+  blockedToken: string | null
+  decision: {
+    prompt: string
+    options: ProcessBlueprintDecisionOption[]
+  } | null
+}
+
+type ProcessBlueprint =
+  | {
+      kind: "mode"
+      id: string
+      title: string
+      catalogOrder: number
+      expectation: string
+      companionPath: string | null
+    }
+  | {
+      kind: "procedural"
+      id: string
+      title: string
+      catalogOrder: number
+      expectation: string
+      idlePrompt: "exact_reply" extends never ? never : string
+      completionMode: "exact_reply"
+      completionToken: string
+      blockedToken: string
+      stopConditions: string[]
+      steps: ProcessBlueprintStep[]
+      watchdog: {
+        enabled: boolean
+        idleTimeoutSeconds: number
+        maxNudgesPerIdleEpisode: number
+      }
+      companionPath: string | null
+    }
 
 type ProcessBlueprintsResponse = {
   ok: boolean
@@ -877,9 +895,10 @@ function activeTicketStatusLabel(activeTicket: AgentTicket | null) {
       ? `Blocked: ${activeTicket.nextStepLabel}`
       : "Ticket blocked"
   }
-  return activeTicket.nextStepLabel
-    ? `Next: ${activeTicket.nextStepLabel}`
-    : activeTicket.title
+  if (activeTicket.nextStepLabel) {
+    return `Next: ${activeTicket.nextStepLabel}`
+  }
+  return activeTicket.checklist.length > 0 ? activeTicket.title : null
 }
 
 function ticketStepKindLabel(step: AgentTicketStep) {
@@ -890,6 +909,54 @@ function ticketStepKindLabel(step: AgentTicketStep) {
     return " [decision]"
   }
   return ""
+}
+
+function renderTicketChecklistItems(
+  steps: AgentTicketStep[],
+  depth = 0,
+): ReactNode[] {
+  return steps.flatMap((step) => {
+    const items: ReactNode[] = [
+      <p
+        key={step.id}
+        style={{ paddingLeft: `${depth * 0.875}rem` }}
+        className={`text-xs ${
+          step.status === "completed"
+            ? "text-slate-400 line-through"
+            : step.status === "active"
+              ? "text-white"
+              : step.status === "blocked"
+                ? "text-rose-200"
+                : "text-slate-400"
+        }`}
+      >
+        {step.status === "completed" ? "[x]" : "[ ]"} {step.title}
+        {ticketStepKindLabel(step)}
+        {step.status === "active" ? " <- current" : ""}
+        {step.status === "blocked" ? " (blocked)" : ""}
+      </p>,
+    ]
+
+    if (step.decision) {
+      for (const option of step.decision.options) {
+        if (option.steps.length === 0) {
+          continue
+        }
+        items.push(
+          <p
+            key={`${step.id}:${option.id}`}
+            style={{ paddingLeft: `${(depth + 1) * 0.875}rem` }}
+            className="text-xs text-slate-500"
+          >
+            - {option.title}
+          </p>,
+        )
+        items.push(...renderTicketChecklistItems(option.steps, depth + 2))
+      }
+    }
+
+    return items
+  })
 }
 
 function formatCompactInteger(value: number | null) {
@@ -5703,34 +5770,18 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             {activeSessionProcessBlueprint.expectation}
                           </p>
                         ) : null}
-                        {activeSession?.activeTicket ? (
+{activeSession?.activeTicket && activeSession.activeTicket.checklist.length > 0 ? (
                           <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3">
                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                               Ticket Checklist
                             </p>
-                            <p className="mt-2 text-xs text-emerald-200/80">
-                              {activeTicketStatusLabel(activeSession.activeTicket)}
-                            </p>
+                            {activeTicketStatusLabel(activeSession.activeTicket) ? (
+                              <p className="mt-2 text-xs text-emerald-200/80">
+                                {activeTicketStatusLabel(activeSession.activeTicket)}
+                              </p>
+                            ) : null}
                             <div className="mt-3 space-y-2">
-                              {activeSession.activeTicket.checklist.map((step) => (
-                                <p
-                                  key={step.id}
-                                  className={`text-xs ${
-                                    step.status === "completed"
-                                      ? "text-slate-400 line-through"
-                                      : step.status === "active"
-                                        ? "text-white"
-                                        : step.status === "blocked"
-                                          ? "text-rose-200"
-                                          : "text-slate-400"
-                                  }`}
-                                >
-                                  {step.status === "completed" ? "[x]" : "[ ]"} {step.title}
-                                  {ticketStepKindLabel(step)}
-                                  {step.status === "active" ? " <- current" : ""}
-                                  {step.status === "blocked" ? " (blocked)" : ""}
-                                </p>
-                              ))}
+                              {renderTicketChecklistItems(activeSession.activeTicket.checklist)}
                             </div>
                           </div>
                         ) : null}

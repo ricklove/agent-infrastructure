@@ -1,10 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ProcessBlueprint } from "./process-blueprints.js";
+import {
+  isProceduralProcessBlueprint,
+  type ProcessBlueprint,
+  type ProcessBlueprintDecisionOption,
+  type ProcessBlueprintStep,
+} from "./process-blueprints.js";
 
 export type StoredAgentTicketStatus = "active" | "completed" | "blocked";
 export type StoredAgentTicketStepStatus = "pending" | "active" | "completed" | "blocked";
+
+export type StoredAgentTicketDecisionOption = {
+  id: string;
+  title: string;
+  goto: string | null;
+  next: boolean;
+  block: boolean;
+  complete: boolean;
+  steps: StoredAgentTicketStep[];
+};
 
 export type StoredAgentTicketStep = {
   id: string;
@@ -15,14 +30,7 @@ export type StoredAgentTicketStep = {
   blockedToken: string | null;
   decision: {
     prompt: string;
-    options: Array<{
-      id: string;
-      title: string;
-      goto: string | null;
-      next: boolean;
-      block: boolean;
-      complete: boolean;
-    }>;
+    options: StoredAgentTicketDecisionOption[];
   } | null;
 };
 
@@ -60,18 +68,35 @@ function safeJsonParse<T>(raw: string): T {
   return JSON.parse(raw) as T;
 }
 
-function buildChecklist(processBlueprint: ProcessBlueprint): StoredAgentTicketStep[] {
-  return processBlueprint.steps.map((step, index) => ({
+function buildDecisionOptions(
+  options: ProcessBlueprintDecisionOption[],
+): StoredAgentTicketDecisionOption[] {
+  return options.map((option) => ({
+    id: option.id,
+    title: option.title,
+    goto: option.goto,
+    next: option.next,
+    block: option.block,
+    complete: option.complete,
+    steps: buildChecklist(option.steps),
+  }));
+}
+
+function buildChecklist(
+  steps: ProcessBlueprintStep[],
+  activeIndex: number | null = null,
+): StoredAgentTicketStep[] {
+  return steps.map((step, index) => ({
     id: step.id,
     title: step.title,
     kind: step.kind,
-    status: index === 0 ? "active" : "pending",
+    status: activeIndex !== null && index === activeIndex ? "active" : "pending",
     doneToken: step.doneToken,
     blockedToken: step.blockedToken,
     decision: step.decision
       ? {
           prompt: step.decision.prompt,
-          options: step.decision.options.map((option) => ({ ...option })),
+          options: buildDecisionOptions(step.decision.options),
         }
       : null,
   }));
@@ -105,7 +130,9 @@ export class AgentTicketStore {
 
   createOrReplaceSessionTicket(sessionId: string, processBlueprint: ProcessBlueprint): StoredAgentTicket {
     const now = Date.now();
-    const checklist = buildChecklist(processBlueprint);
+    const checklist = isProceduralProcessBlueprint(processBlueprint)
+      ? buildChecklist(processBlueprint.steps, processBlueprint.steps.length > 0 ? 0 : null)
+      : [];
     const firstActiveStep = checklist.find((step) => step.status === "active") ?? null;
     const ticket: StoredAgentTicket = {
       id: randomUUID(),

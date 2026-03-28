@@ -24,9 +24,9 @@ import {
   type CodexTokenUsagePayload,
 } from "./codex-provider.js";
 import {
+  isProceduralProcessBlueprint,
   loadProcessBlueprintCatalog,
   type ProcessBlueprint,
-  type ProcessBlueprintStep,
 } from "./process-blueprints.js";
 import {
   AgentTicketStore,
@@ -104,24 +104,7 @@ type SessionSummaryResponseItem = StoredSession & {
   activeTicket: StoredAgentTicket | null;
 };
 
-type ProcessBlueprintResponseItem = {
-  id: string;
-  title: string;
-  catalogOrder: number;
-  expectation: string;
-  idlePrompt: string;
-  completionMode: "exact_reply";
-  completionToken: string;
-  blockedToken: string;
-  stopConditions: string[];
-  steps: ProcessBlueprintStep[];
-  watchdog: {
-    enabled: boolean;
-    idleTimeoutSeconds: number;
-    maxNudgesPerIdleEpisode: number;
-  };
-  companionPath: string | null;
-};
+type ProcessBlueprintResponseItem = ProcessBlueprint;
 
 type SessionSnapshotPayload = {
   ok: true;
@@ -538,24 +521,36 @@ function promoteMarkdownImageReference(
 }
 
 function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
-  return processBlueprintCatalog.map((entry) => ({
-    id: entry.id,
-    title: entry.title,
-    catalogOrder: entry.catalogOrder,
-    expectation: entry.expectation,
-    idlePrompt: entry.idlePrompt,
-    completionMode: entry.completionMode,
-    completionToken: entry.completionToken,
-    blockedToken: entry.blockedToken,
-    stopConditions: [...entry.stopConditions],
-    steps: entry.steps.map((step) => ({ ...step })),
-    watchdog: {
-      enabled: entry.watchdog.enabled,
-      idleTimeoutSeconds: entry.watchdog.idleTimeoutSeconds,
-      maxNudgesPerIdleEpisode: entry.watchdog.maxNudgesPerIdleEpisode,
-    },
-    companionPath: entry.companionPath,
-  }));
+  return processBlueprintCatalog.map((entry) =>
+    isProceduralProcessBlueprint(entry)
+      ? {
+          kind: "procedural",
+          id: entry.id,
+          title: entry.title,
+          catalogOrder: entry.catalogOrder,
+          expectation: entry.expectation,
+          idlePrompt: entry.idlePrompt,
+          completionMode: entry.completionMode,
+          completionToken: entry.completionToken,
+          blockedToken: entry.blockedToken,
+          stopConditions: [...entry.stopConditions],
+          steps: entry.steps.map((step) => ({ ...step })),
+          watchdog: {
+            enabled: entry.watchdog.enabled,
+            idleTimeoutSeconds: entry.watchdog.idleTimeoutSeconds,
+            maxNudgesPerIdleEpisode: entry.watchdog.maxNudgesPerIdleEpisode,
+          },
+          companionPath: entry.companionPath,
+        }
+      : {
+          kind: "mode",
+          id: entry.id,
+          title: entry.title,
+          catalogOrder: entry.catalogOrder,
+          expectation: entry.expectation,
+          companionPath: entry.companionPath,
+        },
+  );
 }
 
 function getSessionProcessBlueprint(session: StoredSession | null | undefined): ProcessBlueprint | null {
@@ -565,20 +560,35 @@ function getSessionProcessBlueprint(session: StoredSession | null | undefined): 
   return processBlueprintById.get(session.processBlueprintId) ?? null;
 }
 
+function formatTicketChecklistStepLines(
+  steps: StoredAgentTicket["checklist"],
+  indentLevel = 0,
+): string[] {
+  return steps.flatMap((step) => {
+    const prefix = step.status === "completed" ? "- [x]" : "- [ ]";
+    const kindLabel = step.kind === "wait" ? " [wait]" : step.kind === "decision" ? " [decision]" : "";
+    const suffix =
+      step.status === "active"
+        ? " <- current"
+        : step.status === "blocked"
+          ? " (blocked)"
+          : "";
+    const lines = [`${"  ".repeat(indentLevel)}${prefix} ${step.title}${kindLabel}${suffix}`];
+    if (step.decision) {
+      for (const option of step.decision.options) {
+        if (option.steps.length === 0) {
+          continue;
+        }
+        lines.push(`${"  ".repeat(indentLevel + 1)}- ${option.title}`);
+        lines.push(...formatTicketChecklistStepLines(option.steps, indentLevel + 2));
+      }
+    }
+    return lines;
+  });
+}
+
 function formatTicketChecklist(ticket: StoredAgentTicket) {
-  return ticket.checklist
-    .map((step) => {
-      const prefix = step.status === "completed" ? "- [x]" : "- [ ]";
-      const kindLabel = step.kind === "wait" ? " [wait]" : step.kind === "decision" ? " [decision]" : "";
-      const suffix =
-        step.status === "active"
-          ? " <- current"
-          : step.status === "blocked"
-            ? " (blocked)"
-            : "";
-      return `${prefix} ${step.title}${kindLabel}${suffix}`;
-    })
-    .join("\n");
+  return formatTicketChecklistStepLines(ticket.checklist).join("\n");
 }
 
 function buildProcessExpectationInstruction(
@@ -589,13 +599,21 @@ function buildProcessExpectationInstruction(
     return `${PROCESS_INSTRUCTION_PREFIX}none. Continue based on the latest explicit user request and current transcript context.`;
   }
 
-  const outline = ticket ? formatTicketChecklist(ticket) : "";
+  if (!isProceduralProcessBlueprint(processBlueprint)) {
+    return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}`;
+  }
+
+  const outline = ticket && ticket.checklist.length > 0 ? formatTicketChecklist(ticket) : "";
   const nextStep = ticket?.nextStepLabel ? `\n\nNext step: ${ticket.nextStepLabel}` : "";
-  const outlineBlock = outline ? `\n\nProcess outline:\n${outline}` : "";
+  const outlineBlock = outline ? `\n\nProcess outline:
+${outline}` : "";
   return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${nextStep}${outlineBlock}`;
 }
 
 function buildWatchdogPrompt(processBlueprint: ProcessBlueprint, ticket: StoredAgentTicket | null) {
+  if (!isProceduralProcessBlueprint(processBlueprint)) {
+    return null;
+  }
   if (!ticket?.nextStepLabel) {
     return processBlueprint.idlePrompt;
   }
@@ -633,7 +651,7 @@ function maybeMarkProcessBlueprintTerminal(
 ): "completed" | "blocked" | null {
   const session = store.getSession(sessionId);
   const processBlueprint = getSessionProcessBlueprint(session);
-  if (!session || !processBlueprint) {
+  if (!session || !processBlueprint || !isProceduralProcessBlueprint(processBlueprint)) {
     return null;
   }
 
@@ -672,6 +690,7 @@ function processBlueprintNudgeLimitReached(
   processBlueprint: ProcessBlueprint,
 ) {
   return (
+    isProceduralProcessBlueprint(processBlueprint) &&
     processBlueprint.watchdog.maxNudgesPerIdleEpisode > 0 &&
     session.watchdogState.nudgeCount >= processBlueprint.watchdog.maxNudgesPerIdleEpisode
   );
@@ -763,7 +782,7 @@ function queuedProcessChangeAwaitingExplicitHumanSend(
 }
 
 function runningTurnLooksStalled(runtime: SessionRuntimeState, processBlueprint: ProcessBlueprint) {
-  if (runtime.status !== "running") {
+  if (!isProceduralProcessBlueprint(processBlueprint) || runtime.status !== "running") {
     return false;
   }
 
@@ -783,7 +802,7 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
   }
 
   const processBlueprint = getSessionProcessBlueprint(session);
-  if (!processBlueprint?.watchdog.enabled) {
+  if (!processBlueprint || !isProceduralProcessBlueprint(processBlueprint) || !processBlueprint.watchdog.enabled) {
     return;
   }
 
@@ -812,7 +831,7 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
     role: "system",
     kind: "watchdogPrompt",
     providerSeenAtMs: null,
-    content: [{ type: "text", text: buildWatchdogPrompt(processBlueprint, ticketStore.getActiveTicketForSession(sessionId)) }],
+    content: [{ type: "text", text: buildWatchdogPrompt(processBlueprint, ticketStore.getActiveTicketForSession(sessionId)) ?? processBlueprint.idlePrompt }],
   });
 
   setSessionWatchdogState(sessionId, {
@@ -843,7 +862,7 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
   cancelSessionWatchdog(sessionId);
   const session = store.getSession(sessionId);
   const processBlueprint = getSessionProcessBlueprint(session);
-  if (!session || !processBlueprint?.watchdog.enabled) {
+  if (!session || !processBlueprint || !isProceduralProcessBlueprint(processBlueprint) || !processBlueprint.watchdog.enabled) {
     return;
   }
 
@@ -912,7 +931,7 @@ function setUserTypingState(sessionId: string, active: boolean) {
 function rearmPersistedSessionWatchdogs() {
   for (const session of store.listSessions()) {
     const processBlueprint = getSessionProcessBlueprint(session);
-    if (!processBlueprint?.watchdog.enabled) {
+    if (!processBlueprint || !isProceduralProcessBlueprint(processBlueprint) || !processBlueprint.watchdog.enabled) {
       continue;
     }
     if (sessionTerminalWatchdogState(session)) {
