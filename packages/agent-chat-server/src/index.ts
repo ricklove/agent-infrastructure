@@ -779,6 +779,7 @@ function appendTicketEventMessage(sessionId: string, text: string) {
   return store.appendMessage(sessionId, {
     role: "system",
     kind: "ticketEvent",
+    ticketId: ticketStore.getActiveTicketForSession(sessionId)?.id ?? null,
     providerSeenAtMs: null,
     content: [{ type: "text", text }],
   });
@@ -2105,6 +2106,13 @@ const server = Bun.serve<ChatSocketData>({
         ok: true,
         processBlueprints: listProcessBlueprints(),
       });
+    }
+
+    const ticketMatch = /^\/api\/agent-chat\/tickets\/([^/]+)$/.exec(url.pathname);
+    if (ticketMatch && request.method === "GET") {
+      const ticketId = decodeURIComponent(ticketMatch[1]!);
+      const ticket = ticketStore.getTicket(ticketId);
+      return ticket ? jsonResponse({ ok: true, ticket }) : notFound();
     }
 
     if (url.pathname === "/api/agent-chat/sessions" && request.method === "GET") {

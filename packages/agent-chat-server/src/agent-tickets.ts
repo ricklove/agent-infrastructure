@@ -423,9 +423,25 @@ export class AgentTicketStore {
     return this.processSnapshotCache.get(processSnapshotId) ?? null;
   }
 
+  getTicket(ticketId: string | null | undefined) {
+    if (!ticketId) {
+      return null;
+    }
+    const cached = this.ticketCache.get(ticketId);
+    if (cached) {
+      return cached;
+    }
+    const ticket = this.readTicket(ticketId);
+    if (!ticket) {
+      return null;
+    }
+    this.ticketCache.set(ticket.id, ticket);
+    return ticket;
+  }
+
   getActiveTicketForSession(sessionId: string): StoredAgentTicket | null {
     const ticketId = this.activeTicketBySessionId.get(sessionId);
-    return ticketId ? this.ticketCache.get(ticketId) ?? null : null;
+    return this.getTicket(ticketId);
   }
 
   clearActiveTicketForSession(sessionId: string) {
