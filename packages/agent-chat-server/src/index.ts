@@ -582,6 +582,24 @@ function formatTicketChecklist(ticket: StoredAgentTicket) {
   return formatTicketChecklistStepLines(ticket.checklist).join("\n");
 }
 
+function currentTicketStepTokenHint(ticket: StoredAgentTicket | null) {
+  if (!ticket?.currentStepId) {
+    return "";
+  }
+  return `\n\nCurrent step tokens: done: ${ticket.currentStepId} | blocked: ${ticket.currentStepId}`;
+}
+
+function currentDecisionOptionHint(ticket: StoredAgentTicket | null) {
+  if (!ticket?.currentStepId) {
+    return "";
+  }
+  const currentStep = ticket.checklist.find((step) => step.id === ticket.currentStepId) ?? null;
+  if (!currentStep?.decision || currentStep.decision.options.length === 0) {
+    return "";
+  }
+  return `\n\nDecision responses: ${currentStep.decision.options.map((option) => option.title).join(" | ")}`;
+}
+
 function buildProcessExpectationInstruction(
   processBlueprint: ProcessBlueprint | null,
   ticket: StoredAgentTicket | null,
