@@ -27,6 +27,7 @@ WORKSPACE_ROOT="/home/ec2-user/workspace"
 PENDING_EVENT_FILE="${STATE_ROOT}/pending-worker-events.jsonl"
 WORKER_IMAGE_PROFILE_PATH="${STATE_ROOT}/worker-image-profile.json"
 WORKER_MONITOR_ENV_PATH="${STATE_ROOT}/agent-swarm-worker-monitor.env"
+AGENT_BROWSER_IDLE_TIMEOUT_MS="__AGENT_BROWSER_IDLE_TIMEOUT_MS__"
 
 json_escape() {
   local value="$1"
@@ -174,6 +175,7 @@ cat > "${WORKER_MONITOR_ENV_PATH}" <<'ENVFILE'
 MONITOR_MANAGER_URL=ws://__MANAGER_PRIVATE_IP__:__MANAGER_MONITOR_PORT__/workers/stream
 MONITOR_SHARED_TOKEN=__SWARM_SHARED_TOKEN__
 MONITOR_RECONNECT_DELAY_MS=1000
+AGENT_BROWSER_IDLE_TIMEOUT_MS=__AGENT_BROWSER_IDLE_TIMEOUT_MS__
 ENVFILE
 
 cat > /etc/systemd/system/agent-swarm-worker-monitor.service <<'SERVICE'
