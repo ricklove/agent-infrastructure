@@ -613,12 +613,9 @@ function buildProcessExpectationInstruction(
   }
 
   const outline = ticket && ticket.checklist.length > 0 ? formatTicketChecklist(ticket) : "";
-  const nextStep = ticket?.nextStepLabel ? `\n\nNext step: ${ticket.nextStepLabel}` : "";
-  const tokenHint = currentTicketStepTokenHint(ticket);
-  const decisionHint = currentDecisionOptionHint(ticket);
   const outlineBlock = outline ? `\n\nProcess outline:
 ${outline}` : "";
-  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${nextStep}${tokenHint}${decisionHint}${outlineBlock}`;
+  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${outlineBlock}`;
 }
 
 function buildWatchdogPrompt(processBlueprint: ProcessBlueprint, ticket: StoredAgentTicket | null) {
