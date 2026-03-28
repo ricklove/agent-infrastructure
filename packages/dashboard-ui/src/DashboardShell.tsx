@@ -12,6 +12,8 @@ import {
   useMemo,
   useState,
 } from "react"
+import { DashboardWindowLayer } from "./DashboardWindowLayer"
+import { FloatingTicketWindows } from "./FloatingTicketWindows"
 import { dashboardFeaturePlugins } from "./feature-plugins"
 
 type DashboardConfig = {
@@ -566,7 +568,8 @@ export function DashboardShell({
     (!config?.requiresSession || Boolean(readStoredSessionToken()))
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-slate-950 text-slate-100">
+    <DashboardWindowLayer>
+      <div className="flex h-dvh overflow-hidden bg-slate-950 text-slate-100">
       {mobileFeatureMenuOpen ? (
         <button
           type="button"
@@ -758,6 +761,8 @@ export function DashboardShell({
           ) : null}
         </div>
       </div>
+      <FloatingTicketWindows apiRootUrl="/api/agent-chat" />
     </div>
+    </DashboardWindowLayer>
   )
 }

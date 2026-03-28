@@ -70,6 +70,7 @@ export type StoredMessage = {
     | "thought"
     | "streamCheckpoint";
   replyToMessageId: string | null;
+  ticketId: string | null;
   providerSeenAtMs: number | null;
   content: StoredMessageContentBlock[];
   createdAtMs: number;
@@ -328,6 +329,7 @@ export class AgentChatStore {
       content: StoredMessage["content"];
       kind?: StoredMessage["kind"];
       replyToMessageId?: string | null;
+      ticketId?: string | null;
       providerSeenAtMs?: number | null;
     },
   ): StoredMessage {
@@ -343,6 +345,7 @@ export class AgentChatStore {
       role: input.role,
       kind: input.kind ?? "chat",
       replyToMessageId: input.replyToMessageId ?? null,
+      ticketId: input.ticketId?.trim() || null,
       providerSeenAtMs:
         input.providerSeenAtMs === undefined ? createdAtMs : input.providerSeenAtMs,
       content: input.content,
@@ -385,6 +388,7 @@ export class AgentChatStore {
       kind?: StoredMessage["kind"];
       providerSeenAtMs?: number | null;
       replyToMessageId?: string | null;
+      ticketId?: string | null;
     },
   ): StoredMessage | null {
     const currentMessages = this.messageCache.get(sessionId);
@@ -406,6 +410,7 @@ export class AgentChatStore {
           input.providerSeenAtMs === undefined ? message.providerSeenAtMs : input.providerSeenAtMs,
         replyToMessageId:
           input.replyToMessageId === undefined ? message.replyToMessageId : input.replyToMessageId,
+        ticketId: input.ticketId === undefined ? message.ticketId : input.ticketId,
       };
       return updatedMessage;
     });
@@ -966,6 +971,10 @@ export class AgentChatStore {
                 ? "thought"
               : "chat",
           replyToMessageId: parsed.replyToMessageId ? String(parsed.replyToMessageId) : null,
+          ticketId:
+            typeof parsed.ticketId === "string" && parsed.ticketId.trim()
+              ? parsed.ticketId
+              : null,
           providerSeenAtMs:
             parsed.providerSeenAtMs === null || parsed.providerSeenAtMs === undefined
               ? null
@@ -1085,6 +1094,7 @@ export class AgentChatStore {
             replyToMessageId: rowObject.reply_to_message_id
               ? String(rowObject.reply_to_message_id)
               : null,
+            ticketId: null,
             providerSeenAtMs:
               rowObject.provider_seen_at_ms === null ||
               rowObject.provider_seen_at_ms === undefined
