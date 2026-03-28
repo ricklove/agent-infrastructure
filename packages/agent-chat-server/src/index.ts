@@ -586,7 +586,7 @@ function currentTicketStepTokenHint(ticket: StoredAgentTicket | null) {
   if (!ticket?.currentStepId) {
     return "";
   }
-  return `\n\nCurrent step tokens: done: ${ticket.currentStepId} | blocked: ${ticket.currentStepId}`;
+  return `\n\nIf you complete the current step in this reply, end your final line with exactly one of: done: ${ticket.currentStepId} | blocked: ${ticket.currentStepId}`;
 }
 
 function currentDecisionOptionHint(ticket: StoredAgentTicket | null) {
@@ -597,7 +597,7 @@ function currentDecisionOptionHint(ticket: StoredAgentTicket | null) {
   if (!currentStep?.decision || currentStep.decision.options.length === 0) {
     return "";
   }
-  return `\n\nDecision responses: ${currentStep.decision.options.map((option) => option.title).join(" | ")}`;
+  return `\n\nIf you resolve the current decision in this reply, end your final line with exactly one of: ${currentStep.decision.options.map((option) => option.id).join(" | ")}`;
 }
 
 function buildProcessExpectationInstruction(
@@ -806,6 +806,51 @@ function buildProcessSelectionEventText(
   return nextProcessTitle
     ? `Process changed: ${previousProcessTitle} -> ${nextProcessTitle}. This overrides prior ticket state for the session.`
     : `Process cleared: ${previousProcessTitle}. This overrides prior ticket state for the session.`;
+}
+
+function extractAssistantProcessSignal(
+  assistantText: string,
+  ticket: StoredAgentTicket | null,
+) {
+  const trimmed = assistantText.trimEnd();
+  if (!ticket?.currentStepId || !trimmed) {
+    return { visibleText: trimmed.trim(), signalText: null as string | null };
+  }
+
+  const currentStep = findCurrentTicketStep(ticket);
+  if (!currentStep) {
+    return { visibleText: trimmed.trim(), signalText: null as string | null };
+  }
+
+  const lines = trimmed.split(/\r?\n/);
+  let signalLineIndex = -1;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (lines[index].trim()) {
+      signalLineIndex = index;
+      break;
+    }
+  }
+  if (signalLineIndex < 0) {
+    return { visibleText: trimmed.trim(), signalText: null as string | null };
+  }
+
+  const signalText = lines[signalLineIndex].trim();
+  const allowedSignals = new Set<string>([
+    `done: ${currentStep.id}`,
+    `blocked: ${currentStep.id}`,
+    ...(currentStep.doneToken ? [currentStep.doneToken] : []),
+    ...(currentStep.blockedToken ? [currentStep.blockedToken] : []),
+    ...(currentStep.decision?.options.flatMap((option) => [option.id, option.title]) ?? []),
+  ]);
+  if (!allowedSignals.has(signalText)) {
+    return { visibleText: trimmed.trim(), signalText: null as string | null };
+  }
+
+  lines.splice(signalLineIndex, 1);
+  return {
+    visibleText: lines.join("\n").trim(),
+    signalText,
+  };
 }
 
 function normalizeTransitionDetail(
@@ -1746,7 +1791,12 @@ async function runProviderTurnForQueuedMessages(
           threadPath: result.threadPath,
         })
       : latestSession;
-    const finalAssistantText = result.assistantText.trim();
+    const rawAssistantText = result.assistantText.trim();
+    const assistantSignal = extractAssistantProcessSignal(
+      rawAssistantText,
+      ticketStore.getActiveTicketForSession(sessionId),
+    );
+    const finalAssistantText = assistantSignal.visibleText;
     const lastStreamItemId = Array.from(streamCheckpointMessageIds.keys()).at(-1) ?? null;
     const lastStreamMessageId = lastStreamItemId ? streamCheckpointMessageIds.get(lastStreamItemId) ?? null : null;
     const lastStreamText = lastStreamItemId ? streamCheckpointTexts.get(lastStreamItemId) ?? "" : "";
@@ -1787,8 +1837,9 @@ async function runProviderTurnForQueuedMessages(
                 },
               ],
             })
-        : !providerCompletionIssueMessage
-          ? store.appendMessage(sessionId, {
+        : assistantSignal.signalText || providerCompletionIssueMessage
+          ? null
+          : store.appendMessage(sessionId, {
               role: "assistant",
               providerSeenAtMs: Date.now(),
               content: [
@@ -1797,10 +1848,9 @@ async function runProviderTurnForQueuedMessages(
                   text: "(empty response)",
                 },
               ],
-            })
-          : null;
-    const ticketProgress = finalAssistantText
-      ? maybeApplyTicketStepTransition(sessionId, finalAssistantText)
+            });
+    const ticketProgress = assistantSignal.signalText
+      ? maybeApplyTicketStepTransition(sessionId, assistantSignal.signalText)
       : { status: null, messages: [] as StoredMessage[] };
     if (finalAssistantText && ticketProgress.status === null) {
       maybeMarkProcessBlueprintTerminal(sessionId, finalAssistantText);
