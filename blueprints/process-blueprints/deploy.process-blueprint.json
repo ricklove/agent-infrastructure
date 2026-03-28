@@ -2,7 +2,7 @@
   "id": "deploy",
   "title": "Deploy",
   "catalogOrder": 47,
-  "expectation": "Use the manager project repository as the integration, release, deploy, and live-validation surface for this process. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then pull the changes back into the manager project repository before continuing. Follow the deploy process through manager-side branch integration, release promotion, runtime deploy, runtime revision and version verification, live health verification, real browser verification at the public Cloudflare manager dashboard URL, manager-dashboard screenshot verification, cleanup of the feature branch and worktree on success, and rollback recovery when screenshot verification fails.",
+  "expectation": "Use the manager project repository as the integration, release, deploy, and live-validation surface for this process. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then pull the changes back into the manager project repository before continuing. Follow the deploy process through manager-side branch integration, release promotion, runtime deploy, runtime revision and version verification, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using that issued session URL, manager-dashboard screenshot verification, cleanup of the feature branch and worktree on success, and rollback recovery when screenshot verification fails.",
   "idlePrompt": "If deployment is complete, reply only with 'done: deploy complete'. If you are truly blocked on a missing focused feature branch, user decision, or environment dependency, reply only with 'blocked: deploy blocked'. Otherwise resume the deploy process immediately and perform the next required integration, release, deploy, cleanup, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: deploy complete",
@@ -61,8 +61,12 @@
       "title": "Perform live health verification"
     },
     {
+      "id": "issue_manager_dashboard_session_url",
+      "title": "Issue a manager-dashboard session URL with `bun run issue:dashboard-session`"
+    },
+    {
       "id": "perform_real_browser_verification",
-      "title": "Perform real browser verification at the public Cloudflare manager dashboard URL"
+      "title": "Perform real browser verification at the public Cloudflare manager dashboard URL using the issued manager-dashboard session URL"
     },
     {
       "id": "save_manager_dashboard_screenshot",

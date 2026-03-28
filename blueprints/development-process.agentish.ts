@@ -123,7 +123,7 @@ DevelopmentProcess.enforces(`
 - Runtime rollout should call `bun run deploy-manager-runtime` from the shared source repository unless a more specific documented operator entrypoint supersedes it.
 - UI-facing changes require real browser verification with `agent-browser`, visual verification on the rendered UI, saved screenshots, verification at small, medium, and wide viewport sizes, and deployed frontend-backend version matching.
 - Responsive UI changes must be verified with `agent-browser` at small, medium, and wide viewport sizes.
-- Post-deploy verification should record runtime checkout revision match, frontend-backend version match, live health verification, real browser verification at the public Cloudflare manager dashboard URL, and a saved screenshot from the working manager dashboard at that URL.
+- Post-deploy verification should record runtime checkout revision match, frontend-backend version match, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using the issued session URL, and a saved screenshot from the working manager dashboard at that URL.
 - If the operator cannot produce a manager-dashboard screenshot for the new release, the rollout should be treated as failed, rolled back to an earlier known-good release tag, and kept in screenshot verification until a stable working release is found; the failed release tag should then be deleted locally and on the remote after recovery.
 - A rollout is not complete until post-deploy behavior has been verified on the live system.
 `);

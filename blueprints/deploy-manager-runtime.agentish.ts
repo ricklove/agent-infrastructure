@@ -124,7 +124,8 @@ when(Artifact.verification.records("post-deploy outcome"))
   .then(DeployManagerRuntime.expects("runtime checkout revision match"))
   .and(DeployManagerRuntime.expects("frontend and backend version match"))
   .and(DeployManagerRuntime.expects("live health verification"))
-  .and(DeployManagerRuntime.expects("real browser verification at the public Cloudflare manager dashboard URL"))
+  .and(DeployManagerRuntime.expects("issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`"))
+  .and(DeployManagerRuntime.expects("real browser verification at the public Cloudflare manager dashboard URL using the issued manager-dashboard session URL"))
   .and(DeployManagerRuntime.expects("a saved screenshot from the working manager dashboard at the public Cloudflare manager dashboard URL"));
 
 when(Actor.operator.cannot("produce a manager-dashboard screenshot for the new release"))

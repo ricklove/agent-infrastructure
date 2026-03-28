@@ -21,6 +21,7 @@
     "build:dashboard": "bun run --filter @agent-infrastructure/dashboard-app build",
     "eval:agentish-quality": "bun ./scripts/evaluate-agentish-quality.ts",
     "deploy-manager-runtime": "bash ./scripts/deploy-manager-runtime.sh",
+    "issue:dashboard-session": "bash ./scripts/issue-dashboard-session.sh",
     "prepare:cloudflare-tunnel": "bash ./packages/aws-setup/scripts/prepare-cloudflare-tunnel.sh",
     "github-app-token": "bash ./tools/github-app-token.sh",
     "start:dashboard": "bun run --filter @agent-infrastructure/dashboard start",
