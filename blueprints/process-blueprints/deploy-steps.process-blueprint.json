@@ -49,44 +49,7 @@
           "use": "release_deploy_runtime_validation"
         },
         {
-          "id": "issue_manager_dashboard_session_url",
-          "title": "Issue a manager-dashboard session URL with `bun run issue:dashboard-session`"
-        },
-        {
-          "id": "perform_real_browser_verification",
-          "title": "Open the issued manager-dashboard session URL in `agent-browser` and verify the public dashboard loads correctly"
-        },
-        {
-          "id": "navigate_to_modified_screen",
-          "title": "Navigate to a screen that displays something that was modified; if there were no UI changes, go to chat"
-        },
-        {
-          "id": "save_manager_dashboard_screenshot",
-          "title": "Post a screenshot into the chat as a markdown image from `~/temp`"
-        },
-        {
-          "id": "summarize_manager_dashboard_screenshot",
-          "title": "Summarize what the screenshot shows"
-        },
-        {
-          "id": "assess_manager_dashboard_screenshot",
-          "title": "What is the screenshot verification outcome?",
-          "kind": "decision",
-          "decision": {
-            "prompt": "What is the screenshot verification outcome?",
-            "options": [
-              {
-                "id": "screenshot_verification_failed",
-                "title": "Screenshot verification failed",
-                "block": true
-              },
-              {
-                "id": "screenshot_verification_passed",
-                "title": "Screenshot verification passed",
-                "next": true
-              }
-            ]
-          }
+          "use": "manager_dashboard_verification"
         },
         {
           "id": "cleanup_manager_integration_worktree",

@@ -8,27 +8,36 @@
     },
     {
       "id": "perform_real_browser_verification",
-      "title": "Perform real browser verification at the public Cloudflare manager dashboard URL using the issued manager-dashboard session URL"
+      "title": "Open the issued manager-dashboard session URL in `agent-browser` and verify the public dashboard loads correctly"
+    },
+    {
+      "id": "navigate_to_modified_screen",
+      "title": "Navigate to a screen that displays something that was modified; if there were no UI changes, go to chat"
     },
     {
       "id": "save_manager_dashboard_screenshot",
-      "title": "Post a screenshot into the chat as a markdown image from the approved `~/temp` image space showing the changes on the manager dashboard at the public Cloudflare manager dashboard URL"
+      "title": "Post a screenshot into the chat as a markdown image from `~/temp`"
+    },
+    {
+      "id": "summarize_manager_dashboard_screenshot",
+      "title": "Summarize what the screenshot shows"
     },
     {
       "id": "assess_manager_dashboard_screenshot",
-      "title": "What is the manager-dashboard screenshot outcome?",
+      "title": "What is the screenshot verification outcome?",
       "kind": "decision",
       "decision": {
-        "prompt": "What is the manager-dashboard screenshot outcome?",
+        "prompt": "What is the screenshot verification outcome?",
         "options": [
           {
-            "id": "manager_dashboard_screenshot_posted",
-            "title": "Manager-dashboard screenshot posted into the chat",
+            "id": "screenshot_verification_passed",
+            "title": "Screenshot verification passed",
             "next": true
           },
           {
-            "id": "manager_dashboard_screenshot_not_produced",
-            "title": "Manager-dashboard screenshot could not be produced",
+            "id": "screenshot_verification_failed",
+            "title": "Screenshot verification failed",
+            "block": true,
             "steps": [
               {
                 "id": "rollback_to_known_good_release",
