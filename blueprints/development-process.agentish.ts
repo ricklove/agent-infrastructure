@@ -122,7 +122,7 @@ DevelopmentProcess.enforces(`
 - Durable app data must live outside state/.
 - Provider-backed agents used for implementation must inherit this same workflow.
 - Runtime rollout should follow the deploy-manager-runtime blueprint as the standard deploy path.
-- Runtime rollout should call `bun run deploy-manager-runtime` from the dedicated manager integration worktree unless a more specific documented operator entrypoint supersedes it.
+- Runtime rollout should call `bun run deploy-manager-runtime` as the canonical deploy entrypoint after release promotion unless a more specific documented operator entrypoint supersedes it.
 - UI-facing changes require real browser verification with `agent-browser`, visual verification on the rendered UI, saved screenshots, verification at small, medium, and wide viewport sizes, and deployed frontend-backend version matching.
 - Responsive UI changes must be verified with `agent-browser` at small, medium, and wide viewport sizes.
 - Post-deploy verification should record runtime checkout revision match, frontend-backend version match, a successful check of `http://127.0.0.1:3000/api/health`, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification using the issued manager-dashboard session URL, navigation to a screen that shows modified behavior or chat when there were no UI changes, and a screenshot posted into the chat as a markdown image from `~/temp`.
@@ -160,8 +160,8 @@ DevelopmentProcess.defines(`
 - DeployByRuntimeCheckout means runtime is updated by checking out a release tag that points at a committed source revision.
 - VersionMatchVerification means the served frontend version and running backend version must match exactly after rollout.
 - TicketSystemOwnsImplementationPlan means active work sequencing, task breakdown, and unfinished implementation routing belong in tickets rather than in long-lived blueprint companion files.
-- StandardRuntimeDeployBlueprint means runtime rollout uses the repository's canonical deploy-manager-runtime path and targets a release tag.
-- `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path after release tag creation, and it should run from the manager integration worktree that holds the integrated commit being released.
+- StandardRuntimeDeployBlueprint means runtime rollout uses the repository's canonical deploy-manager-runtime path and deploys `origin/main` by default or an explicit release tag for rollback or pinning.
+- `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path after release promotion; with no argument it deploys `origin/main`, and with `<release-tag>` it deploys that specific release tag.
 `);
 
 DevelopmentProcess.contains(
