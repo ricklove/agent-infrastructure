@@ -98,7 +98,7 @@
     },
     {
       "id": "save_manager_dashboard_screenshot",
-      "title": "Post a screenshot into the chat of the changes on the manager dashboard at the public Cloudflare manager dashboard URL"
+      "title": "Post a screenshot into the chat as a markdown image from the approved `~/temp` image space showing the changes on the manager dashboard at the public Cloudflare manager dashboard URL"
     },
     {
       "id": "assess_manager_dashboard_screenshot",
@@ -108,8 +108,8 @@
         "prompt": "What is the manager-dashboard screenshot outcome?",
         "options": [
           {
-            "id": "manager_dashboard_screenshot_saved",
-            "title": "Manager-dashboard screenshot saved",
+            "id": "manager_dashboard_screenshot_posted",
+            "title": "Manager-dashboard screenshot posted into the chat",
             "complete": true
           },
           {

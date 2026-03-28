@@ -16,9 +16,10 @@ FullDevelopmentProcessGuide.enforces(`
 - After creating the worker-hosted feature-branch worktree, the agent should merge any relevant upstream from `origin/development` or `origin/main` into that branch before continuing with implementation work.
 - Completion means blueprint work, implementation, verification, release promotion, runtime deployment, and live validation are all finished.
 - The process remains unresolved until the agent emits either the exact full-development-process done token or the exact full-development-process blocked token.
-- A watchdog prompt for this process should cause resumed execution work by default, not merely a textual status reply.
+- Immediate idle continuation for this process should arrive as a system ticket step message and should cause resumed execution work by default, not merely a textual status reply.
 - Idle before deployed verification is unresolved work, not a completed session.
-- Provider-reported idle before that explicit terminal token should make the watchdog immediately eligible.
+- Provider-reported idle before that explicit terminal token should make ticket-owned continuation immediately eligible.
 - Provider error before that explicit terminal token should enter retry or escalation handling rather than being mistaken for ordinary idle.
-- The watchdog completion token should only be used when the entire process is complete.
+- Any terminal completion token should only be used when the entire process is complete.
+- Completion also requires that any required manager-dashboard screenshot be posted into the chat as a markdown image from the approved temporary image space under `~/temp`, not as a plain filesystem link.
 `);

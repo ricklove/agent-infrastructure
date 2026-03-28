@@ -116,17 +116,17 @@ AgentChat.enforces(`
 - When more than one human message is queued behind an active run, AgentChat should deliver that queued human batch into the next provider turn together rather than silently serializing them into many one-message follow-up turns.
 - Session process changes should remain queued provider-facing instructions until the next explicit human-send turn consumes them, and that consumption should also become a canonical transcript event so history survives refresh.
 - Changing the session process selector must not submit or otherwise flush the current human draft; the process change remains only a queued next-turn instruction until the operator later sends a real message.
-- A queued process change that is still waiting for that next explicit human send must not by itself arm or trigger idle-watchdog prompting.
+- A queued process change that is still waiting for that next explicit human send must not by itself arm or trigger immediate idle continuation.
 - When a new active ticket is created from a process selection, AgentChat should emit one canonical system event that includes the expectation message and the full process outline for that ticket.
 - When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
 - Once a session process is active, the active ticket remains unresolved until the process-defined done or blocked condition is reached.
 - Focused-ticket state changes should surface as canonical system ticket events in the transcript.
 - Focused-ticket step completion events may trigger immediate continuation into the next actionable step when the ticket remains active and unblocked.
 - Once a terminal process state is resolved by a fresh process selection or by new active non-terminal work, the transient Done or Blocked selector state should clear immediately.
-- Expectation-aware watchdog behavior must treat operator-visible stalled turns as unresolved inactivity even when the provider transport still considers the turn open.
-- If the provider explicitly reports itself idle while the session process is still unresolved, AgentChat should make the watchdog immediately eligible rather than waiting another full idle timeout window.
+- Ticket-owned immediate-idle continuation must treat operator-visible stalled turns as unresolved inactivity even when the provider transport still considers the turn open.
+- If the provider explicitly reports itself idle while the session process is still unresolved, AgentChat should make ticket-owned continuation immediately eligible rather than waiting another full idle timeout window.
 - If the provider explicitly reports an error, AgentChat should enter provider-error handling and retry policy rather than misclassifying that state as ordinary idle.
-- Active human typing should suppress idle-watchdog prompting until typing stops and the short grace period expires.
+- Active human typing should suppress immediate idle continuation until typing stops and the short grace period expires.
 - Composer typing should remain locally responsive and should not force the entire thread surface to re-render on every keystroke.
 - Transient websocket disconnects should be retried automatically with backoff, and disconnect warning chrome should wait through a short grace period so brief reconnects do not flash noisy error banners.
 - Provider reasoning checkpoints may be redacted or collapsed, but they should not disappear from the reloaded transcript if the provider runtime exposed them during the session.
@@ -228,8 +228,8 @@ AgentChat.defines(`
 - Native compaction means provider-managed retention.
 - Agentish compaction means app-managed retention into a structured Agentish artifact.
 - Worker state is the inspectable provider-backed execution state that explains what the active agent workers are doing for a session.
-- Idle watchdog state is the inspectable record of whether expectation-aware idle prompting has been armed, triggered, or resolved for the session.
-- Token usage, compaction events, active context, provider binding state, worker state, idle watchdog state, and approvals are inspectable session data.
+- Ticket continuation state is the inspectable record of whether expectation-aware immediate idle continuation has been armed, triggered, or resolved for the session.
+- Token usage, compaction events, active context, provider binding state, worker state, ticket continuation state, and approvals are inspectable session data.
 `);
 
 Session.conversation.means(`
@@ -278,12 +278,12 @@ Session.ticket.means(`
 Session.expectation.means(`
 - user-selected statement of what the agent should accomplish in the session
 - derived from the assigned process blueprint rather than guessed from raw transcript text
-- intended to drive idle watchdog prompts and session-list context
+- intended to drive ticket-owned continuation prompts and session-list context
 - when a new session is created with a process blueprint already selected, the initial expectation should be emitted immediately as a canonical waiting system entry so the operator can see the contract before the first user turn
 - when a focused ticket starts, the expectation event should include the full process outline as the initial process contract
 - when expectation changes are queued for the next turn, the transcript should later show that consumed change as a real history event at the point it took effect
 - when a completed expectation requires operator resolution, the next outgoing message should stay blocked until the operator chooses the next normal process selection
-- expectation-aware watchdog handling belongs to the backend session runtime rather than to the browser connection and must continue even when no dashboard client is attached
+- expectation-aware ticket continuation handling belongs to the backend session runtime rather than to the browser connection and must continue even when no dashboard client is attached
 `);
 
 Observability.workerState.means(`
@@ -295,12 +295,12 @@ Observability.workerState.means(`
 `);
 
 Observability.watchdogState.means(`
-- expectation-aware idle watchdog status visible from the session list and active session view when useful
+- expectation-aware immediate-idle continuation status visible from the session list and active session view when useful
 - records whether the session is unresolved, nudged, completed by completion token, or still waiting
 - should complement worker state rather than replace provider-backed activity details
-- when ticket checklist state exists, the short watchdog target should be the next actionable step rather than only the process title
-- should treat a long-running turn with no meaningful visible progress as stalled enough to require watchdog attention instead of waiting forever for a provider-level turn completion event
-- should survive backend restarts by re-arming unresolved idle sessions from canonical session state instead of forgetting the pending watchdog episode until a fresh chat request arrives
+- when ticket checklist state exists, the short continuation target should be the next actionable step rather than only the process title
+- should treat a long-running turn with no meaningful visible progress as stalled enough to require immediate ticket-owned continuation instead of waiting forever for a provider-level turn completion event
+- should survive backend restarts by re-arming unresolved idle sessions from canonical session state instead of forgetting the pending continuation episode until a fresh chat request arrives
 `);
 
 Observability.usage.means(`
