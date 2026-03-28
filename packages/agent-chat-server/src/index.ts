@@ -760,6 +760,13 @@ function appendTicketEventMessage(sessionId: string, text: string) {
   });
 }
 
+function findCurrentTicketStep(ticket: StoredAgentTicket | null) {
+  if (!ticket?.currentStepId) {
+    return null;
+  }
+  return ticket.checklist.find((step) => step.id === ticket.currentStepId) ?? null;
+}
+
 function buildTicketStateEventText(
   ticket: StoredAgentTicket,
   event: "created" | "completed" | "blocked",
@@ -801,40 +808,68 @@ function buildProcessSelectionEventText(
     : `Process cleared: ${previousProcessTitle}. This overrides prior ticket state for the session.`;
 }
 
-function buildTicketTransitionEventText(transition: StoredAgentTicketTransition) {
-  if (transition.kind === "stepCompleted") {
-    const detail = transition.detail ? ` Outcome: ${transition.detail}.` : "";
-    return transition.ticket.nextStepLabel
-      ? `Ticket step completed: ${transition.stepTitle ?? transition.ticket.processTitle}.${detail} Next step: ${transition.ticket.nextStepLabel}`
-      : `Ticket step completed: ${transition.stepTitle ?? transition.ticket.processTitle}.${detail}`;
+function normalizeTransitionDetail(
+  step: ReturnType<typeof findCurrentTicketStep>,
+  detail: string | null,
+) {
+  if (!detail) {
+    return null;
   }
-  if (transition.kind === "stepBlocked") {
-    return transition.detail
-      ? `Ticket step blocked: ${transition.stepTitle ?? transition.ticket.processTitle}. ${transition.detail}`
-      : `Ticket step blocked: ${transition.stepTitle ?? transition.ticket.processTitle}`;
+  if (!step) {
+    return detail;
   }
-  if (transition.kind === "ticketCompleted") {
-    return transition.ticket.resolution
-      ? `Ticket completed: ${transition.ticket.processTitle}. ${transition.ticket.resolution}`
-      : `Ticket completed: ${transition.ticket.processTitle}`;
+  if (
+    detail === `done: ${step.id}` ||
+    detail === `blocked: ${step.id}` ||
+    detail === step.doneToken ||
+    detail === step.blockedToken
+  ) {
+    return null;
   }
-  return transition.detail
-    ? `Ticket step blocked: ${transition.stepTitle ?? transition.ticket.processTitle}. ${transition.detail}`
-    : `Ticket step blocked: ${transition.stepTitle ?? transition.ticket.processTitle}`;
+  return detail;
+}
+
+function buildTicketTransitionEventTexts(
+  previousTicket: StoredAgentTicket | null,
+  transition: StoredAgentTicketTransition,
+) {
+  const previousStep = findCurrentTicketStep(previousTicket);
+  const detail = normalizeTransitionDetail(previousStep, transition.detail);
+  const stepTitle = previousStep?.title ?? transition.stepTitle ?? transition.ticket.processTitle;
+  const eventTexts: string[] = [];
+
+  if (previousStep?.kind === "decision" && detail) {
+    eventTexts.push(`Ticket decision chosen: ${stepTitle}. Outcome: ${detail}`);
+  }
+
+  if (transition.kind === "stepCompleted" || transition.kind === "ticketCompleted") {
+    eventTexts.push(`Ticket step completed: ${stepTitle}`);
+    if (transition.kind === "stepCompleted" && transition.ticket.nextStepLabel) {
+      eventTexts.push(`Ticket next step changed: ${transition.ticket.nextStepLabel}`);
+    }
+    if (transition.kind === "ticketCompleted") {
+      eventTexts.push(buildTicketStateEventText(transition.ticket, "completed"));
+    }
+    return eventTexts;
+  }
+
+  eventTexts.push(`Ticket step blocked: ${stepTitle}`);
+  eventTexts.push(buildTicketStateEventText(transition.ticket, "blocked"));
+  return eventTexts;
 }
 
 function maybeApplyTicketStepTransition(
   sessionId: string,
   assistantText: string,
-): { status: "completed" | "blocked" | null; message: StoredMessage | null } {
+): { status: "completed" | "blocked" | null; messages: StoredMessage[] } {
+  const previousTicket = ticketStore.getActiveTicketForSession(sessionId);
   const transition = ticketStore.resolveStepFromAssistantText(sessionId, assistantText);
   if (!transition) {
-    return { status: null, message: null };
+    return { status: null, messages: [] };
   }
 
-  const message = appendTicketEventMessage(
-    sessionId,
-    buildTicketTransitionEventText(transition),
+  const messages = buildTicketTransitionEventTexts(previousTicket, transition).map((text) =>
+    appendTicketEventMessage(sessionId, text),
   );
 
   if (transition.kind === "ticketCompleted") {
@@ -847,7 +882,7 @@ function maybeApplyTicketStepTransition(
         completedAtMs: Date.now(),
       });
     }
-    return { status: "completed", message };
+    return { status: "completed", messages };
   }
 
   if (transition.kind === "stepBlocked") {
@@ -860,10 +895,10 @@ function maybeApplyTicketStepTransition(
         completedAtMs: Date.now(),
       });
     }
-    return { status: "blocked", message };
+    return { status: "blocked", messages };
   }
 
-  return { status: null, message };
+  return { status: null, messages };
 }
 
 function queueProcessExpectationForSession(sessionId: string) {
@@ -871,7 +906,7 @@ function queueProcessExpectationForSession(sessionId: string) {
   const processBlueprint = getSessionProcessBlueprint(session);
   if (!session || !processBlueprint) {
     ticketStore.clearActiveTicketForSession(sessionId);
-    return { session, processMessage: null as StoredMessage | null };
+    return { session, messages: [] as StoredMessage[] };
   }
 
   const ticket = ticketStore.createOrReplaceSessionTicket(sessionId, processBlueprint);
@@ -882,13 +917,16 @@ function queueProcessExpectationForSession(sessionId: string) {
     providerSeenAtMs: null,
     content: [{ type: "text", text: expectationText }],
   });
-  appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "created"));
+  const ticketMessage = appendTicketEventMessage(
+    sessionId,
+    buildTicketStateEventText(ticket, "created"),
+  );
   const updatedSession = store.replacePendingSystemInstructionByPrefix(
     sessionId,
     PROCESS_INSTRUCTION_PREFIX,
     expectationText,
   );
-  return { session: updatedSession ?? session, processMessage };
+  return { session: updatedSession ?? session, messages: [processMessage, ticketMessage] };
 }
 
 function queuedProcessChangeAwaitingExplicitHumanSend(
@@ -1760,7 +1798,7 @@ async function runProviderTurnForQueuedMessages(
           : null;
     const ticketProgress = finalAssistantText
       ? maybeApplyTicketStepTransition(sessionId, finalAssistantText)
-      : { status: null, message: null as StoredMessage | null };
+      : { status: null, messages: [] as StoredMessage[] };
     if (finalAssistantText && ticketProgress.status === null) {
       maybeMarkProcessBlueprintTerminal(sessionId, finalAssistantText);
     }
@@ -1768,7 +1806,7 @@ async function runProviderTurnForQueuedMessages(
     broadcastSession(sessionId, {
       type: "session.updated",
       session: buildSessionSummary(store.getSession(sessionId) ?? updatedSession ?? latestSession ?? store.getSession(sessionId)!),
-      messages: [providerCompletionIssueMessage, assistantMessage, ticketProgress.message].filter(Boolean),
+      messages: [providerCompletionIssueMessage, assistantMessage, ...ticketProgress.messages].filter(Boolean),
       queuedMessages: store.listQueuedMessages(sessionId),
       activity: toSessionActivity(sessionId),
     });
@@ -2135,9 +2173,7 @@ const server = Bun.serve<ChatSocketData>({
               ),
             );
             const queuedExpectation = queueProcessExpectationForSession(sessionId);
-            if (queuedExpectation.processMessage) {
-              queuedMessages.push(queuedExpectation.processMessage);
-            }
+            queuedMessages.push(...queuedExpectation.messages);
             if (queuedExpectation.session) {
               session = queuedExpectation.session;
             }
