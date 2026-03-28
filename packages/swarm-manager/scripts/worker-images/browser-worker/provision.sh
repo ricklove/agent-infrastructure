@@ -3,6 +3,16 @@ set -euo pipefail
 
 dnf install -y awscli git jq unzip
 
+cat > /etc/profile.d/agent-browser-idle-timeout.sh <<'EOF'
+export AGENT_BROWSER_IDLE_TIMEOUT_MS="${AGENT_BROWSER_IDLE_TIMEOUT_MS:-300000}"
+EOF
+chmod 0644 /etc/profile.d/agent-browser-idle-timeout.sh
+if grep -q '^AGENT_BROWSER_IDLE_TIMEOUT_MS=' /etc/environment; then
+  sed -i 's/^AGENT_BROWSER_IDLE_TIMEOUT_MS=.*/AGENT_BROWSER_IDLE_TIMEOUT_MS=300000/' /etc/environment
+else
+  printf '\nAGENT_BROWSER_IDLE_TIMEOUT_MS=300000\n' >> /etc/environment
+fi
+
 export HOME=/root
 export BUN_INSTALL=/opt/bun
 if [[ ! -x "$BUN_INSTALL/bin/bun" ]]; then
