@@ -12,6 +12,8 @@ import {
   useMemo,
   useState,
 } from "react"
+import { DashboardWindowLayer } from "./DashboardWindowLayer"
+import { FloatingTicketWindows } from "./FloatingTicketWindows"
 import { dashboardFeaturePlugins } from "./feature-plugins"
 
 type DashboardConfig = {
@@ -566,39 +568,40 @@ export function DashboardShell({
     (!config?.requiresSession || Boolean(readStoredSessionToken()))
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-slate-950 text-slate-100">
-      {mobileFeatureMenuOpen ? (
-        <button
-          type="button"
-          aria-label="Close main menu"
-          onClick={() => setMobileFeatureMenuOpen(false)}
-          className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm md:hidden"
-        />
-      ) : null}
-      <aside
-        className={[
-          "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 overflow-visible border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:relative md:z-30 md:translate-x-0",
-          mobileFeatureMenuOpen ? "translate-x-0" : "-translate-x-full",
-        ].join(" ")}
-      >
-        <div className="group relative">
+    <DashboardWindowLayer>
+      <div className="flex h-dvh overflow-hidden bg-slate-950 text-slate-100">
+        {mobileFeatureMenuOpen ? (
           <button
             type="button"
-            onClick={() => setVersionPopupOpen((current) => !current)}
-            className={[
-              "pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border text-[11px] font-semibold tracking-[0.24em] transition",
-              aiButtonTone,
-            ].join(" ")}
-            title={`Version ${appVersion}`}
-          >
-            AI
-          </button>
-          <div
-            className={[
-              "pointer-events-auto absolute left-full top-0 z-[70] ml-2 min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur",
-              versionPopupOpen ? "block" : "hidden group-hover:block",
-            ].join(" ")}
-          >
+            aria-label="Close main menu"
+            onClick={() => setMobileFeatureMenuOpen(false)}
+            className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm md:hidden"
+          />
+        ) : null}
+        <aside
+          className={[
+            "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 overflow-visible border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:relative md:z-30 md:translate-x-0",
+            mobileFeatureMenuOpen ? "translate-x-0" : "-translate-x-full",
+          ].join(" ")}
+        >
+          <div className="group relative">
+            <button
+              type="button"
+              onClick={() => setVersionPopupOpen((current) => !current)}
+              className={[
+                "pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border text-[11px] font-semibold tracking-[0.24em] transition",
+                aiButtonTone,
+              ].join(" ")}
+              title={`Version ${appVersion}`}
+            >
+              AI
+            </button>
+            <div
+              className={[
+                "pointer-events-auto absolute left-full top-0 z-[70] ml-2 min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur",
+                versionPopupOpen ? "block" : "hidden group-hover:block",
+              ].join(" ")}
+            >
             <div
               className="absolute inset-y-0 -left-3 w-3"
               aria-hidden="true"
@@ -651,9 +654,9 @@ export function DashboardShell({
                 </div>
               ) : null}
             </div>
+            </div>
           </div>
-        </div>
-        <nav className="mt-1 flex w-full flex-1 flex-col items-center gap-1.5">
+          <nav className="mt-1 flex w-full flex-1 flex-col items-center gap-1.5">
           {featureDefinitions.map((feature) => {
             const isActive = feature.id === activeFeatureId
             const Icon = feature.iconComponent
@@ -677,87 +680,89 @@ export function DashboardShell({
               </button>
             )
           })}
-        </nav>
-      </aside>
+          </nav>
+        </aside>
 
-      <div className="relative flex min-w-0 flex-1 flex-col">
-        <div className="absolute left-3 top-3 z-20 md:hidden">
-          <button
-            type="button"
-            aria-label={
-              mobileFeatureMenuOpen ? "Close main menu" : "Open main menu"
-            }
-            title={mobileFeatureMenuOpen ? "Close Main Menu" : "Open Main Menu"}
-            onClick={() => setMobileFeatureMenuOpen((current) => !current)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/85 text-slate-200 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur"
-          >
-            <MenuIcon className="h-4 w-4" />
-          </button>
-        </div>
-        <main className="min-h-0 flex-1">
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center p-10 text-sm text-slate-400">
-                Loading feature...
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          <div className="absolute left-3 top-3 z-20 md:hidden">
+            <button
+              type="button"
+              aria-label={
+                mobileFeatureMenuOpen ? "Close main menu" : "Open main menu"
+              }
+              title={mobileFeatureMenuOpen ? "Close Main Menu" : "Open Main Menu"}
+              onClick={() => setMobileFeatureMenuOpen((current) => !current)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/85 text-slate-200 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur"
+            >
+              <MenuIcon className="h-4 w-4" />
+            </button>
+          </div>
+          <main className="min-h-0 flex-1">
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center p-10 text-sm text-slate-400">
+                  Loading feature...
+                </div>
+              }
+            >
+              {canRenderFeatures
+                ? loadedFeatureIds.map((featureId) => {
+                    const feature =
+                      featureDefinitions.find(
+                        (candidate) => candidate.id === featureId,
+                      ) ?? featureDefinitions[0]
+                    const FeatureComponent = feature.component
+
+                    return (
+                      <section
+                        key={feature.id}
+                        className={
+                          feature.id === activeFeatureId
+                            ? "h-full min-h-0"
+                            : "hidden h-full"
+                        }
+                      >
+                        <FeatureComponent />
+                      </section>
+                    )
+                  })
+                : null}
+            </Suspense>
+          </main>
+          <div className="pointer-events-none absolute right-4 top-4 z-50 flex max-w-[32rem] flex-col items-end gap-2">
+            {initializing ? (
+              <div className="rounded-xl border border-white/10 bg-[#0d131c]/90 px-3 py-2 text-xs text-slate-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+                Initializing dashboard shell...
               </div>
-            }
-          >
-            {canRenderFeatures
-              ? loadedFeatureIds.map((featureId) => {
-                  const feature =
-                    featureDefinitions.find(
-                      (candidate) => candidate.id === featureId,
-                    ) ?? featureDefinitions[0]
-                  const FeatureComponent = feature.component
-
-                  return (
-                    <section
-                      key={feature.id}
-                      className={
-                        feature.id === activeFeatureId
-                          ? "h-full min-h-0"
-                          : "hidden h-full"
-                      }
-                    >
-                      <FeatureComponent />
-                    </section>
-                  )
-                })
-              : null}
-          </Suspense>
-        </main>
-        <div className="pointer-events-none absolute right-4 top-4 z-50 flex max-w-[32rem] flex-col items-end gap-2">
-          {initializing ? (
-            <div className="rounded-xl border border-white/10 bg-[#0d131c]/90 px-3 py-2 text-xs text-slate-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-              Initializing dashboard shell...
-            </div>
-          ) : null}
-          {error ? (
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-              {error}
-            </div>
-          ) : null}
-          {accessMessage ? (
-            <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-              {accessMessage}
-            </div>
-          ) : null}
-          {authRequired && config?.accessAppUrl ? (
-            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-              <span>Session access is required to use this dashboard.</span>
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = config.accessAppUrl
-                }}
-                className="rounded-full border border-cyan-100/30 bg-cyan-50/10 px-3 py-1.5 font-medium uppercase tracking-[0.18em] text-cyan-50 transition hover:bg-cyan-50/20"
-              >
-                Open Auth Page
-              </button>
-            </div>
-          ) : null}
+            ) : null}
+            {error ? (
+              <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+                {error}
+              </div>
+            ) : null}
+            {accessMessage ? (
+              <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+                {accessMessage}
+              </div>
+            ) : null}
+            {authRequired && config?.accessAppUrl ? (
+              <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+                <span>Session access is required to use this dashboard.</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = config.accessAppUrl
+                  }}
+                  className="rounded-full border border-cyan-100/30 bg-cyan-50/10 px-3 py-1.5 font-medium uppercase tracking-[0.18em] text-cyan-50 transition hover:bg-cyan-50/20"
+                >
+                  Open Auth Page
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
+        <FloatingTicketWindows apiRootUrl="/api/agent-chat" />
       </div>
-    </div>
+    </DashboardWindowLayer>
   )
 }

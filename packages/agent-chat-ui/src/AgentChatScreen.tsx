@@ -145,6 +145,7 @@ type SessionMessage = {
     | "activity"
     | "ticketEvent"
   replyToMessageId: string | null
+  ticketId: string | null
   providerSeenAtMs: number | null
   content: Array<
     { type: "text"; text: string } | { type: "image"; url: string }
@@ -505,6 +506,25 @@ const CopyIcon = memo(function CopyIcon() {
     >
       <rect x="9" y="9" width="10" height="10" rx="2" />
       <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" />
+    </svg>
+  )
+})
+
+const OpenTicketIcon = memo(function OpenTicketIcon() {
+  useRenderCounter("OpenTicketIcon")
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5"
+      aria-hidden="true"
+    >
+      <path d="M5 7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v2a1.5 1.5 0 0 0 0 3v2A2.5 2.5 0 0 1 16.5 17h-9A2.5 2.5 0 0 1 5 14.5v-2a1.5 1.5 0 0 0 0-3z" />
+      <path d="M9 9.25h6M9 12h6" />
     </svg>
   )
 })
@@ -2220,6 +2240,7 @@ const ComposerPanel = memo(
     sending: boolean
     interrupting: boolean
     activity: SessionActivity
+    canInterruptNow: boolean
     threadStatusSummary: string[]
     processResolutionRequired: boolean
     processTerminalStatus: "completed" | "blocked" | null
@@ -2396,8 +2417,7 @@ const ComposerPanel = memo(
 
         if (
           event.key === "Escape" &&
-          props.activity.canInterrupt &&
-          props.activity.status === "running" &&
+          props.canInterruptNow &&
           !props.interrupting
         ) {
           event.preventDefault()
@@ -2405,8 +2425,7 @@ const ComposerPanel = memo(
         }
       },
       [
-        props.activity.canInterrupt,
-        props.activity.status,
+        props.canInterruptNow,
         props.interrupting,
         props.onInterrupt,
         submitComposer,
@@ -2656,8 +2675,7 @@ const ComposerPanel = memo(
             >
               <MenuIcon />
             </IconButton>
-            {props.activity.canInterrupt &&
-            props.activity.status === "running" ? (
+            {props.canInterruptNow ? (
               <IconButton
                 label={
                   props.interrupting ? "Interrupting run" : "Interrupt run"
@@ -2700,6 +2718,7 @@ const ComposerPanel = memo(
       previousSessionId === nextSessionId &&
       previousProps.sending === nextProps.sending &&
       previousProps.interrupting === nextProps.interrupting &&
+      previousProps.canInterruptNow === nextProps.canInterruptNow &&
       previousProps.activity.status === nextProps.activity.status &&
       previousProps.activity.canInterrupt === nextProps.activity.canInterrupt &&
       previousThreadStatusKey === nextThreadStatusKey &&
@@ -3345,6 +3364,20 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       ),
     [activeSession?.pendingSystemInstruction, queuedSystemMessages],
   )
+  const queuedInterruptibleSystemMessage = useMemo(
+    () =>
+      queuedMessages.find(
+        (message) =>
+          message.id === activity.currentMessageId &&
+          message.providerSeenAtMs === null &&
+          message.role === "system" &&
+          (message.kind === "ticketEvent" || message.kind === "watchdogPrompt"),
+      ) ?? null,
+    [activity.currentMessageId, queuedMessages],
+  )
+  const canInterruptNow =
+    (activity.canInterrupt && activity.status === "running") ||
+    queuedInterruptibleSystemMessage !== null
   const showScrollToBottomButton = useMemo(() => {
     return (
       threadViewportMetrics.scrollHeight -
@@ -4703,7 +4736,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   )
 
   const interruptRun = useCallback(async () => {
-    if (!activeSessionId || !activity.canInterrupt || !activity.turnId) {
+    if (!activeSessionId) {
+      if (!queuedInterruptibleSystemMessage) {
+        return
+      }
+    }
+    if (
+      !queuedInterruptibleSystemMessage &&
+      (!activity.canInterrupt || activity.status !== "running")
+    ) {
       return
     }
 
@@ -4736,7 +4777,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
   }, [
     activeSessionId,
     activity.canInterrupt,
-    activity.turnId,
+    activity.status,
+    queuedInterruptibleSystemMessage,
     props.apiRootUrl,
   ])
 
@@ -4748,8 +4790,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
       if (
         event.key === "Escape" &&
-        activity.canInterrupt &&
-        activity.status === "running" &&
+        canInterruptNow &&
         !interrupting
       ) {
         event.preventDefault()
@@ -4763,8 +4804,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
   }, [
     activeSessionId,
-    activity.canInterrupt,
-    activity.status,
+    canInterruptNow,
     interrupting,
     interruptRun,
   ])
@@ -5387,6 +5427,35 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 <p className="text-xs text-slate-500">
                                   {formatTime(message.createdAtMs)}
                                 </p>
+                                {message.kind === "ticketEvent" &&
+                                message.ticketId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      window.dispatchEvent(
+                                        new CustomEvent(
+                                          "dashboard-open-ticket-window",
+                                          {
+                                            detail: {
+                                              ticketId: message.ticketId,
+                                              sessionId: message.sessionId,
+                                              title:
+                                                activeSession?.activeTicket?.id ===
+                                                message.ticketId
+                                                  ? activeSession.activeTicket
+                                                      .title
+                                                  : "Ticket",
+                                            },
+                                          },
+                                        ),
+                                      )
+                                    }}
+                                    className="rounded-full border border-cyan-300/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100 hover:border-cyan-200/40 hover:text-cyan-50"
+                                    title="Open ticket window"
+                                  >
+                                    <OpenTicketIcon />
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -5964,10 +6033,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                 <ComposerPanel
                   activeSession={activeSession}
                   sending={sending}
-                  interrupting={interrupting}
-                  activity={activity}
-                  threadStatusSummary={threadStatusSummary}
-                  processResolutionRequired={processResolutionRequired}
+              interrupting={interrupting}
+              activity={activity}
+              canInterruptNow={canInterruptNow}
+              threadStatusSummary={threadStatusSummary}
+              processResolutionRequired={processResolutionRequired}
                   processTerminalStatus={processTerminalStatus}
                   quickProcessSelectValue={quickProcessSelectValue}
                   processBlueprints={processBlueprints}

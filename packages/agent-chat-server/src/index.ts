@@ -694,7 +694,7 @@ function maybeMarkProcessBlueprintTerminal(
   if (normalizedText === processBlueprint.completionToken) {
     const ticket = ticketStore.resolveActiveTicket(sessionId, "completed", normalizedText);
     if (ticket) {
-      appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "completed"));
+      appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "completed"), ticket);
     }
     setSessionWatchdogState(sessionId, {
       status: "completed",
@@ -708,7 +708,7 @@ function maybeMarkProcessBlueprintTerminal(
   if (normalizedText === processBlueprint.blockedToken) {
     const ticket = ticketStore.resolveActiveTicket(sessionId, "blocked", normalizedText);
     if (ticket) {
-      appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "blocked"));
+      appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "blocked"), ticket);
     }
     setSessionWatchdogState(sessionId, {
       status: "blocked",
@@ -775,10 +775,41 @@ function appendActivityMessage(sessionId: string, text: string) {
   });
 }
 
-function appendTicketEventMessage(sessionId: string, text: string) {
+function listQueuedInterruptibleSystemMessages(sessionId: string) {
+  return store
+    .listQueuedUserMessages(sessionId)
+    .filter(
+      (message) =>
+        message.role === "system" &&
+        (message.kind === "ticketEvent" || message.kind === "watchdogPrompt"),
+    );
+}
+
+function requestProviderInterrupt(
+  sessionId: string,
+  session: StoredSession,
+  providerKind: AgentChatProviderKind,
+  threadId: string | null,
+  turnId: string | null,
+) {
+  if (providerKind === "codex-app-server") {
+    if (!threadId || !turnId) {
+      return Promise.reject(new Error("No active turn to interrupt"));
+    }
+    return interruptCodexTurn(session, threadId, turnId);
+  }
+  return interruptClaudeTurn(sessionId);
+}
+
+function appendTicketEventMessage(
+  sessionId: string,
+  text: string,
+  ticket: StoredAgentTicket | null = ticketStore.getActiveTicketForSession(sessionId),
+) {
   return store.appendMessage(sessionId, {
     role: "system",
     kind: "ticketEvent",
+    ticketId: ticket?.id ?? null,
     providerSeenAtMs: null,
     content: [{ type: "text", text }],
   });
@@ -976,6 +1007,7 @@ function maybeApplyTicketStepTransition(
     appendTicketEventMessage(
       sessionId,
       buildTicketTransitionEventText(previousTicket, transition),
+      transition.ticket,
     ),
   ];
 
@@ -1041,7 +1073,7 @@ function queueProcessExpectationForSession(sessionId: string) {
   return {
     session: updatedSession ?? session,
     messages: ticket
-      ? [processMessage, appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "created"))]
+      ? [processMessage, appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "created"), ticket)]
       : [processMessage],
   };
 }
@@ -1118,7 +1150,7 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
   const activeTicket = ticketStore.getActiveTicketForSession(sessionId);
   const watchdogMessage =
     activeTicket?.status === "active" && activeTicket.currentStepId
-      ? appendTicketEventMessage(sessionId, buildStartedStepEventText(activeTicket))
+      ? appendTicketEventMessage(sessionId, buildStartedStepEventText(activeTicket), activeTicket)
       : store.appendMessage(sessionId, {
           role: "system",
           kind: "watchdogPrompt",
@@ -1271,15 +1303,19 @@ function providerActivityCallbacks(
   return {
     onRunStarted(payload: { threadId: string; turnId: string }) {
       const startedActivity = appendActivityMessage(sessionId, "Provider turn started.");
-      setRuntimeState(sessionId, (current) => ({
-        ...current,
-        status: "running",
-        startedAtMs: current.startedAtMs ?? Date.now(),
-        lastVisibleActivityAtMs: Date.now(),
-        providerIdleSinceAtMs: null,
-        threadId: payload.threadId,
-        turnId: payload.turnId,
-      }));
+      let shouldInterruptImmediately = false;
+      setRuntimeState(sessionId, (current) => {
+        shouldInterruptImmediately = current.interruptRequested;
+        return {
+          ...current,
+          status: "running",
+          startedAtMs: current.startedAtMs ?? Date.now(),
+          lastVisibleActivityAtMs: Date.now(),
+          providerIdleSinceAtMs: null,
+          threadId: payload.threadId,
+          turnId: payload.turnId,
+        };
+      });
       broadcastSession(sessionId, {
         type: "run.started",
         sessionId,
@@ -1291,6 +1327,23 @@ function providerActivityCallbacks(
         activity: toSessionActivity(sessionId),
       });
       broadcastSingleMessageUpdate(sessionId, startedActivity);
+      if (shouldInterruptImmediately) {
+        void requestProviderInterrupt(
+          sessionId,
+          currentSession,
+          currentSession.providerKind,
+          payload.threadId,
+          payload.turnId,
+        ).catch((error) => {
+          const errorText =
+            error instanceof Error ? error.message : "Interrupt request failed.";
+          const failureMessage = appendActivityMessage(
+            sessionId,
+            `Interrupt request failed: ${errorText}`,
+          );
+          broadcastSingleMessageUpdate(sessionId, failureMessage);
+        });
+      }
     },
     onThreadStatusChanged(payload: { threadId: string; flags: string[] }) {
       let statusMessage: StoredMessage | null = null;
@@ -2070,6 +2123,13 @@ const server = Bun.serve<ChatSocketData>({
       });
     }
 
+    const ticketMatch = /^\/api\/agent-chat\/tickets\/([^/]+)$/.exec(url.pathname);
+    if (ticketMatch && request.method === "GET") {
+      const ticketId = decodeURIComponent(ticketMatch[1]!);
+      const ticket = ticketStore.getTicket(ticketId);
+      return ticket ? jsonResponse({ ok: true, ticket }) : notFound();
+    }
+
     if (url.pathname === "/api/agent-chat/sessions" && request.method === "GET") {
       return jsonResponse({
         ok: true,
@@ -2403,19 +2463,71 @@ const server = Bun.serve<ChatSocketData>({
         return notFound();
       }
       const interruptProviderKind = runtime.providerKind ?? session.providerKind;
-      if (!providerSupportsInterrupt(interruptProviderKind)) {
+      const queuedInterruptibleMessages = listQueuedInterruptibleSystemMessages(sessionId);
+      const canInterruptQueuedSystemTurn =
+        runtime.status === "queued" && queuedInterruptibleMessages.length > 0;
+      if (
+        !canInterruptQueuedSystemTurn &&
+        !providerSupportsInterrupt(interruptProviderKind)
+      ) {
         return jsonResponse({ ok: false, error: "Interrupt not supported for this provider" }, 400);
+      }
+      if (canInterruptQueuedSystemTurn) {
+        const seenAtMs = Date.now();
+        store.markMessagesSeen(
+          sessionId,
+          queuedInterruptibleMessages.map((message) => message.id),
+          seenAtMs,
+        );
+        const remainingQueuedMessages = store.listQueuedUserMessages(sessionId);
+        const nextQueuedMessage = remainingQueuedMessages[0] ?? null;
+        setRuntimeState(sessionId, {
+          status: nextQueuedMessage ? "queued" : "idle",
+          currentMessageId: nextQueuedMessage?.id ?? null,
+          canInterrupt: false,
+          lastError: null,
+          providerIdleSinceAtMs: null,
+          interruptRequested: false,
+        });
+        broadcastSession(sessionId, {
+          type: "session.updated",
+          session: buildSessionSummary(session),
+          messages: [],
+          queuedMessages: store.listQueuedMessages(sessionId),
+          activity: toSessionActivity(sessionId),
+        });
+        if (nextQueuedMessage) {
+          void processSessionQueue(sessionId);
+        }
+        return jsonResponse({ ok: true, activity: toSessionActivity(sessionId) });
       }
       if (runtime.status !== "running") {
         return jsonResponse({ ok: false, error: "No active turn to interrupt" }, 409);
       }
 
-      const interruptPromise =
-        interruptProviderKind === "codex-app-server"
-          ? !runtime.turnId || !runtime.threadId
-            ? Promise.reject(new Error("No active turn to interrupt"))
-            : interruptCodexTurn(session, runtime.threadId, runtime.turnId)
-          : interruptClaudeTurn(sessionId);
+      if (
+        runtime.status === "running" &&
+        interruptProviderKind === "codex-app-server" &&
+        (!runtime.turnId || !runtime.threadId)
+      ) {
+        setRuntimeState(sessionId, (current) => ({
+          ...current,
+          interruptRequested: true,
+          canInterrupt: false,
+          lastVisibleActivityAtMs: Date.now(),
+          providerIdleSinceAtMs: null,
+        }));
+        broadcastActivity(sessionId);
+        return jsonResponse({ ok: true, activity: toSessionActivity(sessionId) });
+      }
+
+      const interruptPromise = requestProviderInterrupt(
+        sessionId,
+        session,
+        interruptProviderKind,
+        runtime.threadId,
+        runtime.turnId,
+      );
 
       return interruptPromise
         .then(() => {
