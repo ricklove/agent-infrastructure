@@ -31,6 +31,7 @@ import {
 import {
   AgentTicketStore,
   type StoredAgentTicket,
+  type StoredAgentTicketTransition,
 } from "./agent-tickets.js";
 import {
   normalizeClaudeSessionModelRef,
@@ -581,6 +582,24 @@ function formatTicketChecklist(ticket: StoredAgentTicket) {
   return formatTicketChecklistStepLines(ticket.checklist).join("\n");
 }
 
+function currentTicketStepTokenHint(ticket: StoredAgentTicket | null) {
+  if (!ticket?.currentStepId) {
+    return "";
+  }
+  return `\n\nCurrent step tokens: done: ${ticket.currentStepId} | blocked: ${ticket.currentStepId}`;
+}
+
+function currentDecisionOptionHint(ticket: StoredAgentTicket | null) {
+  if (!ticket?.currentStepId) {
+    return "";
+  }
+  const currentStep = ticket.checklist.find((step) => step.id === ticket.currentStepId) ?? null;
+  if (!currentStep?.decision || currentStep.decision.options.length === 0) {
+    return "";
+  }
+  return `\n\nDecision responses: ${currentStep.decision.options.map((option) => option.title).join(" | ")}`;
+}
+
 function buildProcessExpectationInstruction(
   processBlueprint: ProcessBlueprint | null,
   ticket: StoredAgentTicket | null,
@@ -756,6 +775,71 @@ function buildTicketStateEventText(
   return ticket.resolution
     ? `Ticket blocked: ${ticket.processTitle}. ${ticket.resolution}`
     : `Ticket blocked: ${ticket.processTitle}`;
+}
+
+function buildTicketTransitionEventText(transition: StoredAgentTicketTransition) {
+  if (transition.kind === "stepCompleted") {
+    const detail = transition.detail ? ` Outcome: ${transition.detail}.` : "";
+    return transition.ticket.nextStepLabel
+      ? `Ticket step completed: ${transition.stepTitle ?? transition.ticket.processTitle}.${detail} Next step: ${transition.ticket.nextStepLabel}`
+      : `Ticket step completed: ${transition.stepTitle ?? transition.ticket.processTitle}.${detail}`;
+  }
+  if (transition.kind === "stepBlocked") {
+    return transition.detail
+      ? `Ticket step blocked: ${transition.stepTitle ?? transition.ticket.processTitle}. ${transition.detail}`
+      : `Ticket step blocked: ${transition.stepTitle ?? transition.ticket.processTitle}`;
+  }
+  if (transition.kind === "ticketCompleted") {
+    return transition.ticket.resolution
+      ? `Ticket completed: ${transition.ticket.processTitle}. ${transition.ticket.resolution}`
+      : `Ticket completed: ${transition.ticket.processTitle}`;
+  }
+  return transition.ticket.resolution
+    ? `Ticket blocked: ${transition.ticket.processTitle}. ${transition.ticket.resolution}`
+    : `Ticket blocked: ${transition.ticket.processTitle}`;
+}
+
+function maybeApplyTicketStepTransition(
+  sessionId: string,
+  assistantText: string,
+): { status: "completed" | "blocked" | null; message: StoredMessage | null } {
+  const transition = ticketStore.resolveStepFromAssistantText(sessionId, assistantText);
+  if (!transition) {
+    return { status: null, message: null };
+  }
+
+  const message = appendTicketEventMessage(
+    sessionId,
+    buildTicketTransitionEventText(transition),
+  );
+
+  if (transition.kind === "ticketCompleted") {
+    const session = store.getSession(sessionId);
+    if (session) {
+      setSessionWatchdogState(sessionId, {
+        status: "completed",
+        nudgeCount: session.watchdogState.nudgeCount,
+        lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
+        completedAtMs: Date.now(),
+      });
+    }
+    return { status: "completed", message };
+  }
+
+  if (transition.kind === "ticketBlocked" || transition.kind === "stepBlocked") {
+    const session = store.getSession(sessionId);
+    if (session) {
+      setSessionWatchdogState(sessionId, {
+        status: "blocked",
+        nudgeCount: session.watchdogState.nudgeCount,
+        lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
+        completedAtMs: Date.now(),
+      });
+    }
+    return { status: "blocked", message };
+  }
+
+  return { status: null, message };
 }
 
 function queueProcessExpectationForSession(sessionId: string) {
@@ -1650,14 +1734,17 @@ async function runProviderTurnForQueuedMessages(
               ],
             })
           : null;
-    if (finalAssistantText) {
+    const ticketProgress = finalAssistantText
+      ? maybeApplyTicketStepTransition(sessionId, finalAssistantText)
+      : { status: null, message: null as StoredMessage | null };
+    if (finalAssistantText && ticketProgress.status === null) {
       maybeMarkProcessBlueprintTerminal(sessionId, finalAssistantText);
     }
     finalizeIdleRuntimeState(sessionId, result.threadId);
     broadcastSession(sessionId, {
       type: "session.updated",
-      session: updatedSession ? buildSessionSummary(updatedSession) : null,
-      messages: [providerCompletionIssueMessage, assistantMessage].filter(Boolean),
+      session: buildSessionSummary(store.getSession(sessionId) ?? updatedSession ?? latestSession ?? store.getSession(sessionId)!),
+      messages: [providerCompletionIssueMessage, assistantMessage, ticketProgress.message].filter(Boolean),
       queuedMessages: store.listQueuedMessages(sessionId),
       activity: toSessionActivity(sessionId),
     });
