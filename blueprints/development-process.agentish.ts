@@ -86,7 +86,7 @@ DevelopmentProcess.enforces(`
 - When a swarm worker is used for development, that worker should have its own isolated workspace checkout and its own worker-local runtime surface rather than sharing the manager host runtime or canonical shared checkout.
 - A worker-host implementation surface must not have direct write access to the manager host shared repository checkout or runtime checkout.
 - A worker-host implementation surface must not inherit long-lived manager git credentials or ambient git authority for canonical manager repositories.
-- When a swarm worker is used for development, the manager host remains the integration, GitHub push, release, deploy, and live-verification surface rather than a parallel editing surface.
+- When a swarm worker is used for development, a dedicated manager integration worktree remains the integration, GitHub push, release, deploy, and live-verification surface rather than the shared repository checkout or a parallel editing surface.
 - The manager host must not be used as the active mutable implementation surface for code-changing feature or fix work.
 - Development on a swarm worker should happen through persistent worker terminals rather than one-off ssh command invocations for routine edit and verification loops.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
@@ -102,7 +102,7 @@ DevelopmentProcess.enforces(`
 - Live Peer Development should provide the worker preview URL to the operator and should expect continued operator feedback while the worker preview remains the active review surface.
 - Live Peer Development should record stable milestones as feature-branch commits rather than leaving iterative preview work only in uncommitted worker state.
 - Live Peer Development may include high-level dashboard UI iteration, mockups, or exploratory design outputs in addition to implementation changes, but any code-changing work still belongs on the worker feature branch.
-- Before creating a new feature branch, the shared integration checkout should be refreshed to the intended upstream base branch tip so new feature work does not start from stale local checkout history.
+- Before creating a new feature branch, the manager repository should be refreshed to the intended upstream base branch tip so new feature work does not start from stale local checkout history.
 - The preferred setup sequence is to create the implementation worktree directly from the current upstream base branch tip with `git fetch origin <base-branch>` followed by `git worktree add -b <feature-branch> <worktree-path> origin/<base-branch>`.
 - After creating or attaching the feature-branch worktree, merge only the additional upstream branch or branches that are intentionally required beyond that chosen base branch; do not immediately re-merge the same base branch the feature branch was just created from.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
@@ -122,12 +122,12 @@ DevelopmentProcess.enforces(`
 - Durable app data must live outside state/.
 - Provider-backed agents used for implementation must inherit this same workflow.
 - Runtime rollout should follow the deploy-manager-runtime blueprint as the standard deploy path.
-- Runtime rollout should call `bun run deploy-manager-runtime` from the shared source repository unless a more specific documented operator entrypoint supersedes it.
+- Runtime rollout should call `bun run deploy-manager-runtime` from the dedicated manager integration worktree unless a more specific documented operator entrypoint supersedes it.
 - UI-facing changes require real browser verification with `agent-browser`, visual verification on the rendered UI, saved screenshots, verification at small, medium, and wide viewport sizes, and deployed frontend-backend version matching.
 - Responsive UI changes must be verified with `agent-browser` at small, medium, and wide viewport sizes.
-- Post-deploy verification should record runtime checkout revision match, frontend-backend version match, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using the issued session URL, and a screenshot posted into the chat as a markdown image from the approved temporary image space under `~/temp` showing the changes on the manager dashboard at that URL.
+- Post-deploy verification should record runtime checkout revision match, frontend-backend version match, a successful check of `http://127.0.0.1:3000/api/health`, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification using the issued manager-dashboard session URL, navigation to a screen that shows modified behavior or chat when there were no UI changes, and a screenshot posted into the chat as a markdown image from `~/temp`.
 - If the operator cannot post a manager-dashboard screenshot into the chat as a markdown image from the approved temporary image space under `~/temp` for the new release, the rollout should be treated as failed, rolled back to an earlier known-good release tag, and kept in screenshot verification until a stable working release is found; the failed release tag should then be deleted locally and on the remote after recovery.
-- A rollout is not complete until post-deploy behavior has been verified on the live system.
+- A rollout is not complete until post-deploy behavior has been verified from the issued manager-dashboard session URL and the screenshot evidence has been reviewed.
 `);
 
 DevelopmentProcess.defines(`
@@ -141,7 +141,7 @@ DevelopmentProcess.defines(`
 - BlueprintStateTracksCurrentReality means blueprint-state records current implementation status, confidence, evidence, gaps, and known issues relative to the ideal blueprint.
 - WorkspaceToolingDiscovery means local machine tooling should be discovered from `/home/ec2-user/workspace/README.md` and `/home/ec2-user/workspace/tools/` guidance before installing replacements or parallel toolchains.
 - For UI verification on this machine, `agent-browser` is the expected browser tool for both behavior verification and visual verification, including small, medium, and wide viewport checks, unless a more specific documented workspace replacement supersedes it.
-- IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and the normal setup path is to create the worktree and feature branch together from the base branch.
+- IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and manager-side integration, release, deploy, and live verification also happen in a dedicated manager integration worktree rather than in the shared checkout.
 - WorkerBackedDevelopment means code-changing implementation work belongs on a swarm worker host whose checkout serves as the active remote worktree for that branch, with the manager host reserved for integration, deployment, and live verification.
 - WorkerIsolatedWorkspace means a development worker keeps its own workspace checkout and worker-local runtime surface instead of sharing the manager runtime tree or shared integration checkout.
 - ManagerGitAuthorityBoundary means manager-host git credentials and canonical repository authority stay on the manager integration surface and are not ambiently copied onto worker development surfaces.
@@ -161,7 +161,7 @@ DevelopmentProcess.defines(`
 - VersionMatchVerification means the served frontend version and running backend version must match exactly after rollout.
 - TicketSystemOwnsImplementationPlan means active work sequencing, task breakdown, and unfinished implementation routing belong in tickets rather than in long-lived blueprint companion files.
 - StandardRuntimeDeployBlueprint means runtime rollout uses the repository's canonical deploy-manager-runtime path and targets a release tag.
-- `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path after release promotion and tag creation.
+- `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path after release tag creation, and it should run from the manager integration worktree that holds the integrated commit being released.
 `);
 
 DevelopmentProcess.contains(
@@ -248,7 +248,7 @@ when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
 
 when(Actor.operator.starts("code-changing implementation on a feature or fix"))
   .then(DevelopmentProcess.expects(Artifact.baseBranch))
-  .and(DevelopmentProcess.treats("the shared repository checkout as the base-branch integration surface"))
+  .and(DevelopmentProcess.treats("the shared repository checkout as a reference-only repository surface for creating worker and manager worktrees"))
   .and(DevelopmentProcess.prefers(Artifact.featureBranch))
   .and(DevelopmentProcess.prefers(Artifact.implementationWorktree))
   .and(DevelopmentProcess.requires(Artifact.workerDevelopmentHost))

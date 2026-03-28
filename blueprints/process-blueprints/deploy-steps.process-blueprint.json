@@ -2,7 +2,7 @@
   "id": "deploy_steps",
   "title": "Deploy (Nested Steps)",
   "catalogOrder": 48,
-  "expectation": "Use the manager project repository as the integration, release, deploy, and live-validation surface for this process. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then pull the changes back into the manager project repository before continuing. Follow the deploy process through manager-side branch integration, release promotion, runtime deploy, runtime revision and version verification, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using that issued session URL, manager-dashboard screenshot verification, cleanup of the feature branch and worktree on success, and rollback recovery when screenshot verification fails.",
+  "expectation": "Use a dedicated manager integration worktree as the integration, release, deploy, and live-validation surface for this process. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then pull the changes into the manager integration worktree before continuing. Follow the deploy process through manager-side branch integration, release tagging, runtime deploy, runtime revision and version verification, local health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification using that issued manager-dashboard session URL, screenshot verification, cleanup of the manager integration worktree and feature branch surfaces on success, and rollback recovery when screenshot verification fails.",
   "idlePrompt": "If deployment is complete, reply only with 'done: deploy complete'. If you are truly blocked on a missing focused feature branch, user decision, or environment dependency, reply only with 'blocked: deploy blocked'. Otherwise resume the deploy process immediately and perform the next required integration, release, deploy, cleanup, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: deploy complete",
@@ -37,10 +37,6 @@
           }
         },
         {
-          "id": "pull_worker_branch_to_manager",
-          "title": "Pull the changes from the focused worker feature branch back to the project repo on the manager"
-        },
-        {
           "use": "manager_development_integration"
         }
       ]
@@ -53,11 +49,52 @@
           "use": "release_deploy_runtime_validation"
         },
         {
-          "use": "manager_dashboard_verification"
+          "id": "issue_manager_dashboard_session_url",
+          "title": "Issue a manager-dashboard session URL with `bun run issue:dashboard-session`"
+        },
+        {
+          "id": "perform_real_browser_verification",
+          "title": "Open the issued manager-dashboard session URL in `agent-browser` and verify the public dashboard loads correctly"
+        },
+        {
+          "id": "navigate_to_modified_screen",
+          "title": "Navigate to a screen that displays something that was modified; if there were no UI changes, go to chat"
+        },
+        {
+          "id": "save_manager_dashboard_screenshot",
+          "title": "Post a screenshot into the chat as a markdown image from `~/temp`"
+        },
+        {
+          "id": "summarize_manager_dashboard_screenshot",
+          "title": "Summarize what the screenshot shows"
+        },
+        {
+          "id": "assess_manager_dashboard_screenshot",
+          "title": "What is the screenshot verification outcome?",
+          "kind": "decision",
+          "decision": {
+            "prompt": "What is the screenshot verification outcome?",
+            "options": [
+              {
+                "id": "screenshot_verification_failed",
+                "title": "Screenshot verification failed",
+                "block": true
+              },
+              {
+                "id": "screenshot_verification_passed",
+                "title": "Screenshot verification passed",
+                "next": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "cleanup_manager_integration_worktree",
+          "title": "Clean up the manager integration worktree"
         },
         {
           "id": "cleanup_feature_branch_and_worktree",
-          "title": "Clean up the feature branch and worktree"
+          "title": "Clean up the feature branch and worker worktree"
         },
         {
           "id": "summarize_changes",
