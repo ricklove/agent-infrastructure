@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useDashboardWindowLayer } from "./DashboardWindowLayer"
 
 const openTicketWindowEventName = "dashboard-open-ticket-window"
+const dashboardSessionStorageKey = "agent-infrastructure.dashboard.session"
 
 type DashboardOpenTicketWindowDetail = {
   ticketId: string
@@ -56,6 +57,15 @@ function ticketBody(entry: TicketWindowState) {
   )
 }
 
+function dashboardAuthorizationHeader() {
+  if (typeof window === "undefined") {
+    return ""
+  }
+  const sessionToken =
+    window.sessionStorage.getItem(dashboardSessionStorageKey)?.trim() ?? ""
+  return sessionToken ? `Bearer ${sessionToken}` : ""
+}
+
 export function FloatingTicketWindows(props: { apiRootUrl: string }) {
   useRenderCounter("FloatingTicketWindows")
   const { openWindow, updateWindow, focusWindow } = useDashboardWindowLayer()
@@ -81,10 +91,15 @@ export function FloatingTicketWindows(props: { apiRootUrl: string }) {
       }
       inFlightTicketIdsRef.current.add(ticketId)
       try {
+        const authorization = dashboardAuthorizationHeader()
+        const headers = new Headers({ accept: "application/json" })
+        if (authorization) {
+          headers.set("Authorization", authorization)
+        }
         const response = await fetch(
           `${props.apiRootUrl}/tickets/${encodeURIComponent(ticketId)}`,
           {
-            headers: { accept: "application/json" },
+            headers,
           },
         )
         const payload = (await response.json()) as TicketResponse
