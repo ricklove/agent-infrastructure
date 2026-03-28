@@ -235,7 +235,6 @@ async function main(): Promise<void> {
   mkdirSync(config.workspaceDir, { recursive: true });
   const managerEnvPath = `${config.stateDir}/agent-swarm-monitor.env`;
   const managerNodeEnvPath = `${config.stateDir}/agent-swarm-manager-node.env`;
-  const agentBrowserIdleTimeoutMs = process.env.AGENT_BROWSER_IDLE_TIMEOUT_MS?.trim() || "300000";
   const dashboardEnrollmentSecretPath = `${config.stateDir}/dashboard-enrollment-secret`;
   const metricsDbPath = `${config.stateDir}/metrics.sqlite`;
   const swarmSharedTokenPath = `${config.stateDir}/swarm-shared-token`;
@@ -353,7 +352,6 @@ CLOUDFLARED_TUNNEL_NAME=${typeof cloudflareConfig.tunnelName === "string" ? clou
 CLOUDFLARED_HOSTNAME_BASE=${typeof cloudflareConfig.hostnameBase === "string" ? cloudflareConfig.hostnameBase : ""}
 CLOUDFLARED_TUNNEL_TOKEN=${cloudflareTunnelToken}
 DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
-AGENT_BROWSER_IDLE_TIMEOUT_MS=${agentBrowserIdleTimeoutMs}
 `),
     { mode: 0o600 },
   );
@@ -381,7 +379,6 @@ CLOUDFLARED_TUNNEL_NAME=${typeof cloudflareConfig.tunnelName === "string" ? clou
 CLOUDFLARED_HOSTNAME_BASE=${typeof cloudflareConfig.hostnameBase === "string" ? cloudflareConfig.hostnameBase : ""}
 CLOUDFLARED_TUNNEL_TOKEN=${cloudflareTunnelToken}
 DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
-AGENT_BROWSER_IDLE_TIMEOUT_MS=${agentBrowserIdleTimeoutMs}
 `),
     { mode: 0o600 },
   );

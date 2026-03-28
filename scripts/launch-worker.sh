@@ -27,7 +27,6 @@ MANAGER_PRIVATE_IP=$(jq -r '.managerPrivateIp' "$CONFIG")
 MANAGER_MONITOR_PORT=$(jq -r '.managerMonitorPort' "$CONFIG")
 SWARM_SHARED_TOKEN=$(jq -r '.swarmSharedToken' "$CONFIG")
 RELEASE_CONFIG="${STATE_ROOT}/worker-runtime-release.json"
-AGENT_BROWSER_IDLE_TIMEOUT_MS="${AGENT_BROWSER_IDLE_TIMEOUT_MS:-300000}"
 
 if [[ ! -s "$RELEASE_CONFIG" ]]; then
   system_event_log "launch-worker.sh" "error" "missing_release_config=${RELEASE_CONFIG}"
@@ -153,7 +152,6 @@ sed \
   -e "s/__SWARM_SHARED_TOKEN__/$SWARM_SHARED_TOKEN/g" \
   -e "s/__WORKER_RUNTIME_RELEASE_BUCKET__/$WORKER_RUNTIME_RELEASE_BUCKET/g" \
   -e "s#__WORKER_RUNTIME_RELEASE_KEY__#$WORKER_RUNTIME_RELEASE_KEY#g" \
-  -e "s/__AGENT_BROWSER_IDLE_TIMEOUT_MS__/$AGENT_BROWSER_IDLE_TIMEOUT_MS/g" \
   -e "s/__REGION__/$REGION/g" \
   "$SCRIPT_DIR/worker-user-data.sh" > "$TEMP_USER_DATA"
 
