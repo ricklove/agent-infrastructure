@@ -2,7 +2,7 @@
   "id": "define_blueprint",
   "title": "Define Blueprint",
   "catalogOrder": 20,
-  "expectation": "Use a feature-branch worktree under the canonical worktree location as the only mutable surface for this process; never edit blueprint files from the shared repository checkout. After creating or using that worktree, merge any upstream from origin development or origin main into it before continuing. Review relevant existing blueprints, including the canonical Agentish sections blueprint when defining or restructuring a subject blueprint, create or update the blueprint layer needed for the task from that worktree branch, commit the blueprint changes, merge the branch into development, and push development to origin.",
+  "expectation": "Create a feature-branch worktree under the canonical worktree location and use it as the only mutable surface for this process; never edit blueprint files from the shared repository checkout. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worktree, merge any upstream from origin development or origin main into it before continuing. Review relevant existing blueprints, including the canonical Agentish sections blueprint when defining or restructuring a subject blueprint, create or update the blueprint layer needed for the task from that worktree branch, commit the blueprint changes, merge the branch into development, and push development to origin.",
   "idlePrompt": "If the blueprint work is complete, reply only with 'done: blueprint defined'. If you are truly blocked on missing user information, reply only with 'blocked: blueprint clarification required'. Otherwise resume the blueprint work immediately and make real progress instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: blueprint defined",
@@ -14,11 +14,11 @@
   "steps": [
     {
       "id": "create_worktree_surface",
-      "title": "Create or use the feature-branch worktree surface"
+      "title": "Create a feature-branch worktree"
     },
     {
       "id": "merge_upstream_into_worktree",
-      "title": "Merge any upstream from origin development or origin main into the feature-branch worktree"
+      "title": "Merge upstream into the feature-branch worktree"
     },
     {
       "id": "review_existing_blueprints",

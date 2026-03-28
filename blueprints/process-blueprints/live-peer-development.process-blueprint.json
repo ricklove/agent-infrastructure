@@ -2,7 +2,7 @@
   "id": "live_peer_development",
   "title": "Live Peer Development",
   "catalogOrder": 45,
-  "expectation": "Use a worker-hosted feature-branch worktree as the only mutable implementation surface for this process; do not perform code-changing work from the shared repository checkout or from a worker shared checkout. After creating or using that worker-hosted worktree, merge any upstream from origin development or origin main into it before continuing. Connect through a persistent SSH session into the worker instance for the active development loop. Follow the development-process blueprint through relevant blueprint updates, worker-backed feature-branch setup, committed milestone updates, and live worker preview sharing with the user. The preview dashboard must run on a swarm worker EC2 instance, not on the manager instance, and should be exposed through a worker-specific tunnel URL that is distinct from the manager dashboard tunnel. Run the worker preview from the feature-branch worktree with the same dashboard setup shape as the manager, keep the work on the feature branch, expect continued user feedback while the preview is live, and stop before manager-side merge, release promotion, runtime deploy, and manager-host live validation unless the user explicitly selects another process.",
+  "expectation": "Create a worker-hosted feature-branch worktree and use it as the only mutable implementation surface for this process; do not perform code-changing work from the shared repository checkout, from a manager-hosted worktree, or from a worker shared checkout. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worker-hosted worktree, merge any upstream from origin development or origin main into it before continuing. Connect through a persistent SSH session into the worker instance for the active development loop. Follow the development-process blueprint through relevant blueprint updates, worker-backed feature-branch setup, committed milestone updates, and live worker preview sharing with the user. The preview dashboard must run on a swarm worker EC2 instance, not on the manager instance, and should be exposed through a worker-specific tunnel URL that is distinct from the manager dashboard tunnel. Run the worker preview from the worker-hosted feature-branch worktree with the same dashboard setup shape as the manager, keep the work on the feature branch, expect continued user feedback while the preview is live, and stop before manager-side merge, release promotion, runtime deploy, and manager-host live validation unless the user explicitly selects another process.",
   "idlePrompt": "If the current live peer development milestone is complete, reply only with 'done: live peer development complete'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: live peer development blocked'. Otherwise resume the work immediately and perform the next required blueprint, implementation, verification, commit, preview, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: live peer development complete",
@@ -14,11 +14,11 @@
   "steps": [
     {
       "id": "setup_worker_surface",
-      "title": "Create or use the worker-hosted feature-branch worktree surface"
+      "title": "Create a worker-hosted feature-branch worktree"
     },
     {
       "id": "merge_upstream_into_worktree",
-      "title": "Merge any upstream from origin development or origin main into the worker-hosted feature-branch worktree"
+      "title": "Merge upstream into the worker-hosted feature-branch worktree"
     },
     {
       "id": "connect_persistent_ssh",
