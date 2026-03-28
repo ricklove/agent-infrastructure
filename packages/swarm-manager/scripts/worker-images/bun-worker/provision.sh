@@ -5,6 +5,16 @@ WORKSPACE_ROOT="/home/ec2-user/workspace"
 
 dnf install -y awscli docker git jq unzip
 
+cat > /etc/profile.d/agent-browser-idle-timeout.sh <<'EOF'
+export AGENT_BROWSER_IDLE_TIMEOUT_MS="${AGENT_BROWSER_IDLE_TIMEOUT_MS:-300000}"
+EOF
+chmod 0644 /etc/profile.d/agent-browser-idle-timeout.sh
+if grep -q '^AGENT_BROWSER_IDLE_TIMEOUT_MS=' /etc/environment; then
+  sed -i 's/^AGENT_BROWSER_IDLE_TIMEOUT_MS=.*/AGENT_BROWSER_IDLE_TIMEOUT_MS=300000/' /etc/environment
+else
+  printf '\nAGENT_BROWSER_IDLE_TIMEOUT_MS=300000\n' >> /etc/environment
+fi
+
 export HOME=/root
 export BUN_INSTALL=/opt/bun
 if [[ ! -x "$BUN_INSTALL/bin/bun" ]]; then
@@ -41,6 +51,9 @@ cat > /home/ec2-user/state/worker-image-profile.json <<'PROFILE'
   "profile": "bun-worker",
   "preinstalledPackages": ["aws", "docker", "jq", "unzip", "git"],
   "bunInstalled": true,
+  "envDefaults": {
+    "AGENT_BROWSER_IDLE_TIMEOUT_MS": "300000"
+  },
   "dockerImages": [
     "agent-swarm/bun-worker-base:latest",
     "agent-swarm/bun-repo-runner:latest"
