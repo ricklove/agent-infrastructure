@@ -102,10 +102,11 @@ DevelopmentProcess.enforces(`
 - Live Peer Development should provide the worker preview URL to the operator and should expect continued operator feedback while the worker preview remains the active review surface.
 - Live Peer Development should record stable milestones as feature-branch commits rather than leaving iterative preview work only in uncommitted worker state.
 - Live Peer Development may include high-level dashboard UI iteration, mockups, or exploratory design outputs in addition to implementation changes, but any code-changing work still belongs on the worker feature branch.
-- The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
-- After creating or attaching the feature-branch worktree, merge any relevant upstream from `origin/development` or `origin/main` into that feature branch before more implementation continues.
+- Before creating a new feature branch, the shared integration checkout should be refreshed to the intended upstream base branch tip so new feature work does not start from stale local checkout history.
+- The preferred setup sequence is to create the implementation worktree directly from the current upstream base branch tip with `git fetch origin <base-branch>` followed by `git worktree add -b <feature-branch> <worktree-path> origin/<base-branch>`.
+- After creating or attaching the feature-branch worktree, merge only the additional upstream branch or branches that are intentionally required beyond that chosen base branch; do not immediately re-merge the same base branch the feature branch was just created from.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
-- If an active feature branch falls behind the current base branch or the release branch, it should be refreshed by merging those branches into the feature branch with normal merge commits as needed rather than relying on rebases.
+- If an active feature branch falls behind the current base branch or the release branch, it should be refreshed by merging only the specific upstream branch that is actually ahead of it rather than routinely merging both `origin/development` and `origin/main`.
 - Normal merge commits are an acceptable and preferred way to refresh a feature branch during active work; rebasing is optional and never required by this process.
 - Completed feature branch work should be committed and merged back into the base branch before release promotion proceeds.
 - Promotion from a feature branch into the base branch should use a normal merge commit rather than fast-forwarding away the branch-stage transition.
@@ -124,8 +125,8 @@ DevelopmentProcess.enforces(`
 - Runtime rollout should call `bun run deploy-manager-runtime` from the shared source repository unless a more specific documented operator entrypoint supersedes it.
 - UI-facing changes require real browser verification with `agent-browser`, visual verification on the rendered UI, saved screenshots, verification at small, medium, and wide viewport sizes, and deployed frontend-backend version matching.
 - Responsive UI changes must be verified with `agent-browser` at small, medium, and wide viewport sizes.
-- Post-deploy verification should record runtime checkout revision match, frontend-backend version match, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using the issued session URL, and a screenshot posted into the chat showing the changes on the manager dashboard at that URL.
-- If the operator cannot post a manager-dashboard screenshot into the chat for the new release, the rollout should be treated as failed, rolled back to an earlier known-good release tag, and kept in screenshot verification until a stable working release is found; the failed release tag should then be deleted locally and on the remote after recovery.
+- Post-deploy verification should record runtime checkout revision match, frontend-backend version match, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using the issued session URL, and a screenshot posted into the chat as a markdown image from the approved temporary image space under `~/temp` showing the changes on the manager dashboard at that URL.
+- If the operator cannot post a manager-dashboard screenshot into the chat as a markdown image from the approved temporary image space under `~/temp` for the new release, the rollout should be treated as failed, rolled back to an earlier known-good release tag, and kept in screenshot verification until a stable working release is found; the failed release tag should then be deleted locally and on the remote after recovery.
 - A rollout is not complete until post-deploy behavior has been verified on the live system.
 `);
 
@@ -253,14 +254,15 @@ when(Actor.operator.starts("code-changing implementation on a feature or fix"))
   .and(DevelopmentProcess.requires(Artifact.workerDevelopmentHost))
   .and(DevelopmentProcess.requires(Artifact.workerCheckout))
   .and(DevelopmentProcess.expects("feature-branch creation to leave the shared checkout on the base branch"))
-  .and(DevelopmentProcess.expects("the normal setup command to be `git worktree add -b <feature-branch> <worktree-path> <base-branch>`"))
+  .and(DevelopmentProcess.expects("the shared integration checkout to be refreshed to the intended upstream base branch tip before creating a new feature branch"))
+  .and(DevelopmentProcess.expects("the normal setup command to be `git fetch origin <base-branch>` followed by `git worktree add -b <feature-branch> <worktree-path> origin/<base-branch>`"))
   .and(DevelopmentProcess.expects("the active branch workspace to live on a worker checkout for implementation work"))
   .and(DevelopmentProcess.expects("the worker checkout to be isolated from the manager runtime checkout and shared integration checkout"))
   .and(DevelopmentProcess.expects("the worker runtime and workspace surfaces to be disposable or replaceable without mutating manager-host canonical surfaces"))
   .and(DevelopmentProcess.expects("manager-host git authority to remain outside the worker unless an explicit promotion or fetch path is invoked"))
   .and(DevelopmentProcess.expects("worker-host development to keep the manager host as the integration-only surface until fetch, push, deploy, or live verification is needed"))
   .and(DevelopmentProcess.expects("worker-host development to use persistent worker terminals for routine editing and verification"))
-  .and(DevelopmentProcess.expects("feature-branch refresh to use normal merges from the relevant base or release branches when the feature branch falls behind"))
+  .and(DevelopmentProcess.expects("feature-branch refresh to use normal merges only from the specific base or release branch that actually needs to be incorporated"))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.baseBranch))
   .and(DevelopmentProcess.associates(Artifact.implementationWorktree).with(Artifact.featureBranch))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.sourceRepo));

@@ -1,0 +1,18 @@
+{
+  "id": "worker_surface_setup",
+  "title": "Worker surface setup",
+  "steps": [
+    {
+      "id": "setup_worker_surface",
+      "title": "Create a worker-hosted feature-branch worktree from the current upstream base branch tip"
+    },
+    {
+      "id": "merge_upstream_into_worktree",
+      "title": "Merge any additionally required upstream into the worker-hosted feature-branch worktree"
+    },
+    {
+      "id": "connect_persistent_ssh",
+      "title": "Connect through a persistent SSH session into the worker instance"
+    }
+  ]
+}

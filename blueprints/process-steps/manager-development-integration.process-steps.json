@@ -1,0 +1,14 @@
+{
+  "id": "manager_development_integration",
+  "title": "Manager development integration",
+  "steps": [
+    {
+      "id": "merge_into_development",
+      "title": "Merge the feature branch into development"
+    },
+    {
+      "id": "push_development_to_origin",
+      "title": "Push development to origin"
+    }
+  ]
+}
