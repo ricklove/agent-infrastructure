@@ -78,12 +78,11 @@
           {
             "id": "manager_dashboard_screenshot_saved",
             "title": "Manager-dashboard screenshot saved",
-            "next": true
+            "complete": true
           },
           {
             "id": "manager_dashboard_screenshot_not_produced",
             "title": "Manager-dashboard screenshot could not be produced",
-            "complete": true,
             "steps": [
               {
                 "id": "rollback_to_known_good_release",
