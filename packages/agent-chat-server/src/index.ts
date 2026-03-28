@@ -628,7 +628,7 @@ function buildWatchdogPrompt(processBlueprint: ProcessBlueprint, ticket: StoredA
   if (!ticket?.nextStepLabel) {
     return processBlueprint.idlePrompt;
   }
-  return `Resume the current required step immediately.\n\nNext step: ${ticket.nextStepLabel}${currentTicketStepTokenHint(ticket)}${currentDecisionOptionHint(ticket)}`;
+  return `Continue\n\nNext step: ${ticket.nextStepLabel}${currentTicketStepTokenHint(ticket)}${currentDecisionOptionHint(ticket)}`;
 }
 
 function cancelSessionWatchdog(sessionId: string) {
