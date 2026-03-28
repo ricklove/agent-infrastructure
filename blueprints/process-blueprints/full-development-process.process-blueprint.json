@@ -2,7 +2,7 @@
   "id": "full_development_process",
   "title": "Full Development Process",
   "catalogOrder": 50,
-  "expectation": "Use a swarm worker checkout as the only mutable implementation surface for this process; do not perform code-changing work from the shared repository checkout. Follow the full development-process blueprint through worker-backed relevant blueprint updates, committed implementation, local verification, release promotion, runtime deploy, and live verification.",
+  "expectation": "Use a worker-hosted feature-branch worktree as the only mutable implementation surface for active development in this process; do not perform code-changing work from the shared repository checkout or from a worker shared checkout. Connect through a persistent SSH session into the worker instance for the active development loop. Follow the full development-process blueprint through worker-backed blueprint updates, committed implementation, manager-side branch integration, release promotion, runtime deploy, live verification, cleanup of the feature branch and worktree, and a final summary.",
   "idlePrompt": "If you fully completed the development process, reply only with 'done: full development process complete'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: full development process blocked'. Otherwise resume the work immediately and perform the next required implementation, verification, release, deploy, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: full development process complete",
@@ -12,13 +12,82 @@
     "blocked on user or environment dependency"
   ],
   "steps": [
-    { "id": "review_relevant_blueprints", "title": "Review and update relevant blueprints" },
-    { "id": "setup_worker_surface", "title": "Set up the worker-backed implementation surface" },
-    { "id": "implement_changes", "title": "Perform committed implementation work" },
-    { "id": "run_local_verification", "title": "Run local verification" },
-    { "id": "promote_release", "title": "Promote the release" },
-    { "id": "deploy_runtime", "title": "Deploy the runtime" },
-    { "id": "run_live_verification", "title": "Perform live verification" }
+    {
+      "id": "setup_worker_surface",
+      "title": "Create or use the worker-hosted feature-branch worktree surface"
+    },
+    {
+      "id": "connect_persistent_ssh",
+      "title": "Connect through a persistent SSH session into the worker instance"
+    },
+    {
+      "id": "review_relevant_blueprints",
+      "title": "Review and update relevant blueprints"
+    },
+    {
+      "id": "implement_revision",
+      "title": "Implement the current revision on the worker branch"
+    },
+    {
+      "id": "run_local_verification",
+      "title": "Run local verification"
+    },
+    {
+      "id": "commit_milestone",
+      "title": "Commit the stable milestone on the feature branch"
+    },
+    {
+      "id": "check_focused_feature_branch",
+      "title": "Is there a focused feature branch?",
+      "kind": "decision",
+      "decision": {
+        "prompt": "Is there a focused feature branch?",
+        "options": [
+          {
+            "id": "focused_feature_branch_exists",
+            "title": "Focused feature branch exists",
+            "next": true
+          },
+          {
+            "id": "no_focused_feature_branch",
+            "title": "No focused feature branch",
+            "block": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "pull_worker_branch_to_manager",
+      "title": "Pull the changes from the focused worker feature branch back to the project repo on the manager"
+    },
+    {
+      "id": "merge_into_development",
+      "title": "Merge the feature branch into development"
+    },
+    {
+      "id": "push_development_to_origin",
+      "title": "Push development to origin"
+    },
+    {
+      "id": "promote_release",
+      "title": "Promote the release"
+    },
+    {
+      "id": "deploy_runtime",
+      "title": "Deploy the runtime"
+    },
+    {
+      "id": "run_live_verification",
+      "title": "Perform live verification"
+    },
+    {
+      "id": "cleanup_feature_branch_and_worktree",
+      "title": "Clean up the feature branch and worktree"
+    },
+    {
+      "id": "summarize_changes",
+      "title": "Summarize changes"
+    }
   ],
   "watchdog": {
     "enabled": true,

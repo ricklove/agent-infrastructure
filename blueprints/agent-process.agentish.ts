@@ -80,6 +80,8 @@ const Step = {
   decisionOptionId: define.document("AgentProcessDecisionOptionId"),
   decisionOptionTitle: define.document("AgentProcessDecisionOptionTitle"),
   decisionOptionGoto: define.document("AgentProcessDecisionOptionGoto"),
+  decisionOptionNext: define.document("AgentProcessDecisionOptionNext"),
+  decisionOptionBlocks: define.document("AgentProcessDecisionOptionBlocksProcess"),
   decisionOptionCompletes: define.document("AgentProcessDecisionOptionCompletesProcess"),
   doneToken: define.document("AgentProcessStepDoneToken"),
   blockedToken: define.document("AgentProcessStepBlockedToken"),
@@ -139,6 +141,9 @@ AgentProcess.defines(`
 - AgentProcessStepKind means one of task, wait, or decision.
 - AgentProcessDecisionPrompt means the exact constrained question asked when a decision step becomes active.
 - AgentProcessDecisionOption means one allowed answer to a decision step.
+- AgentProcessDecisionOptionNext means the option advances to the immediately following step.
+- AgentProcessDecisionOptionBlocksProcess means the option blocks the process instead of advancing.
+- AgentProcessDecisionOptionCompletesProcess means the option completes the process.
 - AgentProcessStepDoneToken means the exact token that marks one step complete when the process uses explicit step tokens.
 - AgentProcessStepBlockedToken means the exact token that marks one step blocked when the process uses explicit step tokens.
 - AgentProcessTransition means an allowed advance, return, branch, or terminal edge between steps.
@@ -171,6 +176,8 @@ Artifact.definition.contains(
   Step.decisionOptionId,
   Step.decisionOptionTitle,
   Step.decisionOptionGoto,
+  Step.decisionOptionNext,
+  Step.decisionOptionBlocks,
   Step.decisionOptionCompletes,
   Step.doneToken,
   Step.blockedToken,
@@ -232,6 +239,8 @@ Step.decisionOption.contains(
   Step.decisionOptionId,
   Step.decisionOptionTitle,
   Step.decisionOptionGoto,
+  Step.decisionOptionNext,
+  Step.decisionOptionBlocks,
   Step.decisionOptionCompletes,
 );
 Step.transition.contains(Step.kind, Step.target);
@@ -295,16 +304,3 @@ when(Contract.completionMode.is("exact_reply"))
   .then(Artifact.machineContract.requires(Contract.completionToken))
   .and(Artifact.machineContract.requires(Contract.blockedToken))
   .and(Artifact.machineContract.treats("exact token matching as the terminal process boundary"));
-
-when(Contract.completionMode.is("explicit_step_tokens"))
-  .then(Artifact.machineContract.requires(Step.doneToken))
-  .and(Artifact.machineContract.treats("step tokens as the authoritative legal step-transition boundary"))
-  .and(Artifact.machineContract.allows("process completion only after all required steps are terminally resolved"));
-
-when(Contract.completionMode.is("external_resolution"))
-  .then(Artifact.machineContract.forbids("treating freeform agent text as process completion by itself"))
-  .and(Artifact.machineContract.treats("runtime state validation as the terminal process boundary"));
-
-when(Contract.runtimeOutlineRequired.exists())
-  .then(Artifact.snapshot.requires(Artifact.outline))
-  .and(Artifact.machineContract.treats("outline visibility as runtime-required rather than source-only context"));

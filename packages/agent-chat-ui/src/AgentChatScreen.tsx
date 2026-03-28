@@ -83,6 +83,8 @@ type AgentTicketStep = {
       id: string
       title: string
       goto: string | null
+      next: boolean
+      block: boolean
       complete: boolean
     }>
   } | null
@@ -224,6 +226,8 @@ type ProcessBlueprint = {
         id: string
         title: string
         goto: string | null
+        next: boolean
+        block: boolean
         complete: boolean
       }>
     } | null
