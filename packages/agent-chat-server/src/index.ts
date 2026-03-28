@@ -645,6 +645,20 @@ function setSessionWatchdogState(sessionId: string, watchdogState: SessionWatchd
   return updated;
 }
 
+function markSessionWatchdogStepPrompted(sessionId: string) {
+  const session = store.getSession(sessionId);
+  if (!session) {
+    return null;
+  }
+
+  return setSessionWatchdogState(sessionId, {
+    status: "nudged",
+    nudgeCount: session.watchdogState.nudgeCount,
+    lastNudgedAtMs: Date.now(),
+    completedAtMs: null,
+  });
+}
+
 function resetSessionWatchdogState(sessionId: string) {
   const updated = store.resetSessionWatchdogState(sessionId);
   if (updated) {
@@ -939,6 +953,10 @@ function maybeApplyTicketStepTransition(
     ),
   ];
 
+  if (transition.kind === "stepCompleted" && transition.ticket.nextStepLabel) {
+    markSessionWatchdogStepPrompted(sessionId);
+  }
+
   if (transition.kind === "ticketCompleted") {
     const session = store.getSession(sessionId);
     if (session) {
@@ -986,6 +1004,9 @@ function queueProcessExpectationForSession(sessionId: string) {
     providerSeenAtMs: null,
     content: [{ type: "text", text: expectationText }],
   });
+  if (ticket) {
+    markSessionWatchdogStepPrompted(sessionId);
+  }
   const updatedSession = store.replacePendingSystemInstructionByPrefix(
     sessionId,
     PROCESS_INSTRUCTION_PREFIX,
@@ -1127,7 +1148,14 @@ function maybeScheduleSessionWatchdog(sessionId: string) {
     const activeTicket = ticketStore.getActiveTicketForSession(sessionId);
     const activeStepAwaitingProgress = activeTicket?.status === "active" && !!activeTicket.currentStepId;
     if (activeStepAwaitingProgress) {
-      delayMs = 0;
+      delayMs =
+        session.watchdogState.status === "nudged" && session.watchdogState.lastNudgedAtMs !== null
+          ? Math.max(
+              processBlueprint.watchdog.idleTimeoutSeconds * 1000 -
+                (Date.now() - session.watchdogState.lastNudgedAtMs),
+              0,
+            )
+          : 0;
     } else if (runtime.providerIdleSinceAtMs !== null && session.watchdogState.nudgeCount === 0) {
       delayMs = 0;
     } else {
