@@ -76,6 +76,7 @@ export AGENT_WORKSPACE_DIR="${WORKSPACE_ROOT}"
 export NVM_DIR="${AGENT_HOME}/.nvm"
 export NODE_VERSION="24"
 export HOME="${AGENT_HOME}"
+export AGENT_BROWSER_IDLE_TIMEOUT_MS="${AGENT_BROWSER_IDLE_TIMEOUT_MS:-300000}"
 
 agent_user="$(stat -c '%U' "${AGENT_HOME}")"
 agent_group="$(stat -c '%G' "${AGENT_HOME}")"
