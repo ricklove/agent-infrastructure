@@ -1,0 +1,51 @@
+{
+  "id": "define_blueprint_steps",
+  "title": "Define Blueprint (Nested Steps)",
+  "catalogOrder": 21,
+  "expectation": "Create a feature-branch worktree from the current upstream base branch tip under the canonical worktree location and use it as the only mutable surface for this process; never edit blueprint files from the shared repository checkout. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Review relevant existing blueprints, including the canonical Agentish sections blueprint when defining or restructuring a subject blueprint, create or update the blueprint layer needed for the task from that worktree branch, commit the blueprint changes, merge the branch into development, and push development to origin.",
+  "idlePrompt": "If the blueprint work is complete, reply only with 'done: blueprint defined'. If you are truly blocked on missing user information, reply only with 'blocked: blueprint clarification required'. Otherwise resume the blueprint work immediately and make real progress instead of giving only a status update.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: blueprint defined",
+  "blockedToken": "blocked: blueprint clarification required",
+  "stopConditions": [
+    "blueprint work complete",
+    "missing information from the user"
+  ],
+  "steps": [
+    {
+      "id": "blueprint_worktree_surface",
+      "title": "Prepare the blueprint worktree",
+      "steps": [
+        {
+          "use": "feature_worktree_setup"
+        }
+      ]
+    },
+    {
+      "id": "blueprint_revision_cycle",
+      "title": "Define and integrate the blueprint changes",
+      "steps": [
+        {
+          "id": "review_existing_blueprints",
+          "title": "Review relevant existing blueprints and Agentish sections"
+        },
+        {
+          "id": "update_blueprint_layer",
+          "title": "Create or update the needed blueprint layer"
+        },
+        {
+          "id": "commit_blueprint_changes",
+          "title": "Commit the blueprint changes"
+        },
+        {
+          "use": "manager_development_integration"
+        }
+      ]
+    }
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 90,
+    "maxNudgesPerIdleEpisode": 0
+  }
+}
