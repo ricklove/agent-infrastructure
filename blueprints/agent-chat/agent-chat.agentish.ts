@@ -44,6 +44,7 @@ const Session = {
   source: define.entity("ImportedSource"),
   reference: define.entity("WorkspaceReference"),
   timeline: define.entity("SessionTimeline"),
+  ticketWindow: define.entity("TicketWindow"),
 };
 
 const Participant = {
@@ -121,11 +122,19 @@ AgentChat.enforces(`
 - When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
 - Once a session process is active, the active ticket remains unresolved until the process-defined done or blocked condition is reached.
 - Focused-ticket state changes should surface as canonical system ticket events in the transcript.
+- Ticket-event transcript items that identify a concrete ticket should expose an immediate open-ticket affordance in the transcript UI.
+- Older ticket-event transcript items that lack a concrete ticket identifier should remain readable history but should not show a fake open-ticket affordance.
+- Opening a ticket from a transcript ticket event should resolve the referenced ticket itself rather than silently substituting the session's current active ticket.
+- AgentChat owns ticket-content rendering for live and historical ticket state rather than delegating ticket content semantics to dashboard shell code.
+- Ticket-content rendering should show the full ticket tree and live state in a dense readable layout rather than collapsing the ticket into a compact summary card.
 - Focused-ticket step completion events may trigger immediate continuation into the next actionable step when the ticket remains active and unblocked.
 - Once a terminal process state is resolved by a fresh process selection or by new active non-terminal work, the transient Done or Blocked selector state should clear immediately.
 - Ticket-owned immediate-idle continuation must treat operator-visible stalled turns as unresolved inactivity even when the provider transport still considers the turn open.
 - If the provider explicitly reports itself idle while the session process is still unresolved, AgentChat should make ticket-owned continuation immediately eligible rather than waiting another full idle timeout window.
 - If the provider explicitly reports an error, AgentChat should enter provider-error handling and retry policy rather than misclassifying that state as ordinary idle.
+- Human messages queued behind an active run should remain queued by default until the agent reaches a natural listen point.
+- Stop and Escape must still interrupt active work while human messages are queued so the agent can surface and catch up to that pending human batch.
+- Queued human interruption must remain part of the existing AgentChat interrupt path rather than being redesigned as a dashboard-shell-only control surface.
 - Active human typing should suppress immediate idle continuation until typing stops and the short grace period expires.
 - Composer typing should remain locally responsive and should not force the entire thread surface to re-render on every keystroke.
 - Transient websocket disconnects should be retried automatically with backoff, and disconnect warning chrome should wait through a short grace period so brief reconnects do not flash noisy error banners.
@@ -185,6 +194,7 @@ Session.conversation.contains(
   Session.summary,
   Session.reference,
   Session.timeline,
+  Session.ticketWindow,
   Provider.binding,
   Context.active,
   Context.revision,
@@ -216,6 +226,7 @@ AgentChat.defines(`
 - A canonical transcript is the durable event record for the session.
 - A provider binding is an execution attachment between one participant and one provider runtime.
 - A workspace reference is a durable pointer between a session and any workspace entity such as a board, layer, document, project, artifact, or run.
+- A ticket window is a session-related floating view that presents one specific ticket's live or historical state while remaining distinct from the transcript item that opened it.
 - A session folder is a workspace-owned grouping container used to organize sessions without changing their identity.
 - Archived session state is a workspace-owned visibility flag that removes a session from the default list without deleting its identity or transcript.
 - An assigned process blueprint is the optional machine-readable expectation contract selected for a session.
