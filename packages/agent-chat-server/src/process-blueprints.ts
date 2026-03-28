@@ -4,8 +4,18 @@ import { basename, join, resolve } from "node:path";
 export type ProcessBlueprintStep = {
   id: string;
   title: string;
+  kind: "task" | "wait" | "decision";
   doneToken: string | null;
   blockedToken: string | null;
+  decision: {
+    prompt: string;
+    options: Array<{
+      id: string;
+      title: string;
+      goto: string | null;
+      complete: boolean;
+    }>;
+  } | null;
 };
 
 export type ProcessBlueprint = {
@@ -27,11 +37,23 @@ export type ProcessBlueprint = {
   companionPath: string | null;
 };
 
+type RawProcessBlueprintDecisionOption = {
+  id?: unknown;
+  title?: unknown;
+  goto?: unknown;
+  complete?: unknown;
+};
+
 type RawProcessBlueprintStep = {
   id?: unknown;
   title?: unknown;
+  kind?: unknown;
   doneToken?: unknown;
   blockedToken?: unknown;
+  decision?: {
+    prompt?: unknown;
+    options?: unknown;
+  };
 };
 
 type RawProcessBlueprint = {
@@ -69,9 +91,48 @@ function normalizeProcessBlueprintSteps(rawSteps: unknown): ProcessBlueprintStep
       if (!id || !title) {
         return null;
       }
+      const kind = raw.kind === "wait" || raw.kind === "decision" ? raw.kind : "task";
+      const decision =
+        kind === "decision" && raw.decision && typeof raw.decision === "object"
+          ? {
+              prompt:
+                typeof raw.decision.prompt === "string" && raw.decision.prompt.trim()
+                  ? raw.decision.prompt.trim()
+                  : title,
+              options: Array.isArray(raw.decision.options)
+                ? raw.decision.options
+                    .map((option) => {
+                      const rawOption = option as RawProcessBlueprintDecisionOption;
+                      const optionId = typeof rawOption.id === "string" ? rawOption.id.trim() : "";
+                      const optionTitle = typeof rawOption.title === "string" ? rawOption.title.trim() : "";
+                      if (!optionId || !optionTitle) {
+                        return null;
+                      }
+                      return {
+                        id: optionId,
+                        title: optionTitle,
+                        goto:
+                          typeof rawOption.goto === "string" && rawOption.goto.trim()
+                            ? rawOption.goto.trim()
+                            : null,
+                        complete: rawOption.complete === true,
+                      };
+                    })
+                    .filter((
+                      option,
+                    ): option is {
+                      id: string;
+                      title: string;
+                      goto: string | null;
+                      complete: boolean;
+                    } => option !== null)
+                : [],
+            }
+          : null;
       return {
         id,
         title,
+        kind,
         doneToken:
           typeof raw.doneToken === "string" && raw.doneToken.trim()
             ? raw.doneToken.trim()
@@ -80,6 +141,7 @@ function normalizeProcessBlueprintSteps(rawSteps: unknown): ProcessBlueprintStep
           typeof raw.blockedToken === "string" && raw.blockedToken.trim()
             ? raw.blockedToken.trim()
             : null,
+        decision,
       } satisfies ProcessBlueprintStep;
     })
     .filter((entry): entry is ProcessBlueprintStep => entry !== null);

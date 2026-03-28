@@ -569,13 +569,14 @@ function formatTicketChecklist(ticket: StoredAgentTicket) {
   return ticket.checklist
     .map((step) => {
       const prefix = step.status === "completed" ? "- [x]" : "- [ ]";
+      const kindLabel = step.kind === "wait" ? " [wait]" : step.kind === "decision" ? " [decision]" : "";
       const suffix =
         step.status === "active"
           ? " <- current"
           : step.status === "blocked"
             ? " (blocked)"
             : "";
-      return `${prefix} ${step.title}${suffix}`;
+      return `${prefix} ${step.title}${kindLabel}${suffix}`;
     })
     .join("\n");
 }
