@@ -909,7 +909,9 @@ function queueProcessExpectationForSession(sessionId: string) {
     return { session, messages: [] as StoredMessage[] };
   }
 
-  const ticket = ticketStore.createOrReplaceSessionTicket(sessionId, processBlueprint);
+  const ticket = isProceduralProcessBlueprint(processBlueprint)
+    ? ticketStore.createOrReplaceSessionTicket(sessionId, processBlueprint)
+    : (ticketStore.clearActiveTicketForSession(sessionId), null);
   const expectationText = buildProcessExpectationInstruction(processBlueprint, ticket);
   store.markQueuedSystemMessagesSeenByPrefix(sessionId, PROCESS_INSTRUCTION_PREFIX);
   const processMessage = store.appendMessage(sessionId, {
@@ -917,16 +919,17 @@ function queueProcessExpectationForSession(sessionId: string) {
     providerSeenAtMs: null,
     content: [{ type: "text", text: expectationText }],
   });
-  const ticketMessage = appendTicketEventMessage(
-    sessionId,
-    buildTicketStateEventText(ticket, "created"),
-  );
   const updatedSession = store.replacePendingSystemInstructionByPrefix(
     sessionId,
     PROCESS_INSTRUCTION_PREFIX,
     expectationText,
   );
-  return { session: updatedSession ?? session, messages: [processMessage, ticketMessage] };
+  return {
+    session: updatedSession ?? session,
+    messages: ticket
+      ? [processMessage, appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "created"))]
+      : [processMessage],
+  };
 }
 
 function queuedProcessChangeAwaitingExplicitHumanSend(
