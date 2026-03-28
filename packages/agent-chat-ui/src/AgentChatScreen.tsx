@@ -915,48 +915,26 @@ function renderTicketChecklistItems(
   steps: AgentTicketStep[],
   depth = 0,
 ): ReactNode[] {
-  return steps.flatMap((step) => {
-    const items: ReactNode[] = [
-      <p
-        key={step.id}
-        style={{ paddingLeft: `${depth * 0.875}rem` }}
-        className={`text-xs ${
-          step.status === "completed"
-            ? "text-slate-400 line-through"
-            : step.status === "active"
-              ? "text-white"
-              : step.status === "blocked"
-                ? "text-rose-200"
-                : "text-slate-400"
-        }`}
-      >
-        {step.status === "completed" ? "[x]" : "[ ]"} {step.title}
-        {ticketStepKindLabel(step)}
-        {step.status === "active" ? " <- current" : ""}
-        {step.status === "blocked" ? " (blocked)" : ""}
-      </p>,
-    ]
-
-    if (step.decision) {
-      for (const option of step.decision.options) {
-        if (option.steps.length === 0) {
-          continue
-        }
-        items.push(
-          <p
-            key={`${step.id}:${option.id}`}
-            style={{ paddingLeft: `${(depth + 1) * 0.875}rem` }}
-            className="text-xs text-slate-500"
-          >
-            - {option.title}
-          </p>,
-        )
-        items.push(...renderTicketChecklistItems(option.steps, depth + 2))
-      }
-    }
-
-    return items
-  })
+  return steps.map((step) => (
+    <p
+      key={step.id}
+      style={{ paddingLeft: `${depth * 0.875}rem` }}
+      className={`text-xs ${
+        step.status === "completed"
+          ? "text-slate-400 line-through"
+          : step.status === "active"
+            ? "text-white"
+            : step.status === "blocked"
+              ? "text-rose-200"
+              : "text-slate-400"
+      }`}
+    >
+      {step.status === "completed" ? "[x]" : "[ ]"} {step.title}
+      {ticketStepKindLabel(step)}
+      {step.status === "active" ? " <- current" : ""}
+      {step.status === "blocked" ? " (blocked)" : ""}
+    </p>
+  ))
 }
 
 function formatCompactInteger(value: number | null) {

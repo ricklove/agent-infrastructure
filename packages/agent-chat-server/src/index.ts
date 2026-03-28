@@ -564,7 +564,7 @@ function formatTicketChecklistStepLines(
   steps: StoredAgentTicket["checklist"],
   indentLevel = 0,
 ): string[] {
-  return steps.flatMap((step) => {
+  return steps.map((step) => {
     const prefix = step.status === "completed" ? "- [x]" : "- [ ]";
     const kindLabel = step.kind === "wait" ? " [wait]" : step.kind === "decision" ? " [decision]" : "";
     const suffix =
@@ -573,17 +573,7 @@ function formatTicketChecklistStepLines(
         : step.status === "blocked"
           ? " (blocked)"
           : "";
-    const lines = [`${"  ".repeat(indentLevel)}${prefix} ${step.title}${kindLabel}${suffix}`];
-    if (step.decision) {
-      for (const option of step.decision.options) {
-        if (option.steps.length === 0) {
-          continue;
-        }
-        lines.push(`${"  ".repeat(indentLevel + 1)}- ${option.title}`);
-        lines.push(...formatTicketChecklistStepLines(option.steps, indentLevel + 2));
-      }
-    }
-    return lines;
+    return `${"  ".repeat(indentLevel)}${prefix} ${step.title}${kindLabel}${suffix}`;
   });
 }
 
@@ -657,7 +647,10 @@ function maybeMarkProcessBlueprintTerminal(
 
   const normalizedText = assistantText.trim();
   if (normalizedText === processBlueprint.completionToken) {
-    ticketStore.resolveActiveTicket(sessionId, "completed", normalizedText);
+    const ticket = ticketStore.resolveActiveTicket(sessionId, "completed", normalizedText);
+    if (ticket) {
+      appendActivityMessage(sessionId, buildTicketStateEventText(ticket, "completed"));
+    }
     setSessionWatchdogState(sessionId, {
       status: "completed",
       nudgeCount: session.watchdogState.nudgeCount,
@@ -668,7 +661,10 @@ function maybeMarkProcessBlueprintTerminal(
   }
 
   if (normalizedText === processBlueprint.blockedToken) {
-    ticketStore.resolveActiveTicket(sessionId, "blocked", normalizedText);
+    const ticket = ticketStore.resolveActiveTicket(sessionId, "blocked", normalizedText);
+    if (ticket) {
+      appendActivityMessage(sessionId, buildTicketStateEventText(ticket, "blocked"));
+    }
     setSessionWatchdogState(sessionId, {
       status: "blocked",
       nudgeCount: session.watchdogState.nudgeCount,
@@ -734,6 +730,25 @@ function appendActivityMessage(sessionId: string, text: string) {
   });
 }
 
+function buildTicketStateEventText(
+  ticket: StoredAgentTicket,
+  event: "created" | "completed" | "blocked",
+) {
+  if (event === "created") {
+    return ticket.nextStepLabel
+      ? `Ticket started: ${ticket.processTitle}. Next step: ${ticket.nextStepLabel}`
+      : `Ticket started: ${ticket.processTitle}`;
+  }
+  if (event === "completed") {
+    return ticket.resolution
+      ? `Ticket completed: ${ticket.processTitle}. ${ticket.resolution}`
+      : `Ticket completed: ${ticket.processTitle}`;
+  }
+  return ticket.resolution
+    ? `Ticket blocked: ${ticket.processTitle}. ${ticket.resolution}`
+    : `Ticket blocked: ${ticket.processTitle}`;
+}
+
 function queueProcessExpectationForSession(sessionId: string) {
   const session = store.getSession(sessionId);
   const processBlueprint = getSessionProcessBlueprint(session);
@@ -750,6 +765,7 @@ function queueProcessExpectationForSession(sessionId: string) {
     providerSeenAtMs: null,
     content: [{ type: "text", text: expectationText }],
   });
+  appendActivityMessage(sessionId, buildTicketStateEventText(ticket, "created"));
   const updatedSession = store.replacePendingSystemInstructionByPrefix(
     sessionId,
     PROCESS_INSTRUCTION_PREFIX,
