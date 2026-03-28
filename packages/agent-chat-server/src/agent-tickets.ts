@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -42,6 +42,7 @@ export type StoredAgentTicket = {
   title: string;
   description: string;
   processBlueprintId: string;
+  processSnapshotId: string | null;
   processTitle: string;
   status: StoredAgentTicketStatus;
   currentStepId: string | null;
@@ -51,6 +52,26 @@ export type StoredAgentTicket = {
   resolution: string | null;
   createdAtMs: number;
   updatedAtMs: number;
+};
+
+export type StoredAgentProcessSnapshot = {
+  id: string;
+  processBlueprintId: string;
+  processTitle: string;
+  description: string;
+  kind: ProcessBlueprint["kind"];
+  idlePrompt: string | null;
+  completionMode: "exact_reply" | null;
+  completionToken: string | null;
+  blockedToken: string | null;
+  stopConditions: string[];
+  steps: ProcessBlueprintStep[];
+  watchdog: {
+    enabled: boolean;
+    idleTimeoutSeconds: number;
+    maxNudgesPerIdleEpisode: number;
+  } | null;
+  createdAtMs: number;
 };
 
 export type StoredAgentTicketTransition = {
@@ -380,15 +401,26 @@ function ticketWithNextStep(
 
 export class AgentTicketStore {
   private readonly ticketsDir: string;
+  private readonly processSnapshotsDir: string;
   private readonly onCanonicalWrite?: (event: { sessionId: string; reason: "ticket-updated" }) => void;
   private readonly ticketCache = new Map<string, StoredAgentTicket>();
+  private readonly processSnapshotCache = new Map<string, StoredAgentProcessSnapshot>();
   private readonly activeTicketBySessionId = new Map<string, string>();
 
   constructor(options: AgentTicketStoreOptions) {
     this.ticketsDir = join(options.dataDir, "tickets");
+    this.processSnapshotsDir = join(this.ticketsDir, "processes");
     this.onCanonicalWrite = options.onCanonicalWrite;
     mkdirSync(this.ticketsDir, { recursive: true });
+    mkdirSync(this.processSnapshotsDir, { recursive: true });
     this.loadCache();
+  }
+
+  getProcessSnapshot(processSnapshotId: string | null | undefined) {
+    if (!processSnapshotId) {
+      return null;
+    }
+    return this.processSnapshotCache.get(processSnapshotId) ?? null;
   }
 
   getActiveTicketForSession(sessionId: string): StoredAgentTicket | null {
@@ -406,8 +438,10 @@ export class AgentTicketStore {
 
   createOrReplaceSessionTicket(sessionId: string, processBlueprint: ProcessBlueprint): StoredAgentTicket {
     const now = Date.now();
-    const checklist = isProceduralProcessBlueprint(processBlueprint)
-      ? buildChecklist(processBlueprint.steps)
+    const processSnapshot = this.createOrReadProcessSnapshot(processBlueprint);
+    const checklist =
+      processSnapshot.kind === "procedural"
+        ? buildChecklist(processSnapshot.steps)
       : [];
     const firstActiveStep = flattenExecutableSteps(checklist).find((step) => step.status === "active") ?? null;
     const ticket: StoredAgentTicket = {
@@ -416,6 +450,7 @@ export class AgentTicketStore {
       title: processBlueprint.title,
       description: processBlueprint.expectation,
       processBlueprintId: processBlueprint.id,
+      processSnapshotId: processSnapshot.id,
       processTitle: processBlueprint.title,
       status: "active",
       currentStepId: firstActiveStep?.id ?? null,
@@ -703,6 +738,14 @@ export class AgentTicketStore {
     this.onCanonicalWrite?.({ sessionId, reason: "ticket-updated" });
   }
 
+  private processSnapshotDir(processSnapshotId: string) {
+    return join(this.processSnapshotsDir, processSnapshotId);
+  }
+
+  private processSnapshotPath(processSnapshotId: string) {
+    return join(this.processSnapshotDir(processSnapshotId), "process.json");
+  }
+
   private indexPath() {
     return join(this.ticketsDir, "index.json");
   }
@@ -727,7 +770,72 @@ export class AgentTicketStore {
     writeFileSync(this.ticketPath(ticket.id), `${JSON.stringify(ticket, null, 2)}\n`);
   }
 
+  private writeProcessSnapshot(processSnapshot: StoredAgentProcessSnapshot) {
+    mkdirSync(this.processSnapshotDir(processSnapshot.id), { recursive: true });
+    writeFileSync(
+      this.processSnapshotPath(processSnapshot.id),
+      `${JSON.stringify(processSnapshot, null, 2)}\n`,
+    );
+  }
+
+  private createOrReadProcessSnapshot(
+    processBlueprint: ProcessBlueprint,
+  ): StoredAgentProcessSnapshot {
+    const payload = {
+      processBlueprintId: processBlueprint.id,
+      processTitle: processBlueprint.title,
+      description: processBlueprint.expectation,
+      kind: processBlueprint.kind,
+      idlePrompt: isProceduralProcessBlueprint(processBlueprint) ? processBlueprint.idlePrompt : null,
+      completionMode: isProceduralProcessBlueprint(processBlueprint)
+        ? processBlueprint.completionMode
+        : null,
+      completionToken: isProceduralProcessBlueprint(processBlueprint)
+        ? processBlueprint.completionToken
+        : null,
+      blockedToken: isProceduralProcessBlueprint(processBlueprint)
+        ? processBlueprint.blockedToken
+        : null,
+      stopConditions: isProceduralProcessBlueprint(processBlueprint)
+        ? [...processBlueprint.stopConditions]
+        : [],
+      steps: isProceduralProcessBlueprint(processBlueprint)
+        ? JSON.parse(JSON.stringify(processBlueprint.steps))
+        : [],
+      watchdog: isProceduralProcessBlueprint(processBlueprint)
+        ? { ...processBlueprint.watchdog }
+        : null,
+    } satisfies Omit<StoredAgentProcessSnapshot, "id" | "createdAtMs">;
+
+    const id = createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 16);
+    const cached = this.processSnapshotCache.get(id) ?? this.readProcessSnapshot(id);
+    if (cached) {
+      this.processSnapshotCache.set(id, cached);
+      return cached;
+    }
+
+    const processSnapshot: StoredAgentProcessSnapshot = {
+      id,
+      createdAtMs: Date.now(),
+      ...payload,
+    };
+    this.processSnapshotCache.set(id, processSnapshot);
+    this.writeProcessSnapshot(processSnapshot);
+    return processSnapshot;
+  }
+
   private loadCache() {
+    for (const entry of readdirSync(this.processSnapshotsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const processSnapshot = this.readProcessSnapshot(entry.name);
+      if (!processSnapshot) {
+        continue;
+      }
+      this.processSnapshotCache.set(processSnapshot.id, processSnapshot);
+    }
+
     const index = this.readIndex();
     for (const [sessionId, ticketId] of Object.entries(index.activeTicketBySessionId)) {
       const ticket = this.readTicket(ticketId);
@@ -749,6 +857,55 @@ export class AgentTicketStore {
         }
         this.ticketCache.set(ticket.id, ticket);
       }
+    }
+  }
+
+  private readProcessSnapshot(processSnapshotId: string): StoredAgentProcessSnapshot | null {
+    const path = this.processSnapshotPath(processSnapshotId);
+    if (!existsSync(path)) {
+      return null;
+    }
+
+    try {
+      const parsed = safeJsonParse<StoredAgentProcessSnapshot>(readFileSync(path, "utf8"));
+      return {
+        ...parsed,
+        id: String(parsed.id),
+        processBlueprintId: String(parsed.processBlueprintId),
+        processTitle: String(parsed.processTitle),
+        description: String(parsed.description),
+        kind: parsed.kind === "procedural" ? "procedural" : "mode",
+        idlePrompt:
+          typeof parsed.idlePrompt === "string" && parsed.idlePrompt.trim()
+            ? parsed.idlePrompt
+            : null,
+        completionMode: parsed.completionMode === "exact_reply" ? "exact_reply" : null,
+        completionToken:
+          typeof parsed.completionToken === "string" && parsed.completionToken.trim()
+            ? parsed.completionToken
+            : null,
+        blockedToken:
+          typeof parsed.blockedToken === "string" && parsed.blockedToken.trim()
+            ? parsed.blockedToken
+            : null,
+        stopConditions: Array.isArray(parsed.stopConditions)
+          ? parsed.stopConditions.map((value) => String(value))
+          : [],
+        steps: Array.isArray(parsed.steps)
+          ? JSON.parse(JSON.stringify(parsed.steps))
+          : [],
+        watchdog:
+          parsed.watchdog && typeof parsed.watchdog === "object"
+            ? {
+                enabled: parsed.watchdog.enabled !== false,
+                idleTimeoutSeconds: Number(parsed.watchdog.idleTimeoutSeconds) || 90,
+                maxNudgesPerIdleEpisode: Number(parsed.watchdog.maxNudgesPerIdleEpisode) || 0,
+              }
+            : null,
+        createdAtMs: Number(parsed.createdAtMs) || Date.now(),
+      };
+    } catch {
+      return null;
     }
   }
 
@@ -790,6 +947,10 @@ export class AgentTicketStore {
         title: String(parsed.title),
         description: String(parsed.description),
         processBlueprintId: String(parsed.processBlueprintId),
+        processSnapshotId:
+          typeof parsed.processSnapshotId === "string" && parsed.processSnapshotId.trim()
+            ? parsed.processSnapshotId
+            : null,
         processTitle: String(parsed.processTitle),
         checklist: normalizeStoredTicketSteps(parsed.checklist),
       };
