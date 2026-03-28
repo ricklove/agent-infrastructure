@@ -1,6 +1,12 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
+export type ProcessStepBundle = {
+  id: string;
+  title: string | null;
+  steps: ProcessBlueprintStep[];
+};
+
 export type ProcessBlueprintDecisionOption = {
   id: string;
   title: string;
@@ -17,6 +23,7 @@ export type ProcessBlueprintStep = {
   kind: "task" | "wait" | "decision";
   doneToken: string | null;
   blockedToken: string | null;
+  steps: ProcessBlueprintStep[];
   decision: {
     prompt: string;
     options: ProcessBlueprintDecisionOption[];
@@ -63,15 +70,23 @@ type RawProcessBlueprintDecisionOption = {
 };
 
 type RawProcessBlueprintStep = {
+  use?: unknown;
   id?: unknown;
   title?: unknown;
   kind?: unknown;
   doneToken?: unknown;
   blockedToken?: unknown;
+  steps?: unknown;
   decision?: {
     prompt?: unknown;
     options?: unknown;
   };
+};
+
+type RawProcessStepBundle = {
+  id?: unknown;
+  title?: unknown;
+  steps?: unknown;
 };
 
 type RawProcessBlueprint = {
@@ -96,8 +111,36 @@ function defaultBlueprintsDir() {
   return resolve(import.meta.dir, "../../../blueprints/process-blueprints");
 }
 
+function defaultProcessStepsDir() {
+  return resolve(import.meta.dir, "../../../blueprints/process-steps");
+}
+
+function normalizeProcessStepBundles(processStepsDir?: string) {
+  const stepsDir = processStepsDir?.trim() || defaultProcessStepsDir();
+  const bundleMap = new Map<string, RawProcessStepBundle>();
+  if (!existsSync(stepsDir)) {
+    return bundleMap;
+  }
+
+  for (const entry of readdirSync(stepsDir)) {
+    if (!entry.endsWith(".process-steps.json")) {
+      continue;
+    }
+    const path = join(stepsDir, entry);
+    const raw = JSON.parse(readFileSync(path, "utf8")) as RawProcessStepBundle;
+    const id = typeof raw.id === "string" ? raw.id.trim() : "";
+    if (!id) {
+      throw new Error(`Invalid process step bundle: ${path}`);
+    }
+    bundleMap.set(id, raw);
+  }
+  return bundleMap;
+}
+
 function normalizeProcessBlueprintDecisionOptions(
   rawOptions: unknown,
+  bundles: Map<string, RawProcessStepBundle>,
+  importStack: string[] = [],
 ): ProcessBlueprintDecisionOption[] {
   if (!Array.isArray(rawOptions)) {
     return [];
@@ -118,24 +161,40 @@ function normalizeProcessBlueprintDecisionOptions(
         next: raw.next === true,
         block: raw.block === true,
         complete: raw.complete === true,
-        steps: normalizeProcessBlueprintSteps(raw.steps),
+        steps: normalizeProcessBlueprintSteps(raw.steps, bundles, importStack),
       } satisfies ProcessBlueprintDecisionOption;
     })
     .filter((entry): entry is ProcessBlueprintDecisionOption => entry !== null);
 }
 
-function normalizeProcessBlueprintSteps(rawSteps: unknown): ProcessBlueprintStep[] {
+function normalizeProcessBlueprintSteps(
+  rawSteps: unknown,
+  bundles: Map<string, RawProcessStepBundle>,
+  importStack: string[] = [],
+): ProcessBlueprintStep[] {
   if (!Array.isArray(rawSteps)) {
     return [];
   }
 
   return rawSteps
-    .map((entry) => {
+    .flatMap((entry) => {
       const raw = entry as RawProcessBlueprintStep;
+      const use = typeof raw.use === "string" ? raw.use.trim() : "";
+      if (use) {
+        const bundle = bundles.get(use);
+        if (!bundle) {
+          throw new Error(`Unknown process step bundle: ${use}`);
+        }
+        if (importStack.includes(use)) {
+          throw new Error(`Circular process step bundle import: ${[...importStack, use].join(" -> ")}`);
+        }
+        return normalizeProcessBlueprintSteps(bundle.steps, bundles, [...importStack, use]);
+      }
+
       const id = typeof raw.id === "string" ? raw.id.trim() : "";
       const title = typeof raw.title === "string" ? raw.title.trim() : "";
       if (!id || !title) {
-        return null;
+        return [];
       }
       const kind = raw.kind === "wait" || raw.kind === "decision" ? raw.kind : "task";
       const decision =
@@ -145,23 +204,30 @@ function normalizeProcessBlueprintSteps(rawSteps: unknown): ProcessBlueprintStep
                 typeof raw.decision.prompt === "string" && raw.decision.prompt.trim()
                   ? raw.decision.prompt.trim()
                   : title,
-              options: normalizeProcessBlueprintDecisionOptions(raw.decision.options),
+              options: normalizeProcessBlueprintDecisionOptions(
+                raw.decision.options,
+                bundles,
+                importStack,
+              ),
             }
           : null;
-      return {
-        id,
-        title,
-        kind,
-        doneToken:
-          typeof raw.doneToken === "string" && raw.doneToken.trim()
-            ? raw.doneToken.trim()
-            : null,
-        blockedToken:
-          typeof raw.blockedToken === "string" && raw.blockedToken.trim()
-            ? raw.blockedToken.trim()
-            : null,
-        decision,
-      } satisfies ProcessBlueprintStep;
+      return [
+        {
+          id,
+          title,
+          kind,
+          doneToken:
+            typeof raw.doneToken === "string" && raw.doneToken.trim()
+              ? raw.doneToken.trim()
+              : null,
+          blockedToken:
+            typeof raw.blockedToken === "string" && raw.blockedToken.trim()
+              ? raw.blockedToken.trim()
+              : null,
+          steps: normalizeProcessBlueprintSteps(raw.steps, bundles, importStack),
+          decision,
+        } satisfies ProcessBlueprintStep,
+      ];
     })
     .filter((entry): entry is ProcessBlueprintStep => entry !== null);
 }
@@ -178,7 +244,11 @@ function hasProceduralFields(raw: RawProcessBlueprint) {
   );
 }
 
-function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): ProcessBlueprint {
+function normalizeProcessBlueprint(
+  raw: RawProcessBlueprint,
+  jsonPath: string,
+  bundles: Map<string, RawProcessStepBundle>,
+): ProcessBlueprint {
   const id = typeof raw.id === "string" ? raw.id.trim() : "";
   const title = typeof raw.title === "string" ? raw.title.trim() : "";
   const catalogOrder = Number(raw.catalogOrder);
@@ -220,7 +290,7 @@ function normalizeProcessBlueprint(raw: RawProcessBlueprint, jsonPath: string): 
     throw new Error(`Invalid procedural process blueprint: ${jsonPath}`);
   }
 
-  const steps = normalizeProcessBlueprintSteps(raw.steps);
+  const steps = normalizeProcessBlueprintSteps(raw.steps, bundles);
   const watchDogEnabled = raw.watchdog?.enabled !== false;
   const idleTimeoutSeconds = Number(raw.watchdog?.idleTimeoutSeconds);
   const maxNudgesPerIdleEpisode = Number(raw.watchdog?.maxNudgesPerIdleEpisode);
@@ -260,11 +330,16 @@ export function isProceduralProcessBlueprint(
   return processBlueprint?.kind === "procedural";
 }
 
-export function loadProcessBlueprintCatalog(blueprintsDir?: string): ProcessBlueprint[] {
+export function loadProcessBlueprintCatalog(
+  blueprintsDir?: string,
+  processStepsDir?: string,
+): ProcessBlueprint[] {
   const processBlueprintDir = blueprintsDir?.trim() || defaultBlueprintsDir();
   if (!existsSync(processBlueprintDir)) {
     return [];
   }
+
+  const bundles = normalizeProcessStepBundles(processStepsDir);
 
   return readdirSync(processBlueprintDir)
     .filter((entry) => entry.endsWith(".process-blueprint.json"))
@@ -273,6 +348,7 @@ export function loadProcessBlueprintCatalog(blueprintsDir?: string): ProcessBlue
       normalizeProcessBlueprint(
         JSON.parse(readFileSync(path, "utf8")) as RawProcessBlueprint,
         path,
+        bundles,
       ),
     )
     .sort((left, right) => {
