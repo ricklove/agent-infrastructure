@@ -21,4 +21,5 @@ FullDevelopmentProcessGuide.enforces(`
 - Provider-reported idle before that explicit terminal token should make the watchdog immediately eligible.
 - Provider error before that explicit terminal token should enter retry or escalation handling rather than being mistaken for ordinary idle.
 - The watchdog completion token should only be used when the entire process is complete.
+- Completion also requires that any required manager-dashboard screenshot be posted into the chat as a markdown image from the approved temporary image space under `~/temp`, not as a plain filesystem link.
 `);
