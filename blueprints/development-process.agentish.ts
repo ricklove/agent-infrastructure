@@ -103,6 +103,7 @@ DevelopmentProcess.enforces(`
 - Live Peer Development should record stable milestones as feature-branch commits rather than leaving iterative preview work only in uncommitted worker state.
 - Live Peer Development may include high-level dashboard UI iteration, mockups, or exploratory design outputs in addition to implementation changes, but any code-changing work still belongs on the worker feature branch.
 - The preferred setup sequence is to create the implementation worktree from the shared base-branch checkout with `git worktree add -b <feature-branch> <worktree-path> <base-branch>` so branch creation and worktree creation happen together.
+- After creating or attaching the feature-branch worktree, merge any relevant upstream from `origin/development` or `origin/main` into that feature branch before more implementation continues.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
 - If an active feature branch falls behind the current base branch or the release branch, it should be refreshed by merging those branches into the feature branch with normal merge commits as needed rather than relying on rebases.
 - Normal merge commits are an acceptable and preferred way to refresh a feature branch during active work; rebasing is optional and never required by this process.
@@ -151,7 +152,7 @@ DevelopmentProcess.defines(`
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - MergeCommitPromotion means branch-stage transitions stay visible as normal merge commits rather than being collapsed into fast-forward updates.
-- FeatureBranchRefreshByMerge means an active feature branch may be updated from development, main, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
+- FeatureBranchRefreshByMerge means an active feature branch should be updated from `origin/development`, `origin/main`, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
 - ReleaseBranch means `main` is the canonical release branch for runtime deployment.
 - ReleaseGitTag means an immutable git tag created from the promoted release commit and used as the runtime deploy target.
 - TemporaryStateOnly means logs, pids, sockets, caches, and controller metadata may live under state/, but durable user or app content may not.

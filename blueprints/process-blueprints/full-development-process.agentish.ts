@@ -12,6 +12,7 @@ const FullDevelopmentProcessGuide = define.system("FullDevelopmentProcessGuide",
 FullDevelopmentProcessGuide.enforces(`
 - The operator and provider-backed agent should treat the development-process blueprint as the execution contract for feature work.
 - Full Development Process uses a swarm worker checkout as its active mutable implementation surface and does not use the manager host shared checkout as an editing surface.
+- After creating or attaching the worker-hosted feature-branch worktree, the agent should merge any relevant upstream from `origin/development` or `origin/main` into that branch before continuing with implementation work.
 - Completion means blueprint work, implementation, verification, release promotion, runtime deployment, and live validation are all finished.
 - The process remains unresolved until the agent emits either the exact full-development-process done token or the exact full-development-process blocked token.
 - A watchdog prompt for this process should cause resumed execution work by default, not merely a textual status reply.

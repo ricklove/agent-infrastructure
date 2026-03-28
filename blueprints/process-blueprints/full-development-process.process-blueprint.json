@@ -2,7 +2,7 @@
   "id": "full_development_process",
   "title": "Full Development Process",
   "catalogOrder": 50,
-  "expectation": "Use a worker-hosted feature-branch worktree as the only mutable implementation surface for active development in this process; do not perform code-changing work from the shared repository checkout or from a worker shared checkout. Connect through a persistent SSH session into the worker instance for the active development loop. Follow the full development-process blueprint through worker-backed blueprint updates, committed implementation, manager-side branch integration, release promotion, runtime deploy, runtime revision and version verification, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using that issued session URL, manager-dashboard screenshot verification, cleanup of the feature branch and worktree on success, and rollback recovery when screenshot verification fails.",
+  "expectation": "Use a worker-hosted feature-branch worktree as the only mutable implementation surface for active development in this process; do not perform code-changing work from the shared repository checkout or from a worker shared checkout. After creating or using that worker-hosted worktree, merge any upstream from origin development or origin main into it before continuing. Connect through a persistent SSH session into the worker instance for the active development loop. Follow the full development-process blueprint through worker-backed blueprint updates, committed implementation, manager-side branch integration, release promotion, runtime deploy, runtime revision and version verification, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using that issued session URL, manager-dashboard screenshot verification, cleanup of the feature branch and worktree on success, and rollback recovery when screenshot verification fails.",
   "idlePrompt": "If you fully completed the development process, reply only with 'done: full development process complete'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: full development process blocked'. Otherwise resume the work immediately and perform the next required implementation, verification, release, deploy, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: full development process complete",
@@ -15,6 +15,10 @@
     {
       "id": "setup_worker_surface",
       "title": "Create or use the worker-hosted feature-branch worktree surface"
+    },
+    {
+      "id": "merge_upstream_into_worktree",
+      "title": "Merge any upstream from origin development or origin main into the worker-hosted feature-branch worktree"
     },
     {
       "id": "connect_persistent_ssh",

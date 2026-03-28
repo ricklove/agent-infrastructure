@@ -11,7 +11,7 @@ const LivePeerDevelopmentGuide = define.system("LivePeerDevelopmentGuide", {
 
 LivePeerDevelopmentGuide.enforces(`
 - The operator and provider-backed agent should treat the development-process blueprint as the execution contract for live peer development, except that merge, release promotion, deploy, and manager-host live validation remain deferred.
-- Live Peer Development starts from the same worker-backed feature-branch setup as full development process work.
+- Live Peer Development starts from the same worker-backed feature-branch setup as full development process work, including merging any relevant upstream from `origin/development` or `origin/main` into the worker feature branch before continuing.
 - Live Peer Development uses the worker checkout as its only active mutable surface and does not use the manager host shared checkout as an editing surface.
 - The active preview surface for Live Peer Development must run on a swarm worker EC2 instance and must not be the manager dashboard.
 - The agent should ensure a worker is running, connect to it through a persistent ssh-driven worker terminal, and use that worker as the active development surface for the feature branch.
