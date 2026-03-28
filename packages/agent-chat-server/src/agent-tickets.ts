@@ -51,6 +51,13 @@ export type StoredAgentTicket = {
   updatedAtMs: number;
 };
 
+export type StoredAgentTicketTransition = {
+  ticket: StoredAgentTicket;
+  kind: "stepCompleted" | "stepBlocked" | "ticketCompleted" | "ticketBlocked";
+  stepTitle: string | null;
+  detail: string | null;
+};
+
 type TicketIndex = {
   activeTicketBySessionId: Record<string, string>;
 };
@@ -100,6 +107,50 @@ function buildChecklist(
         }
       : null,
   }));
+}
+
+
+function cloneDecisionOptions(
+  options: StoredAgentTicketDecisionOption[],
+): StoredAgentTicketDecisionOption[] {
+  return options.map((option) => ({
+    ...option,
+    steps: cloneChecklist(option.steps),
+  }));
+}
+
+function cloneChecklist(steps: StoredAgentTicketStep[]): StoredAgentTicketStep[] {
+  return steps.map((step) => ({
+    ...step,
+    decision: step.decision
+      ? {
+          prompt: step.decision.prompt,
+          options: cloneDecisionOptions(step.decision.options),
+        }
+      : null,
+  }));
+}
+
+function ticketWithNextStep(
+  current: StoredAgentTicket,
+  checklist: StoredAgentTicketStep[],
+  currentStepId: string | null,
+  resolution: string | null,
+  status: StoredAgentTicketStatus = "active",
+): StoredAgentTicket {
+  const currentStep = currentStepId
+    ? checklist.find((step) => step.id === currentStepId) ?? null
+    : null;
+  return {
+    ...current,
+    status,
+    currentStepId,
+    nextStepId: currentStep?.id ?? null,
+    nextStepLabel: currentStep?.title ?? null,
+    checklist,
+    resolution,
+    updatedAtMs: Date.now(),
+  };
 }
 
 export class AgentTicketStore {
@@ -159,13 +210,56 @@ export class AgentTicketStore {
     return ticket;
   }
 
+  resolveStepFromAssistantText(sessionId: string, assistantText: string): StoredAgentTicketTransition | null {
+    const current = this.getActiveTicketForSession(sessionId);
+    if (!current || current.status !== "active" || !current.currentStepId) {
+      return null;
+    }
+
+    const currentIndex = current.checklist.findIndex((step) => step.id === current.currentStepId);
+    if (currentIndex < 0) {
+      return null;
+    }
+
+    const currentStep = current.checklist[currentIndex]!;
+    const normalizedText = assistantText.trim();
+    const genericDoneToken = `done: ${currentStep.id}`;
+    const genericBlockedToken = `blocked: ${currentStep.id}`;
+
+    if (
+      (currentStep.doneToken && normalizedText === currentStep.doneToken) ||
+      normalizedText === genericDoneToken
+    ) {
+      return this.completeCurrentStep(current, currentIndex, currentStep, null);
+    }
+
+    if (
+      (currentStep.blockedToken && normalizedText === currentStep.blockedToken) ||
+      normalizedText === genericBlockedToken
+    ) {
+      return this.blockCurrentStep(current, currentIndex, currentStep, normalizedText);
+    }
+
+    if (currentStep.kind === "decision" && currentStep.decision) {
+      const matchedOption = currentStep.decision.options.find(
+        (option) => normalizedText === option.title || normalizedText === option.id,
+      );
+      if (!matchedOption) {
+        return null;
+      }
+      return this.resolveDecisionOption(current, currentIndex, currentStep, matchedOption);
+    }
+
+    return null;
+  }
+
   resolveActiveTicket(sessionId: string, status: Extract<StoredAgentTicketStatus, "completed" | "blocked">, resolution: string) {
     const current = this.getActiveTicketForSession(sessionId);
     if (!current) {
       return null;
     }
 
-    const nextChecklist = current.checklist.map((step) => {
+    const nextChecklist = cloneChecklist(current.checklist).map((step) => {
       if (status === "completed") {
         return {
           ...step,
@@ -181,22 +275,183 @@ export class AgentTicketStore {
       return step;
     });
 
-    const updated: StoredAgentTicket = {
-      ...current,
-      status,
-      currentStepId: null,
-      nextStepId: null,
-      nextStepLabel: null,
-      checklist: nextChecklist,
-      resolution,
-      updatedAtMs: Date.now(),
+    const updated = ticketWithNextStep(current, nextChecklist, null, resolution, status);
+    this.persistTicket(updated);
+    return updated;
+  }
+
+  private completeCurrentStep(
+    current: StoredAgentTicket,
+    currentIndex: number,
+    currentStep: StoredAgentTicketStep,
+    detail: string | null,
+  ): StoredAgentTicketTransition {
+    const nextChecklist = cloneChecklist(current.checklist);
+    nextChecklist[currentIndex] = {
+      ...nextChecklist[currentIndex]!,
+      status: "completed",
     };
 
-    this.ticketCache.set(updated.id, updated);
-    this.writeTicket(updated);
+    const nextIndex = nextChecklist.findIndex(
+      (step, index) => index > currentIndex && step.status === "pending",
+    );
+
+    if (nextIndex === -1) {
+      const updated = ticketWithNextStep(current, nextChecklist, null, detail, "completed");
+      this.persistTicket(updated);
+      return {
+        ticket: updated,
+        kind: "ticketCompleted",
+        stepTitle: currentStep.title,
+        detail,
+      };
+    }
+
+    nextChecklist[nextIndex] = {
+      ...nextChecklist[nextIndex]!,
+      status: "active",
+    };
+    const updated = ticketWithNextStep(current, nextChecklist, nextChecklist[nextIndex]!.id, detail);
+    this.persistTicket(updated);
+    return {
+      ticket: updated,
+      kind: "stepCompleted",
+      stepTitle: currentStep.title,
+      detail,
+    };
+  }
+
+  private blockCurrentStep(
+    current: StoredAgentTicket,
+    currentIndex: number,
+    currentStep: StoredAgentTicketStep,
+    detail: string | null,
+  ): StoredAgentTicketTransition {
+    const nextChecklist = cloneChecklist(current.checklist);
+    nextChecklist[currentIndex] = {
+      ...nextChecklist[currentIndex]!,
+      status: "blocked",
+    };
+    const updated = ticketWithNextStep(current, nextChecklist, null, detail, "blocked");
+    this.persistTicket(updated);
+    return {
+      ticket: updated,
+      kind: "ticketBlocked",
+      stepTitle: currentStep.title,
+      detail,
+    };
+  }
+
+  private resolveDecisionOption(
+    current: StoredAgentTicket,
+    currentIndex: number,
+    currentStep: StoredAgentTicketStep,
+    option: StoredAgentTicketDecisionOption,
+  ): StoredAgentTicketTransition {
+    const nextChecklist = cloneChecklist(current.checklist);
+    nextChecklist[currentIndex] = {
+      ...nextChecklist[currentIndex]!,
+      status: option.block ? "blocked" : "completed",
+    };
+
+    if (option.block) {
+      const updated = ticketWithNextStep(current, nextChecklist, null, option.title, "blocked");
+      this.persistTicket(updated);
+      return {
+        ticket: updated,
+        kind: "ticketBlocked",
+        stepTitle: currentStep.title,
+        detail: option.title,
+      };
+    }
+
+    if (option.complete) {
+      const updated = ticketWithNextStep(current, nextChecklist, null, option.title, "completed");
+      this.persistTicket(updated);
+      return {
+        ticket: updated,
+        kind: "ticketCompleted",
+        stepTitle: currentStep.title,
+        detail: option.title,
+      };
+    }
+
+    if (option.steps.length > 0) {
+      const inserted = cloneChecklist(option.steps);
+      inserted[0] = {
+        ...inserted[0]!,
+        status: "active",
+      };
+      for (let index = 1; index < inserted.length; index += 1) {
+        inserted[index] = {
+          ...inserted[index]!,
+          status: "pending",
+        };
+      }
+      nextChecklist.splice(currentIndex + 1, 0, ...inserted);
+      const updated = ticketWithNextStep(current, nextChecklist, inserted[0]!.id, option.title);
+      this.persistTicket(updated);
+      return {
+        ticket: updated,
+        kind: "stepCompleted",
+        stepTitle: currentStep.title,
+        detail: option.title,
+      };
+    }
+
+    if (option.goto) {
+      const gotoIndex = nextChecklist.findIndex((step) => step.id === option.goto);
+      if (gotoIndex >= 0) {
+        nextChecklist[gotoIndex] = {
+          ...nextChecklist[gotoIndex]!,
+          status: "active",
+        };
+        const updated = ticketWithNextStep(current, nextChecklist, nextChecklist[gotoIndex]!.id, option.title);
+        this.persistTicket(updated);
+        return {
+          ticket: updated,
+          kind: "stepCompleted",
+          stepTitle: currentStep.title,
+          detail: option.title,
+        };
+      }
+    }
+
+    if (option.next) {
+      const nextIndex = nextChecklist.findIndex(
+        (step, index) => index > currentIndex && step.status === "pending",
+      );
+      if (nextIndex >= 0) {
+        nextChecklist[nextIndex] = {
+          ...nextChecklist[nextIndex]!,
+          status: "active",
+        };
+        const updated = ticketWithNextStep(current, nextChecklist, nextChecklist[nextIndex]!.id, option.title);
+        this.persistTicket(updated);
+        return {
+          ticket: updated,
+          kind: "stepCompleted",
+          stepTitle: currentStep.title,
+          detail: option.title,
+        };
+      }
+    }
+
+    const updated = ticketWithNextStep(current, nextChecklist, null, option.title, "completed");
+    this.persistTicket(updated);
+    return {
+      ticket: updated,
+      kind: "ticketCompleted",
+      stepTitle: currentStep.title,
+      detail: option.title,
+    };
+  }
+
+  private persistTicket(ticket: StoredAgentTicket) {
+    this.ticketCache.set(ticket.id, ticket);
+    this.writeTicket(ticket);
     this.writeIndex();
-    this.notifyCanonicalWrite(sessionId);
-    return updated;
+    this.notifyCanonicalWrite(ticket.sessionId);
   }
 
   private notifyCanonicalWrite(sessionId: string) {
