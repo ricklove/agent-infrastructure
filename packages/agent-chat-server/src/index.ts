@@ -1000,10 +1000,10 @@ function maybeApplyTicketStepTransition(
     const session = store.getSession(sessionId);
     if (session) {
       setSessionWatchdogState(sessionId, {
-        status: "unresolved",
+        status: "blocked",
         nudgeCount: session.watchdogState.nudgeCount,
         lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
-        completedAtMs: null,
+        completedAtMs: Date.now(),
       });
     }
     return { status: null, messages };
