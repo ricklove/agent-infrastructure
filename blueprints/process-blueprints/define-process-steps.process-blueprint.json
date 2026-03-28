@@ -1,0 +1,70 @@
+{
+  "id": "define_process_steps",
+  "title": "Define Process (Nested Steps)",
+  "catalogOrder": 26,
+  "expectation": "Create a feature-branch worktree from the current upstream base branch tip under the canonical worktree location and use it as the only mutable surface for this process; never edit process definition files from the shared repository checkout. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Review relevant existing blueprints, process definitions, and Agentish sections when defining or restructuring a process, create or update the needed process definition layer from that worktree branch, commit the changes, merge the branch into development, push development to origin, promote the release, deploy the runtime through the normal release-tag deploy path, and verify the new process is available in the live system.",
+  "idlePrompt": "If the process-definition work is complete, reply only with 'done: process defined'. If you are truly blocked on missing user information or an environment dependency, reply only with 'blocked: process definition requires clarification'. Otherwise resume the process-definition work immediately and perform the next required blueprint, integration, deploy, or validation step instead of giving only a status update.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: process defined",
+  "blockedToken": "blocked: process definition requires clarification",
+  "stopConditions": [
+    "process-definition work complete",
+    "missing information from the user",
+    "blocked on an environment dependency"
+  ],
+  "steps": [
+    {
+      "id": "process_worktree_surface",
+      "title": "Prepare the process-definition worktree",
+      "steps": [
+        {
+          "use": "feature_worktree_setup"
+        }
+      ]
+    },
+    {
+      "id": "process_definition_revision",
+      "title": "Define and integrate the process changes",
+      "steps": [
+        {
+          "id": "review_existing_process_context",
+          "title": "Review relevant existing process definitions, blueprints, and Agentish sections"
+        },
+        {
+          "id": "update_process_definition_layer",
+          "title": "Create or update the needed process definition layer"
+        },
+        {
+          "id": "commit_process_changes",
+          "title": "Commit the process-definition changes"
+        },
+        {
+          "use": "manager_development_integration"
+        }
+      ]
+    },
+    {
+      "id": "process_release_validation",
+      "title": "Release and validate the process changes",
+      "steps": [
+        {
+          "id": "promote_release",
+          "title": "Promote the release"
+        },
+        {
+          "id": "deploy_runtime",
+          "title": "Deploy the runtime"
+        },
+        {
+          "id": "verify_live_process",
+          "title": "Verify the new process is available in the live system"
+        }
+      ]
+    }
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 90,
+    "maxNudgesPerIdleEpisode": 0
+  }
+}

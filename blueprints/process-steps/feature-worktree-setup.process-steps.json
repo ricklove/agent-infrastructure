@@ -1,0 +1,14 @@
+{
+  "id": "feature_worktree_setup",
+  "title": "Feature worktree setup",
+  "steps": [
+    {
+      "id": "create_worktree_surface",
+      "title": "Create a feature-branch worktree from the current upstream base branch tip"
+    },
+    {
+      "id": "merge_upstream_into_worktree",
+      "title": "Merge any additionally required upstream into the feature-branch worktree"
+    }
+  ]
+}
