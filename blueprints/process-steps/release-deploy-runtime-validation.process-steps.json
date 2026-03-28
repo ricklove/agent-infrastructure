@@ -4,11 +4,11 @@
   "steps": [
     {
       "id": "promote_release",
-      "title": "Promote the release"
+      "title": "Create and push a release tag for the integrated `development` commit"
     },
     {
       "id": "deploy_runtime",
-      "title": "Deploy the runtime"
+      "title": "Run `bun run deploy-manager-runtime <release-tag>` from the manager integration worktree"
     },
     {
       "id": "verify_runtime_revision_and_versions",
@@ -16,7 +16,7 @@
     },
     {
       "id": "perform_live_health_verification",
-      "title": "Perform live health verification"
+      "title": "Check `http://127.0.0.1:3000/api/health` and confirm the dashboard and manager report healthy status"
     }
   ]
 }
