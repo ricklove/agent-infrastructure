@@ -195,6 +195,32 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
     )
   }, [])
 
+  const beginInteraction = useCallback(
+    (
+      mode: NonNullable<WindowInteraction>["mode"],
+      event: React.PointerEvent,
+      entry: DashboardWindowState,
+    ) => {
+      event.preventDefault()
+      focusWindow(entry.windowId)
+      interactionRef.current = {
+        mode,
+        windowId: entry.windowId,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        startWindow: {
+          x: entry.x,
+          y: entry.y,
+          width: entry.width,
+          height: entry.height,
+          scale: entry.scale,
+        },
+      }
+    },
+    [focusWindow],
+  )
+
   const openWindow = useCallback((definition: DashboardWindowDefinition) => {
     zIndexRef.current += 1
     const nextWindowId = definition.id?.trim() || buildWindowId()
@@ -316,37 +342,21 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
           }}
           onPointerDown={() => focusWindow(entry.windowId)}
         >
-          <div
-            className="absolute left-4 right-28 top-0 z-[1] h-4 -translate-y-1/2 cursor-grab touch-none"
-            onPointerDown={(event) => {
-              event.preventDefault()
-              focusWindow(entry.windowId)
-              interactionRef.current = {
-                mode: "move",
-                windowId: entry.windowId,
-                pointerId: event.pointerId,
-                startX: event.clientX,
-                startY: event.clientY,
-                startWindow: {
-                  x: entry.x,
-                  y: entry.y,
-                  width: entry.width,
-                  height: entry.height,
-                  scale: entry.scale,
-                },
-              }
-            }}
-            title="Drag window"
-          />
-
           <div className="pointer-events-none absolute -top-3 left-3 right-3 z-[2] flex items-center justify-between gap-2">
-            <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/95 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
+            <div
+              className="pointer-events-auto inline-flex cursor-grab items-center gap-2 rounded-full border border-white/10 bg-slate-950/95 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)] active:cursor-grabbing"
+              onPointerDown={(event) => beginInteraction("move", event, entry)}
+              title="Drag window"
+            >
               {entry.icon ? <span className="text-cyan-200">{entry.icon}</span> : null}
               <span className="max-w-[18rem] truncate">{entry.title}</span>
             </div>
             <div className="pointer-events-auto flex items-center gap-1.5">
               <button
                 type="button"
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                }}
                 onClick={() => updateWindow(entry.windowId, { scale: 1 })}
                 disabled={Math.abs(entry.scale - 1) < 0.01}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)] disabled:opacity-40"
@@ -356,24 +366,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
               </button>
               <button
                 type="button"
-                onPointerDown={(event) => {
-                  event.preventDefault()
-                  focusWindow(entry.windowId)
-                  interactionRef.current = {
-                    mode: "zoom",
-                    windowId: entry.windowId,
-                    pointerId: event.pointerId,
-                    startX: event.clientX,
-                    startY: event.clientY,
-                    startWindow: {
-                      x: entry.x,
-                      y: entry.y,
-                      width: entry.width,
-                      height: entry.height,
-                      scale: entry.scale,
-                    },
-                  }
-                }}
+                onPointerDown={(event) => beginInteraction("zoom", event, entry)}
                 className="inline-flex h-8 min-w-[5.25rem] items-center justify-center rounded-full border border-white/10 bg-slate-950/95 px-3 text-[10px] font-medium text-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)] touch-none"
                 title="Drag left or right to zoom"
               >
@@ -381,6 +374,9 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
               </button>
               <button
                 type="button"
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                }}
                 onClick={() =>
                   updateWindow(entry.windowId, { minimized: !entry.minimized })
                 }
@@ -391,6 +387,9 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
               </button>
               <button
                 type="button"
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                }}
                 onClick={() => closeWindow(entry.windowId)}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-400/25 bg-slate-950/95 text-rose-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
                 title="Close window"
@@ -411,8 +410,8 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                   style={{
                     transform: `scale(${entry.scale})`,
                     transformOrigin: "top left",
-                    width: `${100 / entry.scale}%`,
-                    minHeight: `${100 / entry.scale}%`,
+                    width: "100%",
+                    minHeight: "100%",
                   }}
                 >
                   {entry.body}
@@ -426,24 +425,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
               type="button"
               className="absolute -bottom-2 -right-2 h-7 w-7 cursor-se-resize touch-none rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
               title="Resize window"
-              onPointerDown={(event) => {
-                event.preventDefault()
-                focusWindow(entry.windowId)
-                interactionRef.current = {
-                  mode: "resize",
-                  windowId: entry.windowId,
-                  pointerId: event.pointerId,
-                  startX: event.clientX,
-                  startY: event.clientY,
-                  startWindow: {
-                    x: entry.x,
-                    y: entry.y,
-                    width: entry.width,
-                    height: entry.height,
-                    scale: entry.scale,
-                  },
-                }
-              }}
+              onPointerDown={(event) => beginInteraction("resize", event, entry)}
             >
               <span className="absolute bottom-[5px] right-[5px] block h-2.5 w-2.5 border-b border-r border-current" />
             </button>
