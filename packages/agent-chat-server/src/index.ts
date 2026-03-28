@@ -771,7 +771,7 @@ function appendTicketEventMessage(sessionId: string, text: string) {
   return store.appendMessage(sessionId, {
     role: "system",
     kind: "ticketEvent",
-    providerSeenAtMs: Date.now(),
+    providerSeenAtMs: null,
     content: [{ type: "text", text }],
   });
 }

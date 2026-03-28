@@ -315,7 +315,9 @@ export class AgentChatStore {
     return this.listMessages(sessionId).filter(
       (message) =>
         message.providerSeenAtMs === null &&
-        (message.role === "user" || message.kind === "watchdogPrompt"),
+        (message.role === "user" ||
+          message.kind === "watchdogPrompt" ||
+          message.kind === "ticketEvent"),
     );
   }
 
