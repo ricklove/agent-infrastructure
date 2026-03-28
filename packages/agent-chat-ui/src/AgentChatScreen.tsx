@@ -143,6 +143,7 @@ type SessionMessage = {
     | "thought"
     | "streamCheckpoint"
     | "activity"
+    | "ticketEvent"
   replyToMessageId: string | null
   providerSeenAtMs: number | null
   content: Array<
@@ -5301,10 +5302,13 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             className={`min-w-0 overflow-hidden rounded-3xl border px-3 py-2.5 sm:px-4 sm:py-3 md:px-5 md:py-4 ${
                               message.kind === "thought" ||
                               message.kind === "streamCheckpoint" ||
-                              message.kind === "activity"
+                              message.kind === "activity" ||
+                              message.kind === "ticketEvent"
                                 ? message.kind === "activity"
                                   ? "w-full border-amber-300/15 bg-amber-300/[0.06] md:max-w-[64%]"
-                                  : "w-full border-white/10 bg-slate-950/60 md:max-w-[64%]"
+                                  : message.kind === "ticketEvent"
+                                    ? "w-full border-cyan-300/20 bg-cyan-300/[0.06]"
+                                    : "w-full border-white/10 bg-slate-950/60 md:max-w-[64%]"
                                 : message.role === "user"
                                   ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]"
                                   : message.role === "system"
@@ -5322,9 +5326,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                   className={`text-xs font-semibold uppercase tracking-[0.2em] ${
                                     message.kind === "activity"
                                       ? "text-amber-100"
-                                      : message.role === "system"
-                                        ? "text-slate-300"
-                                        : "text-slate-400"
+                                      : message.kind === "ticketEvent"
+                                        ? "text-cyan-100"
+                                        : message.role === "system"
+                                          ? "text-slate-300"
+                                          : "text-slate-400"
                                   }`}
                                 >
                                   {message.kind === "activity"
@@ -5349,6 +5355,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 {message.kind === "activity" ? (
                                   <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
                                     activity
+                                  </span>
+                                ) : null}
+                                {message.kind === "ticketEvent" ? (
+                                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                    ticket
                                   </span>
                                 ) : null}
                                 {queueLabel ? (
@@ -5487,9 +5498,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                       className={
                                         message.kind === "activity"
                                           ? "text-slate-100"
-                                          : message.role === "system"
-                                            ? "text-slate-200"
-                                            : ""
+                                          : message.kind === "ticketEvent"
+                                            ? "text-cyan-50"
+                                            : message.role === "system"
+                                              ? "text-slate-200"
+                                              : ""
                                       }
                                     >
                                       {renderMarkdownBlocks(
@@ -5526,7 +5539,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             {message.role === "assistant" &&
                             message.kind !== "thought" &&
                             message.kind !== "streamCheckpoint" &&
-                            message.kind !== "activity" ? (
+                            message.kind !== "activity" &&
+                            message.kind !== "ticketEvent" ? (
                               <div className="mt-3 flex items-center justify-end">
                                 <button
                                   type="button"

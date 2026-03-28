@@ -64,6 +64,7 @@ export type StoredMessage = {
   kind:
     | "chat"
     | "activity"
+    | "ticketEvent"
     | "directoryInstruction"
     | "watchdogPrompt"
     | "thought"
@@ -115,7 +116,7 @@ function safeJsonParse<T>(raw: string): T {
 function summarizePreview(messages: StoredMessage[]): string | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
-    if (message.kind === "activity") {
+    if (message.kind === "activity" || message.kind === "ticketEvent") {
       continue;
     }
     const textBlock = message?.content.find((block) => block.type === "text");
@@ -951,15 +952,17 @@ export class AgentChatStore {
           kind:
             parsed.kind === "directoryInstruction"
               ? "directoryInstruction"
-                : parsed.kind === "activity"
-                  ? "activity"
-                : parsed.kind === "watchdogPrompt"
-                  ? "watchdogPrompt"
-                  : parsed.kind === "streamCheckpoint"
-                    ? "streamCheckpoint"
-                  : parsed.kind === "thought"
-                    ? "thought"
-                : "chat",
+              : parsed.kind === "activity"
+                ? "activity"
+              : parsed.kind === "ticketEvent"
+                ? "ticketEvent"
+              : parsed.kind === "watchdogPrompt"
+                ? "watchdogPrompt"
+              : parsed.kind === "streamCheckpoint"
+                ? "streamCheckpoint"
+              : parsed.kind === "thought"
+                ? "thought"
+              : "chat",
           replyToMessageId: parsed.replyToMessageId ? String(parsed.replyToMessageId) : null,
           providerSeenAtMs:
             parsed.providerSeenAtMs === null || parsed.providerSeenAtMs === undefined

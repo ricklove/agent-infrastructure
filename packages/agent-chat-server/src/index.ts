@@ -649,7 +649,7 @@ function maybeMarkProcessBlueprintTerminal(
   if (normalizedText === processBlueprint.completionToken) {
     const ticket = ticketStore.resolveActiveTicket(sessionId, "completed", normalizedText);
     if (ticket) {
-      appendActivityMessage(sessionId, buildTicketStateEventText(ticket, "completed"));
+      appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "completed"));
     }
     setSessionWatchdogState(sessionId, {
       status: "completed",
@@ -663,7 +663,7 @@ function maybeMarkProcessBlueprintTerminal(
   if (normalizedText === processBlueprint.blockedToken) {
     const ticket = ticketStore.resolveActiveTicket(sessionId, "blocked", normalizedText);
     if (ticket) {
-      appendActivityMessage(sessionId, buildTicketStateEventText(ticket, "blocked"));
+      appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "blocked"));
     }
     setSessionWatchdogState(sessionId, {
       status: "blocked",
@@ -730,6 +730,15 @@ function appendActivityMessage(sessionId: string, text: string) {
   });
 }
 
+function appendTicketEventMessage(sessionId: string, text: string) {
+  return store.appendMessage(sessionId, {
+    role: "system",
+    kind: "ticketEvent",
+    providerSeenAtMs: Date.now(),
+    content: [{ type: "text", text }],
+  });
+}
+
 function buildTicketStateEventText(
   ticket: StoredAgentTicket,
   event: "created" | "completed" | "blocked",
@@ -765,7 +774,7 @@ function queueProcessExpectationForSession(sessionId: string) {
     providerSeenAtMs: null,
     content: [{ type: "text", text: expectationText }],
   });
-  appendActivityMessage(sessionId, buildTicketStateEventText(ticket, "created"));
+  appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "created"));
   const updatedSession = store.replacePendingSystemInstructionByPrefix(
     sessionId,
     PROCESS_INSTRUCTION_PREFIX,
