@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -104,6 +105,13 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
+type SurfaceBounds = {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 function viewportSize() {
   if (typeof window === "undefined") {
     return { width: 1280, height: 720 }
@@ -115,8 +123,40 @@ function viewportSize() {
   }
 }
 
-function viewportMetrics() {
+function fallbackSurfaceBounds(): SurfaceBounds {
   const { width, height } = viewportSize()
+  return {
+    left: 0,
+    top: 0,
+    width,
+    height,
+  }
+}
+
+function readSurfaceBounds(node: HTMLDivElement | null): SurfaceBounds {
+  if (!node) {
+    return fallbackSurfaceBounds()
+  }
+  const rect = node.getBoundingClientRect()
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  }
+}
+
+function sameSurfaceBounds(a: SurfaceBounds, b: SurfaceBounds) {
+  return (
+    a.left === b.left &&
+    a.top === b.top &&
+    a.width === b.width &&
+    a.height === b.height
+  )
+}
+
+function viewportMetrics(bounds: SurfaceBounds = fallbackSurfaceBounds()) {
+  const { width, height } = bounds
   const mobile = width < mobileBreakpointPx
   const headerHeight = mobile ? mobileHeaderHeightPx : desktopHeaderHeightPx
   const chromeMinWidth = mobile
@@ -138,8 +178,11 @@ function viewportMetrics() {
   }
 }
 
-function defaultWindowFrame(offsetIndex: number) {
-  const metrics = viewportMetrics()
+function defaultWindowFrame(
+  offsetIndex: number,
+  bounds: SurfaceBounds = fallbackSurfaceBounds(),
+) {
+  const metrics = viewportMetrics(bounds)
   if (metrics.mobile) {
     return {
       x: viewportPadding,
@@ -159,8 +202,9 @@ function defaultWindowFrame(offsetIndex: number) {
 function clampWindowState(
   input: Pick<DashboardWindowState, "x" | "y" | "width" | "height" | "scale">,
   minimized: boolean,
+  bounds: SurfaceBounds = fallbackSurfaceBounds(),
 ) {
-  const metrics = viewportMetrics()
+  const metrics = viewportMetrics(bounds)
   const width = Math.min(
     Math.max(metrics.chromeMinWidth, input.width),
     metrics.maxWidth,
@@ -400,8 +444,43 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
   const [windows, setWindows] = useState<DashboardWindowState[]>([])
   const [blockingInteraction, setBlockingInteraction] =
     useState<InteractionBlock>(null)
+  const [surfaceBounds, setSurfaceBounds] = useState<SurfaceBounds>(() =>
+    fallbackSurfaceBounds(),
+  )
   const interactionRef = useRef<WindowInteraction>(null)
+  const surfaceRef = useRef<HTMLDivElement | null>(null)
   const zIndexRef = useRef(180)
+
+  const measureSurfaceBounds = useCallback(() => {
+    const nextBounds = readSurfaceBounds(surfaceRef.current)
+    setSurfaceBounds((current) =>
+      sameSurfaceBounds(current, nextBounds) ? current : nextBounds,
+    )
+  }, [])
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+    measureSurfaceBounds()
+    const node = surfaceRef.current
+    const observer =
+      node && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(measureSurfaceBounds)
+        : null
+    if (observer && node) {
+      observer.observe(node)
+    }
+    window.addEventListener("resize", measureSurfaceBounds)
+    window.visualViewport?.addEventListener("resize", measureSurfaceBounds)
+    window.visualViewport?.addEventListener("scroll", measureSurfaceBounds)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener("resize", measureSurfaceBounds)
+      window.visualViewport?.removeEventListener("resize", measureSurfaceBounds)
+      window.visualViewport?.removeEventListener("scroll", measureSurfaceBounds)
+    }
+  }, [measureSurfaceBounds])
 
   const focusWindow = useCallback((windowId: string) => {
     zIndexRef.current += 1
@@ -445,7 +524,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                       ? entry.fitContentWidth
                       : patch.fitContentWidth,
                 }
-                const frame = clampWindowState(nextEntry, nextEntry.minimized)
+                const frame = clampWindowState(nextEntry, nextEntry.minimized, surfaceBounds)
                 return {
                   ...nextEntry,
                   ...frame,
@@ -455,7 +534,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
         ),
       )
     },
-    [],
+    [surfaceBounds],
   )
 
   const beginInteraction = useCallback(
@@ -476,8 +555,8 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
         mode,
         windowId: entry.windowId,
         pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
+        startX: event.clientX - surfaceBounds.left,
+        startY: event.clientY - surfaceBounds.top,
         startWindow: {
           x: entry.x,
           y: entry.y,
@@ -487,7 +566,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
         },
       }
     },
-    [focusWindow],
+    [focusWindow, surfaceBounds],
   )
 
   const openWindow = useCallback((definition: DashboardWindowDefinition) => {
@@ -514,7 +593,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                     definition.fitContentWidth ?? entry.fitContentWidth,
                   zIndex: zIndexRef.current,
                 }
-                const frame = clampWindowState(nextEntry, nextEntry.minimized)
+                const frame = clampWindowState(nextEntry, nextEntry.minimized, surfaceBounds)
                 return {
                   ...nextEntry,
                   ...frame,
@@ -524,7 +603,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
         )
       }
       const offsetIndex = current.length % 6
-      const defaultFrame = defaultWindowFrame(offsetIndex)
+      const defaultFrame = defaultWindowFrame(offsetIndex, surfaceBounds)
       const nextEntry = {
         windowId: nextWindowId,
         title: definition.title,
@@ -539,7 +618,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
         fitContentWidth: definition.fitContentWidth ?? minWindowWidth,
         zIndex: zIndexRef.current,
       }
-      const frame = clampWindowState(nextEntry, nextEntry.minimized)
+      const frame = clampWindowState(nextEntry, nextEntry.minimized, surfaceBounds)
       return [
         ...current,
         {
@@ -549,7 +628,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       ]
     })
     return nextWindowId
-  }, [])
+  }, [surfaceBounds])
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
@@ -557,8 +636,8 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       if (!interaction) {
         return
       }
-      const dx = event.clientX - interaction.startX
-      const dy = event.clientY - interaction.startY
+      const dx = event.clientX - surfaceBounds.left - interaction.startX
+      const dy = event.clientY - surfaceBounds.top - interaction.startY
       setWindows((current) =>
         current.map((entry) => {
           if (entry.windowId !== interaction.windowId) {
@@ -574,6 +653,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                 scale: entry.scale,
               },
               entry.minimized,
+              surfaceBounds,
             )
             return {
               ...entry,
@@ -590,6 +670,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                 scale: entry.scale,
               },
               entry.minimized,
+              surfaceBounds,
             )
             return {
               ...entry,
@@ -642,7 +723,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       window.removeEventListener("pointercancel", handlePointerCancel, true)
       window.removeEventListener("blur", handleWindowBlur)
     }
-  }, [])
+  }, [surfaceBounds])
 
   useEffect(() => {
     if (typeof document === "undefined" || !blockingInteraction) {
@@ -682,7 +763,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       }
       setWindows((current) =>
         current.map((entry) => {
-          const frame = clampWindowState(entry, entry.minimized)
+          const frame = clampWindowState(entry, entry.minimized, surfaceBounds)
           return {
             ...entry,
             ...frame,
@@ -699,7 +780,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       window.visualViewport?.removeEventListener("resize", reclampWindows)
       window.visualViewport?.removeEventListener("scroll", reclampWindows)
     }
-  }, [])
+  }, [surfaceBounds])
 
   const contextValue = useMemo<DashboardWindowLayerContextValue>(
     () => ({
@@ -714,14 +795,11 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
   const renderedWindows = useMemo(
     () =>
       windows.map((entry) => {
-        const mobile =
-          typeof window !== "undefined"
-            ? window.innerWidth < mobileBreakpointPx
-            : false
-        const controlButtonSize = mobile
+        const metrics = viewportMetrics(surfaceBounds)
+        const controlButtonSize = metrics.mobile
           ? mobileControlButtonSizePx
           : desktopControlButtonSizePx
-        const headerHeight = mobile
+        const headerHeight = metrics.mobile
           ? mobileHeaderHeightPx
           : desktopHeaderHeightPx
         const effectiveScale = effectiveScaleForWindow(entry)
@@ -807,7 +885,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                       height: `${controlButtonSize}px`,
                     }}
                   >
-                    <span style={{ fontSize: mobile ? "7px" : "8px" }}>
+                    <span style={{ fontSize: metrics.mobile ? "7px" : "8px" }}>
                       {Math.round(effectiveScale * 100)}%
                     </span>
                   </button>
@@ -894,6 +972,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       closeWindow,
       focusWindow,
       updateWindow,
+      surfaceBounds,
       windows,
     ],
   )
@@ -901,11 +980,16 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
   return (
     <DashboardWindowLayerContext.Provider value={contextValue}>
       {props.children}
-      {typeof document !== "undefined" && windows.length > 0
+      {typeof document !== "undefined"
         ? createPortal(
             <div className="pointer-events-none fixed inset-0 z-[160] overflow-hidden">
-              {blockingInteraction ? (
-                <div
+              <div
+                ref={surfaceRef}
+                data-dashboard-window-surface="true"
+                className="pointer-events-none absolute inset-0 overflow-hidden"
+              >
+                {blockingInteraction ? (
+                  <div
                   className="absolute inset-0 pointer-events-auto"
                   style={{
                     cursor: interactionCursor(blockingInteraction.mode),
@@ -926,10 +1010,11 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                     setBlockingInteraction(null)
                   }}
                   onWheel={consumeEvent}
-                />
-              ) : null}
-              <div className="pointer-events-none absolute inset-0">
-                {renderedWindows}
+                  />
+                ) : null}
+                <div className="pointer-events-none absolute inset-0">
+                  {renderedWindows}
+                </div>
               </div>
             </div>,
             document.body,
