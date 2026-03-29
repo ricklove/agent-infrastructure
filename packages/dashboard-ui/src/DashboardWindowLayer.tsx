@@ -11,9 +11,9 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 
-const minWindowWidth = 320
-const minWindowHeight = 180
-const minScale = 0.6
+const minWindowWidth = 220
+const minWindowHeight = 120
+const minScale = 0.35
 const maxScale = 2.25
 const viewportPadding = 8
 const mobileBreakpointPx = 768
