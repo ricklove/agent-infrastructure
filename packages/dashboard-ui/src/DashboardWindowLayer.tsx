@@ -552,9 +552,29 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       return
     }
     const previousUserSelect = document.body.style.userSelect
+    const previousTouchAction = document.body.style.touchAction
+    const previousOverscrollBehavior = document.body.style.overscrollBehavior
+    const previousOverflow = document.body.style.overflow
+
+    const blockTouchScroll = (event: TouchEvent) => {
+      event.preventDefault()
+    }
+
     document.body.style.userSelect = "none"
+    document.body.style.touchAction = "none"
+    document.body.style.overscrollBehavior = "none"
+    document.body.style.overflow = "hidden"
+    document.addEventListener("touchmove", blockTouchScroll, {
+      passive: false,
+      capture: true,
+    })
+
     return () => {
       document.body.style.userSelect = previousUserSelect
+      document.body.style.touchAction = previousTouchAction
+      document.body.style.overscrollBehavior = previousOverscrollBehavior
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener("touchmove", blockTouchScroll, true)
     }
   }, [blockingInteraction])
 
@@ -617,6 +637,10 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
             className="pointer-events-auto absolute"
             style={{
               left: entry.x,
+              touchAction:
+                blockingInteraction?.windowId === entry.windowId
+                  ? "none"
+                  : "auto",
               top: entry.y,
               width: entry.width,
               height: entry.minimized
@@ -633,7 +657,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
               >
                 <button
                   type="button"
-                  className="min-w-0 flex-1 cursor-grab text-left active:cursor-grabbing"
+                  className="min-w-0 flex-1 cursor-grab touch-none text-left active:cursor-grabbing"
                   onPointerDown={(event) =>
                     beginInteraction("move", event, entry)
                   }
@@ -796,6 +820,8 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                   className="absolute inset-0 pointer-events-auto"
                   style={{
                     cursor: interactionCursor(blockingInteraction.mode),
+                    touchAction: "none",
+                    overscrollBehavior: "none",
                   }}
                   onClick={consumeEvent}
                   onPointerDown={consumeEvent}
