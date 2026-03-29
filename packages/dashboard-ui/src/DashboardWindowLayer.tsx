@@ -22,6 +22,8 @@ const desktopControlButtonSizePx = 30
 const mobileHeaderHeightPx = 34
 const desktopHeaderHeightPx = 40
 const minimizedBodyPaddingPx = 8
+const mobileChromeMinWidthPx = 176
+const desktopChromeMinWidthPx = 208
 
 type DashboardWindowDefinition = {
   id?: string
@@ -100,7 +102,8 @@ function viewportMetrics() {
   const { width, height } = viewportSize()
   const mobile = width < mobileBreakpointPx
   const headerHeight = mobile ? mobileHeaderHeightPx : desktopHeaderHeightPx
-  const maxWidth = Math.max(minWindowWidth, width - viewportPadding * 2)
+  const chromeMinWidth = mobile ? mobileChromeMinWidthPx : desktopChromeMinWidthPx
+  const maxWidth = Math.max(chromeMinWidth, width - viewportPadding * 2)
   const maxHeight = Math.max(
     headerHeight + minimizedBodyPaddingPx,
     height - viewportPadding * 2,
@@ -110,6 +113,7 @@ function viewportMetrics() {
     height,
     mobile,
     headerHeight,
+    chromeMinWidth,
     maxWidth,
     maxHeight,
   }
@@ -138,7 +142,9 @@ function clampWindowState(
   minimized: boolean,
 ) {
   const metrics = viewportMetrics()
-  const width = Math.min(Math.max(minWindowWidth, input.width), metrics.maxWidth)
+  const scaledMinWidth = Math.ceil(minWindowWidth * clamp(input.scale, minScale, maxScale))
+  const targetMinWidth = Math.max(metrics.chromeMinWidth, scaledMinWidth)
+  const width = Math.min(Math.max(targetMinWidth, input.width), metrics.maxWidth)
   const expandedMinHeight = Math.min(minWindowHeight, metrics.maxHeight)
   const targetMinHeight = minimized
     ? Math.min(metrics.headerHeight + minimizedBodyPaddingPx, metrics.maxHeight)
