@@ -533,19 +533,19 @@ function FloatingWindowFixtureBody(props: { windowId: string; fixtureId: Fixture
 function readMeasurement(windowId: string): MeasurementRecord | null {
   const outer = document.querySelector(`[data-dashboard-window-id="${windowId}"]`)
   const viewport = document.querySelector(`[data-dashboard-window-viewport="${windowId}"]`)
+  const layoutRoot = document.querySelector(`[data-dashboard-window-scaled-layout="${windowId}"]`)
   const contentRoot = document.querySelector(`[data-floating-window-fixture-root="${windowId}"]`)
   const requestedScale = Number.parseFloat(outer?.getAttribute("data-dashboard-window-requested-scale") ?? "0")
   const effectiveScale = Number.parseFloat(outer?.getAttribute("data-dashboard-window-effective-scale") ?? "0")
-  if (!(outer instanceof HTMLElement) || !(viewport instanceof HTMLElement) || !(contentRoot instanceof HTMLElement)) {
+  if (!(outer instanceof HTMLElement) || !(viewport instanceof HTMLElement) || !(layoutRoot instanceof HTMLElement) || !(contentRoot instanceof HTMLElement)) {
     return null
   }
 
   const viewportRect = viewport.getBoundingClientRect()
+  const layoutRect = layoutRoot.getBoundingClientRect()
   const contentRect = contentRoot.getBoundingClientRect()
-  const scaleX = contentRoot.clientWidth > 0 ? contentRect.width / contentRoot.clientWidth : 1
-  const scaleY = contentRoot.clientHeight > 0 ? contentRect.height / contentRoot.clientHeight : 1
-  const scrollWidth = Math.max(Math.round(contentRect.width), Math.round(contentRoot.scrollWidth * scaleX))
-  const scrollHeight = Math.max(Math.round(contentRect.height), Math.round(contentRoot.scrollHeight * scaleY))
+  const scrollWidth = Math.max(Math.round(layoutRect.width), Math.round(viewport.scrollWidth))
+  const scrollHeight = Math.max(Math.round(layoutRect.height), Math.round(viewport.scrollHeight))
 
   return {
     present: true,
