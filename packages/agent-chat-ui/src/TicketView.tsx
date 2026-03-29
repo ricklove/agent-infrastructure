@@ -155,9 +155,6 @@ export function TicketView(props: {
               </span>
             ) : null}
           </div>
-          <div className="mt-1 break-words font-semibold text-white">
-            {props.ticket.title}
-          </div>
           <div className="mt-1 break-words text-[11px] text-slate-500">
             {props.ticket.processTitle}
           </div>
