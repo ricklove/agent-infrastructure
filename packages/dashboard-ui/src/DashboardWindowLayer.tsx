@@ -15,6 +15,13 @@ const minWindowWidth = 320
 const minWindowHeight = 180
 const minScale = 0.6
 const maxScale = 2.25
+const viewportPadding = 8
+const mobileBreakpointPx = 768
+const mobileControlButtonSizePx = 26
+const desktopControlButtonSizePx = 30
+const mobileHeaderHeightPx = 34
+const desktopHeaderHeightPx = 40
+const minimizedBodyPaddingPx = 8
 
 type DashboardWindowDefinition = {
   id?: string
@@ -76,6 +83,77 @@ const DashboardWindowLayerContext =
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
+}
+
+function viewportSize() {
+  if (typeof window === "undefined") {
+    return { width: 1280, height: 720 }
+  }
+  const viewport = window.visualViewport
+  return {
+    width: viewport?.width ?? window.innerWidth,
+    height: viewport?.height ?? window.innerHeight,
+  }
+}
+
+function viewportMetrics() {
+  const { width, height } = viewportSize()
+  const mobile = width < mobileBreakpointPx
+  const headerHeight = mobile ? mobileHeaderHeightPx : desktopHeaderHeightPx
+  const maxWidth = Math.max(minWindowWidth, width - viewportPadding * 2)
+  const maxHeight = Math.max(
+    headerHeight + minimizedBodyPaddingPx,
+    height - viewportPadding * 2,
+  )
+  return {
+    width,
+    height,
+    mobile,
+    headerHeight,
+    maxWidth,
+    maxHeight,
+  }
+}
+
+function defaultWindowFrame(offsetIndex: number) {
+  const metrics = viewportMetrics()
+  if (metrics.mobile) {
+    return {
+      x: viewportPadding,
+      y: viewportPadding,
+      width: metrics.maxWidth,
+      height: Math.min(420, metrics.maxHeight),
+    }
+  }
+  return {
+    x: 96 + offsetIndex * 24,
+    y: 76 + offsetIndex * 20,
+    width: 520,
+    height: 420,
+  }
+}
+
+function clampWindowState(
+  input: Pick<DashboardWindowState, "x" | "y" | "width" | "height" | "scale">,
+  minimized: boolean,
+) {
+  const metrics = viewportMetrics()
+  const width = Math.min(Math.max(minWindowWidth, input.width), metrics.maxWidth)
+  const expandedMinHeight = Math.min(minWindowHeight, metrics.maxHeight)
+  const targetMinHeight = minimized
+    ? Math.min(metrics.headerHeight + minimizedBodyPaddingPx, metrics.maxHeight)
+    : expandedMinHeight
+  const height = Math.min(Math.max(targetMinHeight, input.height), metrics.maxHeight)
+  const maxX = Math.max(viewportPadding, metrics.width - viewportPadding - width)
+  const maxY = Math.max(viewportPadding, metrics.height - viewportPadding - height)
+  return {
+    ...input,
+    width,
+    height,
+    x: clamp(input.x, viewportPadding, maxX),
+    y: clamp(input.y, viewportPadding, maxY),
+    scale: clamp(input.scale, minScale, maxScale),
+  }
 }
 
 function buildWindowId() {
@@ -185,11 +263,18 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
     setWindows((current) =>
       current.map((entry) =>
         entry.windowId === windowId
-          ? {
-              ...entry,
-              ...patch,
-              icon: patch.icon === undefined ? entry.icon : patch.icon,
-            }
+          ? (() => {
+              const nextEntry = {
+                ...entry,
+                ...patch,
+                icon: patch.icon === undefined ? entry.icon : patch.icon,
+              }
+              const frame = clampWindowState(nextEntry, nextEntry.minimized)
+              return {
+                ...nextEntry,
+                ...frame,
+              }
+            })()
           : entry,
       ),
     )
@@ -229,37 +314,50 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       if (existing) {
         return current.map((entry) =>
           entry.windowId === nextWindowId
-            ? {
-                ...entry,
-                title: definition.title,
-                body: definition.body,
-                icon: definition.icon ?? entry.icon,
-                minimized: definition.minimized ?? entry.minimized,
-                width: definition.width ?? entry.width,
-                height: definition.height ?? entry.height,
-                x: definition.x ?? entry.x,
-                y: definition.y ?? entry.y,
-                scale: definition.scale ?? entry.scale,
-                zIndex: zIndexRef.current,
-              }
+            ? (() => {
+                const nextEntry = {
+                  ...entry,
+                  title: definition.title,
+                  body: definition.body,
+                  icon: definition.icon ?? entry.icon,
+                  minimized: definition.minimized ?? entry.minimized,
+                  width: definition.width ?? entry.width,
+                  height: definition.height ?? entry.height,
+                  x: definition.x ?? entry.x,
+                  y: definition.y ?? entry.y,
+                  scale: definition.scale ?? entry.scale,
+                  zIndex: zIndexRef.current,
+                }
+                const frame = clampWindowState(nextEntry, nextEntry.minimized)
+                return {
+                  ...nextEntry,
+                  ...frame,
+                }
+              })()
             : entry,
         )
       }
       const offsetIndex = current.length % 6
+      const defaultFrame = defaultWindowFrame(offsetIndex)
+      const nextEntry = {
+        windowId: nextWindowId,
+        title: definition.title,
+        body: definition.body,
+        icon: definition.icon ?? null,
+        minimized: definition.minimized ?? false,
+        x: definition.x ?? defaultFrame.x,
+        y: definition.y ?? defaultFrame.y,
+        width: definition.width ?? defaultFrame.width,
+        height: definition.height ?? defaultFrame.height,
+        scale: definition.scale ?? 1,
+        zIndex: zIndexRef.current,
+      }
+      const frame = clampWindowState(nextEntry, nextEntry.minimized)
       return [
         ...current,
         {
-          windowId: nextWindowId,
-          title: definition.title,
-          body: definition.body,
-          icon: definition.icon ?? null,
-          minimized: definition.minimized ?? false,
-          x: definition.x ?? 96 + offsetIndex * 24,
-          y: definition.y ?? 76 + offsetIndex * 20,
-          width: definition.width ?? 520,
-          height: definition.height ?? 420,
-          scale: definition.scale ?? 1,
-          zIndex: zIndexRef.current,
+          ...nextEntry,
+          ...frame,
         },
       ]
     })
@@ -280,17 +378,35 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
             return entry
           }
           if (interaction.mode === "move") {
+            const frame = clampWindowState(
+              {
+                x: interaction.startWindow.x + dx,
+                y: interaction.startWindow.y + dy,
+                width: entry.width,
+                height: entry.height,
+                scale: entry.scale,
+              },
+              entry.minimized,
+            )
             return {
               ...entry,
-              x: Math.max(0, interaction.startWindow.x + dx),
-              y: Math.max(0, interaction.startWindow.y + dy),
+              ...frame,
             }
           }
           if (interaction.mode === "resize") {
+            const frame = clampWindowState(
+              {
+                x: entry.x,
+                y: entry.y,
+                width: interaction.startWindow.width + dx,
+                height: interaction.startWindow.height + dy,
+                scale: entry.scale,
+              },
+              entry.minimized,
+            )
             return {
               ...entry,
-              width: Math.max(minWindowWidth, interaction.startWindow.width + dx),
-              height: Math.max(minWindowHeight, interaction.startWindow.height + dy),
+              ...frame,
             }
           }
           return {
@@ -317,6 +433,29 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
     }
   }, [])
 
+  useEffect(() => {
+    function reclampWindows() {
+      setWindows((current) =>
+        current.map((entry) => {
+          const frame = clampWindowState(entry, entry.minimized)
+          return {
+            ...entry,
+            ...frame,
+          }
+        }),
+      )
+    }
+
+    window.addEventListener("resize", reclampWindows)
+    window.visualViewport?.addEventListener("resize", reclampWindows)
+    window.visualViewport?.addEventListener("scroll", reclampWindows)
+    return () => {
+      window.removeEventListener("resize", reclampWindows)
+      window.visualViewport?.removeEventListener("resize", reclampWindows)
+      window.visualViewport?.removeEventListener("scroll", reclampWindows)
+    }
+  }, [])
+
   const contextValue = useMemo<DashboardWindowLayerContextValue>(
     () => ({
       openWindow,
@@ -329,109 +468,135 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
 
   const renderedWindows = useMemo(
     () =>
-      windows.map((entry) => (
-        <div
-          key={entry.windowId}
-          className="pointer-events-auto absolute"
-          style={{
-            left: entry.x,
-            top: entry.y,
-            width: entry.width,
-            height: entry.minimized ? 54 : entry.height,
-            zIndex: entry.zIndex,
-          }}
-          onPointerDown={() => focusWindow(entry.windowId)}
-        >
-          <div className="pointer-events-none absolute -top-3 left-3 right-3 z-[2] flex items-center justify-between gap-2">
-            <div
-              className="pointer-events-auto inline-flex cursor-grab items-center gap-2 rounded-full border border-white/10 bg-slate-950/95 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)] active:cursor-grabbing"
-              onPointerDown={(event) => beginInteraction("move", event, entry)}
-              title="Drag window"
-            >
-              {entry.icon ? <span className="text-cyan-200">{entry.icon}</span> : null}
-              <span className="max-w-[18rem] truncate">{entry.title}</span>
-            </div>
-            <div className="pointer-events-auto flex items-center gap-1.5">
-              <button
-                type="button"
-                onPointerDown={(event) => {
-                  event.stopPropagation()
-                }}
-                onClick={() => updateWindow(entry.windowId, { scale: 1 })}
-                disabled={Math.abs(entry.scale - 1) < 0.01}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)] disabled:opacity-40"
-                title="Reset zoom"
+      windows.map((entry) => {
+        const mobile = typeof window !== "undefined" ? window.innerWidth < mobileBreakpointPx : false
+        const controlButtonSize = mobile
+          ? mobileControlButtonSizePx
+          : desktopControlButtonSizePx
+        const headerHeight = mobile ? mobileHeaderHeightPx : desktopHeaderHeightPx
+        const titleFontSize = clamp(11 * entry.scale, 8, 14)
+        return (
+          <div
+            key={entry.windowId}
+            className="pointer-events-auto absolute"
+            style={{
+              left: entry.x,
+              top: entry.y,
+              width: entry.width,
+              height: entry.minimized ? headerHeight + minimizedBodyPaddingPx : entry.height,
+              zIndex: entry.zIndex,
+            }}
+            onPointerDown={() => focusWindow(entry.windowId)}
+          >
+            <div className="flex h-full flex-col overflow-hidden rounded-[1.15rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.97),rgba(2,6,23,0.98))] shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+              <div
+                className="flex items-center justify-between gap-2 border-b border-white/10 bg-slate-950/88 px-2"
+                style={{ height: `${headerHeight}px` }}
               >
-                <ResetZoomIcon className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onPointerDown={(event) => beginInteraction("zoom", event, entry)}
-                className="inline-flex h-8 min-w-[5.25rem] items-center justify-center rounded-full border border-white/10 bg-slate-950/95 px-3 text-[10px] font-medium text-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)] touch-none"
-                title="Drag left or right to zoom"
-              >
-                {Math.round(entry.scale * 100)}%
-              </button>
-              <button
-                type="button"
-                onPointerDown={(event) => {
-                  event.stopPropagation()
-                }}
-                onClick={() =>
-                  updateWindow(entry.windowId, { minimized: !entry.minimized })
-                }
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-                title={entry.minimized ? "Restore window" : "Minimize window"}
-              >
-                <MinimizeIcon className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onPointerDown={(event) => {
-                  event.stopPropagation()
-                }}
-                onClick={() => closeWindow(entry.windowId)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-400/25 bg-slate-950/95 text-rose-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-                title="Close window"
-              >
-                <CloseIcon className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-
-          <div className="h-full overflow-hidden rounded-[1.15rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.97),rgba(2,6,23,0.98))] shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
-            {entry.minimized ? (
-              <div className="flex h-full items-center px-4 text-xs text-slate-300">
-                {entry.title}
-              </div>
-            ) : (
-              <div className="h-full overflow-auto">
-                <div
-                  style={{
-                    transform: `scale(${entry.scale})`,
-                    transformOrigin: "top left",
-                    width: "100%",
-                    minHeight: "100%",
-                  }}
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 cursor-grab text-left active:cursor-grabbing"
+                  onPointerDown={(event) => beginInteraction("move", event, entry)}
+                  title="Drag window"
                 >
-                  {entry.body}
+                  <div className="flex min-w-0 items-center gap-1.5 text-cyan-100">
+                    {entry.icon ? <span className="shrink-0">{entry.icon}</span> : null}
+                    <span
+                      className="truncate uppercase tracking-[0.14em]"
+                      style={{ fontSize: `${titleFontSize}px` }}
+                    >
+                      {entry.title}
+                    </span>
+                  </div>
+                </button>
+                <div className="flex items-center gap-1 text-[11px] text-slate-200">
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={() => updateWindow(entry.windowId, { scale: 1 })}
+                    disabled={Math.abs(entry.scale - 1) < 0.01}
+                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)] disabled:opacity-40"
+                    title="Reset zoom"
+                    style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+                  >
+                    <ResetZoomIcon className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => beginInteraction("zoom", event, entry)}
+                    className="inline-flex shrink-0 touch-none items-center justify-center rounded-full border border-white/10 bg-slate-950/95 font-medium text-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+                    title="Drag left or right to zoom"
+                    style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+                  >
+                    <span style={{ fontSize: mobile ? "7px" : "8px" }}>
+                      {Math.round(entry.scale * 100)}%
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={() =>
+                      updateWindow(entry.windowId, { minimized: !entry.minimized })
+                    }
+                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+                    title={entry.minimized ? "Restore window" : "Minimize window"}
+                    style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+                  >
+                    <MinimizeIcon className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    onClick={() => closeWindow(entry.windowId)}
+                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-400/25 bg-slate-950/95 text-rose-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+                    title="Close window"
+                    style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+                  >
+                    <CloseIcon className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
 
-          {!entry.minimized ? (
-            <button
-              type="button"
-              className="absolute -bottom-2 -right-2 h-7 w-7 cursor-se-resize touch-none rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-              title="Resize window"
-              onPointerDown={(event) => beginInteraction("resize", event, entry)}
-            >
-              <span className="absolute bottom-[5px] right-[5px] block h-2.5 w-2.5 border-b border-r border-current" />
-            </button>
-          ) : null}
-        </div>
-      )),
+              {entry.minimized ? (
+                <div className="flex h-full items-center px-3 text-xs text-slate-300">
+                  {entry.title}
+                </div>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-auto p-2 pt-1">
+                  <div
+                    style={{
+                      transform: `scale(${entry.scale})`,
+                      transformOrigin: "top left",
+                      width: "100%",
+                      minHeight: "100%",
+                    }}
+                  >
+                    {entry.body}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {!entry.minimized ? (
+              <button
+                type="button"
+                className="absolute bottom-2 right-2 cursor-se-resize touch-none rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+                title="Resize window"
+                onPointerDown={(event) => beginInteraction("resize", event, entry)}
+                style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+              >
+                <span className="absolute bottom-[5px] right-[5px] block h-2.5 w-2.5 border-b border-r border-current" />
+              </button>
+            ) : null}
+          </div>
+        )
+      }),
     [closeWindow, focusWindow, updateWindow, windows],
   )
 
