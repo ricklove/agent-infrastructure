@@ -11,62 +11,66 @@ const Assessment = {
   status: define.concept("CurrentImplementationStatus"),
   confidence: define.concept("AssessmentConfidence"),
   evidence: define.concept("ImplementationEvidence"),
-  gap: define.concept("ImplementationGap"),
   issue: define.concept("KnownIssue"),
 };
 
 const CurrentReality = {
   sharedWindowHostExists: define.concept("SharedWindowHostExists"),
   ticketFixtureExists: define.concept("TicketFixtureExists"),
-  dedicatedDebugFeatureMissing: define.concept("DedicatedDebugFeatureMissing"),
-  visibleMeasurementSurfaceMissing: define.concept("VisibleMeasurementSurfaceMissing"),
-  shellVsContentDiagnosisGap: define.concept("ShellVsContentDiagnosisGap"),
+  dedicatedDebugFeatureExists: define.concept("DedicatedDebugFeatureExists"),
+  visibleMeasurementSurfaceExists: define.concept("VisibleMeasurementSurfaceExists"),
+  shellVsContentDiagnosisSupported: define.concept("ShellVsContentDiagnosisSupported"),
+  knownWorkerVerificationConstraint: define.concept("KnownWorkerVerificationConstraint"),
 };
 
 FloatingWindowDebugBlueprintState.defines(`
-- CurrentImplementationStatus means the repository already ships a shared dashboard floating-window host plus ticket-window integration, but it does not yet ship a dedicated floating-window debug tab.
-- AssessmentConfidence is medium because the comparison is grounded in direct source inspection and prior worker-browser debugging discussion, but the new feature is not yet implemented on this branch.
-- ImplementationEvidence includes DashboardWindowLayer, FloatingTicketWindows, TicketView, and the dashboard plugin registry.
-- ImplementationGap means the dashboard still lacks a first-party floating-window lab with shell-only fixtures, real content fixtures, named presets, and visible live measurements.
-- KnownIssue means current floating-window debugging still depends too much on ad hoc browser eval and real TicketView content, which makes shell bugs harder to separate from content-layout bugs.
+- CurrentImplementationStatus means this branch now ships a first-party dashboard debug tab for exercising the shared floating-window host with shell-only fixtures, TicketView, reproducible presets, and live measurements.
+- AssessmentConfidence is high because the comparison is grounded in direct source inspection, local typecheck/build verification, and worker-browser screenshots captured against the implemented screen.
+- ImplementationEvidence includes the floating-window-debug dashboard feature package, plugin registration in dashboard and dashboard-ui, DashboardWindowLayer scale-width fixes, and live screenshots from the worker-local dashboard.
+- KnownIssue means worker-local verification still depends on a dedicated alternate dashboard port because port 3000 is already occupied on the worker host.
 `);
 
 FloatingWindowDebugBlueprintState.contains(
   Assessment.status,
   Assessment.confidence,
   Assessment.evidence,
-  Assessment.gap,
   Assessment.issue,
   CurrentReality.sharedWindowHostExists,
   CurrentReality.ticketFixtureExists,
-  CurrentReality.dedicatedDebugFeatureMissing,
-  CurrentReality.visibleMeasurementSurfaceMissing,
-  CurrentReality.shellVsContentDiagnosisGap,
+  CurrentReality.dedicatedDebugFeatureExists,
+  CurrentReality.visibleMeasurementSurfaceExists,
+  CurrentReality.shellVsContentDiagnosisSupported,
+  CurrentReality.knownWorkerVerificationConstraint,
 );
 
 CurrentReality.sharedWindowHostExists.means(`
-- DashboardWindowLayer already provides shared shell-owned window chrome
-- shared windows already persist across dashboard tab switches
+- DashboardWindowLayer continues to provide shared shell-owned window chrome
+- shared windows still persist across dashboard tab switches while the debug lab reuses that same shell
 `);
 
 CurrentReality.ticketFixtureExists.means(`
-- FloatingTicketWindows already renders TicketView inside the shared window host
-- ticket content already proves that feature-owned content can live inside shared shell windows
+- the debug tab includes a local TicketView specimen rendered inside the shared window host
+- ticket content can now be compared directly against shell-only fixtures under the same geometry and scale presets
 `);
 
-CurrentReality.dedicatedDebugFeatureMissing.means(`
-- there is no dashboard tab dedicated to floating-window diagnosis
-- shell-only fixtures and reproducible presets are not yet available in-product
+CurrentReality.dedicatedDebugFeatureExists.means(`
+- the dashboard now ships a Debug Lab tab dedicated to floating-window diagnosis
+- operators can open single specimens, duplicate them, open comparison sets, and open a fixture matrix without ad hoc browser eval
 `);
 
-CurrentReality.visibleMeasurementSurfaceMissing.means(`
-- repeated width, scale, and overflow inspection still relies on browser eval or transient debugging output
-- the dashboard does not yet expose first-party live measurements for floating-window specimens
+CurrentReality.visibleMeasurementSurfaceExists.means(`
+- the debug tab now exposes first-party live measurements for window size, viewport size, scaled content bounds, scaled scroll bounds, and overflow flags
+- measurement logic now compares scaled scroll extents against the live viewport so tall fixtures report vertical overflow correctly
 `);
 
-CurrentReality.shellVsContentDiagnosisGap.means(`
-- current floating-window investigation still mixes shell behavior with TicketView behavior too early
-- the missing debug lab makes it harder to prove whether a bug belongs to shared shell math or fixture content layout
+CurrentReality.shellVsContentDiagnosisSupported.means(`
+- shell-only fixtures, overflow fixtures, form controls, nested flex layouts, and TicketView all share the same preset catalog
+- the lab now makes it straightforward to prove whether a rendering issue belongs to shared shell math or to the content fixture inside the shell
+`);
+
+CurrentReality.knownWorkerVerificationConstraint.means(`
+- worker-local verification was run on DASHBOARD_PORT=3100 because another bun dashboard process already owned port 3000 on the worker host
+- this constraint affected the test harness path but did not block screenshot verification of the implemented screen
 `);
 
 when(CurrentReality.sharedWindowHostExists.exists())
@@ -75,11 +79,14 @@ when(CurrentReality.sharedWindowHostExists.exists())
 when(CurrentReality.ticketFixtureExists.exists())
   .then(FloatingWindowDebugBlueprintState.records(Assessment.evidence));
 
-when(CurrentReality.dedicatedDebugFeatureMissing.exists())
-  .then(FloatingWindowDebugBlueprintState.records(Assessment.gap, Assessment.issue));
+when(CurrentReality.dedicatedDebugFeatureExists.exists())
+  .then(FloatingWindowDebugBlueprintState.records(Assessment.status, Assessment.evidence));
 
-when(CurrentReality.visibleMeasurementSurfaceMissing.exists())
-  .then(FloatingWindowDebugBlueprintState.records(Assessment.gap, Assessment.issue));
+when(CurrentReality.visibleMeasurementSurfaceExists.exists())
+  .then(FloatingWindowDebugBlueprintState.records(Assessment.status, Assessment.evidence));
 
-when(CurrentReality.shellVsContentDiagnosisGap.exists())
-  .then(FloatingWindowDebugBlueprintState.records(Assessment.gap, Assessment.issue));
+when(CurrentReality.shellVsContentDiagnosisSupported.exists())
+  .then(FloatingWindowDebugBlueprintState.records(Assessment.status, Assessment.evidence));
+
+when(CurrentReality.knownWorkerVerificationConstraint.exists())
+  .then(FloatingWindowDebugBlueprintState.records(Assessment.issue));
