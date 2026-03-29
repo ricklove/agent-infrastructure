@@ -290,6 +290,99 @@ function ResetZoomIcon(props: { className?: string }) {
   )
 }
 
+type ScaledContentDimensions = {
+  width: number
+  height: number
+}
+
+function ScaledWindowContent(props: {
+  windowId: string
+  scale: number
+  children: ReactNode
+}) {
+  useRenderCounter("DashboardWindowLayer.ScaledWindowContent")
+  const measureRef = useRef<HTMLDivElement | null>(null)
+  const [dimensions, setDimensions] = useState<ScaledContentDimensions>({
+    width: 0,
+    height: 0,
+  })
+
+  useEffect(() => {
+    const node = measureRef.current
+    if (!node || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    let rafId = 0
+
+    const measure = () => {
+      rafId = 0
+      const nextWidth = Math.max(node.scrollWidth, node.clientWidth)
+      const nextHeight = Math.max(node.scrollHeight, node.clientHeight)
+      setDimensions((current) =>
+        current.width === nextWidth && current.height === nextHeight
+          ? current
+          : { width: nextWidth, height: nextHeight },
+      )
+    }
+
+    const scheduleMeasure = () => {
+      if (rafId !== 0) {
+        return
+      }
+      rafId = window.requestAnimationFrame(measure)
+    }
+
+    const observer = new ResizeObserver(scheduleMeasure)
+    observer.observe(node)
+    scheduleMeasure()
+
+    return () => {
+      observer.disconnect()
+      if (rafId !== 0) {
+        window.cancelAnimationFrame(rafId)
+      }
+    }
+  }, [props.children])
+
+  const inverseScalePercent = `${100 / props.scale}%`
+  const layoutWidthPx =
+    dimensions.width > 0
+      ? Math.max(1, Math.round(dimensions.width * props.scale))
+      : 0
+  const layoutHeightPx =
+    dimensions.height > 0
+      ? Math.max(1, Math.round(dimensions.height * props.scale))
+      : 0
+
+  return (
+    <div
+      data-dashboard-window-scaled-layout={props.windowId}
+      className="relative min-h-full min-w-full"
+      style={{
+        width: layoutWidthPx > 0 ? `${layoutWidthPx}px` : "100%",
+        height: layoutHeightPx > 0 ? `${layoutHeightPx}px` : undefined,
+        minWidth: "100%",
+        minHeight: "100%",
+      }}
+    >
+      <div
+        data-dashboard-window-scaled={props.windowId}
+        data-dashboard-window-render-scale={props.scale.toFixed(4)}
+        className="absolute left-0 top-0"
+        style={{
+          transform: `scale(${props.scale})`,
+          transformOrigin: "top left",
+          width: inverseScalePercent,
+        }}
+      >
+        <div ref={measureRef} className="flex min-h-full min-w-0 flex-col">
+          {props.children}
+        </div>
+      </div>
+    </div>
+  )
+}
 export function useDashboardWindowLayer() {
   const context = useContext(DashboardWindowLayerContext)
   if (!context) {
@@ -580,6 +673,9 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
 
   useEffect(() => {
     function reclampWindows() {
+      if (interactionRef.current) {
+        return
+      }
       setWindows((current) =>
         current.map((entry) => {
           const frame = clampWindowState(entry, entry.minimized)
@@ -627,7 +723,6 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
         const effectiveScale = effectiveScaleForWindow(entry)
         const autoFitActive = effectiveScale < entry.scale - 0.01
         const titleFontSize = clamp(11 * effectiveScale, 8, 14)
-        const inverseScalePercent = `${100 / effectiveScale}%`
         return (
           <div
             key={entry.windowId}
@@ -760,22 +855,12 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                   data-dashboard-window-viewport={entry.windowId}
                   className="min-h-0 flex-1 overflow-auto p-2 pt-1"
                 >
-                  <div
-                    data-dashboard-window-scaled={entry.windowId}
-                    data-dashboard-window-render-scale={effectiveScale.toFixed(
-                      4,
-                    )}
-                    style={{
-                      transform: `scale(${effectiveScale})`,
-                      transformOrigin: "top left",
-                      width: inverseScalePercent,
-                      minHeight: inverseScalePercent,
-                    }}
+                  <ScaledWindowContent
+                    windowId={entry.windowId}
+                    scale={effectiveScale}
                   >
-                    <div className="flex min-h-full min-w-0 flex-col">
-                      {entry.body}
-                    </div>
-                  </div>
+                    {entry.body}
+                  </ScaledWindowContent>
                 </div>
               )}
             </div>
