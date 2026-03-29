@@ -61,6 +61,8 @@ type SpecimenRecord = {
 
 type MeasurementRecord = {
   present: boolean
+  requestedScale: number
+  effectiveScale: number
   outerWidth: number
   outerHeight: number
   viewportWidth: number
@@ -532,6 +534,8 @@ function readMeasurement(windowId: string): MeasurementRecord | null {
   const outer = document.querySelector(`[data-dashboard-window-id="${windowId}"]`)
   const viewport = document.querySelector(`[data-dashboard-window-viewport="${windowId}"]`)
   const contentRoot = document.querySelector(`[data-floating-window-fixture-root="${windowId}"]`)
+  const requestedScale = Number.parseFloat(outer?.getAttribute("data-dashboard-window-requested-scale") ?? "0")
+  const effectiveScale = Number.parseFloat(outer?.getAttribute("data-dashboard-window-effective-scale") ?? "0")
   if (!(outer instanceof HTMLElement) || !(viewport instanceof HTMLElement) || !(contentRoot instanceof HTMLElement)) {
     return null
   }
@@ -545,6 +549,8 @@ function readMeasurement(windowId: string): MeasurementRecord | null {
 
   return {
     present: true,
+    requestedScale: Number.isFinite(requestedScale) ? requestedScale : 0,
+    effectiveScale: Number.isFinite(effectiveScale) ? effectiveScale : 0,
     outerWidth: Math.round(outer.getBoundingClientRect().width),
     outerHeight: Math.round(outer.getBoundingClientRect().height),
     viewportWidth: Math.round(viewportRect.width),
@@ -1009,6 +1015,8 @@ export function FloatingWindowDebugScreen() {
                             <div className="mt-1 text-slate-100">{measurement.outerWidth} x {measurement.outerHeight}</div>
                             <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">Viewport</div>
                             <div className="mt-1 text-slate-100">{measurement.viewportWidth} x {measurement.viewportHeight}</div>
+                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">Scale</div>
+                            <div className="mt-1 text-slate-100">Requested {Math.round(measurement.requestedScale * 100)}% / Effective {Math.round(measurement.effectiveScale * 100)}%</div>
                           </div>
                           <div className="rounded-2xl border border-white/8 bg-slate-950/60 px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Content</div>
