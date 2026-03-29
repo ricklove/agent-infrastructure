@@ -41,6 +41,7 @@ export type StoredAgentTicket = {
   sessionId: string;
   title: string;
   description: string;
+  summary: string;
   processBlueprintId: string;
   processSnapshotId: string | null;
   processTitle: string;
@@ -465,6 +466,7 @@ export class AgentTicketStore {
       sessionId,
       title: processBlueprint.title,
       description: processBlueprint.expectation,
+      summary: processBlueprint.expectation,
       processBlueprintId: processBlueprint.id,
       processSnapshotId: processSnapshot.id,
       processTitle: processBlueprint.title,
@@ -528,6 +530,42 @@ export class AgentTicketStore {
     }
 
     return null;
+  }
+
+  specializeActiveTicketMetadata(
+    sessionId: string,
+    metadata: { title?: string | null; summary?: string | null },
+  ) {
+    const current = this.getActiveTicketForSession(sessionId);
+    if (!current || current.status !== "active") {
+      return current;
+    }
+
+    const processSnapshot = this.getProcessSnapshot(current.processSnapshotId);
+    const nextTitle = metadata.title?.trim() || null;
+    const nextSummary = metadata.summary?.trim() || null;
+    const canSpecializeTitle = current.title.trim() === current.processTitle.trim();
+    const canSpecializeSummary =
+      current.summary.trim() === (processSnapshot?.description ?? current.description).trim();
+
+    const updated: StoredAgentTicket = {
+      ...current,
+      title: nextTitle && canSpecializeTitle ? nextTitle : current.title,
+      description: nextSummary && canSpecializeSummary ? nextSummary : current.description,
+      summary: nextSummary && canSpecializeSummary ? nextSummary : current.summary,
+      updatedAtMs: Date.now(),
+    };
+
+    if (
+      updated.title === current.title &&
+      updated.description === current.description &&
+      updated.summary === current.summary
+    ) {
+      return current;
+    }
+
+    this.persistTicket(updated);
+    return updated;
   }
 
   resolveActiveTicket(sessionId: string, status: Extract<StoredAgentTicketStatus, "completed" | "blocked">, resolution: string) {
@@ -962,6 +1000,10 @@ export class AgentTicketStore {
         sessionId: String(parsed.sessionId),
         title: String(parsed.title),
         description: String(parsed.description),
+        summary:
+          typeof parsed.summary === "string" && parsed.summary.trim()
+            ? parsed.summary
+            : String(parsed.description),
         processBlueprintId: String(parsed.processBlueprintId),
         processSnapshotId:
           typeof parsed.processSnapshotId === "string" && parsed.processSnapshotId.trim()
