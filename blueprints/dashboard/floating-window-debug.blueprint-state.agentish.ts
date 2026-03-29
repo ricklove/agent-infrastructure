@@ -48,6 +48,7 @@ CurrentReality.sharedWindowHostExists.means(`
 - shared windows still persist across dashboard tab switches while the debug lab reuses that same shell
 - active drag, resize, and zoom gestures are now shielded so pointer activity does not leak through to dashboard surfaces behind the active window
 - zoom interactions are under active scrutiny for stable visual anchoring on iOS because native zoom drags have shown intermittent position jumps
+- the shell is now moving toward a fixed full-viewport bounds surface so iOS page pan and browser zoom stop redefining floating-window coordinates mid-gesture
 - touch drag gestures now explicitly suppress background page scroll so vertical drags on iOS stay attached to the floating window rather than transferring to the thread behind it
 `);
 

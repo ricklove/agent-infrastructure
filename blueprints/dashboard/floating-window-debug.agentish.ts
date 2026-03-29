@@ -83,6 +83,7 @@ Section.implementationPlan.precedes(Section.contracts);
 FloatingWindowDebug.enforces(`
 - The feature exists to debug the shared dashboard floating-window host, not to create a second product-specific window system.
 - The shared dashboard window host remains authoritative for placement, stacking, resize, zoom, minimize, and chrome behavior.
+- The shared dashboard window host should derive draggable window bounds from a shell-owned fixed viewport surface rather than directly from page or visualViewport panning offsets.
 - Native zoom interactions should preserve a stable visual anchor instead of causing mobile windows to jump unexpectedly while scale changes.
 - Active drag, resize, and zoom interactions should be owned by the floating-window host so pointer activity does not leak through to the dashboard surfaces behind the active window.
 - Touch-driven drag interactions should suppress background page scrolling for the lifetime of the gesture, especially on iOS where vertical pan gestures otherwise transfer control to the underlying scroll container.
