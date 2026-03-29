@@ -544,7 +544,12 @@ function readMeasurement(windowId: string): MeasurementRecord | null {
   const viewportRect = viewport.getBoundingClientRect()
   const layoutRect = layoutRoot.getBoundingClientRect()
   const contentRect = contentRoot.getBoundingClientRect()
-  const scrollWidth = Math.max(Math.round(layoutRect.width), Math.round(viewport.scrollWidth))
+  const scaleX = contentRoot.clientWidth > 0 ? contentRect.width / contentRoot.clientWidth : 1
+  const scrollWidth = Math.max(
+    Math.round(contentRect.width),
+    Math.round(contentRoot.scrollWidth * scaleX),
+    Math.round(viewport.scrollWidth),
+  )
   const scrollHeight = Math.max(Math.round(layoutRect.height), Math.round(viewport.scrollHeight))
 
   return {

@@ -291,7 +291,6 @@ function ResetZoomIcon(props: { className?: string }) {
 }
 
 type ScaledContentDimensions = {
-  width: number
   height: number
 }
 
@@ -303,7 +302,6 @@ function ScaledWindowContent(props: {
   useRenderCounter("DashboardWindowLayer.ScaledWindowContent")
   const measureRef = useRef<HTMLDivElement | null>(null)
   const [dimensions, setDimensions] = useState<ScaledContentDimensions>({
-    width: 0,
     height: 0,
   })
 
@@ -317,12 +315,14 @@ function ScaledWindowContent(props: {
 
     const measure = () => {
       rafId = 0
-      const nextWidth = Math.max(node.scrollWidth, node.clientWidth)
-      const nextHeight = Math.max(node.scrollHeight, node.clientHeight)
+      const renderedRect = node.getBoundingClientRect()
+      const nextHeight = Math.max(
+        node.clientHeight,
+        node.offsetHeight,
+        props.scale > 0 ? Math.round(renderedRect.height / props.scale) : 0,
+      )
       setDimensions((current) =>
-        current.width === nextWidth && current.height === nextHeight
-          ? current
-          : { width: nextWidth, height: nextHeight },
+        current.height === nextHeight ? current : { height: nextHeight },
       )
     }
 
@@ -343,13 +343,9 @@ function ScaledWindowContent(props: {
         window.cancelAnimationFrame(rafId)
       }
     }
-  }, [props.children])
+  }, [props.children, props.scale])
 
   const inverseScalePercent = `${100 / props.scale}%`
-  const layoutWidthPx =
-    dimensions.width > 0
-      ? Math.max(1, Math.round(dimensions.width * props.scale))
-      : 0
   const layoutHeightPx =
     dimensions.height > 0
       ? Math.max(1, Math.round(dimensions.height * props.scale))
@@ -360,24 +356,32 @@ function ScaledWindowContent(props: {
       data-dashboard-window-scaled-layout={props.windowId}
       className="relative min-h-full min-w-full"
       style={{
-        width: layoutWidthPx > 0 ? `${layoutWidthPx}px` : "100%",
-        height: layoutHeightPx > 0 ? `${layoutHeightPx}px` : undefined,
         minWidth: "100%",
         minHeight: "100%",
+        height: layoutHeightPx > 0 ? `${layoutHeightPx}px` : undefined,
       }}
     >
       <div
-        data-dashboard-window-scaled={props.windowId}
-        data-dashboard-window-render-scale={props.scale.toFixed(4)}
-        className="absolute left-0 top-0"
+        data-dashboard-window-scaled-height={props.windowId}
+        className="relative min-h-full overflow-hidden"
         style={{
-          transform: `scale(${props.scale})`,
-          transformOrigin: "top left",
-          width: inverseScalePercent,
+          height: layoutHeightPx > 0 ? `${layoutHeightPx}px` : undefined,
         }}
       >
-        <div ref={measureRef} className="flex min-h-full min-w-0 flex-col">
-          {props.children}
+        <div
+          data-dashboard-window-scaled={props.windowId}
+          data-dashboard-window-render-scale={props.scale.toFixed(4)}
+          className="absolute left-0 top-0"
+          style={{
+            transform: `scale(${props.scale})`,
+            transformOrigin: "top left",
+            width: inverseScalePercent,
+            minHeight: inverseScalePercent,
+          }}
+        >
+          <div ref={measureRef} className="flex min-h-full min-w-0 flex-col">
+            {props.children}
+          </div>
         </div>
       </div>
     </div>
