@@ -115,6 +115,8 @@ AgentTicket.enforces(`
 - An agent ticket is the authoritative holder of live process state for one runtime process instance.
 - An agent ticket is not a backlog card, kanban card, or Jira-style planning object by default.
 - The minimal ticket core is title, unit-of-work description, pinned process snapshot, live process state, and references.
+- A newly created ticket may begin with provisional process-derived title and description until the first provider turn specializes it.
+- The first provider turn for a newly created ticket may specialize the active ticket with ticketTitle: and ticketSummary: metadata while preserving the pinned process title separately as processTitle.
 - Ticket process state should be primarily representable as a nested checklist whose short status collapses to the next actionable item.
 - The ticket description should summarize the current unit of work without duplicating full blueprint doctrine or raw transcript history.
 - Ticket references should remain general rather than chat-only so the same ticket can anchor chats, files, blueprints, repos, branches, releases, deployments, or other tickets.
