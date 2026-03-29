@@ -178,6 +178,28 @@ function DesignIcon(props: { className?: string }) {
   )
 }
 
+function DebugIcon(props: { className?: string }) {
+  useRenderCounter("DebugIcon")
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <path d="M4 5.5h16" />
+      <path d="M4 18.5h16" />
+      <rect x="5" y="7" width="9" height="9" rx="1.8" />
+      <path d="M17 8v7" />
+      <path d="M15 11.5h4" />
+    </svg>
+  )
+}
+
 function CopyIcon(props: { className?: string }) {
   useRenderCounter("CopyIcon")
   return (
@@ -243,6 +265,7 @@ const featureIconMap: Record<
 > = {
   swarm: SwarmIcon,
   design: DesignIcon,
+  debug: DebugIcon,
   projects: ProjectsIcon,
   chat: ChatIcon,
   graph: GraphIcon,
@@ -570,199 +593,205 @@ export function DashboardShell({
   return (
     <DashboardWindowLayer>
       <div className="flex h-dvh overflow-hidden bg-slate-950 text-slate-100">
-      {mobileFeatureMenuOpen ? (
-        <button
-          type="button"
-          aria-label="Close main menu"
-          onClick={() => setMobileFeatureMenuOpen(false)}
-          className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm md:hidden"
-        />
-      ) : null}
-      <aside
-        className={[
-          "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 overflow-visible border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:relative md:z-30 md:translate-x-0",
-          mobileFeatureMenuOpen ? "translate-x-0" : "-translate-x-full",
-        ].join(" ")}
-      >
-        <div className="group relative">
+        {mobileFeatureMenuOpen ? (
           <button
             type="button"
-            onClick={() => setVersionPopupOpen((current) => !current)}
-            className={[
-              "pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border text-[11px] font-semibold tracking-[0.24em] transition",
-              aiButtonTone,
-            ].join(" ")}
-            title={`Version ${appVersion}`}
-          >
-            AI
-          </button>
-          <div
-            className={[
-              "pointer-events-auto absolute left-full top-0 z-[70] ml-2 min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur",
-              versionPopupOpen ? "block" : "hidden group-hover:block",
-            ].join(" ")}
-          >
-            <div
-              className="absolute inset-y-0 -left-3 w-3"
-              aria-hidden="true"
-            />
+            aria-label="Close main menu"
+            onClick={() => setMobileFeatureMenuOpen(false)}
+            className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm md:hidden"
+          />
+        ) : null}
+        <aside
+          className={[
+            "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 overflow-visible border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:relative md:z-30 md:translate-x-0",
+            mobileFeatureMenuOpen ? "translate-x-0" : "-translate-x-full",
+          ].join(" ")}
+        >
+          <div className="group relative">
             <button
               type="button"
-              onClick={copyStatusLabel}
-              className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-stone-700 text-stone-300 transition hover:bg-stone-800 hover:text-stone-100"
-              title={copiedStatus ? "Copied" : "Copy status"}
+              onClick={() => setVersionPopupOpen((current) => !current)}
+              className={[
+                "pointer-events-auto flex h-10 w-10 items-center justify-center rounded-xl border text-[11px] font-semibold tracking-[0.24em] transition",
+                aiButtonTone,
+              ].join(" ")}
+              title={`Version ${appVersion}`}
             >
-              <CopyIcon className="h-3.5 w-3.5" />
+              AI
             </button>
-            <div className="space-y-1.5 pr-8">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-stone-500">Version</span>
-                <span className="font-medium text-stone-100">{appVersion}</span>
-              </div>
-              {backendVersionMismatch ? (
+            <div
+              className={[
+                "pointer-events-auto absolute left-full top-0 z-[70] ml-2 min-w-[17rem] select-text rounded-2xl border border-stone-800/90 bg-stone-950/95 px-3 py-3 text-xs text-stone-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur",
+                versionPopupOpen ? "block" : "hidden group-hover:block",
+              ].join(" ")}
+            >
+              <div
+                className="absolute inset-y-0 -left-3 w-3"
+                aria-hidden="true"
+              />
+              <button
+                type="button"
+                onClick={copyStatusLabel}
+                className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-stone-700 text-stone-300 transition hover:bg-stone-800 hover:text-stone-100"
+                title={copiedStatus ? "Copied" : "Copy status"}
+              >
+                <CopyIcon className="h-3.5 w-3.5" />
+              </button>
+              <div className="space-y-1.5 pr-8">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-stone-500">Backend</span>
-                  <span className="font-medium text-rose-300">
-                    {gatewayBackendVersion}
+                  <span className="text-stone-500">Version</span>
+                  <span className="font-medium text-stone-100">
+                    {appVersion}
                   </span>
                 </div>
-              ) : null}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-stone-500">WS</span>
-                <span className={gatewayConnectionTone}>
-                  {gatewayConnectionStatus}
-                </span>
-              </div>
-              {activeFeatureStatusItems.length > 0 ? (
-                <div className="border-t border-stone-800 pt-1.5">
-                  <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-stone-500">
-                    {activeFeature.label}
+                {backendVersionMismatch ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-stone-500">Backend</span>
+                    <span className="font-medium text-rose-300">
+                      {gatewayBackendVersion}
+                    </span>
                   </div>
-                  <div className="space-y-1.5">
-                    {activeFeatureStatusItems.map((item) => (
-                      <div
-                        key={`${activeFeature.id}:${item.label}`}
-                        className="flex items-center justify-between gap-3"
-                      >
-                        <span className="text-stone-500">{item.label}</span>
-                        <span className={toneClassForFeatureStatus(item.tone)}>
-                          {item.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                ) : null}
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-stone-500">WS</span>
+                  <span className={gatewayConnectionTone}>
+                    {gatewayConnectionStatus}
+                  </span>
                 </div>
-              ) : null}
+                {activeFeatureStatusItems.length > 0 ? (
+                  <div className="border-t border-stone-800 pt-1.5">
+                    <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-stone-500">
+                      {activeFeature.label}
+                    </div>
+                    <div className="space-y-1.5">
+                      {activeFeatureStatusItems.map((item) => (
+                        <div
+                          key={`${activeFeature.id}:${item.label}`}
+                          className="flex items-center justify-between gap-3"
+                        >
+                          <span className="text-stone-500">{item.label}</span>
+                          <span
+                            className={toneClassForFeatureStatus(item.tone)}
+                          >
+                            {item.value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
-        <nav className="mt-1 flex w-full flex-1 flex-col items-center gap-1.5">
-          {featureDefinitions.map((feature) => {
-            const isActive = feature.id === activeFeatureId
-            const Icon = feature.iconComponent
+          <nav className="mt-1 flex w-full flex-1 flex-col items-center gap-1.5">
+            {featureDefinitions.map((feature) => {
+              const isActive = feature.id === activeFeatureId
+              const Icon = feature.iconComponent
 
-            return (
-              <button
-                key={feature.id}
-                type="button"
-                title={feature.label}
-                onClick={() => {
-                  navigateToFeature(feature.id)
-                }}
-                className={[
-                  "group flex h-10 w-10 items-center justify-center rounded-xl transition",
-                  isActive
-                    ? "bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/40"
-                    : "text-slate-500 hover:bg-white/5 hover:text-white",
-                ].join(" ")}
-              >
-                <Icon className="h-5 w-5" />
-              </button>
-            )
-          })}
-        </nav>
-      </aside>
+              return (
+                <button
+                  key={feature.id}
+                  type="button"
+                  title={feature.label}
+                  onClick={() => {
+                    navigateToFeature(feature.id)
+                  }}
+                  className={[
+                    "group flex h-10 w-10 items-center justify-center rounded-xl transition",
+                    isActive
+                      ? "bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/40"
+                      : "text-slate-500 hover:bg-white/5 hover:text-white",
+                  ].join(" ")}
+                >
+                  <Icon className="h-5 w-5" />
+                </button>
+              )
+            })}
+          </nav>
+        </aside>
 
-      <div className="relative flex min-w-0 flex-1 flex-col">
-        <div className="absolute left-3 top-3 z-20 md:hidden">
-          <button
-            type="button"
-            aria-label={
-              mobileFeatureMenuOpen ? "Close main menu" : "Open main menu"
-            }
-            title={mobileFeatureMenuOpen ? "Close Main Menu" : "Open Main Menu"}
-            onClick={() => setMobileFeatureMenuOpen((current) => !current)}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/85 text-slate-200 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur"
-          >
-            <MenuIcon className="h-4 w-4" />
-          </button>
-        </div>
-        <main className="min-h-0 flex-1">
-          <Suspense
-            fallback={
-              <div className="flex h-full items-center justify-center p-10 text-sm text-slate-400">
-                Loading feature...
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          <div className="absolute left-3 top-3 z-20 md:hidden">
+            <button
+              type="button"
+              aria-label={
+                mobileFeatureMenuOpen ? "Close main menu" : "Open main menu"
+              }
+              title={
+                mobileFeatureMenuOpen ? "Close Main Menu" : "Open Main Menu"
+              }
+              onClick={() => setMobileFeatureMenuOpen((current) => !current)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/85 text-slate-200 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur"
+            >
+              <MenuIcon className="h-4 w-4" />
+            </button>
+          </div>
+          <main className="min-h-0 flex-1">
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center p-10 text-sm text-slate-400">
+                  Loading feature...
+                </div>
+              }
+            >
+              {canRenderFeatures
+                ? loadedFeatureIds.map((featureId) => {
+                    const feature =
+                      featureDefinitions.find(
+                        (candidate) => candidate.id === featureId,
+                      ) ?? featureDefinitions[0]
+                    const FeatureComponent = feature.component
+
+                    return (
+                      <section
+                        key={feature.id}
+                        className={
+                          feature.id === activeFeatureId
+                            ? "h-full min-h-0"
+                            : "hidden h-full"
+                        }
+                      >
+                        <FeatureComponent />
+                      </section>
+                    )
+                  })
+                : null}
+            </Suspense>
+          </main>
+          <div className="pointer-events-none absolute right-4 top-4 z-50 flex max-w-[32rem] flex-col items-end gap-2">
+            {initializing ? (
+              <div className="rounded-xl border border-white/10 bg-[#0d131c]/90 px-3 py-2 text-xs text-slate-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+                Initializing dashboard shell...
               </div>
-            }
-          >
-            {canRenderFeatures
-              ? loadedFeatureIds.map((featureId) => {
-                  const feature =
-                    featureDefinitions.find(
-                      (candidate) => candidate.id === featureId,
-                    ) ?? featureDefinitions[0]
-                  const FeatureComponent = feature.component
-
-                  return (
-                    <section
-                      key={feature.id}
-                      className={
-                        feature.id === activeFeatureId
-                          ? "h-full min-h-0"
-                          : "hidden h-full"
-                      }
-                    >
-                      <FeatureComponent />
-                    </section>
-                  )
-                })
-              : null}
-          </Suspense>
-        </main>
-        <div className="pointer-events-none absolute right-4 top-4 z-50 flex max-w-[32rem] flex-col items-end gap-2">
-          {initializing ? (
-            <div className="rounded-xl border border-white/10 bg-[#0d131c]/90 px-3 py-2 text-xs text-slate-300 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-              Initializing dashboard shell...
-            </div>
-          ) : null}
-          {error ? (
-            <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-              {error}
-            </div>
-          ) : null}
-          {accessMessage ? (
-            <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-              {accessMessage}
-            </div>
-          ) : null}
-          {authRequired && config?.accessAppUrl ? (
-            <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
-              <span>Session access is required to use this dashboard.</span>
-              <button
-                type="button"
-                onClick={() => {
-                  window.location.href = config.accessAppUrl
-                }}
-                className="rounded-full border border-cyan-100/30 bg-cyan-50/10 px-3 py-1.5 font-medium uppercase tracking-[0.18em] text-cyan-50 transition hover:bg-cyan-50/20"
-              >
-                Open Auth Page
-              </button>
-            </div>
-          ) : null}
+            ) : null}
+            {error ? (
+              <div className="rounded-xl border border-rose-400/30 bg-rose-400/10 px-3 py-2 text-xs text-rose-100 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+                {error}
+              </div>
+            ) : null}
+            {accessMessage ? (
+              <div className="rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs text-amber-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+                {accessMessage}
+              </div>
+            ) : null}
+            {authRequired && config?.accessAppUrl ? (
+              <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs text-cyan-50 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+                <span>Session access is required to use this dashboard.</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = config.accessAppUrl
+                  }}
+                  className="rounded-full border border-cyan-100/30 bg-cyan-50/10 px-3 py-1.5 font-medium uppercase tracking-[0.18em] text-cyan-50 transition hover:bg-cyan-50/20"
+                >
+                  Open Auth Page
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
+        <FloatingTicketWindows apiRootUrl="/api/agent-chat" />
       </div>
-      <FloatingTicketWindows apiRootUrl="/api/agent-chat" />
-    </div>
     </DashboardWindowLayer>
   )
 }

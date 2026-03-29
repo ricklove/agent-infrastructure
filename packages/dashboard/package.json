@@ -14,7 +14,8 @@
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
     "@agent-infrastructure/projects-ui": "workspace:*",
     "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
-    "@agent-infrastructure/ui-design-canvas-ui": "workspace:*"
+    "@agent-infrastructure/ui-design-canvas-ui": "workspace:*",
+    "@agent-infrastructure/floating-window-debug-ui": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

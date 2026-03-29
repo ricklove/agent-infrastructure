@@ -13,7 +13,7 @@ import { createPortal } from "react-dom"
 
 const minWindowWidth = 220
 const minWindowHeight = 120
-const minScale = 0.35
+const minScale = 0.25
 const maxScale = 2.25
 const viewportPadding = 8
 const mobileBreakpointPx = 768
@@ -23,7 +23,7 @@ const mobileHeaderHeightPx = 34
 const desktopHeaderHeightPx = 40
 const minimizedBodyPaddingPx = 8
 const mobileChromeMinWidthPx = 176
-const desktopChromeMinWidthPx = 208
+const desktopChromeMinWidthPx = 176
 
 type DashboardWindowDefinition = {
   id?: string
@@ -41,7 +41,15 @@ type DashboardWindowDefinition = {
 type DashboardWindowPatch = Partial<
   Pick<
     DashboardWindowState,
-    "title" | "body" | "icon" | "width" | "height" | "x" | "y" | "scale" | "minimized"
+    | "title"
+    | "body"
+    | "icon"
+    | "width"
+    | "height"
+    | "x"
+    | "y"
+    | "scale"
+    | "minimized"
   >
 >
 
@@ -59,19 +67,17 @@ type DashboardWindowState = {
   zIndex: number
 }
 
-type WindowInteraction =
-  | {
-      mode: "move" | "resize" | "zoom"
-      windowId: string
-      pointerId: number
-      startX: number
-      startY: number
-      startWindow: Pick<
-        DashboardWindowState,
-        "x" | "y" | "width" | "height" | "scale"
-      >
-    }
-  | null
+type WindowInteraction = {
+  mode: "move" | "resize" | "zoom"
+  windowId: string
+  pointerId: number
+  startX: number
+  startY: number
+  startWindow: Pick<
+    DashboardWindowState,
+    "x" | "y" | "width" | "height" | "scale"
+  >
+} | null
 
 type DashboardWindowLayerContextValue = {
   openWindow: (definition: DashboardWindowDefinition) => string
@@ -102,7 +108,9 @@ function viewportMetrics() {
   const { width, height } = viewportSize()
   const mobile = width < mobileBreakpointPx
   const headerHeight = mobile ? mobileHeaderHeightPx : desktopHeaderHeightPx
-  const chromeMinWidth = mobile ? mobileChromeMinWidthPx : desktopChromeMinWidthPx
+  const chromeMinWidth = mobile
+    ? mobileChromeMinWidthPx
+    : desktopChromeMinWidthPx
   const maxWidth = Math.max(chromeMinWidth, width - viewportPadding * 2)
   const maxHeight = Math.max(
     headerHeight + minimizedBodyPaddingPx,
@@ -142,16 +150,30 @@ function clampWindowState(
   minimized: boolean,
 ) {
   const metrics = viewportMetrics()
-  const scaledMinWidth = Math.ceil(minWindowWidth * clamp(input.scale, minScale, maxScale))
+  const scaledMinWidth = Math.ceil(
+    minWindowWidth * clamp(input.scale, minScale, maxScale),
+  )
   const targetMinWidth = Math.max(metrics.chromeMinWidth, scaledMinWidth)
-  const width = Math.min(Math.max(targetMinWidth, input.width), metrics.maxWidth)
+  const width = Math.min(
+    Math.max(targetMinWidth, input.width),
+    metrics.maxWidth,
+  )
   const expandedMinHeight = Math.min(minWindowHeight, metrics.maxHeight)
   const targetMinHeight = minimized
     ? Math.min(metrics.headerHeight + minimizedBodyPaddingPx, metrics.maxHeight)
     : expandedMinHeight
-  const height = Math.min(Math.max(targetMinHeight, input.height), metrics.maxHeight)
-  const maxX = Math.max(viewportPadding, metrics.width - viewportPadding - width)
-  const maxY = Math.max(viewportPadding, metrics.height - viewportPadding - height)
+  const height = Math.min(
+    Math.max(targetMinHeight, input.height),
+    metrics.maxHeight,
+  )
+  const maxX = Math.max(
+    viewportPadding,
+    metrics.width - viewportPadding - width,
+  )
+  const maxY = Math.max(
+    viewportPadding,
+    metrics.height - viewportPadding - height,
+  )
   return {
     ...input,
     width,
@@ -163,7 +185,10 @@ function clampWindowState(
 }
 
 function buildWindowId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID()
   }
   return `dashboard-window-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -255,7 +280,9 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
   }, [])
 
   const closeWindow = useCallback((windowId: string) => {
-    setWindows((current) => current.filter((entry) => entry.windowId !== windowId))
+    setWindows((current) =>
+      current.filter((entry) => entry.windowId !== windowId),
+    )
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("dashboard-window-closed", {
@@ -265,26 +292,29 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
     }
   }, [])
 
-  const updateWindow = useCallback((windowId: string, patch: DashboardWindowPatch) => {
-    setWindows((current) =>
-      current.map((entry) =>
-        entry.windowId === windowId
-          ? (() => {
-              const nextEntry = {
-                ...entry,
-                ...patch,
-                icon: patch.icon === undefined ? entry.icon : patch.icon,
-              }
-              const frame = clampWindowState(nextEntry, nextEntry.minimized)
-              return {
-                ...nextEntry,
-                ...frame,
-              }
-            })()
-          : entry,
-      ),
-    )
-  }, [])
+  const updateWindow = useCallback(
+    (windowId: string, patch: DashboardWindowPatch) => {
+      setWindows((current) =>
+        current.map((entry) =>
+          entry.windowId === windowId
+            ? (() => {
+                const nextEntry = {
+                  ...entry,
+                  ...patch,
+                  icon: patch.icon === undefined ? entry.icon : patch.icon,
+                }
+                const frame = clampWindowState(nextEntry, nextEntry.minimized)
+                return {
+                  ...nextEntry,
+                  ...frame,
+                }
+              })()
+            : entry,
+        ),
+      )
+    },
+    [],
+  )
 
   const beginInteraction = useCallback(
     (
@@ -417,7 +447,11 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
           }
           return {
             ...entry,
-            scale: clamp(interaction.startWindow.scale + dx / 240, minScale, maxScale),
+            scale: clamp(
+              interaction.startWindow.scale + dx / 240,
+              minScale,
+              maxScale,
+            ),
           }
         }),
       )
@@ -475,21 +509,30 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
   const renderedWindows = useMemo(
     () =>
       windows.map((entry) => {
-        const mobile = typeof window !== "undefined" ? window.innerWidth < mobileBreakpointPx : false
+        const mobile =
+          typeof window !== "undefined"
+            ? window.innerWidth < mobileBreakpointPx
+            : false
         const controlButtonSize = mobile
           ? mobileControlButtonSizePx
           : desktopControlButtonSizePx
-        const headerHeight = mobile ? mobileHeaderHeightPx : desktopHeaderHeightPx
+        const headerHeight = mobile
+          ? mobileHeaderHeightPx
+          : desktopHeaderHeightPx
         const titleFontSize = clamp(11 * entry.scale, 8, 14)
+        const inverseScalePercent = `${100 / entry.scale}%`
         return (
           <div
             key={entry.windowId}
+            data-dashboard-window-id={entry.windowId}
             className="pointer-events-auto absolute"
             style={{
               left: entry.x,
               top: entry.y,
               width: entry.width,
-              height: entry.minimized ? headerHeight + minimizedBodyPaddingPx : entry.height,
+              height: entry.minimized
+                ? headerHeight + minimizedBodyPaddingPx
+                : entry.height,
               zIndex: entry.zIndex,
             }}
             onPointerDown={() => focusWindow(entry.windowId)}
@@ -502,11 +545,15 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                 <button
                   type="button"
                   className="min-w-0 flex-1 cursor-grab text-left active:cursor-grabbing"
-                  onPointerDown={(event) => beginInteraction("move", event, entry)}
+                  onPointerDown={(event) =>
+                    beginInteraction("move", event, entry)
+                  }
                   title="Drag window"
                 >
                   <div className="flex min-w-0 items-center gap-1.5 text-cyan-100">
-                    {entry.icon ? <span className="shrink-0">{entry.icon}</span> : null}
+                    {entry.icon ? (
+                      <span className="shrink-0">{entry.icon}</span>
+                    ) : null}
                     <span
                       className="truncate uppercase tracking-[0.14em]"
                       style={{ fontSize: `${titleFontSize}px` }}
@@ -525,16 +572,24 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                     disabled={Math.abs(entry.scale - 1) < 0.01}
                     className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)] disabled:opacity-40"
                     title="Reset zoom"
-                    style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+                    style={{
+                      width: `${controlButtonSize}px`,
+                      height: `${controlButtonSize}px`,
+                    }}
                   >
                     <ResetZoomIcon className="h-3.5 w-3.5" />
                   </button>
                   <button
                     type="button"
-                    onPointerDown={(event) => beginInteraction("zoom", event, entry)}
+                    onPointerDown={(event) =>
+                      beginInteraction("zoom", event, entry)
+                    }
                     className="inline-flex shrink-0 touch-none items-center justify-center rounded-full border border-white/10 bg-slate-950/95 font-medium text-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
                     title="Drag left or right to zoom"
-                    style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+                    style={{
+                      width: `${controlButtonSize}px`,
+                      height: `${controlButtonSize}px`,
+                    }}
                   >
                     <span style={{ fontSize: mobile ? "7px" : "8px" }}>
                       {Math.round(entry.scale * 100)}%
@@ -546,11 +601,18 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                       event.stopPropagation()
                     }}
                     onClick={() =>
-                      updateWindow(entry.windowId, { minimized: !entry.minimized })
+                      updateWindow(entry.windowId, {
+                        minimized: !entry.minimized,
+                      })
                     }
                     className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-                    title={entry.minimized ? "Restore window" : "Minimize window"}
-                    style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+                    title={
+                      entry.minimized ? "Restore window" : "Minimize window"
+                    }
+                    style={{
+                      width: `${controlButtonSize}px`,
+                      height: `${controlButtonSize}px`,
+                    }}
                   >
                     <MinimizeIcon className="h-3.5 w-3.5" />
                   </button>
@@ -562,7 +624,10 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                     onClick={() => closeWindow(entry.windowId)}
                     className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-400/25 bg-slate-950/95 text-rose-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
                     title="Close window"
-                    style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+                    style={{
+                      width: `${controlButtonSize}px`,
+                      height: `${controlButtonSize}px`,
+                    }}
                   >
                     <CloseIcon className="h-3.5 w-3.5" />
                   </button>
@@ -574,16 +639,22 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                   {entry.title}
                 </div>
               ) : (
-                <div className="min-h-0 flex-1 overflow-auto p-2 pt-1">
+                <div
+                  data-dashboard-window-viewport={entry.windowId}
+                  className="min-h-0 flex-1 overflow-auto p-2 pt-1"
+                >
                   <div
+                    data-dashboard-window-scaled={entry.windowId}
                     style={{
                       transform: `scale(${entry.scale})`,
                       transformOrigin: "top left",
-                      width: "100%",
-                      minHeight: "100%",
+                      width: inverseScalePercent,
+                      minHeight: inverseScalePercent,
                     }}
                   >
-                    {entry.body}
+                    <div className="flex min-h-full min-w-0 flex-col">
+                      {entry.body}
+                    </div>
                   </div>
                 </div>
               )}
@@ -594,8 +665,13 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                 type="button"
                 className="absolute bottom-2 right-2 cursor-se-resize touch-none rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
                 title="Resize window"
-                onPointerDown={(event) => beginInteraction("resize", event, entry)}
-                style={{ width: `${controlButtonSize}px`, height: `${controlButtonSize}px` }}
+                onPointerDown={(event) =>
+                  beginInteraction("resize", event, entry)
+                }
+                style={{
+                  width: `${controlButtonSize}px`,
+                  height: `${controlButtonSize}px`,
+                }}
               >
                 <span className="absolute bottom-[5px] right-[5px] block h-2.5 w-2.5 border-b border-r border-current" />
               </button>
