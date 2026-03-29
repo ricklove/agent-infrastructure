@@ -83,6 +83,7 @@ Section.implementationPlan.precedes(Section.contracts);
 FloatingWindowDebug.enforces(`
 - The feature exists to debug the shared dashboard floating-window host, not to create a second product-specific window system.
 - The shared dashboard window host remains authoritative for placement, stacking, resize, zoom, minimize, and chrome behavior.
+- Active drag, resize, and zoom interactions should be owned by the floating-window host so pointer activity does not leak through to the dashboard surfaces behind the active window.
 - The debug feature should let operators compare shell behavior across many content fixtures without rewriting the underlying shell for each test.
 - Repeated window-debug investigations should prefer visible in-page measurements and presets over transient one-off browser eval only.
 - TicketView should be one supported fixture in the lab, but ticket semantics remain owned by Agent Chat rather than by the dashboard shell.
@@ -93,7 +94,7 @@ FloatingWindowDebug.defines(`
 - ComponentCatalog means the operator-visible list of testable surfaces in the debug tab.
 - WindowSpecimen means one spawned floating window instance created by the lab for diagnosis.
 - WindowPreset means one named geometry and content configuration such as 200x220 at 30 percent scale.
-- WindowMeasurementPanel means the visible live inspection surface for viewport size, scaled content size, and overflow metrics for a specimen.
+- WindowMeasurementPanel means the visible live inspection surface for viewport size, requested scale, effective rendered scale, scaled content size, and overflow metrics for a specimen.
 - ContentFixture means one reproducible content shape rendered inside the shared floating-window host.
 - VerificationScenario means one repeatable comparison of content fixture plus geometry preset.
 - ShellFirstDiagnosis means simple fixtures should be testable before real feature content so shell bugs and content bugs can be separated.
@@ -162,12 +163,12 @@ FloatingWindowDebug.implementsThrough(`
 - The feature should open specimens through the shared DashboardWindowLayer hook rather than reimplementing floating window chrome inside the feature package.
 - Fixture definitions should stay local to the debug package except when the fixture intentionally renders an existing feature-owned component such as TicketView.
 - The screen should expose named presets for narrow-width and low-scale edge cases that were previously investigated through ad hoc browser eval.
-- Measurements should stay visible in the screen and should include outer window size, viewport size, scale, scaled content dimensions, and overflow indicators.
+- Measurements should stay visible in the screen and should include outer window size, viewport size, requested scale, effective rendered scale, scaled content dimensions, and overflow indicators.
 - The debug package may dispatch feature status items for the active tab when useful, but the lab remains primarily an operator-driven inspection surface.
 `);
 
 FloatingWindowDebug.defines(`
 - FloatingWindowFixtureId = fixed-block | full-width-scroll | long-text | unbreakable-text | nested-flex | form-controls | ticket-view
 - FloatingWindowPresetId = baseline | narrow-50 | narrow-30 | mobile-fit | tall-scroll | ticket-small
-- WindowMeasurement fields include window width, window height, viewport width, viewport height, scale, content client width, content client height, content scroll width, content scroll height, horizontal overflow, and vertical overflow.
+- WindowMeasurement fields include window width, window height, viewport width, viewport height, requested scale, effective rendered scale, content client width, content client height, content scroll width, content scroll height, horizontal overflow, and vertical overflow.
 `);

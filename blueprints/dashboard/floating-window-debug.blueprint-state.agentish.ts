@@ -26,7 +26,7 @@ const CurrentReality = {
 FloatingWindowDebugBlueprintState.defines(`
 - CurrentImplementationStatus means this branch now ships a first-party dashboard debug tab for exercising the shared floating-window host with shell-only fixtures, TicketView, reproducible presets, and live measurements.
 - AssessmentConfidence is high because the comparison is grounded in direct source inspection, local typecheck/build verification, and worker-browser screenshots captured against the implemented screen.
-- ImplementationEvidence includes the floating-window-debug dashboard feature package, plugin registration in dashboard and dashboard-ui, DashboardWindowLayer scale-width fixes, and live screenshots from the worker-local dashboard.
+- ImplementationEvidence includes the floating-window-debug dashboard feature package, plugin registration in dashboard and dashboard-ui, DashboardWindowLayer interaction shielding plus requested-versus-effective scale handling, and live screenshots from the worker-local dashboard.
 - KnownIssue means worker-local verification still depends on a dedicated alternate dashboard port because port 3000 is already occupied on the worker host.
 `);
 
@@ -46,6 +46,7 @@ FloatingWindowDebugBlueprintState.contains(
 CurrentReality.sharedWindowHostExists.means(`
 - DashboardWindowLayer continues to provide shared shell-owned window chrome
 - shared windows still persist across dashboard tab switches while the debug lab reuses that same shell
+- active drag, resize, and zoom gestures are now shielded so pointer activity does not leak through to dashboard surfaces behind the active window
 `);
 
 CurrentReality.ticketFixtureExists.means(`
@@ -59,8 +60,8 @@ CurrentReality.dedicatedDebugFeatureExists.means(`
 `);
 
 CurrentReality.visibleMeasurementSurfaceExists.means(`
-- the debug tab now exposes first-party live measurements for window size, viewport size, scaled content bounds, scaled scroll bounds, and overflow flags
-- measurement logic now compares scaled scroll extents against the live viewport so tall fixtures report vertical overflow correctly
+- the debug tab now exposes first-party live measurements for window size, viewport size, requested scale, effective rendered scale, scaled content bounds, scaled scroll bounds, and overflow flags
+- measurement logic now compares scaled scroll extents against the live viewport so tall fixtures report vertical overflow correctly and shows when auto-fit reduces the rendered zoom below the requested zoom
 `);
 
 CurrentReality.shellVsContentDiagnosisSupported.means(`

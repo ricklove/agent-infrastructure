@@ -14,8 +14,10 @@ import { createPortal } from "react-dom"
 const minWindowWidth = 220
 const minWindowHeight = 120
 const minScale = 0.25
+const minimumAutoFitScale = 0.12
 const maxScale = 2.25
 const viewportPadding = 8
+const viewportWidthInsetPx = 2
 const mobileBreakpointPx = 768
 const mobileControlButtonSizePx = 26
 const desktopControlButtonSizePx = 30
@@ -35,6 +37,7 @@ type DashboardWindowDefinition = {
   x?: number
   y?: number
   scale?: number
+  fitContentWidth?: number
   minimized?: boolean
 }
 
@@ -49,6 +52,7 @@ type DashboardWindowPatch = Partial<
     | "x"
     | "y"
     | "scale"
+    | "fitContentWidth"
     | "minimized"
   >
 >
@@ -64,6 +68,7 @@ type DashboardWindowState = {
   width: number
   height: number
   scale: number
+  fitContentWidth: number
   zIndex: number
 }
 
@@ -77,6 +82,12 @@ type WindowInteraction = {
     DashboardWindowState,
     "x" | "y" | "width" | "height" | "scale"
   >
+} | null
+
+type InteractionBlock = {
+  windowId: string
+  pointerId: number
+  mode: "move" | "resize" | "zoom"
 } | null
 
 type DashboardWindowLayerContextValue = {
@@ -150,12 +161,8 @@ function clampWindowState(
   minimized: boolean,
 ) {
   const metrics = viewportMetrics()
-  const scaledMinWidth = Math.ceil(
-    minWindowWidth * clamp(input.scale, minScale, maxScale),
-  )
-  const targetMinWidth = Math.max(metrics.chromeMinWidth, scaledMinWidth)
   const width = Math.min(
-    Math.max(targetMinWidth, input.width),
+    Math.max(metrics.chromeMinWidth, input.width),
     metrics.maxWidth,
   )
   const expandedMinHeight = Math.min(minWindowHeight, metrics.maxHeight)
@@ -182,6 +189,38 @@ function clampWindowState(
     y: clamp(input.y, viewportPadding, maxY),
     scale: clamp(input.scale, minScale, maxScale),
   }
+}
+
+function effectiveScaleForWindow(
+  entry: Pick<DashboardWindowState, "width" | "scale" | "fitContentWidth">,
+) {
+  const requestedScale = clamp(entry.scale, minScale, maxScale)
+  const requiredContentWidth = Math.max(minWindowWidth, entry.fitContentWidth)
+  const viewportWidth = Math.max(1, entry.width - viewportWidthInsetPx)
+  const fitScale = viewportWidth / requiredContentWidth
+  return clamp(
+    Math.min(requestedScale, fitScale),
+    minimumAutoFitScale,
+    maxScale,
+  )
+}
+
+function interactionCursor(mode: NonNullable<WindowInteraction>["mode"]) {
+  if (mode === "move") {
+    return "grabbing"
+  }
+  if (mode === "resize") {
+    return "se-resize"
+  }
+  return "ew-resize"
+}
+
+function consumeEvent(event: {
+  preventDefault: () => void
+  stopPropagation: () => void
+}) {
+  event.preventDefault()
+  event.stopPropagation()
 }
 
 function buildWindowId() {
@@ -262,6 +301,8 @@ export function useDashboardWindowLayer() {
 export function DashboardWindowLayer(props: { children: ReactNode }) {
   useRenderCounter("DashboardWindowLayer")
   const [windows, setWindows] = useState<DashboardWindowState[]>([])
+  const [blockingInteraction, setBlockingInteraction] =
+    useState<InteractionBlock>(null)
   const interactionRef = useRef<WindowInteraction>(null)
   const zIndexRef = useRef(180)
 
@@ -302,6 +343,10 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                   ...entry,
                   ...patch,
                   icon: patch.icon === undefined ? entry.icon : patch.icon,
+                  fitContentWidth:
+                    patch.fitContentWidth === undefined
+                      ? entry.fitContentWidth
+                      : patch.fitContentWidth,
                 }
                 const frame = clampWindowState(nextEntry, nextEntry.minimized)
                 return {
@@ -323,7 +368,13 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       entry: DashboardWindowState,
     ) => {
       event.preventDefault()
+      event.stopPropagation()
       focusWindow(entry.windowId)
+      setBlockingInteraction({
+        windowId: entry.windowId,
+        pointerId: event.pointerId,
+        mode,
+      })
       interactionRef.current = {
         mode,
         windowId: entry.windowId,
@@ -362,6 +413,8 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                   x: definition.x ?? entry.x,
                   y: definition.y ?? entry.y,
                   scale: definition.scale ?? entry.scale,
+                  fitContentWidth:
+                    definition.fitContentWidth ?? entry.fitContentWidth,
                   zIndex: zIndexRef.current,
                 }
                 const frame = clampWindowState(nextEntry, nextEntry.minimized)
@@ -386,6 +439,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
         width: definition.width ?? defaultFrame.width,
         height: definition.height ?? defaultFrame.height,
         scale: definition.scale ?? 1,
+        fitContentWidth: definition.fitContentWidth ?? minWindowWidth,
         zIndex: zIndexRef.current,
       }
       const frame = clampWindowState(nextEntry, nextEntry.minimized)
@@ -457,21 +511,52 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       )
     }
 
-    function handlePointerUp(event: PointerEvent) {
+    function clearInteraction(pointerId: number) {
       const interaction = interactionRef.current
-      if (!interaction || interaction.pointerId !== event.pointerId) {
+      if (!interaction || interaction.pointerId !== pointerId) {
         return
       }
       interactionRef.current = null
+      setBlockingInteraction((current) =>
+        current && current.pointerId === pointerId ? null : current,
+      )
     }
 
-    window.addEventListener("pointermove", handlePointerMove)
-    window.addEventListener("pointerup", handlePointerUp)
+    function handlePointerUp(event: PointerEvent) {
+      clearInteraction(event.pointerId)
+    }
+
+    function handlePointerCancel(event: PointerEvent) {
+      clearInteraction(event.pointerId)
+    }
+
+    function handleWindowBlur() {
+      interactionRef.current = null
+      setBlockingInteraction(null)
+    }
+
+    window.addEventListener("pointermove", handlePointerMove, true)
+    window.addEventListener("pointerup", handlePointerUp, true)
+    window.addEventListener("pointercancel", handlePointerCancel, true)
+    window.addEventListener("blur", handleWindowBlur)
     return () => {
-      window.removeEventListener("pointermove", handlePointerMove)
-      window.removeEventListener("pointerup", handlePointerUp)
+      window.removeEventListener("pointermove", handlePointerMove, true)
+      window.removeEventListener("pointerup", handlePointerUp, true)
+      window.removeEventListener("pointercancel", handlePointerCancel, true)
+      window.removeEventListener("blur", handleWindowBlur)
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof document === "undefined" || !blockingInteraction) {
+      return
+    }
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.userSelect = "none"
+    return () => {
+      document.body.style.userSelect = previousUserSelect
+    }
+  }, [blockingInteraction])
 
   useEffect(() => {
     function reclampWindows() {
@@ -519,12 +604,16 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
         const headerHeight = mobile
           ? mobileHeaderHeightPx
           : desktopHeaderHeightPx
-        const titleFontSize = clamp(11 * entry.scale, 8, 14)
-        const inverseScalePercent = `${100 / entry.scale}%`
+        const effectiveScale = effectiveScaleForWindow(entry)
+        const autoFitActive = effectiveScale < entry.scale - 0.01
+        const titleFontSize = clamp(11 * effectiveScale, 8, 14)
+        const inverseScalePercent = `${100 / effectiveScale}%`
         return (
           <div
             key={entry.windowId}
             data-dashboard-window-id={entry.windowId}
+            data-dashboard-window-requested-scale={entry.scale.toFixed(4)}
+            data-dashboard-window-effective-scale={effectiveScale.toFixed(4)}
             className="pointer-events-auto absolute"
             style={{
               left: entry.x,
@@ -585,14 +674,18 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                       beginInteraction("zoom", event, entry)
                     }
                     className="inline-flex shrink-0 touch-none items-center justify-center rounded-full border border-white/10 bg-slate-950/95 font-medium text-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-                    title="Drag left or right to zoom"
+                    title={
+                      autoFitActive
+                        ? `Drag left or right to zoom. Requested ${Math.round(entry.scale * 100)} percent, rendering ${Math.round(effectiveScale * 100)} percent.`
+                        : "Drag left or right to zoom"
+                    }
                     style={{
                       width: `${controlButtonSize}px`,
                       height: `${controlButtonSize}px`,
                     }}
                   >
                     <span style={{ fontSize: mobile ? "7px" : "8px" }}>
-                      {Math.round(entry.scale * 100)}%
+                      {Math.round(effectiveScale * 100)}%
                     </span>
                   </button>
                   <button
@@ -645,8 +738,11 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                 >
                   <div
                     data-dashboard-window-scaled={entry.windowId}
+                    data-dashboard-window-render-scale={effectiveScale.toFixed(
+                      4,
+                    )}
                     style={{
-                      transform: `scale(${entry.scale})`,
+                      transform: `scale(${effectiveScale})`,
                       transformOrigin: "top left",
                       width: inverseScalePercent,
                       minHeight: inverseScalePercent,
@@ -679,7 +775,14 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
           </div>
         )
       }),
-    [closeWindow, focusWindow, updateWindow, windows],
+    [
+      beginInteraction,
+      blockingInteraction,
+      closeWindow,
+      focusWindow,
+      updateWindow,
+      windows,
+    ],
   )
 
   return (
@@ -688,7 +791,31 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
       {typeof document !== "undefined" && windows.length > 0
         ? createPortal(
             <div className="pointer-events-none fixed inset-0 z-[160] overflow-hidden">
-              {renderedWindows}
+              {blockingInteraction ? (
+                <div
+                  className="absolute inset-0 pointer-events-auto"
+                  style={{
+                    cursor: interactionCursor(blockingInteraction.mode),
+                  }}
+                  onClick={consumeEvent}
+                  onPointerDown={consumeEvent}
+                  onPointerMove={consumeEvent}
+                  onPointerUp={(event) => {
+                    consumeEvent(event)
+                    interactionRef.current = null
+                    setBlockingInteraction(null)
+                  }}
+                  onPointerCancel={(event) => {
+                    consumeEvent(event)
+                    interactionRef.current = null
+                    setBlockingInteraction(null)
+                  }}
+                  onWheel={consumeEvent}
+                />
+              ) : null}
+              <div className="pointer-events-none absolute inset-0">
+                {renderedWindows}
+              </div>
             </div>,
             document.body,
           )
