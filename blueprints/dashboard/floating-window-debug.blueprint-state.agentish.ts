@@ -47,6 +47,7 @@ CurrentReality.sharedWindowHostExists.means(`
 - DashboardWindowLayer continues to provide shared shell-owned window chrome
 - shared windows still persist across dashboard tab switches while the debug lab reuses that same shell
 - active drag, resize, and zoom gestures are now shielded so pointer activity does not leak through to dashboard surfaces behind the active window
+- touch drag gestures now explicitly suppress background page scroll so vertical drags on iOS stay attached to the floating window rather than transferring to the thread behind it
 `);
 
 CurrentReality.ticketFixtureExists.means(`
@@ -62,6 +63,7 @@ CurrentReality.dedicatedDebugFeatureExists.means(`
 CurrentReality.visibleMeasurementSurfaceExists.means(`
 - the debug tab now exposes first-party live measurements for window size, viewport size, requested scale, effective rendered scale, scaled content bounds, scaled scroll bounds, and overflow flags
 - measurement logic now compares scaled scroll extents against the live viewport so tall fixtures report vertical overflow correctly and shows when auto-fit reduces the rendered zoom below the requested zoom
+- current verification focus includes mobile Safari-style vertical drag ownership because that interaction path previously allowed background scrolling to take over
 `);
 
 CurrentReality.shellVsContentDiagnosisSupported.means(`
