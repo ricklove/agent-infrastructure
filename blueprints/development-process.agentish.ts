@@ -81,16 +81,22 @@ DevelopmentProcess.enforces(`
 - Feature and fix implementation should begin from a feature branch rooted at the current base branch while leaving the shared checkout on that base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
 - Code-changing implementation work should use a swarm worker as the active development host rather than the manager runtime host.
-- The normal entrypoint for reaching or launching that swarm worker host should be `bun run agent:connect-worker-ec2-ssh` unless a more specific documented worker-connection command supersedes it.
+- The normal entrypoint for preparing a worker-backed feature branch should be `bun run agent:prepare-worker-surface -- <feature-branch-name>`, which should ensure or launch a worker, create the worker worktree from `origin/development`, run `bun install`, and print the canonical `start_command` for entering that worktree.
+- The normal entrypoint for preparing a manager-hosted feature branch should be `bun run agent:prepare-manager-surface -- <feature-branch-name>`, which should create the manager-hosted feature worktree from `origin/development` and print the canonical `start_command` for entering that worktree.
+- Before any prepare-surface command runs, the process should choose and record a unique feature branch name for that run.
 - New features, broad refactors, dependency installation, workspace builds, workspace checks, and other substantial implementation loops are always worker-host work and must not run on the manager host.
 - When a swarm worker is used for development, the worker checkout is the only active mutable implementation surface for that branch and should be treated as a remote worktree.
 - When a swarm worker is used for development, that worker should have its own isolated workspace checkout and its own worker-local runtime surface rather than sharing the manager host runtime or canonical shared checkout.
 - A manager-hosted worktree under `~/workspace/projects-worktrees/` is not a valid substitute for the required EC2 swarm worker implementation surface.
 - A worker-host implementation surface must not have direct write access to the manager host shared repository checkout or runtime checkout.
 - A worker-host implementation surface must not inherit long-lived manager git credentials or ambient git authority for canonical manager repositories.
+- When a swarm worker is used for development, the normal entrypoint for manager-side integration should be `bun run agent:merge-worker-feature -- <feature-branch-name>`, which should refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin.
+- When a manager-hosted feature worktree is used for development, the normal entrypoint for manager-side integration should be `bun run agent:merge-manager-feature -- <feature-branch-name>`, which should merge the local feature branch from its manager worktree and push `development` to origin.
+- Worker-backed merge commands should print `merge_outcome=completed` on success or `merge_outcome=worker_conflict_resolution_required` when the worker feature branch requires conflict resolution.
+- Manager-hosted merge commands should print `merge_outcome=completed` on success.
 - When a swarm worker is used for development, a dedicated manager integration worktree remains the integration, GitHub push, release, deploy, and live-verification surface rather than the shared repository checkout or a parallel editing surface.
 - The manager host must not be used as the active mutable implementation surface for code-changing feature or fix work.
-- Development on a swarm worker should happen through persistent worker terminals rather than one-off ssh command invocations for routine edit and verification loops.
+- Development on a swarm worker should happen through persistent worker terminals entered via the printed `start_command` rather than through repeated manual ssh setup ceremony or one-off ssh command invocations for routine edit and verification loops.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
 - Supported dashboard preview on a worker should run as a worker-local dashboard replica whose public entrypoint is the Bun dashboard gateway rather than raw Vite.
 - Supported dashboard preview on a worker should preserve the manager dashboard port topology unless a more specific runtime blueprint explicitly closes a different preview shape.
@@ -100,15 +106,14 @@ DevelopmentProcess.enforces(`
 - A prompt-driven design or critique surface must not auto-create coding-capable sessions against the manager workspace by default.
 - Live Peer Development is a sanctioned alternative to the full release workflow for iterative worker-host feature development with an actively shared worker preview dashboard.
 - Live Peer Development should still follow blueprint-first worker-backed feature-branch development, local verification, and committed milestone updates.
-- Live Peer Development should stop before merge into the base branch, release promotion, release tagging, runtime deploy, and manager-host live validation unless the operator explicitly switches back to the full development process.
+- Live Peer Development should stop before merge into the base branch, promotion of the integrated `development` commit onto `main`, creation of the release tag from that promoted commit, runtime deploy, and manager-host live validation unless the operator explicitly switches back to the full development process.
 - Live Peer Development should provide the worker preview URL to the operator and should expect continued operator feedback while the worker preview remains the active review surface.
 - Live Peer Development should record stable milestones as feature-branch commits rather than leaving iterative preview work only in uncommitted worker state.
 - Live Peer Development may include high-level dashboard UI iteration, mockups, or exploratory design outputs in addition to implementation changes, but any code-changing work still belongs on the worker feature branch.
 - Before creating a new feature branch, the manager repository should be refreshed to the intended upstream base branch tip so new feature work does not start from stale local checkout history.
 - The preferred setup sequence is to create the implementation worktree directly from the current upstream base branch tip with `git fetch origin <base-branch>` followed by `git worktree add -b <feature-branch> <worktree-path> origin/<base-branch>`.
-- Before implementation changes begin on a new worker-hosted feature branch, the worker preflight must verify that dependency install, required build checks, the intended worker-local verification surface, `agent-browser`, and screenshot capture all work from that worker surface.
+- Before implementation changes begin on a new worker-hosted feature branch, the worker preflight must verify that worker setup completed successfully and produced a usable worker worktree entrypoint.
 - Worker setup should run `bun install` in the worker-hosted feature-branch worktree before code changes begin.
-- Worker setup should capture and summarize a pre-change screenshot of the UI that will be updated, or Agent Chat if no UI changes are expected.
 - After creating or attaching the feature-branch worktree, merge only the additional upstream branch or branches that are intentionally required beyond that chosen base branch; do not immediately re-merge the same base branch the feature branch was just created from.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
 - If an active feature branch falls behind the current base branch or the release branch, it should be refreshed by merging only the specific upstream branch that is actually ahead of it rather than routinely merging both `origin/development` and `origin/main`.
@@ -158,8 +163,8 @@ DevelopmentProcess.defines(`
 - LivePeerDevelopment means a worker-backed feature branch stays in active iterative development with a live worker preview shared to the operator, while merge, release promotion, deploy, and manager live validation remain deferred.
 - StableMilestoneCommits means preview-driven feature work is checkpointed as deliberate feature-branch commits whenever the operator reaches a coherent testing milestone.
 - DiscussByDefaultForExploration means agent-chat sessions created from exploratory prompt canvases, critique tools, or similar high-level interactive design surfaces start in the `Discuss` process unless the operator explicitly selects a code-changing process.
-- PersistentWorkerTerminalWorkflow means worker-host development should use long-lived interactive worker terminals for normal editing and verification loops instead of repeated one-off ssh command execution.
-- WorkerPreflightVerification means a new worker-hosted feature branch proves dependency install, required build verification, browser access, and screenshot capture before implementation begins.
+- PersistentWorkerTerminalWorkflow means worker-host development should use the `start_command` printed by `bun run agent:prepare-worker-surface -- <feature-branch-name>` to enter a long-lived worker terminal in the prepared worktree for normal editing and verification loops instead of repeated manual ssh setup.
+- WorkerPreflightVerification means a new worker-hosted feature branch is prepared by `bun run agent:prepare-worker-surface -- <feature-branch-name>`, which should ensure worker readiness, create the worker worktree, run `bun install`, and produce a usable worker worktree entrypoint before implementation begins.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - MergeCommitPromotion means branch-stage transitions stay visible as normal merge commits rather than being collapsed into fast-forward updates.

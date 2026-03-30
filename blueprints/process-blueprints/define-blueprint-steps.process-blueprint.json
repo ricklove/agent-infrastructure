@@ -38,7 +38,8 @@
           "title": "Commit the blueprint changes"
         },
         {
-          "use": "manager_development_integration"
+          "id": "merge_into_development",
+          "title": "Run `bun run agent:merge-manager-feature -- <feature-branch-name>` to merge the local feature branch from its manager worktree and push `development` to origin"
         }
       ]
     }
