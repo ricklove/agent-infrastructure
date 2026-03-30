@@ -41,7 +41,7 @@ export type StoredAgentTicket = {
   sessionId: string;
   title: string;
   description: string;
-  summary: string;
+  summary?: string | null;
   processBlueprintId: string;
   processSnapshotId: string | null;
   processTitle: string;
@@ -466,7 +466,6 @@ export class AgentTicketStore {
       sessionId,
       title: processBlueprint.title,
       description: processBlueprint.expectation,
-      summary: processBlueprint.expectation,
       processBlueprintId: processBlueprint.id,
       processSnapshotId: processSnapshot.id,
       processTitle: processBlueprint.title,
@@ -544,22 +543,21 @@ export class AgentTicketStore {
     const processSnapshot = this.getProcessSnapshot(current.processSnapshotId);
     const nextTitle = metadata.title?.trim() || null;
     const nextSummary = metadata.summary?.trim() || null;
+    const currentSummary = current.summary?.trim() || null;
+    const provisionalSummary = (processSnapshot?.description ?? current.description).trim();
     const canSpecializeTitle = current.title.trim() === current.processTitle.trim();
-    const canSpecializeSummary =
-      current.summary.trim() === (processSnapshot?.description ?? current.description).trim();
+    const canSpecializeSummary = !currentSummary || currentSummary === provisionalSummary;
 
     const updated: StoredAgentTicket = {
       ...current,
       title: nextTitle && canSpecializeTitle ? nextTitle : current.title,
-      description: nextSummary && canSpecializeSummary ? nextSummary : current.description,
       summary: nextSummary && canSpecializeSummary ? nextSummary : current.summary,
       updatedAtMs: Date.now(),
     };
 
     if (
       updated.title === current.title &&
-      updated.description === current.description &&
-      updated.summary === current.summary
+      (updated.summary ?? null) === (current.summary ?? null)
     ) {
       return current;
     }
@@ -1003,7 +1001,7 @@ export class AgentTicketStore {
         summary:
           typeof parsed.summary === "string" && parsed.summary.trim()
             ? parsed.summary
-            : String(parsed.description),
+            : null,
         processBlueprintId: String(parsed.processBlueprintId),
         processSnapshotId:
           typeof parsed.processSnapshotId === "string" && parsed.processSnapshotId.trim()

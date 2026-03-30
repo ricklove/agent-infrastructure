@@ -602,7 +602,7 @@ function activeTicketNeedsMetadataSpecialization(ticket: StoredAgentTicket | nul
     return false;
   }
   const titleIsProvisional = ticket.title.trim() === ticket.processTitle.trim();
-  const summaryIsProvisional = ticket.summary.trim() === ticket.description.trim();
+  const summaryIsProvisional = !ticket.summary?.trim() || ticket.summary.trim() === ticket.description.trim();
   return titleIsProvisional || summaryIsProvisional;
 }
 
