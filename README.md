@@ -65,3 +65,5 @@ Simple Bun + TypeScript Dockerized example projects live under `examples/devpod`
 - `examples/devpod/4gb`
 
 Each one exposes `GET /health` and reports its declared memory profile in the response body.
+
+# manager merge smoke
