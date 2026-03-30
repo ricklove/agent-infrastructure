@@ -967,8 +967,7 @@ function extractAssistantTicketMetadata(assistantText: string) {
   }
 
   return {
-    visibleText: visibleLines.join("
-").trim(),
+    visibleText: visibleLines.join("\n").trim(),
     title,
     summary,
   };
