@@ -3,20 +3,8 @@
   "title": "Manager development integration",
   "steps": [
     {
-      "id": "create_manager_integration_worktree",
-      "title": "Create a manager integration worktree from the current `origin/development` tip"
-    },
-    {
-      "id": "pull_worker_branch_to_manager_integration_worktree",
-      "title": "Pull the focused worker feature branch into the manager integration worktree"
-    },
-    {
-      "id": "merge_into_development",
-      "title": "Merge the feature branch into development in the manager integration worktree"
-    },
-    {
-      "id": "push_development_to_origin",
-      "title": "Push development to origin from the manager integration worktree"
+      "id": "merge_feature_branch",
+      "title": "Run `bun run agent:merge-feature -- <feature-branch-name>` to refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin"
     }
   ]
 }

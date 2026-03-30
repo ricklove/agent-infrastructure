@@ -88,6 +88,7 @@ DevelopmentProcess.enforces(`
 - A manager-hosted worktree under `~/workspace/projects-worktrees/` is not a valid substitute for the required EC2 swarm worker implementation surface.
 - A worker-host implementation surface must not have direct write access to the manager host shared repository checkout or runtime checkout.
 - A worker-host implementation surface must not inherit long-lived manager git credentials or ambient git authority for canonical manager repositories.
+- When a swarm worker is used for development, the normal entrypoint for manager-side integration should be `bun run agent:merge-feature -- <feature-branch-name>`, which should refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin.
 - When a swarm worker is used for development, a dedicated manager integration worktree remains the integration, GitHub push, release, deploy, and live-verification surface rather than the shared repository checkout or a parallel editing surface.
 - The manager host must not be used as the active mutable implementation surface for code-changing feature or fix work.
 - Development on a swarm worker should happen through persistent worker terminals entered via the printed `start_command` rather than through repeated manual ssh setup ceremony or one-off ssh command invocations for routine edit and verification loops.
