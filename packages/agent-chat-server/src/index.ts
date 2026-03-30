@@ -49,12 +49,19 @@ const legacyDbPath =
 const port = Number.parseInt(process.env.AGENT_CHAT_PORT ?? "8789", 10);
 const defaultSessionDirectory =
   process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
+const workspaceBlueprintRoot =
+  process.env.AGENT_SHARED_BLUEPRINTS_DIR?.trim() || `${defaultSessionDirectory}/blueprints`;
 const workspacePersistenceRequestPath =
   process.env.WORKSPACE_PERSISTENCE_REQUEST_PATH?.trim() ||
   `${stateDir}/workspace-persistence-request.json`;
 const processBlueprintsDir =
   process.env.AGENT_PROCESS_BLUEPRINTS_DIR?.trim() ||
   resolve(import.meta.dir, "../../../blueprints/process-blueprints");
+const processStepsDir =
+  process.env.AGENT_PROCESS_STEPS_DIR?.trim() ||
+  resolve(import.meta.dir, "../../../blueprints/process-steps");
+const workspaceProcessBlueprintsDir = resolve(workspaceBlueprintRoot, "process-blueprints");
+const workspaceProcessStepsDir = resolve(workspaceBlueprintRoot, "process-steps");
 const approvedTempImageDir = resolve(
   process.env.AGENT_CHAT_TEMP_IMAGE_DIR?.trim() || "/home/ec2-user/temp",
 );
@@ -185,7 +192,10 @@ const ticketStore = new AgentTicketStore({
     requestWorkspacePersistence(`agent-chat:${event.reason}:${event.sessionId}`);
   },
 });
-const processBlueprintCatalog = loadProcessBlueprintCatalog(processBlueprintsDir);
+const processBlueprintCatalog = loadProcessBlueprintCatalog({
+  processBlueprintDirs: [processBlueprintsDir, workspaceProcessBlueprintsDir],
+  processStepDirs: [processStepsDir, workspaceProcessStepsDir],
+});
 const processBlueprintById = new Map(processBlueprintCatalog.map((entry) => [entry.id, entry] as const));
 const sessionSockets = new Map<string, Set<Bun.ServerWebSocket<ChatSocketData>>>();
 const activeSessionRuns = new Set<string>();
@@ -597,6 +607,24 @@ function currentTicketStepTokenHint(ticket: StoredAgentTicket | null) {
   return `\n\nIf you complete the current step in this reply, end your final line with exactly one of: done: ${currentStep.tokenId} | blocked: ${currentStep.tokenId}`;
 }
 
+function activeTicketNeedsMetadataSpecialization(ticket: StoredAgentTicket | null) {
+  if (!ticket) {
+    return false;
+  }
+  const titleIsProvisional = ticket.title.trim() === ticket.processTitle.trim();
+  const summaryIsProvisional = !ticket.summary?.trim() || ticket.summary.trim() === ticket.description.trim();
+  return titleIsProvisional || summaryIsProvisional;
+}
+
+function initialTicketMetadataHint(ticket: StoredAgentTicket | null) {
+  if (!activeTicketNeedsMetadataSpecialization(ticket)) {
+    return "";
+  }
+  return "\n\nOn your first reply for this ticket, include these two metadata lines before your normal response:\n"
+    + "ticketTitle: <specific ticket title>\n"
+    + "ticketSummary: <short concrete summary>";
+}
+
 function currentDecisionOptionHint(ticket: StoredAgentTicket | null) {
   if (!ticket?.currentStepId) {
     return "";
@@ -623,7 +651,7 @@ function buildProcessExpectationInstruction(
   const outline = ticket && ticket.checklist.length > 0 ? formatTicketChecklist(ticket) : "";
   const outlineBlock = outline ? `\n\nProcess outline:
 ${outline}` : "";
-  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${outlineBlock}`;
+  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${outlineBlock}${initialTicketMetadataHint(ticket)}`;
 }
 
 function buildWatchdogPrompt(processBlueprint: ProcessBlueprint, ticket: StoredAgentTicket | null) {
@@ -779,6 +807,7 @@ function appendTicketEventMessage(sessionId: string, text: string) {
   return store.appendMessage(sessionId, {
     role: "system",
     kind: "ticketEvent",
+    ticketId: ticketStore.getActiveTicketForSession(sessionId)?.id ?? null,
     providerSeenAtMs: null,
     content: [{ type: "text", text }],
   });
@@ -909,6 +938,48 @@ function extractAssistantProcessSignal(
   return {
     visibleText: lines.join("\n").trim(),
     signalText,
+  };
+}
+
+function extractAssistantTicketMetadata(assistantText: string) {
+  const trimmed = assistantText.trimEnd();
+  if (!trimmed) {
+    return {
+      visibleText: trimmed.trim(),
+      title: null as string | null,
+      summary: null as string | null,
+    };
+  }
+
+  const lines = trimmed.split(/\r?\n/);
+  let title: string | null = null;
+  let summary: string | null = null;
+  const visibleLines: string[] = [];
+
+  for (const line of lines) {
+    const titleMatch = /^ticketTitle:\s*(.+)$/i.exec(line.trim());
+    if (titleMatch) {
+      const value = titleMatch[1]?.trim();
+      if (value) {
+        title = value;
+      }
+      continue;
+    }
+    const summaryMatch = /^ticketSummary:\s*(.+)$/i.exec(line.trim());
+    if (summaryMatch) {
+      const value = summaryMatch[1]?.trim();
+      if (value) {
+        summary = value;
+      }
+      continue;
+    }
+    visibleLines.push(line);
+  }
+
+  return {
+    visibleText: visibleLines.join("\n").trim(),
+    title,
+    summary,
   };
 }
 
@@ -1259,6 +1330,22 @@ function shouldRetryProviderError(errorText: string, attempt: number) {
   return isRetryableProviderError(errorText) && attempt < retryBackoffMs.length + 1;
 }
 
+function requestProviderInterrupt(
+  sessionId: string,
+  session: StoredSession,
+  providerKind: AgentChatProviderKind,
+  threadId: string | null,
+  turnId: string | null,
+) {
+  if (providerKind === "codex-app-server") {
+    if (!threadId || !turnId) {
+      return Promise.reject(new Error("No active turn to interrupt"));
+    }
+    return interruptCodexTurn(session, threadId, turnId);
+  }
+  return interruptClaudeTurn(sessionId);
+}
+
 function providerActivityCallbacks(
   sessionId: string,
   currentSession: StoredSession,
@@ -1271,15 +1358,19 @@ function providerActivityCallbacks(
   return {
     onRunStarted(payload: { threadId: string; turnId: string }) {
       const startedActivity = appendActivityMessage(sessionId, "Provider turn started.");
-      setRuntimeState(sessionId, (current) => ({
-        ...current,
-        status: "running",
-        startedAtMs: current.startedAtMs ?? Date.now(),
-        lastVisibleActivityAtMs: Date.now(),
-        providerIdleSinceAtMs: null,
-        threadId: payload.threadId,
-        turnId: payload.turnId,
-      }));
+      let shouldInterruptImmediately = false;
+      setRuntimeState(sessionId, (current) => {
+        shouldInterruptImmediately = current.interruptRequested;
+        return {
+          ...current,
+          status: "running",
+          startedAtMs: current.startedAtMs ?? Date.now(),
+          lastVisibleActivityAtMs: Date.now(),
+          providerIdleSinceAtMs: null,
+          threadId: payload.threadId,
+          turnId: payload.turnId,
+        };
+      });
       broadcastSession(sessionId, {
         type: "run.started",
         sessionId,
@@ -1291,6 +1382,23 @@ function providerActivityCallbacks(
         activity: toSessionActivity(sessionId),
       });
       broadcastSingleMessageUpdate(sessionId, startedActivity);
+      if (shouldInterruptImmediately) {
+        void requestProviderInterrupt(
+          sessionId,
+          currentSession,
+          currentSession.providerKind,
+          payload.threadId,
+          payload.turnId,
+        ).catch((error) => {
+          const errorText =
+            error instanceof Error ? error.message : "Interrupt request failed.";
+          const failureMessage = appendActivityMessage(
+            sessionId,
+            `Interrupt request failed: ${errorText}`,
+          );
+          broadcastSingleMessageUpdate(sessionId, failureMessage);
+        });
+      }
     },
     onThreadStatusChanged(payload: { threadId: string; flags: string[] }) {
       let statusMessage: StoredMessage | null = null;
@@ -1879,8 +1987,13 @@ async function runProviderTurnForQueuedMessages(
         })
       : latestSession;
     const rawAssistantText = result.assistantText.trim();
+    const assistantMetadata = extractAssistantTicketMetadata(rawAssistantText);
+    ticketStore.specializeActiveTicketMetadata(sessionId, {
+      title: assistantMetadata.title,
+      summary: assistantMetadata.summary,
+    });
     const assistantSignal = extractAssistantProcessSignal(
-      rawAssistantText,
+      assistantMetadata.visibleText,
       ticketStore.getActiveTicketForSession(sessionId),
     );
     const finalAssistantText = assistantSignal.visibleText;
@@ -2068,6 +2181,13 @@ const server = Bun.serve<ChatSocketData>({
         ok: true,
         processBlueprints: listProcessBlueprints(),
       });
+    }
+
+    const ticketMatch = /^\/api\/agent-chat\/tickets\/([^/]+)$/.exec(url.pathname);
+    if (ticketMatch && request.method === "GET") {
+      const ticketId = decodeURIComponent(ticketMatch[1]!);
+      const ticket = ticketStore.getTicket(ticketId);
+      return ticket ? jsonResponse({ ok: true, ticket }) : notFound();
     }
 
     if (url.pathname === "/api/agent-chat/sessions" && request.method === "GET") {
@@ -2410,12 +2530,28 @@ const server = Bun.serve<ChatSocketData>({
         return jsonResponse({ ok: false, error: "No active turn to interrupt" }, 409);
       }
 
-      const interruptPromise =
-        interruptProviderKind === "codex-app-server"
-          ? !runtime.turnId || !runtime.threadId
-            ? Promise.reject(new Error("No active turn to interrupt"))
-            : interruptCodexTurn(session, runtime.threadId, runtime.turnId)
-          : interruptClaudeTurn(sessionId);
+      if (
+        interruptProviderKind === "codex-app-server" &&
+        (!runtime.turnId || !runtime.threadId)
+      ) {
+        setRuntimeState(sessionId, (current) => ({
+          ...current,
+          interruptRequested: true,
+          canInterrupt: false,
+          lastVisibleActivityAtMs: Date.now(),
+          providerIdleSinceAtMs: null,
+        }));
+        broadcastActivity(sessionId);
+        return jsonResponse({ ok: true, activity: toSessionActivity(sessionId) });
+      }
+
+      const interruptPromise = requestProviderInterrupt(
+        sessionId,
+        session,
+        interruptProviderKind,
+        runtime.threadId,
+        runtime.turnId,
+      );
 
       return interruptPromise
         .then(() => {

@@ -4,7 +4,8 @@ export type DashboardFeatureId =
   | "graph"
   | "terminal"
   | "projects"
-  | "design";
+  | "design"
+  | "debug";
 
 export type DashboardFeatureIcon =
   | "swarm"
@@ -12,7 +13,8 @@ export type DashboardFeatureIcon =
   | "graph"
   | "terminal"
   | "projects"
-  | "design";
+  | "design"
+  | "debug";
 
 export type DashboardScreenModule = {
   default: unknown;

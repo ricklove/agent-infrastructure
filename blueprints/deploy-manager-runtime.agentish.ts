@@ -15,8 +15,6 @@ const Actor = {
 };
 
 const Artifact = {
-  sourceRepo: define.workspace("SourceRepository"),
-  baseBranch: define.workspace("BaseBranch"),
   releaseBranch: define.workspace("ReleaseBranch"),
   runtimeCheckout: define.workspace("RuntimeCheckout"),
   releaseTag: define.document("ReleaseGitTag"),
@@ -28,9 +26,8 @@ const Artifact = {
 };
 
 const Policy = {
-  sourceCommittedOnly: define.concept("CommittedSourceOnlyDeploy"),
   releaseFromMain: define.concept("ReleasePromotionFromMain"),
-  tagTargetDeploy: define.concept("ReleaseTagDeployTarget"),
+  branchOrTagDeployTarget: define.concept("BranchOrTagDeployTarget"),
   runtimeCheckoutDeploy: define.concept("RuntimeCheckoutDeploy"),
   frontendBuildRequired: define.concept("FrontendBuildRequired"),
   backendRestartOnly: define.concept("BackendRestartOnly"),
@@ -40,9 +37,9 @@ const Policy = {
 };
 
 DeployManagerRuntime.enforces(`
-- Deploy starts from a committed source revision that has already been promoted to `main`.
-- Deploy starts from a release git tag created from that promoted release commit.
-- Deploy updates the runtime checkout to the intended release tag.
+- Deploy starts only after the intended revision has already been promoted to `main` or identified by an explicit release tag.
+- Deploy targets `origin/main` by default and may instead target a specific release git tag for rollback or pinning.
+- Deploy updates the runtime checkout to the intended branch or tag target.
 - Deploy rebuilds frontend assets from the runtime checkout after that checkout update.
 - Deploy may terminate local backend server processes so normal runtime supervision can restart them.
 - Deploy does not manage dashboard tunnel lifecycle.
@@ -58,21 +55,18 @@ DeployManagerRuntime.enforces(`
 `);
 
 DeployManagerRuntime.defines(`
-- CommittedSourceOnlyDeploy means rollout targets a committed source revision.
 - ReleasePromotionFromMain means the release commit is promoted onto `main` before a runtime deploy is allowed.
-- ReleaseTagDeployTarget means runtime checkout targets an immutable release git tag.
-- RuntimeCheckoutDeploy means the deployed tree is advanced by git checkout of the release tag in the runtime checkout.
+- BranchOrTagDeployTarget means runtime checkout targets `origin/main` by default or an immutable release git tag when an explicit tag is supplied.
+- RuntimeCheckoutDeploy means the deployed tree is advanced by git checkout of the selected branch or tag target in the runtime checkout.
 - FrontendBuildRequired means frontend assets are rebuilt from the runtime checkout after the target revision is selected.
 - BackendRestartOnly means deploy restarts local backend server processes and relies on normal runtime supervision for recovery.
 - TunnelUntouchedByDeploy means deploy never kills, replaces, rotates, or otherwise manages the dashboard tunnel.
 - In named tunnel mode, TunnelUntouchedByDeploy also means deploy does not recreate the persistent named tunnel connector; only the controller manages connector health for the stable stack-owned hostname path.
 - ControllerOwnsTunnelLifecycle means only the dashboard controller or its recovery policy decides tunnel repair or replacement.
-- ReturnToDevelopmentProcessVerification means rollout hands back to the normal post-deploy verification flow for runtime revision and version checks, health checks, browser verification at the public Cloudflare manager dashboard URL, and manager-dashboard screenshots posted into the chat as markdown images from the approved temporary image space under `~/temp`.
+- ReturnToDevelopmentProcessVerification means rollout hands back to the normal post-deploy verification flow for runtime revision and version checks, health checks, browser verification using the issued manager-dashboard session URL, navigation to a modified screen or chat when there were no UI changes, screenshot posting from `~/temp`, screenshot summary, and screenshot verification outcome assessment.
 `);
 
 DeployManagerRuntime.contains(
-  Artifact.sourceRepo,
-  Artifact.baseBranch,
   Artifact.releaseBranch,
   Artifact.runtimeCheckout,
   Artifact.releaseTag,
@@ -81,9 +75,8 @@ DeployManagerRuntime.contains(
   Artifact.backendProcess,
   Artifact.tunnel,
   Artifact.verification,
-  Policy.sourceCommittedOnly,
   Policy.releaseFromMain,
-  Policy.tagTargetDeploy,
+  Policy.branchOrTagDeployTarget,
   Policy.runtimeCheckoutDeploy,
   Policy.frontendBuildRequired,
   Policy.backendRestartOnly,
@@ -93,19 +86,18 @@ DeployManagerRuntime.contains(
 );
 
 when(Actor.operator.runs("a standard manager runtime deploy"))
-  .then(DeployManagerRuntime.requires(Policy.sourceCommittedOnly))
-  .and(DeployManagerRuntime.requires(Policy.releaseFromMain))
-  .and(DeployManagerRuntime.requires(Policy.tagTargetDeploy))
+  .then(DeployManagerRuntime.requires(Policy.releaseFromMain))
+  .and(DeployManagerRuntime.requires(Policy.branchOrTagDeployTarget))
   .and(DeployManagerRuntime.requires(Policy.runtimeCheckoutDeploy))
   .and(DeployManagerRuntime.requires(Policy.frontendBuildRequired))
   .and(DeployManagerRuntime.requires(Policy.backendRestartOnly))
   .and(DeployManagerRuntime.requires(Policy.tunnelUntouched))
   .and(DeployManagerRuntime.requires(Policy.devProcessResumesAfterDeploy));
 
-when(Artifact.runtimeCheckout.receives("the target release tag"))
+when(Artifact.runtimeCheckout.receives("the selected deploy target"))
   .then(DeployManagerRuntime.expects(Artifact.frontendBuild))
   .and(DeployManagerRuntime.expects("frontend build completion before backend restart"))
-  .and(DeployManagerRuntime.expects("runtime checkout revision to match the tagged release commit"));
+  .and(DeployManagerRuntime.expects("runtime checkout revision to match the selected deployed revision"));
 
 when(Artifact.releaseTag.identifies("the deploy target"))
   .then(DeployManagerRuntime.expects(Artifact.releaseBranch))
@@ -125,8 +117,11 @@ when(Artifact.verification.records("post-deploy outcome"))
   .and(DeployManagerRuntime.expects("frontend and backend version match"))
   .and(DeployManagerRuntime.expects("live health verification"))
   .and(DeployManagerRuntime.expects("issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`"))
-  .and(DeployManagerRuntime.expects("real browser verification at the public Cloudflare manager dashboard URL using the issued manager-dashboard session URL"))
-  .and(DeployManagerRuntime.expects("a screenshot posted into the chat as a markdown image from the approved temporary image space under `~/temp` showing the changes on the manager dashboard at the public Cloudflare manager dashboard URL"));
+  .and(DeployManagerRuntime.expects("real browser verification using the issued manager-dashboard session URL"))
+  .and(DeployManagerRuntime.expects("navigation to a screen that displays modified behavior or chat when there were no UI changes"))
+  .and(DeployManagerRuntime.expects("a screenshot posted into the chat as a markdown image from `~/temp`"))
+  .and(DeployManagerRuntime.expects("a summary of what the screenshot shows"))
+  .and(DeployManagerRuntime.expects("a screenshot verification outcome decision"));
 
 when(Actor.operator.cannot("post a manager-dashboard screenshot into the chat as a markdown image from the approved temporary image space under `~/temp` for the new release"))
   .then(DeployManagerRuntime.treats("the rollout as failed"))

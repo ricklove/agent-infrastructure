@@ -31,11 +31,28 @@
         },
         {
           "id": "implement_revision",
-          "title": "Implement the current revision on the worker branch"
+          "title": "Implement the current revision on the worker branch",
+          "steps": [
+            {
+              "id": "make_bounded_code_change",
+              "title": "Make the next bounded code change on the worker branch"
+            },
+            {
+              "id": "run_stable_change_lint",
+              "title": "Run `bun lint` after each stable code change unless an explicit hotfix exception is recorded"
+            },
+            {
+              "id": "run_stable_change_build",
+              "title": "Run `bun build` after each stable code change before that change can be treated as stable"
+            },
+            {
+              "id": "revise_until_stable_checks_pass",
+              "title": "Revise the current change until the required stable-change verification passes"
+            }
+          ]
         },
         {
-          "id": "run_local_verification",
-          "title": "Run local verification"
+          "use": "worker_local_verification"
         },
         {
           "id": "commit_milestone",

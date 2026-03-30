@@ -15,6 +15,8 @@ const Dashboard = {
   pluginRegistry: define.entity("DashboardPluginRegistry"),
   featurePlugin: define.entity("DashboardFeaturePlugin"),
   tab: define.entity("DashboardTab"),
+  windowHost: define.entity("DashboardWindowHost"),
+  windowSurface: define.entity("DashboardWindowSurface"),
 };
 
 const Feature = {
@@ -46,6 +48,9 @@ DashboardPlugins.enforces(`
 - Feature backends must declare an explicit startup policy of `lazy` or `always`.
 - Browser-session authentication should remain a gateway concern shared across features rather than a per-plugin auth scheme.
 - Dashboard-shell status popups and shell-owned utility surfaces must remain visually above feature content across mobile and non-wide layouts instead of disappearing behind the active feature pane.
+- The dashboard shell may own shared floating window chrome that feature modules use to present feature-owned content above tab screens.
+- Shared dashboard window chrome must persist across feature-tab switches rather than being destroyed when the active tab changes.
+- Dashboard-owned floating window chrome must not redefine or absorb feature-owned content semantics; it provides reusable shell behavior, not ticket or feature meaning.
 `);
 
 DashboardPlugins.defines(`
@@ -56,11 +61,14 @@ DashboardPlugins.defines(`
 - Always backend start means the dashboard runtime starts and restores that backend proactively whenever the dashboard service starts, instead of waiting for feature traffic.
 - BackendStartupPolicy means each feature backend chooses exactly one startup mode: `lazy` or `always`.
 - GatewaySessionAuth means the dashboard gateway validates browser session auth before proxying plugin-owned HTTP or WebSocket traffic.
+- DashboardWindowHost means the shared shell-owned floating-window layer that provides placement, stacking, portal rendering, and window chrome for feature-owned content.
+- DashboardWindowSurface means one concrete floating shell instance managed by the shared window host.
 `);
 
-Dashboard.shell.contains(Dashboard.tab, Dashboard.pluginRegistry);
+Dashboard.shell.contains(Dashboard.tab, Dashboard.pluginRegistry, Dashboard.windowHost);
 Dashboard.gateway.contains(Dashboard.pluginRegistry);
 Dashboard.pluginRegistry.contains(Dashboard.featurePlugin);
+Dashboard.windowHost.contains(Dashboard.windowSurface);
 Dashboard.featurePlugin.contains(
   Feature.module,
   Feature.screen,
@@ -87,6 +95,11 @@ when(Dashboard.shell.loads(Dashboard.pluginRegistry))
   .and(Dashboard.tab.uses(Feature.tooltip))
   .and(Dashboard.shell.applies(Runtime.lazyUi));
 
+when(Feature.screen.uses(Dashboard.windowHost))
+  .then(Dashboard.windowHost.provides("shared floating window chrome"))
+  .and(Dashboard.windowHost.provides("cross-tab persistence for open window shells"))
+  .and(Feature.screen.retains("ownership of the rendered window content"));
+
 when(Dashboard.gateway.proxies(Feature.backend))
   .then(Dashboard.gateway.uses(Runtime.healthCheck))
   .and(Dashboard.gateway.applies(Runtime.startupPolicy))
@@ -99,4 +112,5 @@ DashboardPlugins.prescribes(`
 - The plugin definition should describe screen loading, route, label, icon, tooltip, backend startup policy, backend health, backend startup, and status naming.
 - Feature status should remain feature-owned rather than centrally guessed by the shell.
 - Feature packages should assume dashboard session auth has already been enforced by the gateway rather than inventing URL-token auth on their own.
+- Shared dashboard window chrome should live in dashboard-owned shared UI and be reusable by multiple features rather than being reimplemented inside one feature package.
 `);

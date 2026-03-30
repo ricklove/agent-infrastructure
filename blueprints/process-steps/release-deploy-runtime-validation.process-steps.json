@@ -8,7 +8,7 @@
     },
     {
       "id": "deploy_runtime",
-      "title": "Run `bun run deploy-manager-runtime <release-tag>` from the manager integration worktree"
+      "title": "Run `bun run deploy-manager-runtime` to deploy `origin/main`, or pass `<release-tag>` to deploy a specific release tag"
     },
     {
       "id": "verify_runtime_revision_and_versions",

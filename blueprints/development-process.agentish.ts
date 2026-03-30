@@ -81,9 +81,11 @@ DevelopmentProcess.enforces(`
 - Feature and fix implementation should begin from a feature branch rooted at the current base branch while leaving the shared checkout on that base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
 - Code-changing implementation work should use a swarm worker as the active development host rather than the manager runtime host.
+- The normal entrypoint for reaching or launching that swarm worker host should be `bun run agent:connect-worker-ec2-ssh` unless a more specific documented worker-connection command supersedes it.
 - New features, broad refactors, dependency installation, workspace builds, workspace checks, and other substantial implementation loops are always worker-host work and must not run on the manager host.
 - When a swarm worker is used for development, the worker checkout is the only active mutable implementation surface for that branch and should be treated as a remote worktree.
 - When a swarm worker is used for development, that worker should have its own isolated workspace checkout and its own worker-local runtime surface rather than sharing the manager host runtime or canonical shared checkout.
+- A manager-hosted worktree under `~/workspace/projects-worktrees/` is not a valid substitute for the required EC2 swarm worker implementation surface.
 - A worker-host implementation surface must not have direct write access to the manager host shared repository checkout or runtime checkout.
 - A worker-host implementation surface must not inherit long-lived manager git credentials or ambient git authority for canonical manager repositories.
 - When a swarm worker is used for development, a dedicated manager integration worktree remains the integration, GitHub push, release, deploy, and live-verification surface rather than the shared repository checkout or a parallel editing surface.
@@ -104,11 +106,16 @@ DevelopmentProcess.enforces(`
 - Live Peer Development may include high-level dashboard UI iteration, mockups, or exploratory design outputs in addition to implementation changes, but any code-changing work still belongs on the worker feature branch.
 - Before creating a new feature branch, the manager repository should be refreshed to the intended upstream base branch tip so new feature work does not start from stale local checkout history.
 - The preferred setup sequence is to create the implementation worktree directly from the current upstream base branch tip with `git fetch origin <base-branch>` followed by `git worktree add -b <feature-branch> <worktree-path> origin/<base-branch>`.
+- Before implementation changes begin on a new worker-hosted feature branch, the worker preflight must verify that dependency install, required build checks, the intended worker-local verification surface, `agent-browser`, and screenshot capture all work from that worker surface.
+- Worker setup should run `bun install` in the worker-hosted feature-branch worktree before code changes begin.
+- Worker setup should capture and summarize a pre-change screenshot of the UI that will be updated, or Agent Chat if no UI changes are expected.
 - After creating or attaching the feature-branch worktree, merge only the additional upstream branch or branches that are intentionally required beyond that chosen base branch; do not immediately re-merge the same base branch the feature branch was just created from.
 - If a feature branch already exists, the implementation worktree should be created by attaching that branch with `git worktree add <worktree-path> <feature-branch>` rather than by checking the feature branch out in the shared base-branch checkout.
 - If an active feature branch falls behind the current base branch or the release branch, it should be refreshed by merging only the specific upstream branch that is actually ahead of it rather than routinely merging both `origin/development` and `origin/main`.
 - Normal merge commits are an acceptable and preferred way to refresh a feature branch during active work; rebasing is optional and never required by this process.
 - Completed feature branch work should be committed and merged back into the base branch before release promotion proceeds.
+- Each stable code change on the worker branch should run `bun lint` and `bun build` before that change can be treated as a verified stable checkpoint, unless an explicit hotfix exception is recorded for lint.
+- A stable implementation revision is not locally verified until the required stable-change build verification passes on the worker branch.
 - Promotion from a feature branch into the base branch should use a normal merge commit rather than fast-forwarding away the branch-stage transition.
 - Promotion from the base branch into the release branch should use a normal merge commit rather than fast-forwarding away the release-stage transition.
 - Fast-forward-only promotion is not an acceptable substitute for the required merge-stage commits in this workflow.
@@ -122,9 +129,11 @@ DevelopmentProcess.enforces(`
 - Durable app data must live outside state/.
 - Provider-backed agents used for implementation must inherit this same workflow.
 - Runtime rollout should follow the deploy-manager-runtime blueprint as the standard deploy path.
-- Runtime rollout should call `bun run deploy-manager-runtime` from the dedicated manager integration worktree unless a more specific documented operator entrypoint supersedes it.
+- Runtime rollout should call `bun run deploy-manager-runtime` as the canonical deploy entrypoint after release promotion unless a more specific documented operator entrypoint supersedes it.
 - UI-facing changes require real browser verification with `agent-browser`, visual verification on the rendered UI, saved screenshots, verification at small, medium, and wide viewport sizes, and deployed frontend-backend version matching.
 - Responsive UI changes must be verified with `agent-browser` at small, medium, and wide viewport sizes.
+- Local verification should prove that any touched runtime or server entrypoint parses and starts cleanly on the worker surface rather than relying only on unrelated narrow scripts.
+- Local verification should include worker-local browser verification and a saved worker-local screenshot before a revision is described as verified.
 - Post-deploy verification should record runtime checkout revision match, frontend-backend version match, a successful check of `http://127.0.0.1:3000/api/health`, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification using the issued manager-dashboard session URL, navigation to a screen that shows modified behavior or chat when there were no UI changes, and a screenshot posted into the chat as a markdown image from `~/temp`.
 - If the operator cannot post a manager-dashboard screenshot into the chat as a markdown image from the approved temporary image space under `~/temp` for the new release, the rollout should be treated as failed, rolled back to an earlier known-good release tag, and kept in screenshot verification until a stable working release is found; the failed release tag should then be deleted locally and on the remote after recovery.
 - A rollout is not complete until post-deploy behavior has been verified from the issued manager-dashboard session URL and the screenshot evidence has been reviewed.
@@ -150,6 +159,7 @@ DevelopmentProcess.defines(`
 - StableMilestoneCommits means preview-driven feature work is checkpointed as deliberate feature-branch commits whenever the operator reaches a coherent testing milestone.
 - DiscussByDefaultForExploration means agent-chat sessions created from exploratory prompt canvases, critique tools, or similar high-level interactive design surfaces start in the `Discuss` process unless the operator explicitly selects a code-changing process.
 - PersistentWorkerTerminalWorkflow means worker-host development should use long-lived interactive worker terminals for normal editing and verification loops instead of repeated one-off ssh command execution.
+- WorkerPreflightVerification means a new worker-hosted feature branch proves dependency install, required build verification, browser access, and screenshot capture before implementation begins.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - MergeCommitPromotion means branch-stage transitions stay visible as normal merge commits rather than being collapsed into fast-forward updates.
@@ -160,8 +170,8 @@ DevelopmentProcess.defines(`
 - DeployByRuntimeCheckout means runtime is updated by checking out a release tag that points at a committed source revision.
 - VersionMatchVerification means the served frontend version and running backend version must match exactly after rollout.
 - TicketSystemOwnsImplementationPlan means active work sequencing, task breakdown, and unfinished implementation routing belong in tickets rather than in long-lived blueprint companion files.
-- StandardRuntimeDeployBlueprint means runtime rollout uses the repository's canonical deploy-manager-runtime path and targets a release tag.
-- `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path after release tag creation, and it should run from the manager integration worktree that holds the integrated commit being released.
+- StandardRuntimeDeployBlueprint means runtime rollout uses the repository's canonical deploy-manager-runtime path and deploys `origin/main` by default or an explicit release tag for rollback or pinning.
+- `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path after release promotion; with no argument it deploys `origin/main`, and with `<release-tag>` it deploys that specific release tag.
 `);
 
 DevelopmentProcess.contains(

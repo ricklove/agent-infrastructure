@@ -107,6 +107,11 @@ type RawProcessBlueprint = {
   };
 };
 
+export type ProcessBlueprintCatalogLoadOptions = {
+  processBlueprintDirs?: string[];
+  processStepDirs?: string[];
+};
+
 function defaultBlueprintsDir() {
   return resolve(import.meta.dir, "../../../blueprints/process-blueprints");
 }
@@ -115,26 +120,64 @@ function defaultProcessStepsDir() {
   return resolve(import.meta.dir, "../../../blueprints/process-steps");
 }
 
-function normalizeProcessStepBundles(processStepsDir?: string) {
-  const stepsDir = processStepsDir?.trim() || defaultProcessStepsDir();
-  const bundleMap = new Map<string, RawProcessStepBundle>();
-  if (!existsSync(stepsDir)) {
-    return bundleMap;
+function normalizeDirectoryList(dirs: string[] | undefined, fallbackDir: string) {
+  const resolved = (dirs ?? [fallbackDir]).map((value) => value.trim()).filter(Boolean);
+  if (resolved.length === 0) {
+    resolved.push(fallbackDir);
   }
+  return [...new Set(resolved)];
+}
 
-  for (const entry of readdirSync(stepsDir)) {
-    if (!entry.endsWith(".process-steps.json")) {
+function normalizeProcessStepBundles(processStepDirs?: string[]) {
+  const stepsDirs = normalizeDirectoryList(processStepDirs, defaultProcessStepsDir());
+  const bundleMap = new Map<string, RawProcessStepBundle>();
+
+  for (const stepsDir of stepsDirs) {
+    if (!existsSync(stepsDir)) {
       continue;
     }
-    const path = join(stepsDir, entry);
-    const raw = JSON.parse(readFileSync(path, "utf8")) as RawProcessStepBundle;
-    const id = typeof raw.id === "string" ? raw.id.trim() : "";
-    if (!id) {
-      throw new Error(`Invalid process step bundle: ${path}`);
+
+    for (const entry of readdirSync(stepsDir).sort()) {
+      if (!entry.endsWith(".process-steps.json")) {
+        continue;
+      }
+      const path = join(stepsDir, entry);
+      const raw = JSON.parse(readFileSync(path, "utf8")) as RawProcessStepBundle;
+      const id = typeof raw.id === "string" ? raw.id.trim() : "";
+      if (!id) {
+        throw new Error(`Invalid process step bundle: ${path}`);
+      }
+      bundleMap.set(id, raw);
     }
-    bundleMap.set(id, raw);
   }
+
   return bundleMap;
+}
+
+function loadRawProcessBlueprints(processBlueprintDirs?: string[]) {
+  const blueprintDirs = normalizeDirectoryList(processBlueprintDirs, defaultBlueprintsDir());
+  const blueprintMap = new Map<string, { raw: RawProcessBlueprint; path: string }>();
+
+  for (const processBlueprintDir of blueprintDirs) {
+    if (!existsSync(processBlueprintDir)) {
+      continue;
+    }
+
+    for (const entry of readdirSync(processBlueprintDir).sort()) {
+      if (!entry.endsWith(".process-blueprint.json")) {
+        continue;
+      }
+      const path = join(processBlueprintDir, entry);
+      const raw = JSON.parse(readFileSync(path, "utf8")) as RawProcessBlueprint;
+      const id = typeof raw.id === "string" ? raw.id.trim() : "";
+      if (!id) {
+        throw new Error(`Invalid process blueprint: ${path}`);
+      }
+      blueprintMap.set(id, { raw, path });
+    }
+  }
+
+  return [...blueprintMap.values()];
 }
 
 function normalizeProcessBlueprintDecisionOptions(
@@ -331,26 +374,12 @@ export function isProceduralProcessBlueprint(
 }
 
 export function loadProcessBlueprintCatalog(
-  blueprintsDir?: string,
-  processStepsDir?: string,
+  options: ProcessBlueprintCatalogLoadOptions = {},
 ): ProcessBlueprint[] {
-  const processBlueprintDir = blueprintsDir?.trim() || defaultBlueprintsDir();
-  if (!existsSync(processBlueprintDir)) {
-    return [];
-  }
+  const bundles = normalizeProcessStepBundles(options.processStepDirs);
 
-  const bundles = normalizeProcessStepBundles(processStepsDir);
-
-  return readdirSync(processBlueprintDir)
-    .filter((entry) => entry.endsWith(".process-blueprint.json"))
-    .map((entry) => join(processBlueprintDir, entry))
-    .map((path) =>
-      normalizeProcessBlueprint(
-        JSON.parse(readFileSync(path, "utf8")) as RawProcessBlueprint,
-        path,
-        bundles,
-      ),
-    )
+  return loadRawProcessBlueprints(options.processBlueprintDirs)
+    .map(({ raw, path }) => normalizeProcessBlueprint(raw, path, bundles))
     .sort((left, right) => {
       if (left.catalogOrder !== right.catalogOrder) {
         return left.catalogOrder - right.catalogOrder;

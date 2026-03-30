@@ -41,6 +41,7 @@ export type StoredAgentTicket = {
   sessionId: string;
   title: string;
   description: string;
+  summary?: string | null;
   processBlueprintId: string;
   processSnapshotId: string | null;
   processTitle: string;
@@ -423,9 +424,25 @@ export class AgentTicketStore {
     return this.processSnapshotCache.get(processSnapshotId) ?? null;
   }
 
+  getTicket(ticketId: string | null | undefined) {
+    if (!ticketId) {
+      return null;
+    }
+    const cached = this.ticketCache.get(ticketId);
+    if (cached) {
+      return cached;
+    }
+    const ticket = this.readTicket(ticketId);
+    if (!ticket) {
+      return null;
+    }
+    this.ticketCache.set(ticket.id, ticket);
+    return ticket;
+  }
+
   getActiveTicketForSession(sessionId: string): StoredAgentTicket | null {
     const ticketId = this.activeTicketBySessionId.get(sessionId);
-    return ticketId ? this.ticketCache.get(ticketId) ?? null : null;
+    return this.getTicket(ticketId);
   }
 
   clearActiveTicketForSession(sessionId: string) {
@@ -512,6 +529,41 @@ export class AgentTicketStore {
     }
 
     return null;
+  }
+
+  specializeActiveTicketMetadata(
+    sessionId: string,
+    metadata: { title?: string | null; summary?: string | null },
+  ) {
+    const current = this.getActiveTicketForSession(sessionId);
+    if (!current || current.status !== "active") {
+      return current;
+    }
+
+    const processSnapshot = this.getProcessSnapshot(current.processSnapshotId);
+    const nextTitle = metadata.title?.trim() || null;
+    const nextSummary = metadata.summary?.trim() || null;
+    const currentSummary = current.summary?.trim() || null;
+    const provisionalSummary = (processSnapshot?.description ?? current.description).trim();
+    const canSpecializeTitle = current.title.trim() === current.processTitle.trim();
+    const canSpecializeSummary = !currentSummary || currentSummary === provisionalSummary;
+
+    const updated: StoredAgentTicket = {
+      ...current,
+      title: nextTitle && canSpecializeTitle ? nextTitle : current.title,
+      summary: nextSummary && canSpecializeSummary ? nextSummary : current.summary,
+      updatedAtMs: Date.now(),
+    };
+
+    if (
+      updated.title === current.title &&
+      (updated.summary ?? null) === (current.summary ?? null)
+    ) {
+      return current;
+    }
+
+    this.persistTicket(updated);
+    return updated;
   }
 
   resolveActiveTicket(sessionId: string, status: Extract<StoredAgentTicketStatus, "completed" | "blocked">, resolution: string) {
@@ -946,6 +998,10 @@ export class AgentTicketStore {
         sessionId: String(parsed.sessionId),
         title: String(parsed.title),
         description: String(parsed.description),
+        summary:
+          typeof parsed.summary === "string" && parsed.summary.trim()
+            ? parsed.summary
+            : null,
         processBlueprintId: String(parsed.processBlueprintId),
         processSnapshotId:
           typeof parsed.processSnapshotId === "string" && parsed.processSnapshotId.trim()

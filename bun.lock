@@ -163,6 +163,7 @@
         "@agent-infrastructure/agent-swarm-ui": "workspace:*",
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
         "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
+        "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
         "@agent-infrastructure/projects-ui": "workspace:*",
         "@agent-infrastructure/ui-design-canvas-ui": "workspace:*",
       },
@@ -224,9 +225,26 @@
         "@agent-infrastructure/agent-swarm-ui": "workspace:*",
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
         "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
+        "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
         "@agent-infrastructure/projects-ui": "workspace:*",
         "@agent-infrastructure/render-diagnostics": "workspace:*",
         "@agent-infrastructure/ui-design-canvas-ui": "workspace:*",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+      },
+      "devDependencies": {
+        "@types/react": "^18.3.3",
+        "@types/react-dom": "^18.3.0",
+        "typescript": "^5.4.5",
+      },
+    },
+    "packages/floating-window-debug-ui": {
+      "name": "@agent-infrastructure/floating-window-debug-ui",
+      "dependencies": {
+        "@agent-infrastructure/agent-chat-ui": "workspace:*",
+        "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "@agent-infrastructure/dashboard-ui": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
@@ -320,6 +338,8 @@
     "@agent-infrastructure/dashboard-terminal-ui": ["@agent-infrastructure/dashboard-terminal-ui@workspace:packages/dashboard-terminal-ui"],
 
     "@agent-infrastructure/dashboard-ui": ["@agent-infrastructure/dashboard-ui@workspace:packages/dashboard-ui"],
+
+    "@agent-infrastructure/floating-window-debug-ui": ["@agent-infrastructure/floating-window-debug-ui@workspace:packages/floating-window-debug-ui"],
 
     "@agent-infrastructure/projects-server": ["@agent-infrastructure/projects-server@workspace:packages/projects-server"],
 
