@@ -7,6 +7,7 @@ import {
   type ProcessBlueprintDecisionOption,
   type ProcessBlueprintStep,
 } from "./process-blueprints.js";
+import { findStandaloneSignalLine } from "./process-signals.js";
 
 export type StoredAgentTicketStatus = "active" | "completed" | "blocked";
 export type StoredAgentTicketStepStatus = "pending" | "active" | "completed" | "blocked";
@@ -500,27 +501,36 @@ export class AgentTicketStore {
     }
 
     const currentStep = executableSteps[currentIndex]!;
-    const normalizedText = assistantText.trim();
     const genericDoneToken = `done: ${currentStep.tokenId}`;
     const genericBlockedToken = `blocked: ${currentStep.tokenId}`;
+    const { signalText } = findStandaloneSignalLine(assistantText, [
+      genericDoneToken,
+      genericBlockedToken,
+      ...(currentStep.doneToken ? [currentStep.doneToken] : []),
+      ...(currentStep.blockedToken ? [currentStep.blockedToken] : []),
+      ...(currentStep.decision?.options.flatMap((option) => [option.id, option.title]) ?? []),
+    ]);
+    if (!signalText) {
+      return null;
+    }
 
     if (
-      (currentStep.doneToken && normalizedText === currentStep.doneToken) ||
-      normalizedText === genericDoneToken
+      (currentStep.doneToken && signalText === currentStep.doneToken) ||
+      signalText === genericDoneToken
     ) {
       return this.completeCurrentStep(current, currentIndex, currentStep, null);
     }
 
     if (
-      (currentStep.blockedToken && normalizedText === currentStep.blockedToken) ||
-      normalizedText === genericBlockedToken
+      (currentStep.blockedToken && signalText === currentStep.blockedToken) ||
+      signalText === genericBlockedToken
     ) {
-      return this.blockCurrentStep(current, currentIndex, currentStep, normalizedText);
+      return this.blockCurrentStep(current, currentIndex, currentStep, signalText);
     }
 
     if (currentStep.kind === "decision" && currentStep.decision) {
       const matchedOption = currentStep.decision.options.find(
-        (option) => normalizedText === option.title || normalizedText === option.id,
+        (option) => signalText === option.title || signalText === option.id,
       );
       if (!matchedOption) {
         return null;
