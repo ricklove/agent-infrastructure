@@ -33,6 +33,7 @@ import {
   type StoredAgentTicket,
   type StoredAgentTicketTransition,
 } from "./agent-tickets.js";
+import { findStandaloneSignalLine } from "./process-signals.js";
 import {
   normalizeClaudeSessionModelRef,
   primeClaudeModelCatalogRefresh,
@@ -604,7 +605,7 @@ function currentTicketStepTokenHint(ticket: StoredAgentTicket | null) {
   if (!currentStep) {
     return "";
   }
-  return `\n\nIf you complete the current step in this reply, end your final line with exactly one of: done: ${currentStep.tokenId} | blocked: ${currentStep.tokenId}`;
+  return `\n\nIf you complete the current step in this reply, include one of these on its own line anywhere in the message: done: ${currentStep.tokenId} | blocked: ${currentStep.tokenId}`;
 }
 
 function activeTicketNeedsMetadataSpecialization(ticket: StoredAgentTicket | null) {
@@ -633,7 +634,7 @@ function currentDecisionOptionHint(ticket: StoredAgentTicket | null) {
   if (!currentStep?.decision || currentStep.decision.options.length === 0) {
     return "";
   }
-  return `\n\nIf you resolve the current decision in this reply, end your final line with exactly one of: ${currentStep.decision.options.map((option) => option.id).join(" | ")}`;
+  return `\n\nIf you resolve the current decision in this reply, include one of these on its own line anywhere in the message: ${currentStep.decision.options.map((option) => option.id).join(" | ")}`;
 }
 
 function buildProcessExpectationInstruction(
@@ -718,9 +719,12 @@ function maybeMarkProcessBlueprintTerminal(
     return null;
   }
 
-  const normalizedText = assistantText.trim();
-  if (normalizedText === processBlueprint.completionToken) {
-    const ticket = ticketStore.resolveActiveTicket(sessionId, "completed", normalizedText);
+  const { signalText } = findStandaloneSignalLine(assistantText, [
+    processBlueprint.completionToken,
+    processBlueprint.blockedToken,
+  ]);
+  if (signalText === processBlueprint.completionToken) {
+    const ticket = ticketStore.resolveActiveTicket(sessionId, "completed", signalText);
     if (ticket) {
       appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "completed"));
     }
@@ -733,8 +737,8 @@ function maybeMarkProcessBlueprintTerminal(
     return "completed";
   }
 
-  if (normalizedText === processBlueprint.blockedToken) {
-    const ticket = ticketStore.resolveActiveTicket(sessionId, "blocked", normalizedText);
+  if (signalText === processBlueprint.blockedToken) {
+    const ticket = ticketStore.resolveActiveTicket(sessionId, "blocked", signalText);
     if (ticket) {
       appendTicketEventMessage(sessionId, buildTicketStateEventText(ticket, "blocked"));
     }
@@ -910,19 +914,6 @@ function extractAssistantProcessSignal(
     return { visibleText: trimmed.trim(), signalText: null as string | null };
   }
 
-  const lines = trimmed.split(/\r?\n/);
-  let signalLineIndex = -1;
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (lines[index].trim()) {
-      signalLineIndex = index;
-      break;
-    }
-  }
-  if (signalLineIndex < 0) {
-    return { visibleText: trimmed.trim(), signalText: null as string | null };
-  }
-
-  const signalText = lines[signalLineIndex].trim();
   const allowedSignals = new Set<string>([
     `done: ${currentStep.tokenId}`,
     `blocked: ${currentStep.tokenId}`,
@@ -930,15 +921,7 @@ function extractAssistantProcessSignal(
     ...(currentStep.blockedToken ? [currentStep.blockedToken] : []),
     ...(currentStep.decision?.options.flatMap((option) => [option.id, option.title]) ?? []),
   ]);
-  if (!allowedSignals.has(signalText)) {
-    return { visibleText: trimmed.trim(), signalText: null as string | null };
-  }
-
-  lines.splice(signalLineIndex, 1);
-  return {
-    visibleText: lines.join("\n").trim(),
-    signalText,
-  };
+  return findStandaloneSignalLine(trimmed, allowedSignals);
 }
 
 function extractAssistantTicketMetadata(assistantText: string) {
