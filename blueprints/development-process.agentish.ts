@@ -84,6 +84,7 @@ DevelopmentProcess.enforces(`
 - The normal entrypoint for preparing a worker-backed feature branch should be `bun run agent:prepare-worker-surface -- <feature-branch-name>`, which should ensure or launch a worker, create the worker worktree from `origin/development`, run `bun install`, and print the canonical `start_command` for entering that worktree.
 - The normal entrypoint for preparing a manager-hosted feature branch should be `bun run agent:prepare-manager-surface -- <feature-branch-name>`, which should create the manager-hosted feature worktree from `origin/development` and print the canonical `start_command` for entering that worktree.
 - Before any prepare-surface command runs, the process should choose and record a unique feature branch name for that run.
+- Manager-hosted blueprint-definition and process-definition work should use the manager-hosted prepare and merge commands rather than worker-backed integration commands.
 - New features, broad refactors, dependency installation, workspace builds, workspace checks, and other substantial implementation loops are always worker-host work and must not run on the manager host.
 - When a swarm worker is used for development, the worker checkout is the only active mutable implementation surface for that branch and should be treated as a remote worktree.
 - When a swarm worker is used for development, that worker should have its own isolated workspace checkout and its own worker-local runtime surface rather than sharing the manager host runtime or canonical shared checkout.
