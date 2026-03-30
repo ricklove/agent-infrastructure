@@ -4,27 +4,19 @@
   "steps": [
     {
       "id": "setup_worker_surface",
-      "title": "Create a worker-hosted feature-branch worktree from the current upstream base branch tip"
+      "title": "Run `bun run agent:prepare-worker-surface -- <feature-branch-name>` to ensure a worker is ready, create the worker-hosted feature-branch worktree from `origin/development`, run `bun install`, and print the resulting `start_command`"
     },
     {
       "id": "merge_upstream_into_worktree",
-      "title": "Merge any additionally required upstream into the worker-hosted feature-branch worktree"
+      "title": "Merge any additionally required upstream into the prepared worker-hosted feature-branch worktree"
     },
     {
       "id": "connect_persistent_ssh",
-      "title": "Connect through a persistent SSH session into the worker instance"
-    },
-    {
-      "id": "verify_worker_checkout_location",
-      "title": "Verify the active mutable checkout is the EC2 swarm worker worktree rather than a manager-hosted surface"
-    },
-    {
-      "id": "install_worker_dependencies",
-      "title": "Run `bun install` in the worker-hosted feature-branch worktree before any code changes"
+      "title": "Connect through a persistent SSH session into the prepared worker worktree using the printed `start_command`"
     },
     {
       "id": "run_pre_change_build_verification",
-      "title": "Run the required pre-change build verification in the worker-hosted feature-branch worktree"
+      "title": "Run the required pre-change build verification in the prepared worker-hosted feature-branch worktree"
     },
     {
       "id": "launch_worker_verification_surface",

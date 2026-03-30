@@ -81,7 +81,7 @@ DevelopmentProcess.enforces(`
 - Feature and fix implementation should begin from a feature branch rooted at the current base branch while leaving the shared checkout on that base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
 - Code-changing implementation work should use a swarm worker as the active development host rather than the manager runtime host.
-- The normal entrypoint for reaching or launching that swarm worker host should be `bun run agent:connect-worker-ec2-ssh` unless a more specific documented worker-connection command supersedes it.
+- The normal entrypoint for preparing a worker-backed feature branch should be `bun run agent:prepare-worker-surface -- <feature-branch-name>`, which should ensure or launch a worker, create the worker worktree from `origin/development`, run `bun install`, and print the canonical `start_command` for entering that worktree.
 - New features, broad refactors, dependency installation, workspace builds, workspace checks, and other substantial implementation loops are always worker-host work and must not run on the manager host.
 - When a swarm worker is used for development, the worker checkout is the only active mutable implementation surface for that branch and should be treated as a remote worktree.
 - When a swarm worker is used for development, that worker should have its own isolated workspace checkout and its own worker-local runtime surface rather than sharing the manager host runtime or canonical shared checkout.
@@ -90,7 +90,7 @@ DevelopmentProcess.enforces(`
 - A worker-host implementation surface must not inherit long-lived manager git credentials or ambient git authority for canonical manager repositories.
 - When a swarm worker is used for development, a dedicated manager integration worktree remains the integration, GitHub push, release, deploy, and live-verification surface rather than the shared repository checkout or a parallel editing surface.
 - The manager host must not be used as the active mutable implementation surface for code-changing feature or fix work.
-- Development on a swarm worker should happen through persistent worker terminals rather than one-off ssh command invocations for routine edit and verification loops.
+- Development on a swarm worker should happen through persistent worker terminals entered via the printed `start_command` rather than through repeated manual ssh setup ceremony or one-off ssh command invocations for routine edit and verification loops.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
 - Supported dashboard preview on a worker should run as a worker-local dashboard replica whose public entrypoint is the Bun dashboard gateway rather than raw Vite.
 - Supported dashboard preview on a worker should preserve the manager dashboard port topology unless a more specific runtime blueprint explicitly closes a different preview shape.
@@ -158,8 +158,8 @@ DevelopmentProcess.defines(`
 - LivePeerDevelopment means a worker-backed feature branch stays in active iterative development with a live worker preview shared to the operator, while merge, release promotion, deploy, and manager live validation remain deferred.
 - StableMilestoneCommits means preview-driven feature work is checkpointed as deliberate feature-branch commits whenever the operator reaches a coherent testing milestone.
 - DiscussByDefaultForExploration means agent-chat sessions created from exploratory prompt canvases, critique tools, or similar high-level interactive design surfaces start in the `Discuss` process unless the operator explicitly selects a code-changing process.
-- PersistentWorkerTerminalWorkflow means worker-host development should use long-lived interactive worker terminals for normal editing and verification loops instead of repeated one-off ssh command execution.
-- WorkerPreflightVerification means a new worker-hosted feature branch proves dependency install, required build verification, browser access, and screenshot capture before implementation begins.
+- PersistentWorkerTerminalWorkflow means worker-host development should use the `start_command` printed by `bun run agent:prepare-worker-surface -- <feature-branch-name>` to enter a long-lived worker terminal in the prepared worktree for normal editing and verification loops instead of repeated manual ssh setup.
+- WorkerPreflightVerification means a new worker-hosted feature branch is prepared by `bun run agent:prepare-worker-surface -- <feature-branch-name>`, which should ensure worker readiness, create the worker worktree, run `bun install`, and then leave only the required build verification, browser access, and screenshot capture to be proven before implementation begins.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - MergeCommitPromotion means branch-stage transitions stay visible as normal merge commits rather than being collapsed into fast-forward updates.
