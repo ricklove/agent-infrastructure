@@ -77,6 +77,8 @@ DevelopmentProcess.enforces(`
 - Active implementation plans should live in the ticket system rather than as durable repository design documents.
 - Before installing or reconfiguring local developer tools, check `/home/ec2-user/workspace/README.md` and the referenced notes under `/home/ec2-user/workspace/tools/` for machine-specific guidance and already-installed utilities.
 - Source is the only editing surface for intended behavior changes.
+- The shared repository checkout is not a valid mutable surface for code-changing, blueprint-changing, or process-definition changes and should remain a non-editing integration anchor.
+- Mutable process expectations should begin by naming their only allowed editing surface and by explicitly forbidding edits from the shared repository checkout.
 - The shared repository checkout should remain on the current base branch used for ongoing integration work.
 - Feature and fix implementation should begin from a feature branch rooted at the current base branch while leaving the shared checkout on that base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
@@ -84,6 +86,7 @@ DevelopmentProcess.enforces(`
 - The normal entrypoint for preparing a worker-backed feature branch should be `bun run agent:prepare-worker-surface -- <feature-branch-name>`, which should ensure or launch a worker, create the worker worktree from `origin/development`, run `bun install`, and print the canonical `start_command` for entering that worktree.
 - The normal entrypoint for preparing a manager-hosted feature branch should be `bun run agent:prepare-manager-surface -- <feature-branch-name>`, which should create the manager-hosted feature worktree from `origin/development` and print the canonical `start_command` for entering that worktree.
 - Before any prepare-surface command runs, the process should choose and record a unique feature branch name for that run.
+- Manager-hosted blueprint-definition and process-definition work should use the manager-hosted prepare and merge commands rather than worker-backed integration commands.
 - New features, broad refactors, dependency installation, workspace builds, workspace checks, and other substantial implementation loops are always worker-host work and must not run on the manager host.
 - When a swarm worker is used for development, the worker checkout is the only active mutable implementation surface for that branch and should be treated as a remote worktree.
 - When a swarm worker is used for development, that worker should have its own isolated workspace checkout and its own worker-local runtime surface rather than sharing the manager host runtime or canonical shared checkout.

@@ -121,7 +121,12 @@ AgentChat.enforces(`
 - When a new active ticket is created from a process selection, AgentChat should emit one canonical system event that includes the expectation message and the full process outline for that ticket.
 - The first provider turn after ticket creation may specialize that active ticket with ticketTitle: and ticketSummary: metadata while keeping the selected process title as separate process-owned state.
 - When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
-- Once a session process is active, the active ticket remains unresolved until the process-defined done or blocked condition is reached.
+- Once a session process is active, the chat should keep one explicit active-ticket pointer that names which ticket is currently in focus for that chat.
+- Once a session process is active, the active ticket remains the authoritative holder of that work until the chat switches its active-ticket pointer or the ticket reaches a true done condition.
+- An agent-emitted blocked token should pause the same active ticket rather than forcing the operator to choose a different process before commenting.
+- A blocked active ticket should resume from the same ticket and pinned process snapshot when the operator sends a new comment while that ticket remains active in the chat.
+- The operator may switch the chat to a different ticket at any time, and doing so should change the active-ticket pointer without destroying or silently replacing the previously active ticket record.
+- The operator may later reactivate an older ticket, and that reactivated ticket should resume from its saved process and checklist state rather than being recreated from scratch.
 - Focused-ticket state changes should surface as canonical system ticket events in the transcript.
 - Ticket-event transcript items that identify a concrete ticket should expose an immediate open-ticket affordance in the transcript UI.
 - Older ticket-event transcript items that lack a concrete ticket identifier should remain readable history but should not show a fake open-ticket affordance.
@@ -129,7 +134,10 @@ AgentChat.enforces(`
 - AgentChat owns ticket-content rendering for live and historical ticket state rather than delegating ticket content semantics to dashboard shell code.
 - Ticket-content rendering should show the full ticket tree and live state in a dense readable layout rather than collapsing the ticket into a compact summary card.
 - Focused-ticket step completion events may trigger immediate continuation into the next actionable step when the ticket remains active and unblocked.
-- Once a terminal process state is resolved by a fresh process selection or by new active non-terminal work, the transient Done or Blocked selector state should clear immediately.
+- A blocked ticket may be produced either by the agent explicitly blocking the current step or by the system automatically blocking repeated non-progress on the current step.
+- The system should automatically block the active ticket when the same current step fails to advance for three consecutive attempts.
+- The system-owned same-step attempt counter should reset immediately when the current step advances, when a different ticket becomes active, or when the operator comments to resume the still-active blocked ticket.
+- Once a done process state is resolved by a fresh process selection or by new active non-terminal work, the transient Done selector state should clear immediately.
 - Ticket-owned immediate-idle continuation must treat operator-visible stalled turns as unresolved inactivity even when the provider transport still considers the turn open.
 - If the provider explicitly reports itself idle while the session process is still unresolved, AgentChat should make ticket-owned continuation immediately eligible rather than waiting another full idle timeout window.
 - If the provider explicitly reports an error, AgentChat should enter provider-error handling and retry policy rather than misclassifying that state as ordinary idle.

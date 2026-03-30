@@ -203,10 +203,15 @@ CurrentReality.sessionListQuickProcessSet.means(`
 
 CurrentReality.processResolutionGuard.means(`
 - when the active session process reaches its completion token, the quick-set control enters a required unresolved state instead of silently reusing the completed process contract
-- when the active session process reaches its blocked token, the same guard enters a Blocked unresolved state instead of silently reusing the blocked process contract
-- that unresolved state is shown as red Done warning text in the quick-set selector rather than as a stored process value or selectable option
+- when the active ticket reaches a blocked condition, the session should pause that same ticket instead of forcing a fresh process selection before the operator can comment
+- agent-emitted blocked tokens and system-owned repeated-non-progress detection should feed the same blocked-ticket pause behavior
+- the blocked ticket should remain resumable from the same chat while it stays the active ticket
+- a user comment on that still-active blocked ticket should resume the same ticket and reset its same-step attempt counter
+- changing the active ticket should move chat focus without deleting or silently replacing the previously active ticket record
+- only the done condition should enter the required unresolved process-selection guard
+- the done unresolved state is shown as red Done warning text in the quick-set selector rather than as a stored process value or selectable option
 - the current-chat settings surface also highlights that completed-process state and keeps normal process options available for resolution
-- the composer send path is blocked until the operator chooses the next normal process selection
+- the composer send path is blocked only for done-state resolution that still requires the operator to choose the next normal process selection
 - the unresolved Done state is now backed by a distinct selector sentinel value, so the operator can explicitly choose the same previous process again and have that count as a fresh re-application of the contract
 - reapplying the same completed process now resets the completed watchdog state and queues the next-turn process instruction again instead of being ignored as a no-op
 `);
@@ -217,6 +222,9 @@ CurrentReality.stalledTurnWatchdog.means(`
 - local verification confirmed that a long-running shell command session stayed provider-running, then received its Full Development Process watchdog prompt after the configured inactivity budget expired
 - the process-blueprint watchdog prompts now explicitly tell the agent to resume real work by default and reserve plain text terminal replies for exact done or blocked outcomes
 - when the provider finishes a turn and reports itself idle before the process is done or blocked, the watchdog becomes immediately eligible instead of waiting a second idle timeout
+- repeated system-owned nudges on the same current ticket step should increment a consecutive same-step attempt counter
+- if the same current step still has not advanced after three consecutive attempts, the system should block that ticket step automatically
+- a user comment that resumes the same active blocked ticket should reset that same-step attempt counter before execution continues
 `);
 
 CurrentReality.providerErrorRetry.means(`
