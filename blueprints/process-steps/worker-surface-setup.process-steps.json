@@ -4,7 +4,7 @@
   "steps": [
     {
       "id": "choose_feature_branch_name",
-      "title": "Choose and record the feature branch name for this process"
+      "title": "Choose a unique feature branch name for this process and respond with it in chat"
     },
     {
       "id": "setup_worker_surface",

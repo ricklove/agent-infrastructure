@@ -49,6 +49,7 @@ ProcessBlueprints.enforces(`
 - Reusable process-step bundles may be imported into a process or nested step tree without duplicating the step definitions inline.
 - Nested step process blueprints are the canonical structured workflows for repository-defined development, deploy, and blueprint-authoring processes.
 - Repository-local flat duplicates of a structured workflow should not coexist with the nested canonical process once the nested process is the intended catalog entry.
+- Every mutable process expectation should begin by naming the only allowed mutable surface for that process and by forbidding edits from the shared repository checkout.
 - When shared workspace and repository-local process-step bundles share the same id, the shared workspace bundle should override before any process `use` expansion occurs.
 - When shared workspace and repository-local process blueprints share the same id, the shared workspace blueprint should override the repository-local definition in the presented catalog.
 - Decision-step options may advance to the next step, jump to an explicit step id, complete the process, or block the process.
@@ -73,6 +74,7 @@ ProcessBlueprints.defines(`
 - ProcessDecisionStep means one named step whose allowed outcomes are explicitly enumerated in the machine contract rather than improvised from transcript prose.
 - ProcessStepBundleJson means one reusable machine-readable step bundle that may be imported into one or more process definitions.
 - CanonicalNestedProcessBlueprint means one repository-defined process blueprint that keeps the user-visible structured workflow in a nested step tree rather than maintaining a parallel flat duplicate.
+- ExplicitMutableSurfaceExpectation means a mutable process expectation opens by naming the one allowed editing surface and by forbidding edits from the shared repository checkout.
 - ProcessWaitStep means one named step whose purpose is to remain in a waiting state until an external event or user response arrives.
 - ProcessDecisionNextOutcome means a decision option that advances to the immediately following step without naming a separate target id.
 - ProcessDecisionBlockOutcome means a decision option that blocks the process instead of advancing.

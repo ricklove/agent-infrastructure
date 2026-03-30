@@ -77,6 +77,8 @@ DevelopmentProcess.enforces(`
 - Active implementation plans should live in the ticket system rather than as durable repository design documents.
 - Before installing or reconfiguring local developer tools, check `/home/ec2-user/workspace/README.md` and the referenced notes under `/home/ec2-user/workspace/tools/` for machine-specific guidance and already-installed utilities.
 - Source is the only editing surface for intended behavior changes.
+- The shared repository checkout is not a valid mutable surface for code-changing, blueprint-changing, or process-definition changes and should remain a non-editing integration anchor.
+- Mutable process expectations should begin by naming their only allowed editing surface and by explicitly forbidding edits from the shared repository checkout.
 - The shared repository checkout should remain on the current base branch used for ongoing integration work.
 - Feature and fix implementation should begin from a feature branch rooted at the current base branch while leaving the shared checkout on that base branch.
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
