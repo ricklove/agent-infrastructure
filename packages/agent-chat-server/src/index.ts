@@ -2205,6 +2205,55 @@ const server = Bun.serve<ChatSocketData>({
       return ticket ? jsonResponse({ ok: true, ticket }) : notFound();
     }
 
+    const sessionTicketsMatch = /^\/api\/agent-chat\/sessions\/([^/]+)\/tickets$/.exec(url.pathname);
+    if (sessionTicketsMatch && request.method === "GET") {
+      const sessionId = decodeURIComponent(sessionTicketsMatch[1]!);
+      if (!store.getSession(sessionId)) {
+        return notFound();
+      }
+      const unfinishedOnly = url.searchParams.get("unfinished") === "true" || url.searchParams.get("unfinished") === "1";
+      return jsonResponse({
+        ok: true,
+        tickets: ticketStore.listTicketsForSession(sessionId, { unfinishedOnly }),
+      });
+    }
+
+    const sessionActiveTicketMatch = /^\/api\/agent-chat\/sessions\/([^/]+)\/active-ticket$/.exec(url.pathname);
+    if (sessionActiveTicketMatch && request.method === "POST") {
+      const sessionId = decodeURIComponent(sessionActiveTicketMatch[1]!);
+      if (!store.getSession(sessionId)) {
+        return notFound();
+      }
+
+      return request.json().then((body: unknown) => {
+        const payload = body as { ticketId?: string | null };
+        const ticketId = payload.ticketId?.trim() || "";
+        if (!ticketId) {
+          return jsonResponse({ ok: false, error: "ticketId required" }, 400);
+        }
+
+        const activatedTicket = ticketStore.activateTicketForSession(sessionId, ticketId);
+        if (!activatedTicket) {
+          return jsonResponse({ ok: false, error: "unfinished ticket not found for session" }, 404);
+        }
+
+        resetSessionWatchdogState(sessionId);
+        maybeScheduleSessionWatchdog(sessionId);
+        const snapshot = buildSessionSnapshot(sessionId);
+        if (!snapshot) {
+          return notFound();
+        }
+        broadcastSession(sessionId, {
+          type: "session.snapshot",
+          session: snapshot.session,
+          messages: snapshot.messages,
+          queuedMessages: snapshot.queuedMessages,
+          activity: snapshot.activity,
+        });
+        return jsonResponse(snapshot);
+      });
+    }
+
     if (url.pathname === "/api/agent-chat/sessions" && request.method === "GET") {
       return jsonResponse({
         ok: true,
