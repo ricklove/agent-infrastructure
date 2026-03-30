@@ -115,6 +115,8 @@ function main() {
     "  exit 1",
     "fi",
     'git worktree add -b "$BRANCH" "$WORKTREE" "origin/$BASE_BRANCH"',
+    'cd "$WORKTREE"',
+    "bun install",
   ].join("\n");
 
   runChecked(["ssh", hostAlias, remoteScript]);
