@@ -119,6 +119,7 @@ AgentChat.enforces(`
 - Changing the session process selector must not submit or otherwise flush the current human draft; the process change remains only a queued next-turn instruction until the operator later sends a real message.
 - A queued process change that is still waiting for that next explicit human send must not by itself arm or trigger immediate idle continuation.
 - When a new active ticket is created from a process selection, AgentChat should emit one canonical system event that includes the expectation message and the full process outline for that ticket.
+- The first provider turn after ticket creation may specialize that active ticket with ticketTitle: and ticketSummary: metadata while keeping the selected process title as separate process-owned state.
 - When a session process reaches its completion condition, the next human send should require an explicit fresh process selection rather than silently reusing the completed process contract.
 - Once a session process is active, the active ticket remains unresolved until the process-defined done or blocked condition is reached.
 - Focused-ticket state changes should surface as canonical system ticket events in the transcript.

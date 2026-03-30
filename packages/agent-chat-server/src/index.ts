@@ -597,6 +597,24 @@ function currentTicketStepTokenHint(ticket: StoredAgentTicket | null) {
   return `\n\nIf you complete the current step in this reply, end your final line with exactly one of: done: ${currentStep.tokenId} | blocked: ${currentStep.tokenId}`;
 }
 
+function activeTicketNeedsMetadataSpecialization(ticket: StoredAgentTicket | null) {
+  if (!ticket) {
+    return false;
+  }
+  const titleIsProvisional = ticket.title.trim() === ticket.processTitle.trim();
+  const summaryIsProvisional = !ticket.summary?.trim() || ticket.summary.trim() === ticket.description.trim();
+  return titleIsProvisional || summaryIsProvisional;
+}
+
+function initialTicketMetadataHint(ticket: StoredAgentTicket | null) {
+  if (!activeTicketNeedsMetadataSpecialization(ticket)) {
+    return "";
+  }
+  return "\n\nOn your first reply for this ticket, include these two metadata lines before your normal response:\n"
+    + "ticketTitle: <specific ticket title>\n"
+    + "ticketSummary: <short concrete summary>";
+}
+
 function currentDecisionOptionHint(ticket: StoredAgentTicket | null) {
   if (!ticket?.currentStepId) {
     return "";
@@ -623,7 +641,7 @@ function buildProcessExpectationInstruction(
   const outline = ticket && ticket.checklist.length > 0 ? formatTicketChecklist(ticket) : "";
   const outlineBlock = outline ? `\n\nProcess outline:
 ${outline}` : "";
-  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${outlineBlock}`;
+  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${outlineBlock}${initialTicketMetadataHint(ticket)}`;
 }
 
 function buildWatchdogPrompt(processBlueprint: ProcessBlueprint, ticket: StoredAgentTicket | null) {
@@ -910,6 +928,48 @@ function extractAssistantProcessSignal(
   return {
     visibleText: lines.join("\n").trim(),
     signalText,
+  };
+}
+
+function extractAssistantTicketMetadata(assistantText: string) {
+  const trimmed = assistantText.trimEnd();
+  if (!trimmed) {
+    return {
+      visibleText: trimmed.trim(),
+      title: null as string | null,
+      summary: null as string | null,
+    };
+  }
+
+  const lines = trimmed.split(/\r?\n/);
+  let title: string | null = null;
+  let summary: string | null = null;
+  const visibleLines: string[] = [];
+
+  for (const line of lines) {
+    const titleMatch = /^ticketTitle:\s*(.+)$/i.exec(line.trim());
+    if (titleMatch) {
+      const value = titleMatch[1]?.trim();
+      if (value) {
+        title = value;
+      }
+      continue;
+    }
+    const summaryMatch = /^ticketSummary:\s*(.+)$/i.exec(line.trim());
+    if (summaryMatch) {
+      const value = summaryMatch[1]?.trim();
+      if (value) {
+        summary = value;
+      }
+      continue;
+    }
+    visibleLines.push(line);
+  }
+
+  return {
+    visibleText: visibleLines.join("\n").trim(),
+    title,
+    summary,
   };
 }
 
@@ -1917,8 +1977,13 @@ async function runProviderTurnForQueuedMessages(
         })
       : latestSession;
     const rawAssistantText = result.assistantText.trim();
+    const assistantMetadata = extractAssistantTicketMetadata(rawAssistantText);
+    ticketStore.specializeActiveTicketMetadata(sessionId, {
+      title: assistantMetadata.title,
+      summary: assistantMetadata.summary,
+    });
     const assistantSignal = extractAssistantProcessSignal(
-      rawAssistantText,
+      assistantMetadata.visibleText,
       ticketStore.getActiveTicketForSession(sessionId),
     );
     const finalAssistantText = assistantSignal.visibleText;
