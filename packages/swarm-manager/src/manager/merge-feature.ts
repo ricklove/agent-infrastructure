@@ -64,6 +64,20 @@ function usage(): never {
   process.exit(1);
 }
 
+function refreshSharedDevelopmentCheckout(): void {
+  runChecked(["chmod", "-R", "u+w", DEFAULT_REPO_PATH]);
+  try {
+    runChecked(["git", "fetch", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH);
+    const currentBranch = runChecked(["git", "rev-parse", "--abbrev-ref", "HEAD"], DEFAULT_REPO_PATH);
+    if (currentBranch !== DEFAULT_BASE_BRANCH) {
+      runChecked(["git", "checkout", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH);
+    }
+    runChecked(["git", "pull", "--ff-only", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH);
+  } finally {
+    runChecked(["chmod", "-R", "a-w", DEFAULT_REPO_PATH]);
+  }
+}
+
 function branchDirName(branchName: string): string {
   return branchName
     .trim()
@@ -182,7 +196,7 @@ function main() {
   );
   runChecked(["git", "merge", "--no-edit", featureBranch], managerWorktreePath);
   runChecked(["git", "push", "origin", `${integrationBranch}:${DEFAULT_BASE_BRANCH}`], managerWorktreePath);
-  runChecked(["git", "fetch", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH);
+  refreshSharedDevelopmentCheckout();
 
   console.log(`merge_outcome=completed`);
   console.log(`worker_alias=${hostAlias}`);
