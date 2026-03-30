@@ -770,9 +770,7 @@ function processBlueprintNudgeLimitReached(
 }
 
 function sessionTerminalWatchdogState(session: StoredSession) {
-  return (
-    session.watchdogState.status === "completed" || session.watchdogState.status === "blocked"
-  );
+  return session.watchdogState.status === "completed";
 }
 
 function operatorTypingActive(runtime: SessionRuntimeState) {
@@ -1169,7 +1167,41 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
     return;
   }
 
-  const activeTicket = ticketStore.getActiveTicketForSession(sessionId);
+  let activeTicket = ticketStore.getActiveTicketForSession(sessionId);
+  if (activeTicket?.status === "blocked") {
+    return;
+  }
+
+  if (activeTicket?.status === "active" && activeTicket.currentStepId) {
+    activeTicket = ticketStore.incrementSameStepAttemptCount(sessionId) ?? activeTicket;
+    if (activeTicket.sameStepAttemptCount >= 3) {
+      const blockedTicket = ticketStore.blockActiveTicketBySystem(
+        sessionId,
+        `Auto-blocked after 3 attempts on step: ${activeTicket.nextStepLabel ?? activeTicket.processTitle}`,
+      );
+      if (blockedTicket) {
+        const blockedMessage = appendTicketEventMessage(
+          sessionId,
+          buildTicketStateEventText(blockedTicket, "blocked"),
+        );
+        setSessionWatchdogState(sessionId, {
+          status: "blocked",
+          nudgeCount: session.watchdogState.nudgeCount,
+          lastNudgedAtMs: session.watchdogState.lastNudgedAtMs,
+          completedAtMs: null,
+        });
+        broadcastSession(sessionId, {
+          type: "session.updated",
+          session: store.getSession(sessionId) ? buildSessionSummary(store.getSession(sessionId)!) : null,
+          messages: [blockedMessage],
+          queuedMessages: store.listQueuedMessages(sessionId),
+          activity: toSessionActivity(sessionId),
+        });
+      }
+      return;
+    }
+  }
+
   const watchdogMessage =
     activeTicket?.status === "active" && activeTicket.currentStepId
       ? appendTicketEventMessage(sessionId, buildStartedStepEventText(activeTicket))
@@ -2685,6 +2717,10 @@ const server = Bun.serve<ChatSocketData>({
           content,
         });
         resetSessionWatchdogState(sessionId);
+        const resumedBlockedTicket = ticketStore.resumeBlockedActiveTicket(sessionId);
+        if (!resumedBlockedTicket) {
+          ticketStore.resetSameStepAttemptCount(sessionId);
+        }
 
         const sessionBeforeRun = store.getSession(sessionId);
         const titledSession =

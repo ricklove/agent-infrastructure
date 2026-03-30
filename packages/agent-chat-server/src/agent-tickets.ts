@@ -11,6 +11,7 @@ import { findStandaloneSignalLine } from "./process-signals.js";
 
 export type StoredAgentTicketStatus = "active" | "completed" | "blocked";
 export type StoredAgentTicketStepStatus = "pending" | "active" | "completed" | "blocked";
+export type StoredAgentTicketBlockedSource = "agent" | "system";
 
 export type StoredAgentTicketDecisionOption = {
   id: string;
@@ -52,6 +53,8 @@ export type StoredAgentTicket = {
   nextStepLabel: string | null;
   checklist: StoredAgentTicketStep[];
   resolution: string | null;
+  blockedSource: StoredAgentTicketBlockedSource | null;
+  sameStepAttemptCount: number;
   createdAtMs: number;
   updatedAtMs: number;
 };
@@ -386,17 +389,26 @@ function ticketWithNextStep(
   currentStepId: string | null,
   resolution: string | null,
   status: StoredAgentTicketStatus = "active",
+  options: {
+    blockedSource?: StoredAgentTicketBlockedSource | null;
+    sameStepAttemptCount?: number;
+  } = {},
 ): StoredAgentTicket {
   const normalizedChecklist = recomputeContainerStatuses(checklist);
   const currentStep = findStepById(normalizedChecklist, currentStepId);
+  const nextCurrentStepId = currentStep?.id ?? null;
+  const preservesSameStep = current.currentStepId === nextCurrentStepId;
   return {
     ...current,
     status,
-    currentStepId,
-    nextStepId: currentStep?.id ?? null,
+    currentStepId: nextCurrentStepId,
+    nextStepId: nextCurrentStepId,
     nextStepLabel: currentStep?.title ?? null,
     checklist: normalizedChecklist,
     resolution,
+    blockedSource: status === "blocked" ? (options.blockedSource ?? current.blockedSource ?? "agent") : null,
+    sameStepAttemptCount:
+      options.sameStepAttemptCount ?? (status === "active" && preservesSameStep ? current.sameStepAttemptCount : 0),
     updatedAtMs: Date.now(),
   };
 }
@@ -476,6 +488,8 @@ export class AgentTicketStore {
       nextStepLabel: firstActiveStep?.title ?? null,
       checklist,
       resolution: null,
+      blockedSource: null,
+      sameStepAttemptCount: 0,
       createdAtMs: now,
       updatedAtMs: now,
     };
@@ -595,7 +609,79 @@ export class AgentTicketStore {
           }))
         : nextChecklist;
 
-    const updated = ticketWithNextStep(current, resolvedChecklist, null, resolution, status);
+    const updated = ticketWithNextStep(
+      current,
+      resolvedChecklist,
+      status === "blocked" ? current.currentStepId : null,
+      resolution,
+      status,
+      {
+        blockedSource: status === "blocked" ? "agent" : null,
+        sameStepAttemptCount: 0,
+      },
+    );
+    this.persistTicket(updated);
+    return updated;
+  }
+
+  resumeBlockedActiveTicket(sessionId: string) {
+    const current = this.getActiveTicketForSession(sessionId);
+    if (!current || current.status !== "blocked" || !current.currentStepId) {
+      return null;
+    }
+
+    const resumedChecklist = updateStepById(cloneChecklist(current.checklist), current.currentStepId, (step) => ({
+      ...step,
+      status: "active",
+    }));
+    const updated = ticketWithNextStep(current, resumedChecklist, current.currentStepId, null, "active", {
+      blockedSource: null,
+      sameStepAttemptCount: 0,
+    });
+    this.persistTicket(updated);
+    return updated;
+  }
+
+  resetSameStepAttemptCount(sessionId: string) {
+    const current = this.getActiveTicketForSession(sessionId);
+    if (!current || current.sameStepAttemptCount === 0) {
+      return current;
+    }
+    const updated = ticketWithNextStep(current, cloneChecklist(current.checklist), current.currentStepId, current.resolution, current.status, {
+      blockedSource: current.blockedSource,
+      sameStepAttemptCount: 0,
+    });
+    this.persistTicket(updated);
+    return updated;
+  }
+
+  incrementSameStepAttemptCount(sessionId: string) {
+    const current = this.getActiveTicketForSession(sessionId);
+    if (!current || current.status !== "active" || !current.currentStepId) {
+      return null;
+    }
+    const updated = ticketWithNextStep(current, cloneChecklist(current.checklist), current.currentStepId, current.resolution, current.status, {
+      blockedSource: null,
+      sameStepAttemptCount: current.sameStepAttemptCount + 1,
+    });
+    this.persistTicket(updated);
+    return updated;
+  }
+
+  blockActiveTicketBySystem(sessionId: string, resolution: string) {
+    const current = this.getActiveTicketForSession(sessionId);
+    if (!current || !current.currentStepId) {
+      return null;
+    }
+
+    const blockedChecklist = updateStepById(cloneChecklist(current.checklist), current.currentStepId, (step) => ({
+      ...step,
+      status: "blocked",
+    }));
+    const updated = ticketWithNextStep(current, blockedChecklist, current.currentStepId, resolution, "blocked", {
+      blockedSource: "system",
+      sameStepAttemptCount: 0,
+    });
     this.persistTicket(updated);
     return updated;
   }
@@ -657,9 +743,12 @@ export class AgentTicketStore {
     void currentIndex;
     const nextChecklist = updateStepById(cloneChecklist(current.checklist), currentStep.id, (step) => ({
       ...step,
-      status: "active",
+      status: "blocked",
     }));
-    const updated = ticketWithNextStep(current, nextChecklist, currentStep.id, detail, "active");
+    const updated = ticketWithNextStep(current, nextChecklist, currentStep.id, detail, "blocked", {
+      blockedSource: "agent",
+      sameStepAttemptCount: 0,
+    });
     this.persistTicket(updated);
     return {
       ticket: updated,
@@ -677,11 +766,14 @@ export class AgentTicketStore {
   ): StoredAgentTicketTransition {
     const baseChecklist = updateStepById(cloneChecklist(current.checklist), currentStep.id, (step) => ({
       ...step,
-      status: option.block ? "active" : "completed",
+      status: option.block ? "blocked" : "completed",
     }));
 
     if (option.block) {
-      const updated = ticketWithNextStep(current, baseChecklist, currentStep.id, option.title, "active");
+      const updated = ticketWithNextStep(current, baseChecklist, currentStep.id, option.title, "blocked", {
+        blockedSource: "agent",
+        sameStepAttemptCount: 0,
+      });
       this.persistTicket(updated);
       return {
         ticket: updated,
@@ -1018,7 +1110,21 @@ export class AgentTicketStore {
             ? parsed.processSnapshotId
             : null,
         processTitle: String(parsed.processTitle),
+        status:
+          parsed.status === "completed" || parsed.status === "blocked" ? parsed.status : "active",
+        currentStepId:
+          typeof parsed.currentStepId === "string" && parsed.currentStepId.trim() ? parsed.currentStepId : null,
+        nextStepId:
+          typeof parsed.nextStepId === "string" && parsed.nextStepId.trim() ? parsed.nextStepId : null,
+        nextStepLabel:
+          typeof parsed.nextStepLabel === "string" && parsed.nextStepLabel.trim() ? parsed.nextStepLabel : null,
         checklist: normalizeStoredTicketSteps(parsed.checklist),
+        resolution: typeof parsed.resolution === "string" && parsed.resolution.trim() ? parsed.resolution : null,
+        blockedSource:
+          parsed.blockedSource === "agent" || parsed.blockedSource === "system" ? parsed.blockedSource : null,
+        sameStepAttemptCount: Number.isFinite(Number(parsed.sameStepAttemptCount))
+          ? Math.max(0, Number(parsed.sameStepAttemptCount))
+          : 0,
       };
     } catch {
       return null;
