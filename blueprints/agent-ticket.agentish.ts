@@ -123,6 +123,11 @@ AgentTicket.enforces(`
 - Whenever the focused ticket changes state, the system should surface that change as a canonical chat system event.
 - Step completion, step blockage, process completion, and process blockage may use exact tokens when the selected process definition requires them.
 - The ticket system should allow the agent to complete only the single current next step derived from the pinned process snapshot.
+- The ticket should record whether the current step is blocked and whether that blocked state was produced by the agent or by the system runtime.
+- The ticket should track a consecutive same-step attempt counter for the current actionable step when the runtime is automatically resuming or nudging that same step.
+- A system-owned blocked state should be entered when the current step fails to advance after three consecutive same-step attempts.
+- A user comment that resumes the still-active blocked ticket should clear that blocked marker and reset the current step's consecutive same-step attempt counter to zero.
+- Making a different ticket active in the chat should not rewrite the older ticket into a synthetic inactive lifecycle state; it should only change which ticket the chat currently points at.
 - A chat-facing agent may execute a ticket directly from the active chat context or may delegate bounded work while keeping the same ticket as the authoritative process record.
 - A complex ticket may be orchestrated by one supervising agent coordinating several workers against the same authoritative ticket state.
 - Tickets live in workspace state rather than inside one project repository because ticket state may span several repositories, branches, deployments, and workspace artifacts.
@@ -132,6 +137,8 @@ AgentTicket.defines(`
 - AgentTicketRecord means the durable workspace record for one process instance.
 - AgentTicketStoreIndex means the store-owned lookup and addressing layer for ticket records.
 - AgentTicketProcessState means the mutable runtime state including current status, current step, next step, completed steps, blocked steps, execution mode, and terminal resolution.
+- AgentTicketBlockedSource means whether the current blocked state came from an explicit agent block or from a system-owned repeated-non-progress rule.
+- SameStepAttemptCounter means the consecutive runtime-owned attempt count for the current actionable step while that step remains unchanged.
 - AgentTicketChecklistState means the stateful nested checklist projection of the pinned process outline for one ticket.
 - AgentTicketSystemEvent means the canonical transcript-visible system event emitted when the focused ticket changes state.
 - AgentTicketReference means one typed durable pointer from a ticket to another relevant workspace object.
