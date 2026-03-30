@@ -39,7 +39,12 @@
           "title": "Commit the process-definition changes"
         },
         {
-          "use": "manager_development_integration"
+          "id": "merge_into_development",
+          "title": "Merge the branch into development"
+        },
+        {
+          "id": "push_development_to_origin",
+          "title": "Push development to origin"
         }
       ]
     },
