@@ -13,6 +13,10 @@
   ],
   "steps": [
     {
+      "id": "choose_feature_branch_name",
+      "title": "Choose and record the feature branch name for this process"
+    },
+    {
       "id": "create_worktree_surface",
       "title": "Run `bun run agent:prepare-manager-surface -- <feature-branch-name>` to create the manager-hosted feature-branch worktree from `origin/development` and print the resulting `start_command` for entering that worktree"
     },

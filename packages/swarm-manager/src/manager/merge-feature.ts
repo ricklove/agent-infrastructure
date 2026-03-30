@@ -12,13 +12,14 @@ type CommandResult = {
 };
 
 function fail(message: string): never {
-  console.error(`[merge-feature] ${message}`);
+  console.error(`[merge-worker-feature] ${message}`);
   process.exit(1);
 }
 
 function emitConflictBlock(hostAlias: string, featureBranch: string, workerWorktreePath: string): never {
   const resolveCommand = `ssh ${hostAlias} 'cd ${workerWorktreePath} && exec bash -l'`;
-  console.error(`[merge-feature] worker feature branch requires merge conflict resolution`);
+  console.error(`merge_outcome=worker_conflict_resolution_required`);
+  console.error(`[merge-worker-feature] worker feature branch requires merge conflict resolution`);
   console.error(`worker_alias=${hostAlias}`);
   console.error(`feature_branch=${featureBranch}`);
   console.error(`worker_worktree=${workerWorktreePath}`);
@@ -125,7 +126,7 @@ function ensureWorkerBranchReady(hostAlias: string, branchName: string): string 
     if (conflictDetected) {
       emitConflictBlock(hostAlias, branchName, workerWorktreePath);
     }
-    fail(`command failed: ssh ${hostAlias} <merge worker sync branch>`);
+    fail(`command failed: ssh ${hostAlias} <merge worker merge-base branch>`);
   }
   return workerWorktreePath;
 }
@@ -183,6 +184,7 @@ function main() {
   runChecked(["git", "push", "origin", `${integrationBranch}:${DEFAULT_BASE_BRANCH}`], managerWorktreePath);
   runChecked(["git", "fetch", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH);
 
+  console.log(`merge_outcome=completed`);
   console.log(`worker_alias=${hostAlias}`);
   console.log(`feature_branch=${featureBranch}`);
   console.log(`worker_merge_base_branch=${mergeBaseBranch}`);

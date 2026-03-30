@@ -22,7 +22,7 @@
     "run:prepare-manager-surface": "bun run src/manager/prepare-manager-surface.ts",
     "run:prepare-worker-surface": "bun run src/manager/prepare-worker-surface.ts",
     "run:merge-manager-feature": "bun run src/manager/merge-manager-feature.ts",
-    "run:merge-feature": "bun run src/manager/merge-feature.ts",
+    "run:merge-worker-feature": "bun run src/manager/merge-feature.ts",
     "run:launch-service": "bun run src/manager/launch-service.ts",
     "run:worker-agent": "bun run src/worker/agent.ts"
   },

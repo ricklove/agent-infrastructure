@@ -85,10 +85,10 @@ function main() {
   }
 
   runChecked(["git", "merge", "--no-edit", `origin/${DEFAULT_BASE_BRANCH}`], managerWorktreePath);
-  runChecked(["git", "merge", "--no-edit", featureBranch], managerWorktreePath);
   runChecked(["git", "push", "origin", `HEAD:${DEFAULT_BASE_BRANCH}`], managerWorktreePath);
   runChecked(["git", "fetch", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH);
 
+  console.log(`merge_outcome=completed`);
   console.log(`feature_branch=${featureBranch}`);
   console.log(`manager_worktree=${managerWorktreePath}`);
   console.log(`start_command=cd ${managerWorktreePath} && exec bash -l`);

@@ -83,6 +83,7 @@ DevelopmentProcess.enforces(`
 - Code-changing implementation work should use a swarm worker as the active development host rather than the manager runtime host.
 - The normal entrypoint for preparing a worker-backed feature branch should be `bun run agent:prepare-worker-surface -- <feature-branch-name>`, which should ensure or launch a worker, create the worker worktree from `origin/development`, run `bun install`, and print the canonical `start_command` for entering that worktree.
 - The normal entrypoint for preparing a manager-hosted feature branch should be `bun run agent:prepare-manager-surface -- <feature-branch-name>`, which should create the manager-hosted feature worktree from `origin/development` and print the canonical `start_command` for entering that worktree.
+- Before any prepare-surface command runs, the process should choose and record a unique feature branch name for that run.
 - New features, broad refactors, dependency installation, workspace builds, workspace checks, and other substantial implementation loops are always worker-host work and must not run on the manager host.
 - When a swarm worker is used for development, the worker checkout is the only active mutable implementation surface for that branch and should be treated as a remote worktree.
 - When a swarm worker is used for development, that worker should have its own isolated workspace checkout and its own worker-local runtime surface rather than sharing the manager host runtime or canonical shared checkout.
@@ -91,6 +92,8 @@ DevelopmentProcess.enforces(`
 - A worker-host implementation surface must not inherit long-lived manager git credentials or ambient git authority for canonical manager repositories.
 - When a swarm worker is used for development, the normal entrypoint for manager-side integration should be `bun run agent:merge-worker-feature -- <feature-branch-name>`, which should refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin.
 - When a manager-hosted feature worktree is used for development, the normal entrypoint for manager-side integration should be `bun run agent:merge-manager-feature -- <feature-branch-name>`, which should merge the local feature branch from its manager worktree and push `development` to origin.
+- Worker-backed merge commands should print `merge_outcome=completed` on success or `merge_outcome=worker_conflict_resolution_required` when the worker feature branch requires conflict resolution.
+- Manager-hosted merge commands should print `merge_outcome=completed` on success.
 - When a swarm worker is used for development, a dedicated manager integration worktree remains the integration, GitHub push, release, deploy, and live-verification surface rather than the shared repository checkout or a parallel editing surface.
 - The manager host must not be used as the active mutable implementation surface for code-changing feature or fix work.
 - Development on a swarm worker should happen through persistent worker terminals entered via the printed `start_command` rather than through repeated manual ssh setup ceremony or one-off ssh command invocations for routine edit and verification loops.
