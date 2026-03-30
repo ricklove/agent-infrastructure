@@ -79,16 +79,8 @@
           }
         },
         {
-          "id": "pull_worker_branch_to_manager",
-          "title": "Pull the changes from the focused worker feature branch back to the project repo on the manager"
-        },
-        {
-          "id": "merge_into_development",
-          "title": "Merge the feature branch into development"
-        },
-        {
-          "id": "push_development_to_origin",
-          "title": "Push development to origin"
+          "id": "merge_feature_branch",
+          "title": "Run `bun run agent:merge-feature -- <feature-branch-name>` to refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin"
         }
       ]
     },
