@@ -2,8 +2,6 @@ import { DEFAULT_WORKSPACE_DIR } from "../paths.js";
 
 const DEFAULT_BASE_BRANCH = "development";
 const DEFAULT_REPO_PATH = `${DEFAULT_WORKSPACE_DIR}/projects/agent-infrastructure`;
-const DEFAULT_WORKTREE_ROOT = `${DEFAULT_WORKSPACE_DIR}/projects-worktrees/agent-infrastructure-manager`;
-
 type CommandResult = {
   exitCode: number;
   stdout: string;
@@ -48,12 +46,22 @@ function usage(): never {
   process.exit(1);
 }
 
-function branchDirName(branchName: string): string {
-  return branchName
-    .trim()
-    .replaceAll(/[^A-Za-z0-9._-]+/g, "-")
-    .replaceAll(/-+/g, "-")
-    .replaceAll(/^-|-$/g, "");
+function findWorktreePathForBranch(branchName: string): string {
+  const output = runChecked(["git", "worktree", "list", "--porcelain"], DEFAULT_REPO_PATH);
+  const targetRef = `refs/heads/${branchName}`;
+  let currentWorktree = "";
+
+  for (const line of output.split(/\r?\n/)) {
+    if (line.startsWith("worktree ")) {
+      currentWorktree = line.slice("worktree ".length).trim();
+      continue;
+    }
+    if (line.startsWith("branch ") && line.slice("branch ".length).trim() === targetRef) {
+      return currentWorktree;
+    }
+  }
+
+  fail(`manager feature worktree path does not exist for branch: ${branchName}`);
 }
 
 function main() {
@@ -62,22 +70,13 @@ function main() {
     usage();
   }
 
-  const featureDirName = branchDirName(featureBranch);
-  if (!featureDirName) {
-    fail("feature branch name must contain at least one path-safe character");
-  }
-
-  const managerWorktreePath = `${DEFAULT_WORKTREE_ROOT}/${featureDirName}`;
-
   runChecked(["git", "fetch", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH);
 
   if (runCommand(["git", "show-ref", "--verify", "--quiet", `refs/heads/${featureBranch}`], DEFAULT_REPO_PATH).exitCode !== 0) {
     fail(`manager feature branch does not exist: ${featureBranch}`);
   }
 
-  if (runCommand(["test", "-d", managerWorktreePath]).exitCode !== 0) {
-    fail(`manager feature worktree path does not exist: ${managerWorktreePath}`);
-  }
+  const managerWorktreePath = findWorktreePathForBranch(featureBranch);
 
   const currentBranch = runChecked(["git", "rev-parse", "--abbrev-ref", "HEAD"], managerWorktreePath);
   if (currentBranch !== featureBranch) {
