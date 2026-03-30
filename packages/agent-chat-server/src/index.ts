@@ -49,12 +49,19 @@ const legacyDbPath =
 const port = Number.parseInt(process.env.AGENT_CHAT_PORT ?? "8789", 10);
 const defaultSessionDirectory =
   process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
+const workspaceBlueprintRoot =
+  process.env.AGENT_SHARED_BLUEPRINTS_DIR?.trim() || `${defaultSessionDirectory}/blueprints`;
 const workspacePersistenceRequestPath =
   process.env.WORKSPACE_PERSISTENCE_REQUEST_PATH?.trim() ||
   `${stateDir}/workspace-persistence-request.json`;
 const processBlueprintsDir =
   process.env.AGENT_PROCESS_BLUEPRINTS_DIR?.trim() ||
   resolve(import.meta.dir, "../../../blueprints/process-blueprints");
+const processStepsDir =
+  process.env.AGENT_PROCESS_STEPS_DIR?.trim() ||
+  resolve(import.meta.dir, "../../../blueprints/process-steps");
+const workspaceProcessBlueprintsDir = resolve(workspaceBlueprintRoot, "process-blueprints");
+const workspaceProcessStepsDir = resolve(workspaceBlueprintRoot, "process-steps");
 const approvedTempImageDir = resolve(
   process.env.AGENT_CHAT_TEMP_IMAGE_DIR?.trim() || "/home/ec2-user/temp",
 );
@@ -185,7 +192,10 @@ const ticketStore = new AgentTicketStore({
     requestWorkspacePersistence(`agent-chat:${event.reason}:${event.sessionId}`);
   },
 });
-const processBlueprintCatalog = loadProcessBlueprintCatalog(processBlueprintsDir);
+const processBlueprintCatalog = loadProcessBlueprintCatalog({
+  processBlueprintDirs: [processBlueprintsDir, workspaceProcessBlueprintsDir],
+  processStepDirs: [processStepsDir, workspaceProcessStepsDir],
+});
 const processBlueprintById = new Map(processBlueprintCatalog.map((entry) => [entry.id, entry] as const));
 const sessionSockets = new Map<string, Set<Bun.ServerWebSocket<ChatSocketData>>>();
 const activeSessionRuns = new Set<string>();
