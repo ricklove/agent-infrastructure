@@ -2,7 +2,7 @@
   "id": "deploy",
   "title": "Deploy",
   "catalogOrder": 47,
-  "expectation": "Use the manager project repository as the integration, release, deploy, and live-validation surface for this process. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then pull the changes back into the manager project repository before continuing. Follow the deploy process through manager-side branch integration, release promotion, runtime deploy, runtime revision and version verification, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using that issued session URL, manager-dashboard screenshot verification, cleanup of the feature branch and worktree on success, and rollback recovery when screenshot verification fails.",
+  "expectation": "Use a dedicated manager integration worktree as the integration, release, deploy, and live-validation surface for this process. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then run the worker-feature merge flow to refresh that branch from latest `origin/development`, integrate it through the manager worktree, and push `development` to origin before continuing. After a successful merge into `development`, promote that integrated commit onto `main`, create a release tag from the exact promoted commit, deploy the runtime from the release target, verify runtime revision and version match, perform live health verification, issue a manager-dashboard session URL with `bun run issue:dashboard-session`, perform real browser verification at the public Cloudflare manager dashboard URL using that issued session URL, verify the manager-dashboard screenshot, and complete cleanup or rollback recovery as required.",
   "idlePrompt": "If deployment is complete, reply only with 'done: deploy complete'. If you are truly blocked on a missing focused feature branch, user decision, or environment dependency, reply only with 'blocked: deploy blocked'. Otherwise resume the deploy process immediately and perform the next required integration, release, deploy, cleanup, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: deploy complete",
@@ -58,7 +58,7 @@
     },
     {
       "id": "promote_release",
-      "title": "Promote the release"
+      "title": "Merge the integrated `development` commit onto `main`, push `main`, and create and push a release tag from that exact promoted commit"
     },
     {
       "id": "deploy_runtime",

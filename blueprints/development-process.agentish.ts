@@ -106,7 +106,7 @@ DevelopmentProcess.enforces(`
 - A prompt-driven design or critique surface must not auto-create coding-capable sessions against the manager workspace by default.
 - Live Peer Development is a sanctioned alternative to the full release workflow for iterative worker-host feature development with an actively shared worker preview dashboard.
 - Live Peer Development should still follow blueprint-first worker-backed feature-branch development, local verification, and committed milestone updates.
-- Live Peer Development should stop before merge into the base branch, release promotion, release tagging, runtime deploy, and manager-host live validation unless the operator explicitly switches back to the full development process.
+- Live Peer Development should stop before merge into the base branch, promotion of the integrated `development` commit onto `main`, creation of the release tag from that promoted commit, runtime deploy, and manager-host live validation unless the operator explicitly switches back to the full development process.
 - Live Peer Development should provide the worker preview URL to the operator and should expect continued operator feedback while the worker preview remains the active review surface.
 - Live Peer Development should record stable milestones as feature-branch commits rather than leaving iterative preview work only in uncommitted worker state.
 - Live Peer Development may include high-level dashboard UI iteration, mockups, or exploratory design outputs in addition to implementation changes, but any code-changing work still belongs on the worker feature branch.

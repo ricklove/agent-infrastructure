@@ -2,7 +2,7 @@
   "id": "define_process_steps",
   "title": "Define Process (Nested Steps)",
   "catalogOrder": 26,
-  "expectation": "Create a feature-branch worktree from the current upstream base branch tip under the canonical worktree location and use it as the only mutable surface for this process; never edit process definition files from the shared repository checkout. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Review relevant existing blueprints, process definitions, and Agentish sections when defining or restructuring a process, create or update the needed process definition layer from that worktree branch, commit the changes, merge the branch into development, push development to origin, promote the release, deploy the runtime through the normal release-tag deploy path, and verify the new process is available in the live system.",
+  "expectation": "Create a feature-branch worktree from the current upstream base branch tip under the canonical worktree location and use it as the only mutable surface for this process; never edit process definition files from the shared repository checkout. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Review relevant existing blueprints, process definitions, and Agentish sections when defining or restructuring a process, create or update the needed process definition layer from that worktree branch, commit the changes, merge the branch into `development`, push `development` to origin, promote that integrated commit onto `main`, create a release tag from the exact promoted commit, deploy the runtime through the normal release-tag deploy path, and verify the new process is available in the live system.",
   "idlePrompt": "If the process-definition work is complete, reply only with 'done: process defined'. If you are truly blocked on missing user information or an environment dependency, reply only with 'blocked: process definition requires clarification'. Otherwise resume the process-definition work immediately and perform the next required blueprint, integration, deploy, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: process defined",
@@ -50,7 +50,7 @@
       "steps": [
         {
           "id": "promote_release",
-          "title": "Promote the release"
+          "title": "Merge the integrated `development` commit onto `main`, push `main`, and create and push a release tag from that exact promoted commit"
         },
         {
           "id": "deploy_runtime",

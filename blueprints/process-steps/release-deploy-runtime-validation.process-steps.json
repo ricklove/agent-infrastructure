@@ -4,11 +4,11 @@
   "steps": [
     {
       "id": "promote_release",
-      "title": "Create and push a release tag for the integrated `development` commit"
+      "title": "Merge the integrated `development` commit onto `main`, push `main`, and create and push a release tag from that exact promoted commit"
     },
     {
       "id": "deploy_runtime",
-      "title": "Run `bun run deploy-manager-runtime` to deploy `origin/main`, or pass `<release-tag>` to deploy a specific release tag"
+      "title": "Run `bun run deploy-manager-runtime <release-tag>` to deploy the promoted release tag, or run `bun run deploy-manager-runtime` to deploy `origin/main` when no explicit release tag is being used"
     },
     {
       "id": "verify_runtime_revision_and_versions",
