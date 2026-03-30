@@ -13,16 +13,7 @@
   ],
   "steps": [
     {
-      "id": "setup_worker_surface",
-      "title": "Run `bun run agent:prepare-worker-surface -- <feature-branch-name>` to ensure a worker is ready, create the worker-hosted feature-branch worktree from `origin/development`, run `bun install`, and print the resulting `start_command` for entering that worktree"
-    },
-    {
-      "id": "merge_upstream_into_worktree",
-      "title": "Merge any additionally required upstream into the prepared worker-hosted feature-branch worktree"
-    },
-    {
-      "id": "connect_persistent_ssh",
-      "title": "Connect through a persistent SSH session into the prepared worker worktree using the printed `start_command`"
+      "use": "worker_surface_setup"
     },
     {
       "id": "share_tunnel_link",

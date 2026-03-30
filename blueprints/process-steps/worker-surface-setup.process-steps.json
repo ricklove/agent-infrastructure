@@ -7,48 +7,20 @@
       "title": "Run `bun run agent:prepare-worker-surface -- <feature-branch-name>` to ensure a worker is ready, create the worker-hosted feature-branch worktree from `origin/development`, run `bun install`, and print the resulting `start_command` for entering that worktree"
     },
     {
-      "id": "merge_upstream_into_worktree",
-      "title": "Merge any additionally required upstream into the prepared worker-hosted feature-branch worktree"
-    },
-    {
-      "id": "connect_persistent_ssh",
-      "title": "Connect through a persistent SSH session into the prepared worker worktree using the printed `start_command`"
-    },
-    {
-      "id": "run_pre_change_build_verification",
-      "title": "Run the required pre-change build verification in the prepared worker-hosted feature-branch worktree"
-    },
-    {
-      "id": "launch_worker_verification_surface",
-      "title": "Start the worker-local preview or runtime surface needed for the intended verification path"
-    },
-    {
-      "id": "perform_pre_change_browser_verification",
-      "title": "Open the intended verification surface in `agent-browser`; if no UI changes are expected, open Agent Chat"
-    },
-    {
-      "id": "capture_pre_change_screenshot",
-      "title": "Capture a pre-change screenshot of the UI that will be updated, or capture Agent Chat if no UI changes are expected"
-    },
-    {
-      "id": "summarize_pre_change_screenshot",
-      "title": "Summarize what the pre-change screenshot shows"
-    },
-    {
       "id": "assess_worker_preflight",
-      "title": "Is the worker preflight verification healthy?",
+      "title": "Did worker setup complete successfully and produce a usable worker worktree entrypoint?",
       "kind": "decision",
       "decision": {
-        "prompt": "Is the worker preflight verification healthy?",
+        "prompt": "Did worker setup complete successfully and produce a usable worker worktree entrypoint?",
         "options": [
           {
             "id": "worker_preflight_failed",
-            "title": "Worker preflight verification failed",
+            "title": "Worker setup failed or did not produce a usable worker worktree entrypoint",
             "block": true
           },
           {
             "id": "worker_preflight_passed",
-            "title": "Worker preflight verification passed",
+            "title": "Worker setup completed and produced a usable worker worktree entrypoint",
             "next": true
           }
         ]

@@ -81,6 +81,26 @@
         {
           "id": "merge_feature_branch",
           "title": "Run `bun run agent:merge-feature -- <feature-branch-name>` to refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin"
+        },
+        {
+          "id": "assess_feature_merge",
+          "title": "What is the feature merge outcome?",
+          "kind": "decision",
+          "decision": {
+            "prompt": "What is the feature merge outcome?",
+            "options": [
+              {
+                "id": "feature_merge_completed",
+                "title": "Feature merge completed successfully",
+                "next": true
+              },
+              {
+                "id": "feature_merge_requires_worker_conflict_resolution",
+                "title": "Feature merge requires worker conflict resolution",
+                "goto": "implement_revision"
+              }
+            ]
+          }
         }
       ]
     },
