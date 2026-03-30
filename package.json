@@ -13,6 +13,7 @@
     "connect-vscode": "bash ./tools/connect-vscode.sh --profile agent-team-admin",
     "connect-ssh": "bash ./tools/connect-ssh.sh --profile agent-team-admin",
     "agent:connect-worker-ec2-ssh": "bun run --filter @agent-infrastructure/swarm-manager run:connect-worker-ec2-ssh",
+    "agent:prepare-worker-surface": "bun run --filter @agent-infrastructure/swarm-manager run:prepare-worker-surface",
     "codex": "codex --dangerously-bypass-approvals-and-sandbox -C ~ resume --last --all",
     "dev:agent-graph": "cd apps/agentish-studio && bun run dev --host 0.0.0.0",
     "build:agent-graph": "cd apps/agentish-studio && bun run build",

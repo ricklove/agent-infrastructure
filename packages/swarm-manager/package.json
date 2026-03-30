@@ -19,6 +19,7 @@
     "run:hibernate-workers": "bun run src/manager/worker-power.ts --action hibernate",
     "run:wake-workers": "bun run src/manager/worker-power.ts --action wake",
     "run:connect-worker-ec2-ssh": "bun run src/manager/connect-worker-ec2-ssh.ts",
+    "run:prepare-worker-surface": "bun run src/manager/prepare-worker-surface.ts",
     "run:launch-service": "bun run src/manager/launch-service.ts",
     "run:worker-agent": "bun run src/worker/agent.ts"
   },
