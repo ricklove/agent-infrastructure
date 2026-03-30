@@ -204,6 +204,12 @@ type SessionsResponse = {
   sessions: SessionSummary[]
 }
 
+type SessionTicketsResponse = {
+  ok: boolean
+  tickets: AgentTicket[]
+  error?: string
+}
+
 type ProvidersResponse = {
   ok: boolean
   providers: ProviderCatalogEntry[]
@@ -341,6 +347,8 @@ const defaultSessionRailWidth = 352
 const minSessionRailWidth = 280
 const maxSessionRailWidth = 520
 const completedProcessResolutionSentinel = "__process_done__"
+const ticketQuickSelectPrefix = "__ticket__:"
+const openTicketWindowEventName = "dashboard-open-ticket-window"
 const typingHeartbeatMs = 1000
 const composerDraftPersistMs = 250
 const transcriptRenderPageSize = 200
@@ -902,6 +910,26 @@ function watchdogAttentionLabel(watchdogState: SessionWatchdogState) {
     return "Blocked"
   }
   return null
+}
+
+function isUnfinishedTicket(
+  ticket: AgentTicket | null | undefined,
+): ticket is AgentTicket {
+  return !!ticket && ticket.status !== "completed"
+}
+
+function ticketQuickSelectValue(ticketId: string) {
+  return `${ticketQuickSelectPrefix}${ticketId}`
+}
+
+function ticketPickerOptionLabel(
+  ticket: AgentTicket,
+  currentTicketId: string | null,
+) {
+  const prefix =
+    ticket.id === currentTicketId ? "Current ticket: " : "Resume ticket: "
+  const blockedSuffix = ticket.status === "blocked" ? " (blocked)" : ""
+  return `${prefix}${ticket.title}${blockedSuffix}`
 }
 
 function activeTicketStatusLabel(activeTicket: AgentTicket | null) {
@@ -2244,12 +2272,14 @@ const ComposerPanel = memo(
     processResolutionRequired: boolean
     processTerminalStatus: "completed" | "blocked" | null
     quickProcessSelectValue: string
+    unfinishedSessionTickets: AgentTicket[]
     processBlueprints: ProcessBlueprint[]
     activeProcessBlueprintId: string | null
     updatingQuickProcessBlueprint: boolean
     settingsOpen: boolean
     onToggleSettings: () => void
-    onQuickProcessChange: (nextProcessBlueprintId: string) => void
+    onQuickProcessChange: (nextSelection: string) => void
+    onOpenActiveTicket: () => void
     onInterrupt: () => void
     onSubmitMessage: (payload: ComposerSubmitPayload) => Promise<boolean>
     onReportTyping: (
@@ -2584,7 +2614,7 @@ const ComposerPanel = memo(
           />
           <div className="mt-1.5 flex items-center gap-1.5 md:mt-2 md:gap-2">
             <label className="min-w-0 flex-1">
-              <span className="sr-only">Quick set current chat process</span>
+              <span className="sr-only">Choose current work for this chat</span>
               <div className="relative">
                 <select
                   ref={quickProcessSelectRef}
@@ -2600,13 +2630,14 @@ const ComposerPanel = memo(
                   disabled={
                     !props.activeSession || props.updatingQuickProcessBlueprint
                   }
-                  title="Quick Set Process"
+                  title="Current Work"
                   className={`w-full min-w-0 rounded-full border px-3 py-2 pr-8 text-base outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-xs ${darkNativeSelectClass} ${
                     props.processResolutionRequired
                       ? props.processTerminalStatus === "blocked"
                         ? "border-rose-400/50 pl-24 pr-12 shadow-[0_0_0_1px_rgba(251,113,133,0.16)]"
                         : "border-amber-300/45 pl-20 pr-12 shadow-[0_0_0_1px_rgba(252,211,77,0.12)]"
-                      : props.activeProcessBlueprintId
+                      : props.activeProcessBlueprintId ||
+                          isUnfinishedTicket(props.activeSession?.activeTicket)
                         ? "border-white/10"
                         : "border-white/10 text-slate-400"
                   }`}
@@ -2620,18 +2651,36 @@ const ComposerPanel = memo(
                       Choose next process
                     </option>
                   ) : null}
-                  <option style={darkNativeOptionStyle} value="">
-                    none
-                  </option>
-                  {props.processBlueprints.map((entry) => (
-                    <option
-                      style={darkNativeOptionStyle}
-                      key={entry.id}
-                      value={entry.id}
-                    >
-                      {entry.title}
+                  {props.unfinishedSessionTickets.length > 0 ? (
+                    <optgroup label="Unfinished tickets">
+                      {props.unfinishedSessionTickets.map((ticket) => (
+                        <option
+                          style={darkNativeOptionStyle}
+                          key={ticket.id}
+                          value={ticketQuickSelectValue(ticket.id)}
+                        >
+                          {ticketPickerOptionLabel(
+                            ticket,
+                            props.activeSession?.activeTicket?.id ?? null,
+                          )}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  <optgroup label="Processes">
+                    <option style={darkNativeOptionStyle} value="">
+                      none
                     </option>
-                  ))}
+                    {props.processBlueprints.map((entry) => (
+                      <option
+                        style={darkNativeOptionStyle}
+                        key={entry.id}
+                        value={entry.id}
+                      >
+                        {entry.title}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
                 {props.processResolutionRequired ? (
                   <>
@@ -2667,6 +2716,15 @@ const ComposerPanel = memo(
                 ) : null}
               </div>
             </label>
+            {isUnfinishedTicket(props.activeSession?.activeTicket) ? (
+              <IconButton
+                label="Open active ticket"
+                title="Open Ticket"
+                onClick={props.onOpenActiveTicket}
+              >
+                <OpenTicketIcon />
+              </IconButton>
+            ) : null}
             <IconButton
               label={
                 props.settingsOpen ? "Hide settings menu" : "Show settings menu"
@@ -2728,9 +2786,15 @@ const ComposerPanel = memo(
       previousProps.processTerminalStatus === nextProps.processTerminalStatus &&
       previousProps.quickProcessSelectValue ===
         nextProps.quickProcessSelectValue &&
+      previousProps.unfinishedSessionTickets ===
+        nextProps.unfinishedSessionTickets &&
       previousProps.processBlueprints === nextProps.processBlueprints &&
       previousProps.activeProcessBlueprintId ===
         nextProps.activeProcessBlueprintId &&
+      previousProps.activeSession?.activeTicket?.id ===
+        nextProps.activeSession?.activeTicket?.id &&
+      previousProps.activeSession?.activeTicket?.status ===
+        nextProps.activeSession?.activeTicket?.status &&
       previousProps.updatingQuickProcessBlueprint ===
         nextProps.updatingQuickProcessBlueprint &&
       previousProps.settingsOpen === nextProps.settingsOpen
@@ -3097,6 +3161,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     useState("")
   const [activeSessionProcessBlueprintId, setActiveSessionProcessBlueprintId] =
     useState("")
+  const [activeSessionTickets, setActiveSessionTickets] = useState<AgentTicket[]>(
+    [],
+  )
   const [updatingDirectory, setUpdatingDirectory] = useState(false)
   const [updatingQuickProcessBlueprint, setUpdatingQuickProcessBlueprint] =
     useState(false)
@@ -3172,6 +3239,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     () => summarizeProviderUsage(activeSession?.providerUsage ?? null),
     [activeSession?.providerUsage],
   )
+  const hasBlockedActiveTicket = activeSession?.activeTicket?.status === "blocked"
   const processTerminalStatus =
     activeSession?.processBlueprintId &&
     activeSession.activity.status !== "running" &&
@@ -3179,13 +3247,41 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     !activeSession.pendingSystemInstruction &&
     activeSession.queuedMessageCount === 0 &&
     (activeSession.watchdogState.status === "completed" ||
-      activeSession.watchdogState.status === "blocked")
+      (activeSession.watchdogState.status === "blocked" &&
+        !hasBlockedActiveTicket))
       ? activeSession.watchdogState.status
       : null
   const processResolutionRequired = processTerminalStatus !== null
+  const unfinishedSessionTickets = useMemo(() => {
+    const currentTicketId = activeSession?.activeTicket?.id ?? null
+    const ticketsById = new Map<string, AgentTicket>()
+    if (isUnfinishedTicket(activeSession?.activeTicket)) {
+      ticketsById.set(activeSession.activeTicket.id, activeSession.activeTicket)
+    }
+    for (const ticket of activeSessionTickets) {
+      if (ticket.sessionId !== activeSessionId || !isUnfinishedTicket(ticket)) {
+        continue
+      }
+      const existing = ticketsById.get(ticket.id)
+      if (!existing || ticket.updatedAtMs > existing.updatedAtMs) {
+        ticketsById.set(ticket.id, ticket)
+      }
+    }
+    return [...ticketsById.values()].sort((left, right) => {
+      if (left.id === currentTicketId && right.id !== currentTicketId) {
+        return -1
+      }
+      if (right.id === currentTicketId && left.id !== currentTicketId) {
+        return 1
+      }
+      return right.updatedAtMs - left.updatedAtMs
+    })
+  }, [activeSession?.activeTicket, activeSessionId, activeSessionTickets])
   const quickProcessSelectValue = processResolutionRequired
     ? completedProcessResolutionSentinel
-    : (activeSession?.processBlueprintId ?? "")
+    : isUnfinishedTicket(activeSession?.activeTicket)
+      ? ticketQuickSelectValue(activeSession.activeTicket.id)
+      : (activeSession?.processBlueprintId ?? "")
   const settingsProcessSelectValue = processResolutionRequired
     ? completedProcessResolutionSentinel
     : activeSessionProcessBlueprintId
@@ -3384,6 +3480,90 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       setActiveSessionProcessBlueprintId(session?.processBlueprintId ?? "")
     },
     [],
+  )
+
+  const loadSessionTickets = useCallback(
+    async (sessionId: string) => {
+      const response = await apiFetch(
+        `${props.apiRootUrl}/sessions/${sessionId}/tickets?unfinished=true`,
+      )
+      const payload = (await response.json()) as SessionTicketsResponse
+      if (!response.ok || !payload.ok || !Array.isArray(payload.tickets)) {
+        throw new Error(payload.error ?? "Session tickets failed to load.")
+      }
+      return payload.tickets
+    },
+    [props.apiRootUrl],
+  )
+
+  const openTicketWindow = useCallback(
+    (ticketId: string, sessionId: string, title: string) => {
+      window.dispatchEvent(
+        new CustomEvent(openTicketWindowEventName, {
+          detail: {
+            ticketId,
+            sessionId,
+            title,
+          },
+        }),
+      )
+    },
+    [],
+  )
+
+  const activateSessionTicket = useCallback(
+    async (ticketId: string) => {
+      if (!activeSessionId) {
+        return
+      }
+
+      setUpdatingQuickProcessBlueprint(true)
+      setError("")
+
+      try {
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${activeSessionId}/active-ticket`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ ticketId }),
+          },
+        )
+        const payload = (await response.json()) as SessionSnapshotResponse & {
+          error?: string
+        }
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error ?? "Ticket activation failed.")
+        }
+        setSessions((current) =>
+          current.map((session) =>
+            session.id === payload.session.id ? payload.session : session,
+          ),
+        )
+        setMessages(payload.messages)
+        setQueuedMessages(payload.queuedMessages)
+        setActivity(payload.activity)
+        syncCurrentChatSettingsFromSession(payload.session)
+        const refreshedTickets = await loadSessionTickets(activeSessionId)
+        setActiveSessionTickets(refreshedTickets)
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Ticket activation failed.",
+        )
+      } finally {
+        setUpdatingQuickProcessBlueprint(false)
+      }
+    },
+    [
+      activeSessionId,
+      loadSessionTickets,
+      props.apiRootUrl,
+      syncCurrentChatSettingsFromSession,
+    ],
   )
 
   const reportTyping = useCallback(
@@ -3945,6 +4125,44 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       window.clearInterval(intervalHandle)
     }
   }, [activeSessionId, loadSessions])
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      setActiveSessionTickets([])
+      return
+    }
+
+    let cancelled = false
+
+    async function refreshSessionTickets() {
+      try {
+        const tickets = await loadSessionTickets(activeSessionId)
+        if (!cancelled) {
+          setActiveSessionTickets(tickets)
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Session tickets failed to load.",
+          )
+        }
+      }
+    }
+
+    void refreshSessionTickets()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeSession?.activeTicket?.id,
+    activeSession?.activeTicket?.status,
+    activeSession?.activeTicket?.updatedAtMs,
+    activeSessionId,
+    loadSessionTickets,
+  ])
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -4577,7 +4795,11 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
         if (!response.ok || !payload.ok) {
           throw new Error(payload.error ?? "Process update failed.")
         }
-        mergeSession(payload.session)
+        setSessions((current) =>
+          current.map((session) =>
+            session.id === payload.session.id ? payload.session : session,
+          ),
+        )
         setMessages(payload.messages)
         setQueuedMessages(payload.queuedMessages)
         setActivity(payload.activity)
@@ -5415,24 +5637,16 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 message.ticketId ? (
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      window.dispatchEvent(
-                                        new CustomEvent(
-                                          "dashboard-open-ticket-window",
-                                          {
-                                            detail: {
-                                              ticketId: message.ticketId,
-                                              sessionId: message.sessionId,
-                                              title:
-                                                activeSession?.activeTicket?.id ===
-                                                message.ticketId
-                                                  ? activeSession.activeTicket.title
-                                                  : "Ticket",
-                                            },
-                                          },
-                                        ),
+                                    onClick={() =>
+                                      openTicketWindow(
+                                        message.ticketId!,
+                                        message.sessionId,
+                                        activeSession?.activeTicket?.id ===
+                                          message.ticketId
+                                          ? activeSession.activeTicket.title
+                                          : "Ticket",
                                       )
-                                    }}
+                                    }
                                     className="rounded-full border border-cyan-300/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100 hover:border-cyan-200/40 hover:text-cyan-50"
                                     title="Open ticket window"
                                   >
@@ -6022,6 +6236,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   processResolutionRequired={processResolutionRequired}
                   processTerminalStatus={processTerminalStatus}
                   quickProcessSelectValue={quickProcessSelectValue}
+                  unfinishedSessionTickets={unfinishedSessionTickets}
                   processBlueprints={processBlueprints}
                   activeProcessBlueprintId={
                     activeSession?.processBlueprintId ?? null
@@ -6031,11 +6246,25 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                   onToggleSettings={() =>
                     setSettingsOpen((current) => !current)
                   }
-                  onQuickProcessChange={(nextProcessBlueprintId) =>
-                    void updateActiveSessionProcessQuickSet(
-                      nextProcessBlueprintId,
+                  onQuickProcessChange={(nextSelection) => {
+                    if (nextSelection.startsWith(ticketQuickSelectPrefix)) {
+                      void activateSessionTicket(
+                        nextSelection.slice(ticketQuickSelectPrefix.length),
+                      )
+                      return
+                    }
+                    void updateActiveSessionProcessQuickSet(nextSelection)
+                  }}
+                  onOpenActiveTicket={() => {
+                    if (!activeSession?.activeTicket) {
+                      return
+                    }
+                    openTicketWindow(
+                      activeSession.activeTicket.id,
+                      activeSession.id,
+                      activeSession.activeTicket.title,
                     )
-                  }
+                  }}
                   onInterrupt={() => void interruptRun()}
                   onSubmitMessage={sendMessage}
                   onReportTyping={reportTyping}

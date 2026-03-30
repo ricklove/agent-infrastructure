@@ -458,6 +458,66 @@ export class AgentTicketStore {
     return this.getTicket(ticketId);
   }
 
+  listTicketsForSession(sessionId: string, options: { unfinishedOnly?: boolean } = {}) {
+    const activeTicketId = this.activeTicketBySessionId.get(sessionId) ?? null;
+    return [...this.ticketCache.values()]
+      .filter((ticket) => ticket.sessionId === sessionId)
+      .filter((ticket) => !options.unfinishedOnly || ticket.status !== "completed")
+      .sort((left, right) => {
+        if (left.id === activeTicketId && right.id !== activeTicketId) {
+          return -1;
+        }
+        if (right.id === activeTicketId && left.id !== activeTicketId) {
+          return 1;
+        }
+        return right.updatedAtMs - left.updatedAtMs;
+      });
+  }
+
+  activateTicketForSession(sessionId: string, ticketId: string) {
+    const ticket = this.getTicket(ticketId);
+    if (!ticket || ticket.sessionId !== sessionId || ticket.status === "completed") {
+      return null;
+    }
+
+    this.activeTicketBySessionId.set(sessionId, ticket.id);
+
+    if (ticket.status === "blocked") {
+      const resumedChecklist = ticket.currentStepId
+        ? updateStepById(cloneChecklist(ticket.checklist), ticket.currentStepId, (step) => ({
+            ...step,
+            status: "active",
+          }))
+        : cloneChecklist(ticket.checklist);
+      const updated = ticketWithNextStep(ticket, resumedChecklist, ticket.currentStepId, null, "active", {
+        blockedSource: null,
+        sameStepAttemptCount: 0,
+      });
+      this.persistTicket(updated);
+      return updated;
+    }
+
+    if (ticket.sameStepAttemptCount !== 0) {
+      const updated = ticketWithNextStep(
+        ticket,
+        cloneChecklist(ticket.checklist),
+        ticket.currentStepId,
+        ticket.resolution,
+        ticket.status,
+        {
+          blockedSource: ticket.blockedSource,
+          sameStepAttemptCount: 0,
+        },
+      );
+      this.persistTicket(updated);
+      return updated;
+    }
+
+    this.writeIndex();
+    this.notifyCanonicalWrite(sessionId);
+    return ticket;
+  }
+
   clearActiveTicketForSession(sessionId: string) {
     if (!this.activeTicketBySessionId.delete(sessionId)) {
       return;

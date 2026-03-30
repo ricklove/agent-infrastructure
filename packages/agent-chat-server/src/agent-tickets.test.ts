@@ -22,10 +22,12 @@ function createStore() {
   return new AgentTicketStore({ dataDir });
 }
 
-function createBlueprint(): ProcessBlueprint {
+function createBlueprint(
+  overrides: Partial<Pick<ProcessBlueprint, "id" | "title">> = {},
+): ProcessBlueprint {
   return {
-    id: "test-blueprint",
-    title: "Test Blueprint",
+    id: overrides.id ?? "test-blueprint",
+    title: overrides.title ?? "Test Blueprint",
     catalogOrder: 1,
     expectation: "Do the current step.",
     companionPath: null,
@@ -95,5 +97,31 @@ describe("AgentTicketStore", () => {
     expect(blocked?.status).toBe("blocked");
     expect(blocked?.blockedSource).toBe("system");
     expect(blocked?.currentStepId).toBe(created.currentStepId);
+  });
+
+
+  test("lists unfinished session tickets and resumes a selected blocked ticket", () => {
+    const store = createStore();
+    const first = store.createOrReplaceSessionTicket(
+      "session-1",
+      createBlueprint({ id: "first-blueprint", title: "First Ticket" }),
+    );
+    store.resolveActiveTicket("session-1", "blocked", "Waiting for user input");
+
+    const second = store.createOrReplaceSessionTicket(
+      "session-1",
+      createBlueprint({ id: "second-blueprint", title: "Second Ticket" }),
+    );
+
+    const listed = store.listTicketsForSession("session-1", {
+      unfinishedOnly: true,
+    });
+    expect(listed.map((ticket) => ticket.id)).toEqual([second.id, first.id]);
+
+    const resumed = store.activateTicketForSession("session-1", first.id);
+    expect(resumed?.id).toBe(first.id);
+    expect(resumed?.status).toBe("active");
+    expect(resumed?.blockedSource).toBeNull();
+    expect(store.getActiveTicketForSession("session-1")?.id).toBe(first.id);
   });
 });
