@@ -34,8 +34,12 @@
       "title": "Commit the process-definition changes"
     },
     {
-      "id": "merge_feature_branch",
-      "title": "Run `bun run agent:merge-feature -- <feature-branch-name>` to refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin"
+      "id": "merge_into_development",
+      "title": "Merge the branch into development"
+    },
+    {
+      "id": "push_development_to_origin",
+      "title": "Push development to origin"
     },
     {
       "id": "promote_release",
