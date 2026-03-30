@@ -13,6 +13,54 @@
     {
       "id": "connect_persistent_ssh",
       "title": "Connect through a persistent SSH session into the worker instance"
+    },
+    {
+      "id": "verify_worker_checkout_location",
+      "title": "Verify the active mutable checkout is the EC2 swarm worker worktree rather than a manager-hosted surface"
+    },
+    {
+      "id": "install_worker_dependencies",
+      "title": "Run `bun install` in the worker-hosted feature-branch worktree before any code changes"
+    },
+    {
+      "id": "run_pre_change_build_verification",
+      "title": "Run the required pre-change build verification in the worker-hosted feature-branch worktree"
+    },
+    {
+      "id": "launch_worker_verification_surface",
+      "title": "Start the worker-local preview or runtime surface needed for the intended verification path"
+    },
+    {
+      "id": "perform_pre_change_browser_verification",
+      "title": "Open the intended verification surface in `agent-browser`; if no UI changes are expected, open Agent Chat"
+    },
+    {
+      "id": "capture_pre_change_screenshot",
+      "title": "Capture a pre-change screenshot of the UI that will be updated, or capture Agent Chat if no UI changes are expected"
+    },
+    {
+      "id": "summarize_pre_change_screenshot",
+      "title": "Summarize what the pre-change screenshot shows"
+    },
+    {
+      "id": "assess_worker_preflight",
+      "title": "Is the worker preflight verification healthy?",
+      "kind": "decision",
+      "decision": {
+        "prompt": "Is the worker preflight verification healthy?",
+        "options": [
+          {
+            "id": "worker_preflight_failed",
+            "title": "Worker preflight verification failed",
+            "block": true
+          },
+          {
+            "id": "worker_preflight_passed",
+            "title": "Worker preflight verification passed",
+            "next": true
+          }
+        ]
+      }
     }
   ]
 }

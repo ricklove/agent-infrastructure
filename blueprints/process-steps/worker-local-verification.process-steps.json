@@ -1,0 +1,54 @@
+{
+  "id": "worker_local_verification",
+  "title": "Worker local verification",
+  "steps": [
+    {
+      "id": "run_stable_change_workspace_checks",
+      "title": "Confirm the current stable worker revision has passed the required lint and build checks, or record an explicit hotfix exception for lint before continuing"
+    },
+    {
+      "id": "run_targeted_code_verification",
+      "title": "Run the targeted local verification commands that exercise the files and behaviors changed on the worker branch"
+    },
+    {
+      "id": "verify_touched_runtime_entrypoints",
+      "title": "Verify that any touched runtime or server entrypoint parses and starts cleanly on the worker surface"
+    },
+    {
+      "id": "launch_worker_local_verification_surface",
+      "title": "Start the worker-local preview or runtime surface needed to exercise the changed behavior"
+    },
+    {
+      "id": "perform_worker_browser_verification",
+      "title": "Use `agent-browser` to verify the changed behavior on the worker-local surface; if there are no UI changes, verify Agent Chat or the relevant runtime surface"
+    },
+    {
+      "id": "save_worker_verification_screenshot",
+      "title": "Capture a worker-local verification screenshot before the revision can be treated as verified"
+    },
+    {
+      "id": "summarize_worker_verification_screenshot",
+      "title": "Summarize what the worker-local verification screenshot shows"
+    },
+    {
+      "id": "assess_worker_local_verification",
+      "title": "What is the worker-local verification outcome?",
+      "kind": "decision",
+      "decision": {
+        "prompt": "What is the worker-local verification outcome?",
+        "options": [
+          {
+            "id": "worker_local_verification_failed",
+            "title": "Worker-local verification failed",
+            "block": true
+          },
+          {
+            "id": "worker_local_verification_passed",
+            "title": "Worker-local verification passed",
+            "next": true
+          }
+        ]
+      }
+    }
+  ]
+}
