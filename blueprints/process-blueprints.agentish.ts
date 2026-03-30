@@ -35,6 +35,7 @@ const Policy = {
 
 ProcessBlueprints.enforces(`
 - Process blueprints live under blueprints/ as first-class blueprint artifacts.
+- Shared workspace process blueprints and process-step bundles may also load from `/home/ec2-user/workspace/blueprints/` as a common overlay surface.
 - A process blueprint must be machine-readable without requiring prose parsing.
 - A process blueprint may optionally have an Agentish companion guide with the same basename.
 - The JSON process blueprint is the primary system contract for discovery, assignment, and ticket-owned continuation behavior.
@@ -46,6 +47,8 @@ ProcessBlueprints.enforces(`
 - Process steps may represent ordinary work, waiting states, or constrained decision points.
 - Process steps may also contain nested substeps that remain hierarchical in the outline while executing depth-first like ordinary steps.
 - Reusable process-step bundles may be imported into a process or nested step tree without duplicating the step definitions inline.
+- When shared workspace and repository-local process-step bundles share the same id, the shared workspace bundle should override before any process `use` expansion occurs.
+- When shared workspace and repository-local process blueprints share the same id, the shared workspace blueprint should override the repository-local definition in the presented catalog.
 - Decision-step options may advance to the next step, jump to an explicit step id, complete the process, or block the process.
 - Immediate idle continuation should use the selected process blueprint rather than a generic one-size-fits-all prompt.
 - When ticket step state exists, immediate idle continuation should surface as a system ticket message that names the next actionable step rather than only the coarse process name.
@@ -61,6 +64,7 @@ ProcessBlueprints.defines(`
 - JsonPrimaryContract means the system does not infer process behavior from prose when the JSON contract already defines it.
 - OptionalAgentishCompanion means a process blueprint may omit the Agentish companion and still remain valid for system use.
 - SharedBlueprintCatalogPresence means process blueprints are discovered from the same blueprints/ tree that holds other repository blueprints.
+- SharedWorkspaceBlueprintOverlay means shared workspace process blueprints and process-step bundles from `/home/ec2-user/workspace/blueprints/` may overlay repository-local process definitions.
 - SessionScopedExpectation means the selected process blueprint belongs to the session rather than to the provider runtime globally.
 - ExpectationDrivenIdleWatchdog means immediate idle continuation remains process-specific, ticket-aware, and owned by the assigned process blueprint rather than by a generic legacy watchdog path.
 - ExpectationStartEvent means process start should surface one initial canonical event that shows both the selected expectation and the full step outline.
