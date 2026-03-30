@@ -14,11 +14,7 @@
   "steps": [
     {
       "id": "create_worktree_surface",
-      "title": "Create a feature-branch worktree from the current upstream base branch tip"
-    },
-    {
-      "id": "merge_upstream_into_worktree",
-      "title": "Merge any additionally required upstream into the feature-branch worktree"
+      "title": "Run `bun run agent:prepare-manager-surface -- <feature-branch-name>` to create the manager-hosted feature-branch worktree from `origin/development` and print the resulting `start_command` for entering that worktree"
     },
     {
       "id": "review_existing_blueprints",
@@ -34,11 +30,7 @@
     },
     {
       "id": "merge_into_development",
-      "title": "Merge the branch into development"
-    },
-    {
-      "id": "push_development_to_origin",
-      "title": "Push development to origin"
+      "title": "Run `bun run agent:merge-manager-feature -- <feature-branch-name>` to merge the local feature branch from its manager worktree and push `development` to origin"
     }
   ],
   "watchdog": {

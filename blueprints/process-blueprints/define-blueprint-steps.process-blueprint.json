@@ -39,11 +39,7 @@
         },
         {
           "id": "merge_into_development",
-          "title": "Merge the branch into development"
-        },
-        {
-          "id": "push_development_to_origin",
-          "title": "Push development to origin"
+          "title": "Run `bun run agent:merge-manager-feature -- <feature-branch-name>` to merge the local feature branch from its manager worktree and push `development` to origin"
         }
       ]
     }
