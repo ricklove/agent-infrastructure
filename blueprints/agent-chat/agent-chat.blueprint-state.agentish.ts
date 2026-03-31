@@ -61,6 +61,7 @@ AgentChatBlueprintState.defines(`
 - ImplementationGap also includes chat durability still stopping at canonical file persistence rather than extending into manager-controlled workspace git commit and push.
 - KnownIssue means the provider catalog and UI still include planned providers that do not yet execute in the backend today.
 - KnownIssue also includes the current Agent Chat provider layer still being uneven, with Codex and Claude implemented while OpenRouter and Gemini remain planned.
+- KnownIssue also includes current ticket model and checklist/status rendering semantics being duplicated between `packages/agent-chat-ui/src/TicketView.tsx` and `packages/agent-chat-ui/src/AgentChatScreen.tsx`, which weakens ticket ownership locality inside the agent-chat package.
 - KnownIssue also includes the current Codex adapter retaining an adapter-level timeout policy that remains separate from the newer Claude path.
 - KnownIssue also includes the current implementation now supporting in-session provider switching ahead of the older V1 cut language in the dashboard implementation blueprint, so that blueprint should no longer be read as excluding the shipped behavior.
 `);
