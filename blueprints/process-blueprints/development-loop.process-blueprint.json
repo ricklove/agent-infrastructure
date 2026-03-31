@@ -1,0 +1,56 @@
+{
+  "id": "development_loop",
+  "title": "Development Loop",
+  "catalogOrder": 52,
+  "expectation": "Use a worker-hosted feature-branch worktree as the only mutable implementation surface for active development in this process; never edit from the shared repository checkout, a manager-hosted worktree, or a worker shared checkout. Start each iteration by loading the target blueprint or blueprints for the current focus, then perform one implementation iteration, then return to the blueprint-loading step and continue looping until the operator explicitly pauses or switches processes.",
+  "companionPath": "blueprints/process-blueprints/development-loop.agentish.ts",
+  "kind": "procedural",
+  "idlePrompt": "If the development loop is intentionally paused, reply only with 'done: development loop paused'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: development loop blocked'. Otherwise resume the loop immediately by loading the relevant blueprints, completing one implementation iteration, and continuing to the next iteration instead of giving only a status update.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: development loop paused",
+  "blockedToken": "blocked: development loop blocked",
+  "stopConditions": [
+    "development loop intentionally paused",
+    "blocked on user or environment dependency"
+  ],
+  "steps": [
+    {
+      "id": "load_target_blueprints",
+      "title": "Load the target blueprint or blueprints for the current development focus"
+    },
+    {
+      "id": "implementation_iteration",
+      "title": "Complete one implementation iteration on the current focus"
+    },
+    {
+      "id": "continue_loop",
+      "title": "What is the development-loop outcome?",
+      "kind": "decision",
+      "decision": {
+        "prompt": "What is the development-loop outcome?",
+        "options": [
+          {
+            "id": "continue_development_loop",
+            "title": "Continue the development loop",
+            "goto": "load_target_blueprints"
+          },
+          {
+            "id": "development_loop_paused",
+            "title": "Pause the development loop",
+            "complete": true
+          },
+          {
+            "id": "development_loop_blocked",
+            "title": "Development loop is blocked",
+            "block": true
+          }
+        ]
+      }
+    }
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 120,
+    "maxNudgesPerIdleEpisode": 0
+  }
+}
