@@ -1,3 +1,4 @@
+import { dashboardAuthorizedFetch } from "./dashboard-plugin.js"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
@@ -50,23 +51,7 @@ export type ProjectsScreenProps = {
   apiRootUrl?: string
 }
 
-const sessionStorageKey = "agent-infrastructure.dashboard.session"
-
-function readStoredSessionToken(): string {
-  return window.sessionStorage.getItem(sessionStorageKey) ?? ""
-}
-
-async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const headers = new Headers(init?.headers)
-  const sessionToken = readStoredSessionToken()
-  if (sessionToken) {
-    headers.set("Authorization", `Bearer ${sessionToken}`)
-  }
-  return fetch(path, {
-    ...init,
-    headers,
-  })
-}
+const apiFetch = dashboardAuthorizedFetch
 
 function featurePath(apiRootUrl: string, pathname: string): string {
   const trimmedRoot = apiRootUrl.replace(/\/+$/, "")
