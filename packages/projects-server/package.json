@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./plugin": "./src/dashboard-plugin.ts"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json --noEmit",
@@ -14,5 +15,8 @@
     "@types/node": "^20.11.30",
     "bun-types": "^1.3.10",
     "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "@agent-infrastructure/dashboard-plugin": "workspace:*"
   }
 }
