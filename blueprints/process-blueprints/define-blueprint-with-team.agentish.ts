@@ -32,9 +32,11 @@ const Actor = {
 
 const Step = {
   defineTableOfContents: define.step("DefineBlueprintTableOfContents"),
+  prepareDraftingPackets: define.step("PrepareSectionDraftingPackets"),
   assignDrafting: define.step("AssignSectionDrafting"),
   combineDrafts: define.step("CombineSectionDrafts"),
   collectReview: define.step("CollectWholeFileSectionFeedback"),
+  prepareRewritePackets: define.step("PrepareSectionRewritePackets"),
   assignRewrites: define.step("AssignSectionRewrites"),
   combineProposal: define.step("CombineProposalBlueprint"),
   collectFinalReview: define.step("CollectFinalTeamReview"),
@@ -57,9 +59,11 @@ DefineBlueprintWithTeamGuide.contains(
   Actor.author,
   Actor.teamMember,
   Step.defineTableOfContents,
+  Step.prepareDraftingPackets,
   Step.assignDrafting,
   Step.combineDrafts,
   Step.collectReview,
+  Step.prepareRewritePackets,
   Step.assignRewrites,
   Step.combineProposal,
   Step.collectFinalReview,
@@ -123,14 +127,18 @@ DefineBlueprintWithTeamGuide.defines(`
 
 DefineBlueprintWithTeamGuide.prescribes(`
 - `DefineBlueprintTableOfContents` owns the section map.
-- `AssignSectionDrafting` owns which team sub agent drafts which section.
+- `PrepareSectionDraftingPackets` owns the drafting packet for each section.
+- `AssignSectionDrafting` owns dispatch of each drafting packet to its assigned team sub agent.
 - `CombineSectionDrafts` owns `CombinedBlueprintDraft`.
 - `CollectWholeFileSectionFeedback` owns `SectionFeedbackSet`.
-- `AssignSectionRewrites` owns rewrite ownership and dependency carry-forward for each section.
+- `PrepareSectionRewritePackets` owns the rewrite packet for each section.
+- `AssignSectionRewrites` owns dispatch of each rewrite packet to its assigned team sub agent.
 - `CombineProposalBlueprint` owns `ProposalBlueprint`.
 - `DecideTeamAcceptance` owns `TeamAcceptance` and `AcceptedBlueprint`.
+- `PrepareSectionDraftingPackets` may not mutate `CombinedBlueprintDraft`.
 - `AssignSectionDrafting` may not mutate `CombinedBlueprintDraft`.
 - `CollectWholeFileSectionFeedback` may not mutate `ProposalBlueprint`.
+- `PrepareSectionRewritePackets` may not mutate `ProposalBlueprint`.
 - `AssignSectionRewrites` may not mutate `TeamAcceptance`.
 - `CombineProposalBlueprint` may not mutate the section map or the original owner map.
 - The same sub agent should normally rewrite the same section it drafted unless the process explicitly reassigns ownership.
@@ -140,11 +148,11 @@ DefineBlueprintWithTeamGuide.prescribes(`
 `);
 
 Section.implementationPlan.answers(
-  "What code structure exists? `DefineBlueprintTableOfContents` owns the section table of contents, `AssignSectionDrafting` owns section-owner assignment, `CombineSectionDrafts` owns `CombinedBlueprintDraft`, `CollectWholeFileSectionFeedback` owns `SectionFeedbackSet`, `AssignSectionRewrites` owns rewrite-owner assignment and dependency carry-forward, `CombineProposalBlueprint` owns `ProposalBlueprint`, and `DecideTeamAcceptance` owns `TeamAcceptance` and `AcceptedBlueprint`.",
-  "Where do responsibilities live? `AssignSectionDrafting` assigns one team sub agent per section, `AssignSectionRewrites` normally keeps the same section owner unless the process explicitly reassigns it, and `DecideTeamAcceptance` records the only final acceptance or loopback outcome after the proposal is complete.",
-  "Which step mutates which artifact? `DefineBlueprintTableOfContents` mutates the section map, `AssignSectionDrafting` mutates the section-owner map, `CombineSectionDrafts` mutates the combined draft, `CollectWholeFileSectionFeedback` mutates the immutable section-keyed feedback set, `AssignSectionRewrites` mutates the rewrite-owner map and dependency notes, `CombineProposalBlueprint` mutates the proposal blueprint, and `DecideTeamAcceptance` mutates the final acceptance record.",
-  "How does the implemented system behave? It moves from `DefineBlueprintTableOfContents` to `AssignSectionDrafting`, then `CombineSectionDrafts`, then `CollectWholeFileSectionFeedback`, then `AssignSectionRewrites`, then `CombineProposalBlueprint`, then `DecideTeamAcceptance`; each step owns one artifact boundary and may not silently mutate the next step's artifact.",
-  "How are cross-section dependencies handled? Dependency notes are attached in `CollectWholeFileSectionFeedback`, preserved through `AssignSectionRewrites`, and carried into `CombineProposalBlueprint` so the dependent section rewrite resolves them before `DecideTeamAcceptance` can close the loop.",
+  "What code structure exists? `DefineBlueprintTableOfContents` owns the section table of contents, `PrepareSectionDraftingPackets` owns one drafting packet per section, `AssignSectionDrafting` owns dispatch of those packets, `CombineSectionDrafts` owns `CombinedBlueprintDraft`, `CollectWholeFileSectionFeedback` owns `SectionFeedbackSet`, `PrepareSectionRewritePackets` owns one rewrite packet per section, `AssignSectionRewrites` owns dispatch of those packets, `CombineProposalBlueprint` owns `ProposalBlueprint`, and `DecideTeamAcceptance` owns `TeamAcceptance` and `AcceptedBlueprint`.",
+  "Where do responsibilities live? `PrepareSectionDraftingPackets` fixes the exact inputs each section author receives, `AssignSectionDrafting` sends one packet to one team sub agent per section, `PrepareSectionRewritePackets` fixes the exact rewrite inputs for each section, `AssignSectionRewrites` normally keeps the same section owner unless the process explicitly reassigns it, and `DecideTeamAcceptance` records the only final acceptance or loopback outcome after the proposal is complete.",
+  "Which step mutates which artifact? `DefineBlueprintTableOfContents` mutates the section map, `PrepareSectionDraftingPackets` mutates the drafting-packet set, `AssignSectionDrafting` mutates the section-owner dispatch record, `CombineSectionDrafts` mutates the combined draft, `CollectWholeFileSectionFeedback` mutates the immutable section-keyed feedback set, `PrepareSectionRewritePackets` mutates the rewrite-packet set, `AssignSectionRewrites` mutates the rewrite-owner dispatch record, `CombineProposalBlueprint` mutates the proposal blueprint, and `DecideTeamAcceptance` mutates the final acceptance record.",
+  "How does the implemented system behave? It moves from `DefineBlueprintTableOfContents` to `PrepareSectionDraftingPackets`, then `AssignSectionDrafting`, then `CombineSectionDrafts`, then `CollectWholeFileSectionFeedback`, then `PrepareSectionRewritePackets`, then `AssignSectionRewrites`, then `CombineProposalBlueprint`, then `CollectFinalTeamReview`, then `DecideTeamAcceptance`; each step owns one artifact boundary and may not silently mutate the next step's artifact.",
+  "How are cross-section dependencies handled? Dependency notes are attached in `CollectWholeFileSectionFeedback`, preserved into `PrepareSectionRewritePackets`, carried through `AssignSectionRewrites`, and resolved in `CombineProposalBlueprint` before `DecideTeamAcceptance` can close the loop.",
   "What implementation choices remain closed? Section ownership stays explicit, feedback stays grouped by section, each step mutates only its own artifact, and `commit` plus `merge` remain downstream of `DecideTeamAcceptance` rather than part of blueprint acceptance itself.",
 );
 
@@ -155,10 +163,12 @@ Section.contracts.answers(
   "What exact step transitions move the process forward or back? `RewriteLoop` is an immutable transition payload with fromStage, toStage, proposalTargetId, blockingSectionTitles, feedbackEntryIds, requestedByReviewerIds, and reason. It must name the specific blocking sections and the specific feedback entries that triggered the loopback, and it consumes only those entries relevant to the returned sections. Acceptance closes the loop only when `accepted` is true and produces `AcceptedBlueprint`, which is the `ProposalBlueprint` paired with its `TeamAcceptance` record, frozen as a single immutable accepted pair, and no later rewrite may alter either half.",
 );
 
-Step.defineTableOfContents.precedes(Step.assignDrafting);
+Step.defineTableOfContents.precedes(Step.prepareDraftingPackets);
+Step.prepareDraftingPackets.precedes(Step.assignDrafting);
 Step.assignDrafting.precedes(Step.combineDrafts);
 Step.combineDrafts.precedes(Step.collectReview);
-Step.collectReview.precedes(Step.assignRewrites);
+Step.collectReview.precedes(Step.prepareRewritePackets);
+Step.prepareRewritePackets.precedes(Step.assignRewrites);
 Step.assignRewrites.precedes(Step.combineProposal);
 Step.combineProposal.precedes(Step.collectFinalReview);
 Step.collectFinalReview.precedes(Step.decideAcceptance);
@@ -167,12 +177,16 @@ when(Step.collectReview.contains("section feedback"))
   .then(DefineBlueprintWithTeamGuide.expects("feedback grouped by section name"))
   .and(DefineBlueprintWithTeamGuide.expects("each section feedback set to remain attached to the same proposal target until rewrite consumes it"));
 
-when(Step.assignDrafting.starts())
+when(Step.prepareDraftingPackets.starts())
   .then(DefineBlueprintWithTeamGuide.requires(Artifact.sectionMap))
   .and(DefineBlueprintWithTeamGuide.requires(Artifact.sharedConcept))
   .and(DefineBlueprintWithTeamGuide.requires(Artifact.qualityBlueprint))
   .and(DefineBlueprintWithTeamGuide.requires("an explicit team sub agent owner for each section"))
-  .and(DefineBlueprintWithTeamGuide.expects("each sub agent to load the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, the assigned section name, and the shared concept before drafting"));
+  .and(DefineBlueprintWithTeamGuide.expects("each drafting packet to include the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, the assigned section name, and the shared concept before drafting"));
+
+when(Step.assignDrafting.starts())
+  .then(DefineBlueprintWithTeamGuide.requires("one prepared drafting packet per section"))
+  .and(DefineBlueprintWithTeamGuide.expects("each packet to be dispatched without changing its section-specific inputs"));
 
 when(Step.combineDrafts.starts())
   .then(DefineBlueprintWithTeamGuide.requires("all drafted sections"))
@@ -182,10 +196,11 @@ when(Step.collectReview.contains("section feedback"))
   .then(DefineBlueprintWithTeamGuide.requires(Artifact.qualityBlueprint))
   .and(DefineBlueprintWithTeamGuide.expects("each reviewing agent to load the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, and the whole blueprint draft before producing section feedback"));
 
-when(Step.assignRewrites.starts())
+when(Step.prepareRewritePackets.starts())
   .then(DefineBlueprintWithTeamGuide.requires(Artifact.combinedDraft))
   .and(DefineBlueprintWithTeamGuide.requires(Artifact.sectionFeedback))
   .and(DefineBlueprintWithTeamGuide.requires(Artifact.qualityBlueprint))
+  .and(DefineBlueprintWithTeamGuide.expects("each rewrite packet to include the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, the assigned section name, the combined draft, and the section-grouped feedback before rewriting"))
   .and(DefineBlueprintWithTeamGuide.prefers("the same owner for each section unless reassignment is explicitly needed"));
 
 when(Step.collectReview.contains("section feedback"))
@@ -193,7 +208,8 @@ when(Step.collectReview.contains("section feedback"))
   .and(DefineBlueprintWithTeamGuide.requires("each FeedbackEntry to remain immutable until the matching rewrite consumes it"));
 
 when(Step.assignRewrites.starts())
-  .then(DefineBlueprintWithTeamGuide.expects("each rewrite agent to load the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, the assigned section name, the combined draft, and the section-grouped feedback before rewriting"));
+  .then(DefineBlueprintWithTeamGuide.requires("one prepared rewrite packet per section"))
+  .and(DefineBlueprintWithTeamGuide.expects("each packet to be dispatched without changing its section-specific rewrite inputs"));
 
 when(Step.collectFinalReview.starts())
   .then(DefineBlueprintWithTeamGuide.requires(Artifact.proposalBlueprint))
@@ -201,7 +217,7 @@ when(Step.collectFinalReview.starts())
   .and(DefineBlueprintWithTeamGuide.expects("each final-review agent to load the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, and the proposal blueprint before suggesting final changes"));
 
 when(Step.decideAcceptance.encounters("requested final changes"))
-  .then(DefineBlueprintWithTeamGuide.returnsTo(Step.assignRewrites))
+  .then(DefineBlueprintWithTeamGuide.returnsTo(Step.prepareRewritePackets))
   .and(DefineBlueprintWithTeamGuide.preserves("the same proposal blueprint as the current authoritative review target"));
 
 when(Step.decideAcceptance.encounters("team acceptance"))

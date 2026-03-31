@@ -2,7 +2,7 @@
   "id": "define_blueprint_with_team",
   "title": "Define Blueprint with Team",
   "catalogOrder": 22,
-  "expectation": "Use a manager-hosted feature-branch worktree as the only mutable surface for this process; never edit blueprint files from the shared repository checkout. Create that worktree from the current upstream base branch tip under the canonical worktree location. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Review relevant existing blueprints, including the canonical Agentish sections blueprint and the relevant agent-team blueprints, when defining or restructuring a subject blueprint. Create a section-level table of contents for the blueprint, assign each section to a team sub agent to draft from the shared concept, combine the drafted sections into one blueprint file, collect whole-file section-by-section review feedback from the team, assign each section to a team sub agent to rewrite from the combined draft plus the feedback for that section, combine the revised sections into one proposal blueprint, collect final team review, and repeat the rewrite cycle until the team accepts the blueprint. Commit the blueprint changes, merge the branch into development, and push development to origin.",
+  "expectation": "Use a manager-hosted feature-branch worktree as the only mutable surface for this process; never edit blueprint files from the shared repository checkout. Create that worktree from the current upstream base branch tip under the canonical worktree location. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Review relevant existing blueprints, including the canonical Agentish sections blueprint, the Agentish quality blueprint, and the relevant agent-team blueprints, when defining or restructuring a subject blueprint. Define the section-level table of contents first, then prepare explicit section-drafting packets so each team sub agent receives the shared concept, assigned section, canonical Agentish sections blueprint, Agentish quality blueprint, and the relevant team profile blueprints before drafting. Combine the section drafts into one whole-file draft blueprint, collect section-keyed whole-file review feedback from the team, prepare explicit section-rewrite packets from the combined draft plus the grouped feedback for each section, combine the rewritten sections into one proposal blueprint, collect final whole-file team review, and repeat the rewrite loop until the team accepts the blueprint. Commit the blueprint changes, merge the branch into development, and push development to origin.",
   "companionPath": "blueprints/process-blueprints/define-blueprint-with-team.agentish.ts",
   "idlePrompt": "If the team-authored blueprint work is complete and the final blueprint has been accepted by the team, reply only with 'done: blueprint defined'. If you are truly blocked on missing user information, target subject definition, or required repository context, reply only with 'blocked: blueprint clarification required'. Otherwise resume the team blueprint-authoring loop immediately and perform the next outline, drafting, review, rewrite, or integration step instead of giving only a status update.",
   "completionMode": "exact_reply",
@@ -37,28 +37,36 @@
           "title": "Create the section-level table of contents for the blueprint file"
         },
         {
+          "id": "prepare_section_drafting_packets",
+          "title": "Prepare one section-drafting packet per section with the shared concept, assigned section, Agentish sections blueprint, Agentish quality blueprint, and team profile inputs"
+        },
+        {
           "id": "assign_section_drafting",
-          "title": "Assign each blueprint section to a team sub agent to draft from the shared concept"
+          "title": "Dispatch each section-drafting packet to the assigned team sub agent"
         },
         {
           "id": "combine_section_drafts",
-          "title": "Combine the section drafts into a single blueprint file draft"
+          "title": "Combine the section drafts into one whole-file draft blueprint"
         },
         {
           "id": "collect_team_review_feedback",
-          "title": "Ask each team member sub agent to review the whole blueprint and provide feedback for each section"
+          "title": "Ask each team member sub agent to review the whole draft blueprint and return section-keyed feedback for every section"
+        },
+        {
+          "id": "prepare_section_rewrite_packets",
+          "title": "Prepare one section-rewrite packet per section from the combined draft plus all grouped feedback for that section"
         },
         {
           "id": "assign_section_rewrites",
-          "title": "Assign each section to a team sub agent to rewrite from the combined draft plus all feedback for that section"
+          "title": "Dispatch each section-rewrite packet to the assigned team sub agent"
         },
         {
           "id": "combine_revised_sections",
-          "title": "Combine the revised sections into a single proposal blueprint"
+          "title": "Combine the rewritten sections into one proposal blueprint"
         },
         {
           "id": "collect_final_team_review",
-          "title": "Ask each team member to review the proposal and suggest any final changes"
+          "title": "Ask each team member to review the whole proposal blueprint and either accept it or request final section changes"
         },
         {
           "id": "decide_team_acceptance",
@@ -70,7 +78,7 @@
               {
                 "id": "team_requests_more_changes",
                 "title": "The team requested more changes",
-                "goto": "assign_section_rewrites"
+                "goto": "prepare_section_rewrite_packets"
               },
               {
                 "id": "team_accepts_final_blueprint",
