@@ -1,6 +1,9 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/agent-workbench-protocol/tsconfig.json" },
+    { "path": "./packages/agent-workbench-server/tsconfig.json" },
+    { "path": "./packages/agent-workbench-ui/tsconfig.json" },
     { "path": "./packages/agent-chat-server/tsconfig.json" },
     { "path": "./packages/agent-chat-ui/tsconfig.json" },
     { "path": "./packages/agent-graph-core/tsconfig.json" },

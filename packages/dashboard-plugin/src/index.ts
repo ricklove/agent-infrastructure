@@ -1,5 +1,6 @@
 export type DashboardFeatureId =
   | "swarm"
+  | "workbench"
   | "chat"
   | "graph"
   | "terminal"
