@@ -1,0 +1,129 @@
+{
+  "id": "define_process_with_team",
+  "title": "Define Process with Team",
+  "catalogOrder": 27,
+  "expectation": "Use a manager-hosted feature-branch worktree as the only mutable surface for this process; never edit process definition files from the shared repository checkout. Create that worktree from the current upstream base branch tip under the canonical worktree location. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Review relevant existing process definitions, the canonical Agentish sections blueprint, the Agentish quality blueprint, and the relevant agent-team blueprints when defining or restructuring a process. Define the section-level table of contents for the companion guide first, then prepare explicit section-drafting packets so each team sub agent receives the shared process concept, assigned section, canonical Agentish sections blueprint, Agentish quality blueprint, and the relevant team profile blueprints before drafting. Combine the section drafts into one whole-file process guide draft, collect section-keyed whole-file review feedback from the team, prepare explicit section-rewrite packets from the combined draft plus the grouped feedback for each section, combine the rewritten sections into one proposal guide, and repeat the rewrite loop until the team accepts the process guide. Keep the process JSON and companion guide aligned as one process-definition layer, then commit the changes, merge the branch into development, push development to origin, promote the integrated commit onto main, create a release tag from that exact promoted commit, deploy the runtime through the normal release-tag deploy path, and verify the new process is available in the live system.",
+  "companionPath": "blueprints/process-blueprints/define-process-with-team.agentish.ts",
+  "idlePrompt": "If the team-authored process-definition work is complete, the process guide and JSON are aligned, the team has accepted the final guide, and the new process is live, reply only with 'done: process defined'. If you are truly blocked on missing user information, target process definition, or required repository context, reply only with 'blocked: process definition requires clarification'. Otherwise resume the team process-definition loop immediately and perform the next outline, drafting, review, rewrite, integration, release, deploy, or validation step instead of giving only a status update.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: process defined",
+  "blockedToken": "blocked: process definition requires clarification",
+  "stopConditions": [
+    "team-authored process-definition work complete",
+    "missing information from the user",
+    "missing target process definition",
+    "missing required repository context"
+  ],
+  "steps": [
+    {
+      "id": "process_worktree_surface",
+      "title": "Prepare the process-definition worktree",
+      "steps": [
+        {
+          "use": "feature_worktree_setup"
+        }
+      ]
+    },
+    {
+      "id": "process_team_revision_cycle",
+      "title": "Define and integrate the process with the team",
+      "steps": [
+        {
+          "id": "review_existing_process_context",
+          "title": "Review relevant existing process definitions, Agentish sections, Agentish quality blueprint, and agent-team blueprints"
+        },
+        {
+          "id": "create_process_guide_table_of_contents",
+          "title": "Create the section-level table of contents for the process companion guide"
+        },
+        {
+          "id": "prepare_section_drafting_packets",
+          "title": "Prepare one section-drafting packet per guide section with the shared process concept, assigned section, Agentish sections blueprint, Agentish quality blueprint, and team profile inputs"
+        },
+        {
+          "id": "assign_section_drafting",
+          "title": "Dispatch each section-drafting packet to the assigned team sub agent"
+        },
+        {
+          "id": "combine_section_drafts",
+          "title": "Combine the section drafts into one whole-file process guide draft"
+        },
+        {
+          "id": "collect_team_review_feedback",
+          "title": "Ask each team member sub agent to review the whole process guide draft and return section-keyed feedback for every section"
+        },
+        {
+          "id": "prepare_section_rewrite_packets",
+          "title": "Prepare one section-rewrite packet per guide section from the combined draft plus all grouped feedback for that section"
+        },
+        {
+          "id": "assign_section_rewrites",
+          "title": "Dispatch each section-rewrite packet to the assigned team sub agent"
+        },
+        {
+          "id": "combine_revised_sections",
+          "title": "Combine the rewritten sections into one proposal process guide"
+        },
+        {
+          "id": "collect_final_team_review",
+          "title": "Ask each team member to review the whole proposal process guide and either accept it or request final section changes"
+        },
+        {
+          "id": "decide_team_acceptance",
+          "title": "Did the team accept the proposal process guide?",
+          "kind": "decision",
+          "decision": {
+            "prompt": "Did the team accept the proposal process guide?",
+            "options": [
+              {
+                "id": "team_requests_more_changes",
+                "title": "The team requested more changes",
+                "goto": "prepare_section_rewrite_packets"
+              },
+              {
+                "id": "team_accepts_final_process_guide",
+                "title": "The team accepts the final process guide",
+                "next": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "align_process_definition_layer",
+          "title": "Align the process JSON and companion guide as one process-definition layer"
+        },
+        {
+          "id": "commit_process_changes",
+          "title": "Commit the process-definition changes"
+        },
+        {
+          "id": "merge_into_development",
+          "title": "Run `bun run agent:merge-manager-feature -- <feature-branch-name>` to merge the local feature branch from its manager worktree and push `development` to origin"
+        }
+      ]
+    },
+    {
+      "id": "process_release_validation",
+      "title": "Release and validate the process changes",
+      "steps": [
+        {
+          "id": "promote_release",
+          "title": "Merge the integrated `development` commit onto `main`, push `main`, and create and push a release tag from that exact promoted commit"
+        },
+        {
+          "id": "deploy_runtime",
+          "title": "Deploy the runtime"
+        },
+        {
+          "id": "verify_live_process",
+          "title": "Verify the new process is available in the live system"
+        }
+      ]
+    }
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 90,
+    "maxNudgesPerIdleEpisode": 0
+  }
+}
