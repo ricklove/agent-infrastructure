@@ -6,10 +6,10 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "./node_modules/.bin/tsgo -b tsconfig.projects.json --noEmit",
-    "check": "./node_modules/.bin/tsgo -b tsconfig.projects.json --noEmit",
-    "lint": "./node_modules/.bin/biome check apps packages",
-    "format": "./node_modules/.bin/biome format --write apps packages",
+    "build": "bun x tsgo -b tsconfig.projects.json --noEmit",
+    "check": "bun x tsgo -b tsconfig.projects.json --noEmit",
+    "lint": "bun x biome check apps packages",
+    "format": "bun x biome format --write apps packages",
     "connect-vscode": "bash ./tools/connect-vscode.sh --profile agent-team-admin",
     "connect-ssh": "bash ./tools/connect-ssh.sh --profile agent-team-admin",
     "agent:connect-worker-ec2-ssh": "bun run --filter @agent-infrastructure/swarm-manager run:connect-worker-ec2-ssh",
