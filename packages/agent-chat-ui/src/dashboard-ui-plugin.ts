@@ -1,5 +1,5 @@
+import { agentChatDashboardPlugin } from "@agent-infrastructure/agent-chat-server/plugin"
 import type { DashboardFeatureUiPlugin } from "@agent-infrastructure/dashboard-plugin"
-import { agentChatDashboardPlugin } from "./dashboard-plugin"
 
 export const agentChatDashboardUiPlugin: DashboardFeatureUiPlugin = {
   ...agentChatDashboardPlugin,

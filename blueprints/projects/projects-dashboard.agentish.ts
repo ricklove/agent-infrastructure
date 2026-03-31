@@ -365,10 +365,10 @@ Package.ui.dependsOn(Package.dashboardUi);
 Package.server.dependsOn(Package.dashboardServer);
 
 ProjectsDashboardImplementation.implementsThrough(`
-- packages/projects-ui exports the Projects dashboard plugin and screen.
-- packages/projects-server exposes the project registry, repo onboarding, GitHub binding, and integration-policy endpoints.
-- packages/dashboard-ui imports the Projects plugin into the feature registry.
-- packages/dashboard imports the Projects backend plugin into the gateway registry.
+- packages/projects-server owns the Projects base dashboard plugin alongside the project registry, repo onboarding, GitHub binding, and integration-policy endpoints.
+- packages/projects-ui composes the Projects UI plugin by attaching the screen loader to the server-owned feature definition.
+- packages/dashboard-ui imports the Projects UI plugin into the feature registry.
+- packages/dashboard imports the Projects server-owned base plugin into the gateway registry without depending on the UI package.
 `);
 
 ProjectsDashboardImplementation.usesFiles(`
@@ -378,8 +378,10 @@ ProjectsDashboardImplementation.usesFiles(`
 - packages/dashboard-plugin/src/index.ts
 - packages/dashboard-ui/src/feature-plugins.ts
 - packages/dashboard/src/feature-plugins.ts
-- packages/projects-ui/src/dashboard-plugin.ts
-- packages/projects-ui/src/ProjectsScreen.tsx
+- packages/projects-server/src/dashboard-plugin.ts
 - packages/projects-server/src/index.ts
+- packages/projects-ui/src/dashboard-plugin.ts
+- packages/projects-ui/src/dashboard-ui-plugin.ts
+- packages/projects-ui/src/ProjectsScreen.tsx
 - tools/github-app-token.sh
 `);

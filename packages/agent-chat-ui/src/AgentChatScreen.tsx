@@ -19,6 +19,9 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 
+import type { AgentTicket } from "./ticket-types"
+import { renderTicketChecklistItems, ticketStatusLabel } from "./ticket-ui"
+
 type ProviderKind =
   | "codex-app-server"
   | "openrouter"
@@ -72,46 +75,6 @@ type SessionWatchdogState = {
   nudgeCount: number
   lastNudgedAtMs: number | null
   completedAtMs: number | null
-}
-
-type AgentTicketDecisionOption = {
-  id: string
-  title: string
-  goto: string | null
-  next: boolean
-  block: boolean
-  complete: boolean
-  steps: AgentTicketStep[]
-}
-
-type AgentTicketStep = {
-  id: string
-  title: string
-  kind: "task" | "wait" | "decision"
-  status: "pending" | "active" | "completed" | "blocked"
-  doneToken: string | null
-  blockedToken: string | null
-  decision: {
-    prompt: string
-    options: AgentTicketDecisionOption[]
-  } | null
-}
-
-type AgentTicket = {
-  id: string
-  sessionId: string
-  title: string
-  description: string
-  processBlueprintId: string
-  processTitle: string
-  status: "active" | "completed" | "blocked"
-  currentStepId: string | null
-  nextStepId: string | null
-  nextStepLabel: string | null
-  checklist: AgentTicketStep[]
-  resolution: string | null
-  createdAtMs: number
-  updatedAtMs: number
 }
 
 type SessionSummary = {
@@ -911,60 +874,6 @@ function ticketPickerOptionLabel(
     ticket.id === currentTicketId ? "Current ticket: " : "Resume ticket: "
   const blockedSuffix = ticket.status === "blocked" ? " (blocked)" : ""
   return `${prefix}${ticket.title}${blockedSuffix}`
-}
-
-function activeTicketStatusLabel(activeTicket: AgentTicket | null) {
-  if (!activeTicket) {
-    return null
-  }
-  if (activeTicket.status === "completed") {
-    return "Ticket complete"
-  }
-  if (activeTicket.status === "blocked") {
-    return activeTicket.nextStepLabel
-      ? `Blocked: ${activeTicket.nextStepLabel}`
-      : "Ticket blocked"
-  }
-  if (activeTicket.nextStepLabel) {
-    return `Next: ${activeTicket.nextStepLabel}`
-  }
-  return activeTicket.checklist.length > 0 ? activeTicket.title : null
-}
-
-function ticketStepKindLabel(step: AgentTicketStep) {
-  if (step.kind === "wait") {
-    return " [wait]"
-  }
-  if (step.kind === "decision") {
-    return " [decision]"
-  }
-  return ""
-}
-
-function renderTicketChecklistItems(
-  steps: AgentTicketStep[],
-  depth = 0,
-): ReactNode[] {
-  return steps.map((step) => (
-    <p
-      key={step.id}
-      style={{ paddingLeft: `${depth * 0.875}rem` }}
-      className={`text-xs ${
-        step.status === "completed"
-          ? "text-slate-400 line-through"
-          : step.status === "active"
-            ? "text-white"
-            : step.status === "blocked"
-              ? "text-rose-200"
-              : "text-slate-400"
-      }`}
-    >
-      {step.status === "completed" ? "[x]" : "[ ]"} {step.title}
-      {ticketStepKindLabel(step)}
-      {step.status === "active" ? " <- current" : ""}
-      {step.status === "blocked" ? " (blocked)" : ""}
-    </p>
-  ))
 }
 
 function formatCompactInteger(value: number | null) {
@@ -2961,9 +2870,9 @@ const MainSessionCard = memo(
                 {props.processTitle}
               </p>
             ) : null}
-            {activeTicketStatusLabel(props.session.activeTicket) ? (
+            {ticketStatusLabel(props.session.activeTicket) ? (
               <p className="mt-1 truncate text-[11px] text-emerald-200/80">
-                {activeTicketStatusLabel(props.session.activeTicket)}
+                {ticketStatusLabel(props.session.activeTicket)}
               </p>
             ) : null}
           </div>
@@ -5996,9 +5905,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         ) : null}
                         {activeSession?.activeTicket ? (
                           <p className="mt-2 text-xs text-emerald-200/80">
-                            {activeTicketStatusLabel(
-                              activeSession.activeTicket,
-                            )}
+                            {ticketStatusLabel(activeSession.activeTicket)}
                           </p>
                         ) : null}
                       </div>
@@ -6091,18 +5998,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                               Ticket Checklist
                             </p>
-                            {activeTicketStatusLabel(
-                              activeSession.activeTicket,
-                            ) ? (
+                            {ticketStatusLabel(activeSession.activeTicket) ? (
                               <p className="mt-2 text-xs text-emerald-200/80">
-                                {activeTicketStatusLabel(
-                                  activeSession.activeTicket,
-                                )}
+                                {ticketStatusLabel(activeSession.activeTicket)}
                               </p>
                             ) : null}
                             <div className="mt-3 space-y-2">
                               {renderTicketChecklistItems(
                                 activeSession.activeTicket.checklist,
+                                { variant: "compact" },
                               )}
                             </div>
                           </div>
