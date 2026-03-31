@@ -2,17 +2,14 @@
   "id": "development_loop",
   "title": "Development Loop",
   "catalogOrder": 52,
-  "expectation": "Use a worker-hosted feature-branch worktree as the only mutable implementation surface for active development in this process; never edit from the shared repository checkout, a manager-hosted worktree, or a worker shared checkout. Start each iteration by loading the target blueprint or blueprints for the current focus, then perform one implementation iteration, then return to the blueprint-loading step and continue looping until the operator explicitly pauses or switches processes.",
+  "expectation": "Use a worker-hosted feature-branch worktree as the only mutable implementation surface for active development in this process; never edit from the shared repository checkout, a manager-hosted worktree, or a worker shared checkout. Start each iteration by loading the target blueprint or blueprints for the current focus, then perform one implementation iteration, then return to the blueprint-loading step and continue looping. When choosing the next loop outcome, select whether the next iteration should fix a bug, improve the code architecture, or add tests, and route each of those outcomes back to the blueprint-loading step.",
   "companionPath": "blueprints/process-blueprints/development-loop.agentish.ts",
   "kind": "procedural",
-  "idlePrompt": "If the development loop is intentionally paused, reply only with 'done: development loop paused'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: development loop blocked'. Otherwise resume the loop immediately by loading the relevant blueprints, completing one implementation iteration, and continuing to the next iteration instead of giving only a status update.",
+  "idlePrompt": "Resume the development loop immediately by loading the relevant blueprints, completing one implementation iteration, and then choosing whether the next loop should fix a bug, improve the code architecture, or add tests before returning to the blueprint-loading step. Do not pause or block the loop, and do not give only a status update.",
   "completionMode": "exact_reply",
-  "completionToken": "done: development loop paused",
-  "blockedToken": "blocked: development loop blocked",
-  "stopConditions": [
-    "development loop intentionally paused",
-    "blocked on user or environment dependency"
-  ],
+  "completionToken": "done: development loop unreachable terminal",
+  "blockedToken": "blocked: development loop unreachable terminal",
+  "stopConditions": [],
   "steps": [
     {
       "id": "load_target_blueprints",
@@ -30,19 +27,19 @@
         "prompt": "What is the development-loop outcome?",
         "options": [
           {
-            "id": "continue_development_loop",
-            "title": "Continue the development loop",
+            "id": "fix_a_bug",
+            "title": "Fix a bug",
             "goto": "load_target_blueprints"
           },
           {
-            "id": "development_loop_paused",
-            "title": "Pause the development loop",
-            "complete": true
+            "id": "improve_the_code_architecture",
+            "title": "Improve the code architecture",
+            "goto": "load_target_blueprints"
           },
           {
-            "id": "development_loop_blocked",
-            "title": "Development loop is blocked",
-            "block": true
+            "id": "add_tests",
+            "title": "Add tests",
+            "goto": "load_target_blueprints"
           }
         ]
       }
