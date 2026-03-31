@@ -29,7 +29,7 @@ const CurrentReality = {
 ProjectsDashboardBlueprintState.defines(`
 - CurrentImplementationStatus means the Projects feature exists as a real dashboard surface with a backend registry, project records, GitHub installation records, clone or register flows, and per-project integration settings.
 - AssessmentConfidence is medium because the current state now has direct source inspection, local server verification for import behavior, and deployed UI screenshots for the Projects surface.
-- ImplementationEvidence includes packages/projects-server/src/index.ts, packages/projects-server/src/registry.ts, packages/projects-server/src/registry.test.ts, the Projects dashboard UI, and screenshots under /home/ec2-user/state/screenshots/projects-feature-20260325/.
+- ImplementationEvidence includes packages/projects-server/src/index.ts, packages/projects-server/src/registry.ts, packages/projects-server/src/registry.test.ts, the shared dashboard session helper under packages/dashboard-plugin/src/session-client.ts, the Projects dashboard UI, and screenshots under /home/ec2-user/state/screenshots/projects-feature-20260325/.
 - This blueprint-state compares current implementation reality against the ideal Projects dashboard implementation blueprint in projects-dashboard-implementation.agentish.ts and the shared workflow rules in development-process.agentish.ts.
 - ImplementationGap means the feature still relies on a narrow registry-backed flow and has not yet grown richer operational automation around project health, job history, or repo workflow orchestration.
 - KnownIssue means live verification for the legacy GitHub App import path is still indirect today because the dashboard UI shows imported installations once the backend registry is read, but the feature does not yet expose a dedicated import action or import audit history.
@@ -80,6 +80,7 @@ CurrentReality.projectIntegrationPolicy.means(`
 
 CurrentReality.workflowAlignment.means(`
 - Projects now has a maintained blueprint-state document as required by the shared development process
+- Projects browser session auth now flows through the shared helper in packages/dashboard-plugin/src/session-client.ts rather than feature-local sessionStorage code in the Projects screen
 - future Projects changes should update this document alongside relevant blueprint or implementation changes
 `);
 

@@ -63,3 +63,11 @@ export type DashboardFeaturePlugin = {
 export type DashboardFeatureUiPlugin = DashboardFeaturePlugin & {
   loadScreen: () => Promise<DashboardScreenModule>
 }
+
+export {
+  createDashboardSessionHeaders,
+  dashboardSessionAuthorizationHeaderValue,
+  dashboardSessionFetch,
+  dashboardSessionWebSocketProtocols,
+  readDashboardSessionToken,
+} from "./session-client.js"
