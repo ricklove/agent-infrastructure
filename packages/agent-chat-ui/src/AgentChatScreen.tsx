@@ -1316,11 +1316,15 @@ function renderStyledInlineMarkdown(
   keyPrefix: string,
   onOpenFileReference: (pathname: string) => void,
 ) {
+  const segmentOccurrences = new Map<string, number>()
+
   return text
     .split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*)/g)
     .filter(Boolean)
     .map((segment) => {
-      const segmentKey = `${keyPrefix}-segment-${crypto.randomUUID()}`
+      const occurrenceIndex = segmentOccurrences.get(segment) ?? 0
+      segmentOccurrences.set(segment, occurrenceIndex + 1)
+      const segmentKey = `${keyPrefix}-segment-${segment}-${occurrenceIndex}`
       const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(segment)
       if (linkMatch) {
         if (isLikelyLocalFileReferenceTarget(linkMatch[2] ?? "")) {
@@ -1378,11 +1382,15 @@ function renderInlineMarkdown(
   keyPrefix: string,
   onOpenFileReference: (pathname: string) => void,
 ) {
+  const segmentOccurrences = new Map<string, number>()
+
   return text
     .split(/(`[^`]+`)/g)
     .filter(Boolean)
     .map((segment) => {
-      const segmentKey = `${keyPrefix}-segment-${crypto.randomUUID()}`
+      const occurrenceIndex = segmentOccurrences.get(segment) ?? 0
+      segmentOccurrences.set(segment, occurrenceIndex + 1)
+      const segmentKey = `${keyPrefix}-segment-${segment}-${occurrenceIndex}`
       if (
         segment.startsWith("`") &&
         segment.endsWith("`") &&
@@ -1390,7 +1398,7 @@ function renderInlineMarkdown(
       ) {
         return (
           <code
-            key={`${keyPrefix}-code-${segment.slice(1, -1)}`}
+            key={`${segmentKey}-code`}
             className="rounded-md bg-slate-950/90 px-1.5 py-0.5 font-mono text-[0.92em] text-cyan-100"
           >
             {segment.slice(1, -1)}
@@ -1410,12 +1418,23 @@ function renderMarkdownParagraph(
   keyPrefix: string,
   onOpenFileReference: (pathname: string) => void,
 ) {
-  return lines.map((line, index) => (
-    <Fragment key={`${keyPrefix}-line-${line}`}>
-      {index > 0 ? <br /> : null}
-      {renderInlineMarkdown(line, `${keyPrefix}-${line}`, onOpenFileReference)}
-    </Fragment>
-  ))
+  const lineOccurrences = new Map<string, number>()
+
+  return lines.map((line, index) => {
+    const occurrenceIndex = lineOccurrences.get(line) ?? 0
+    lineOccurrences.set(line, occurrenceIndex + 1)
+
+    return (
+      <Fragment key={`${keyPrefix}-line-${line}-${occurrenceIndex}`}>
+        {index > 0 ? <br /> : null}
+        {renderInlineMarkdown(
+          line,
+          `${keyPrefix}-${line}`,
+          onOpenFileReference,
+        )}
+      </Fragment>
+    )
+  })
 }
 
 function renderMarkdownBlocks(
@@ -1467,15 +1486,24 @@ function renderMarkdownBlocks(
           key={`${keyPrefix}-ul-${blockIndex}`}
           className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-disc"
         >
-          {lines.map((line) => (
-            <li key={`${keyPrefix}-ul-${blockIndex}-${line}`}>
-              {renderInlineMarkdown(
-                line.replace(/^[-*]\s+/, ""),
-                `${keyPrefix}-ul-${blockIndex}-${line}`,
-                context.onOpenFileReference,
-              )}
-            </li>
-          ))}
+          {(() => {
+            const lineOccurrences = new Map<string, number>()
+            return lines.map((line) => {
+              const occurrenceIndex = lineOccurrences.get(line) ?? 0
+              lineOccurrences.set(line, occurrenceIndex + 1)
+              return (
+                <li
+                  key={`${keyPrefix}-ul-${blockIndex}-${line}-${occurrenceIndex}`}
+                >
+                  {renderInlineMarkdown(
+                    line.replace(/^[-*]\s+/, ""),
+                    `${keyPrefix}-ul-${blockIndex}-${line}`,
+                    context.onOpenFileReference,
+                  )}
+                </li>
+              )
+            })
+          })()}
         </ul>,
       )
       blockIndex += 1
@@ -1488,15 +1516,24 @@ function renderMarkdownBlocks(
           key={`${keyPrefix}-ol-${blockIndex}`}
           className="space-y-1 pl-5 text-sm leading-6 text-slate-100 list-decimal"
         >
-          {lines.map((line) => (
-            <li key={`${keyPrefix}-ol-${blockIndex}-${line}`}>
-              {renderInlineMarkdown(
-                line.replace(/^\d+\.\s+/, ""),
-                `${keyPrefix}-ol-${blockIndex}-${line}`,
-                context.onOpenFileReference,
-              )}
-            </li>
-          ))}
+          {(() => {
+            const lineOccurrences = new Map<string, number>()
+            return lines.map((line) => {
+              const occurrenceIndex = lineOccurrences.get(line) ?? 0
+              lineOccurrences.set(line, occurrenceIndex + 1)
+              return (
+                <li
+                  key={`${keyPrefix}-ol-${blockIndex}-${line}-${occurrenceIndex}`}
+                >
+                  {renderInlineMarkdown(
+                    line.replace(/^\d+\.\s+/, ""),
+                    `${keyPrefix}-ol-${blockIndex}-${line}`,
+                    context.onOpenFileReference,
+                  )}
+                </li>
+              )
+            })
+          })()}
         </ol>,
       )
       blockIndex += 1
