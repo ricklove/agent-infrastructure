@@ -353,6 +353,14 @@ export function DashboardShell({
   }, [])
 
   useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("dashboard-active-feature-change", {
+        detail: { featureId: activeFeatureId },
+      }),
+    )
+  }, [activeFeatureId])
+
+  useEffect(() => {
     function handleFeatureStatus(event: Event) {
       const detail = (event as CustomEvent<FeatureStatusDetail>).detail
       if (!detail?.featureId) {

@@ -2,11 +2,12 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs"
 import { basename, dirname, join, resolve } from "node:path"
-import { fileURLToPath, pathToFileURL } from "node:url"
+import { fileURLToPath } from "node:url"
 import type {
   WorkbenchDocumentRecord,
   WorkbenchSummary,
@@ -44,18 +45,17 @@ function serializeWorkbench(record: WorkbenchDocumentRecord) {
   ].join("\n")
 }
 
-async function loadWorkbenchModule(filePath: string) {
-  const moduleUrl = pathToFileURL(filePath)
-  moduleUrl.searchParams.set("ts", String(Date.now()))
-  const imported = (await import(moduleUrl.href)) as {
-    default?: WorkbenchDocumentRecord
-  }
-  if (!imported.default) {
+function loadWorkbenchModule(filePath: string) {
+  const source = readFileSync(filePath, "utf8")
+  const match = source.match(
+    /const workbench = (.*) as const;\n\nexport default workbench;/s,
+  )
+  if (!match?.[1]) {
     throw new Error(
-      `Workbench file did not export a default record: ${filePath}`,
+      `Workbench file did not contain a parsable record: ${filePath}`,
     )
   }
-  return imported.default
+  return JSON.parse(match[1]) as WorkbenchDocumentRecord
 }
 
 export function ensureWorkbenchRoot() {

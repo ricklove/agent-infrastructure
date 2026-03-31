@@ -320,11 +320,15 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   const [creatingWorkbench, setCreatingWorkbench] = useState(false)
   const [error, setError] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
+  const [controlsVisible, setControlsVisible] = useState(
+    () => window.location.pathname === "/workbench",
+  )
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null)
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const suspendAutosaveRef = useRef(true)
   const workbenchRef = useRef<WorkbenchDocumentRecord | null>(null)
+  const activeLoadRequestIdRef = useRef(0)
   const nodesRef = useRef<Node<WorkbenchNodeData>[]>([])
   const edgesRef = useRef<Edge[]>([])
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 })
@@ -376,10 +380,33 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
     closeWindowRef.current = closeWindow
   }, [closeWindow])
 
+  useEffect(() => {
+    function handleActiveFeatureChange(event: Event) {
+      const detail = (event as CustomEvent<{ featureId?: string }>).detail
+      setControlsVisible(detail?.featureId === "workbench")
+    }
+
+    window.addEventListener(
+      "dashboard-active-feature-change",
+      handleActiveFeatureChange as EventListener,
+    )
+    return () => {
+      window.removeEventListener(
+        "dashboard-active-feature-change",
+        handleActiveFeatureChange as EventListener,
+      )
+    }
+  }, [])
+
   const applySavedSnapshot = useCallback(
-    (payload: WorkbenchSnapshotResponse) => {
-      setWorkbench(payload.workbench)
+    (
+      payload: WorkbenchSnapshotResponse,
+      options?: { allowWorkbenchReplace?: boolean },
+    ) => {
       setAvailableWorkbenches(payload.availableWorkbenches)
+      if (options?.allowWorkbenchReplace ?? true) {
+        setWorkbench(payload.workbench)
+      }
     },
     [],
   )
@@ -403,7 +430,9 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
           throw new Error(await response.text())
         }
         const payload = (await response.json()) as WorkbenchSnapshotResponse
-        applySavedSnapshot(payload)
+        applySavedSnapshot(payload, {
+          allowWorkbenchReplace: workbenchRef.current?.id === record.id,
+        })
       } catch (saveError) {
         setError(
           saveError instanceof Error ? saveError.message : String(saveError),
@@ -541,6 +570,9 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
       setEdges(payload.workbench.edges.map(edgeRecordToFlowEdge))
       setViewport(payload.workbench.viewport)
       viewportRef.current = payload.workbench.viewport
+      if (reactFlowInstance) {
+        void reactFlowInstance.setViewport(payload.workbench.viewport)
+      }
       pendingSaveRef.current = {
         dirtyCycleActive: false,
         pending: false,
@@ -553,7 +585,7 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
         suspendAutosaveRef.current = false
       }, 0)
     },
-    [nodeRecordToFlowNode, setEdges, setNodes],
+    [nodeRecordToFlowNode, reactFlowInstance, setEdges, setNodes],
   )
 
   const flushAllSaves = useCallback(async () => {
@@ -573,6 +605,8 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   const loadWorkbench = useCallback(
     async (id?: string) => {
       await flushAllSaves()
+      const requestId = activeLoadRequestIdRef.current + 1
+      activeLoadRequestIdRef.current = requestId
       setLoading(true)
       setError("")
       try {
@@ -585,6 +619,9 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
           throw new Error(await response.text())
         }
         const payload = (await response.json()) as WorkbenchSnapshotResponse
+        if (activeLoadRequestIdRef.current !== requestId) {
+          return
+        }
         applyLoadedSnapshot(payload)
       } catch (loadError) {
         setError(
@@ -697,35 +734,43 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   }
 
   useEffect(() => {
-    openWindowRef.current({
-      id: controlsWindowId,
-      title: "Workbench Files",
-      icon: controlsIconRef.current,
-      body: controlsBodyRef.current,
-      width: 320,
-      height: 460,
-      x: 24,
-      y: 24,
-      fitContentWidth: 320,
-    })
-    controlsWindowOpenedRef.current = true
-    return () => {
-      controlsWindowOpenedRef.current = false
-      closeWindowRef.current(controlsWindowId)
-    }
-  }, [])
-
-  useEffect(() => {
-    controlsBodyRef.current = controlsBody
-    if (!controlsWindowOpenedRef.current) {
+    if (!controlsVisible) {
+      if (controlsWindowOpenedRef.current) {
+        closeWindowRef.current(controlsWindowId)
+        controlsWindowOpenedRef.current = false
+      }
       return
     }
+
+    if (!controlsWindowOpenedRef.current) {
+      openWindowRef.current({
+        id: controlsWindowId,
+        title: "Workbench Files",
+        icon: controlsIconRef.current,
+        body: controlsBodyRef.current,
+        width: 320,
+        height: 460,
+        x: 24,
+        y: 24,
+        fitContentWidth: 320,
+      })
+      controlsWindowOpenedRef.current = true
+      return
+    }
+
     updateWindowRef.current(controlsWindowId, {
       title: "Workbench Files",
       icon: controlsIcon,
       body: controlsBody,
     })
-  }, [controlsBody, controlsIcon])
+  }, [controlsBody, controlsIcon, controlsVisible])
+
+  useEffect(() => {
+    return () => {
+      controlsWindowOpenedRef.current = false
+      closeWindowRef.current(controlsWindowId)
+    }
+  }, [])
 
   const createNodeAtClientPoint = useCallback(
     (clientX: number, clientY: number, target: EventTarget | null) => {
