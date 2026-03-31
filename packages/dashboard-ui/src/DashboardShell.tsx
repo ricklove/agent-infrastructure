@@ -604,7 +604,9 @@ export function DashboardShell({
         <aside
           className={[
             "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 overflow-visible border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:relative md:z-30 md:translate-x-0",
-            mobileFeatureMenuOpen ? "translate-x-0" : "-translate-x-full",
+            mobileFeatureMenuOpen
+              ? "translate-x-0 pointer-events-auto"
+              : "-translate-x-full pointer-events-none md:pointer-events-auto",
           ].join(" ")}
         >
           <div className="group relative">
