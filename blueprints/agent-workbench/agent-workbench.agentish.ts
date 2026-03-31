@@ -98,6 +98,7 @@ const Storage = {
 const Policy = {
   graphFirst: define.concept("GraphFirstFeatureSurface"),
   minimalScope: define.concept("MinimalInitialFeatureScope"),
+  bootstrapSlice: define.concept("BootstrapTextNodeVerticalSlice"),
   reactFlowAdapterOnly: define.concept("ReactFlowIsWorkbenchAdapter"),
   sourceAuthoritative: define.concept("WorkbenchSourceDocumentsAreAuthoritative"),
   editorPrimitivesMinimal: define.concept("MinimalEditorPrimitives"),
@@ -114,6 +115,9 @@ AgentWorkbench.enforces(`
 - Double-clicking empty workbench space creates a new text node at the clicked location.
 - A text node should be directly editable through a resizable text area.
 - Workbench state must persist as source documents under workspace/workbenches rather than as opaque browser-only state.
+- The first implementation milestone should close a full text-node vertical slice before richer workbench behavior expands.
+- The first implementation milestone is loading a workbench document, rendering the React Flow canvas, creating text nodes, editing text nodes, moving text nodes, and persisting those changes durably.
+- Labeled edges, handles, and Agentish lift tooling may be modeled now without blocking the first implementation milestone.
 - Workbench source documents are authoritative over React Flow runtime state.
 - React Flow is the rendering and interaction adapter for the workbench, not the durable source of truth.
 - A named text node lifts to an Agentish constant definition with a stable semantic name and description.
@@ -136,6 +140,7 @@ AgentWorkbench.defines(`
 - WorkbenchToAgentishLift means the projection from editable workbench graph material into named Agentish source structure.
 - GraphFirstFeatureSurface means the workbench route is the primary full-feature graph view rather than a sidecar inspector.
 - MinimalInitialFeatureScope means the v1 subject closes only text-node authoring, edge authoring, persistence, and workbench-doc structure.
+- BootstrapTextNodeVerticalSlice means the first shipped implementation milestone closes only the React Flow surface plus durable text-node creation, editing, movement, loading, and saving.
 - ReactFlowIsWorkbenchAdapter means React Flow owns interaction mechanics but does not own the canonical workbench record.
 - WorkbenchSourceDocumentsAreAuthoritative means persisted `.workbench.ts` source files are the durable truth for workbench data.
 - WorkbenchNamesLiftToAgentishMeaning means named nodes, edges, and handles should eventually compile into proper Agentish structure rather than remaining anonymous editor geometry forever.
@@ -159,6 +164,7 @@ Workbench.workspace.contains(
   Language.lift,
   Policy.graphFirst,
   Policy.minimalScope,
+  Policy.bootstrapSlice,
   Policy.reactFlowAdapterOnly,
   Policy.sourceAuthoritative,
   Policy.editorPrimitivesMinimal,
@@ -188,6 +194,10 @@ when(Actor.operator.edits(Graph.textNode))
   .then(AgentWorkbench.updates(Storage.nodeRecord))
   .and(AgentWorkbench.preserves("multiline text content"))
   .and(AgentWorkbench.preserves("resized node dimensions when changed by the operator"));
+
+when(Actor.operator.moves(Graph.textNode))
+  .then(AgentWorkbench.updates(Storage.nodeRecord))
+  .and(AgentWorkbench.preserves("the persisted node coordinates"));
 
 when(Actor.operator.connects(Graph.textNode).to(Graph.textNode))
   .then(AgentWorkbench.creates(Graph.textEdge))
@@ -238,6 +248,7 @@ Package.workbenchServer.dependsOn(Package.workbenchProtocol);
 
 AgentWorkbench.implementsThrough(`
 - packages/agent-workbench-ui owns the React Flow workbench screen, text-node rendering, text-node editing, edge labeling, and save-triggering UI.
+- The first implementation milestone should prioritize canvas boot, text-node creation, text-node editing, text-node movement, and file-backed save or reload before richer graph authoring.
 - packages/agent-workbench-server owns workbench document discovery, `.workbench.ts` read and write behavior, and source-of-truth persistence under workspace/workbenches.
 - packages/agent-workbench-protocol owns the shared workbench record contracts used by the dashboard UI and server.
 - packages/dashboard-ui and packages/dashboard register the Agent Workbench feature as a first-party full-screen dashboard route.
