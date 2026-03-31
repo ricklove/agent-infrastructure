@@ -1,3 +1,7 @@
+import {
+  dashboardSessionFetch,
+  readDashboardSessionToken,
+} from "@agent-infrastructure/dashboard-session-ui"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
   type ClipboardEvent,
@@ -337,7 +341,6 @@ export type AgentChatScreenProps = {
   wsRootUrl: string
 }
 
-const sessionStorageKey = "agent-infrastructure.dashboard.session"
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
 const defaultSessionDirectory = "/home/ec2-user/workspace"
 const draftStorageKeyPrefix = "agent-infrastructure.agent-chat.draft."
@@ -758,17 +761,8 @@ function readClipboardImage(file: File) {
   })
 }
 
-function readStoredSessionToken(): string {
-  return window.sessionStorage.getItem(sessionStorageKey) ?? ""
-}
-
-function authorizationHeaderValue(): string {
-  const sessionToken = readStoredSessionToken().trim()
-  return sessionToken ? `Bearer ${sessionToken}` : ""
-}
-
 function dashboardSessionWebSocketProtocols(): string[] {
-  const sessionToken = readStoredSessionToken().trim()
+  const sessionToken = readDashboardSessionToken().trim()
   if (!sessionToken) {
     return []
   }
@@ -812,17 +806,7 @@ function readSessionRailWidth() {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const headers = new Headers(init?.headers)
-  const authorization = authorizationHeaderValue()
-
-  if (authorization) {
-    headers.set("Authorization", authorization)
-  }
-
-  return fetch(path, {
-    ...init,
-    headers,
-  })
+  return dashboardSessionFetch(path, init)
 }
 
 function activityLabel(activity: SessionActivity) {

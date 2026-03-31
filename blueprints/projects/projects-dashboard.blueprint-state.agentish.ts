@@ -23,6 +23,7 @@ const CurrentReality = {
   githubInstallationRegistry: define.concept("GitHubInstallationRegistry"),
   legacyGithubAppImport: define.concept("LegacyGitHubAppImport"),
   projectIntegrationPolicy: define.concept("ProjectIntegrationPolicyStorage"),
+  dashboardSessionBoundary: define.concept("DashboardSessionBoundary"),
   workflowAlignment: define.concept("DevelopmentProcessAlignment"),
 };
 
@@ -46,6 +47,7 @@ ProjectsDashboardBlueprintState.contains(
   CurrentReality.githubInstallationRegistry,
   CurrentReality.legacyGithubAppImport,
   CurrentReality.projectIntegrationPolicy,
+  CurrentReality.dashboardSessionBoundary,
   CurrentReality.workflowAlignment,
 );
 
@@ -76,6 +78,11 @@ CurrentReality.legacyGithubAppImport.means(`
 CurrentReality.projectIntegrationPolicy.means(`
 - each project stores a base branch and post-merge bun command
 - those fields are treated as shared-development-process inputs rather than a separate per-project workflow definition
+`);
+
+CurrentReality.dashboardSessionBoundary.means(`
+- Projects UI request authorization now reads dashboard session state through a shared dashboard-session-ui helper instead of keeping feature-local session-storage plumbing in the screen file
+- feature-screen code remains focused on Projects state, forms, and API intent while dashboard-owned browser auth details stay in shared dashboard infrastructure
 `);
 
 CurrentReality.workflowAlignment.means(`
