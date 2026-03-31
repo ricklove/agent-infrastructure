@@ -1892,13 +1892,17 @@ function renderHighlightedFileReferenceContent(
   language: string,
   keyPrefix: string,
 ) {
-  return content.split("\n").map((line) => (
+  return content.split("\n").map((line, lineIndex) => (
     <div key={`${keyPrefix}-${line}`} className="flex min-w-max gap-4">
       <span className="select-none text-right text-slate-600">
-        {content.split("\n").indexOf(line) + 1}
+        {lineIndex + 1}
       </span>
       <code className="whitespace-pre text-slate-100">
-        {highlightFileReferenceLine(line, language, segmentKey)}
+        {highlightFileReferenceLine(
+          line,
+          language,
+          `${keyPrefix}-${lineIndex}`,
+        )}
       </code>
     </div>
   ))
@@ -5665,16 +5669,21 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 message.ticketId ? (
                                   <button
                                     type="button"
-                                    onClick={() =>
+                                    onClick={() => {
+                                      const ticketId = message.ticketId
+                                      if (!ticketId) {
+                                        return
+                                      }
                                       openTicketWindow(
-                                        message.ticketId,
+                                        ticketId,
                                         message.sessionId,
                                         activeSession?.activeTicket?.id ===
-                                          message.ticketId
-                                          ? activeSession.activeTicket.title
+                                          ticketId
+                                          ? (activeSession.activeTicket.title ??
+                                              "Ticket")
                                           : "Ticket",
                                       )
-                                    }
+                                    }}
                                     className="rounded-full border border-cyan-300/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100 hover:border-cyan-200/40 hover:text-cyan-50"
                                     title="Open ticket window"
                                   >
