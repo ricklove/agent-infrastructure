@@ -12,9 +12,9 @@ const DevelopmentLoopGuide = define.system("DevelopmentLoopGuide", {
 DevelopmentLoopGuide.enforces(`
 - Development Loop is for long-running iterative implementation where the operator wants the agent to keep cycling instead of treating one milestone as terminal by default.
 - Each iteration begins by loading the target blueprint or blueprints for the current focus so the next implementation pass is grounded in the current repository contract rather than in stale transcript memory.
-- After loading the relevant blueprints, the agent should complete one implementation iteration on the active focus before reassessing whether the loop continues, pauses, or blocks.
-- The default outcome after a successful implementation iteration is to continue the loop and return to the blueprint-loading step.
-- The loop should pause only when the operator explicitly asks to stop, switch processes, or preserve the current state without continuing.
-- The loop should block only for a real user dependency or environment dependency rather than for ordinary uncertainty that can be resolved by another implementation iteration.
+- After loading the relevant blueprints, the agent should complete one implementation iteration on the active focus before choosing the next iteration shape.
+- After a successful implementation iteration, the loop should choose one of three next-pass outcomes: fix a bug, improve the code architecture, or add tests.
+- Each development-loop outcome should route back to the blueprint-loading step instead of terminating or blocking the loop.
+- Development Loop should not expose pause, stop, or blocked outcomes in its process-definition layer.
 - Development Loop may run for a long time, but it remains stateless at the process-definition level and uses the same ticket-owned step progression model as other procedural process blueprints.
 `);
