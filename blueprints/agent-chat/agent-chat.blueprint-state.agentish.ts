@@ -262,7 +262,8 @@ CurrentReality.backendOwnedWatchdogContinuity.means(`
 - the Agent Chat backend runs as a detached server process separate from the dashboard web process
 - disconnected dashboard clients do not pause process handling or watchdog timers once the Agent Chat backend is already running
 - direct verification confirmed that after the dashboard process on :3000 was stopped, agent-chat-server on :8789 remained alive and still emitted a Full Development Process watchdog prompt for a stalled running turn
-- the dashboard plugin definition now declares Agent Chat as an explicit `always` backend so dashboard startup proactively restores the backend instead of waiting for a new chat request
+- the server package now owns the base Agent Chat dashboard plugin definition, while the UI package only composes the screen loader onto that server-owned feature definition
+- the dashboard plugin definition still declares Agent Chat as an explicit `always` backend so dashboard startup proactively restores the backend instead of waiting for a new chat request
 - unresolved idle watchdog episodes are now re-armed from persisted session timestamps on backend restart, so overdue sessions can nudge promptly after boot instead of waiting for a later interaction
 `);
 

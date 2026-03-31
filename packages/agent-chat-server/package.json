@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./plugin": "./src/dashboard-plugin.ts"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json --noEmit",
@@ -16,6 +17,7 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.81"
+    "@anthropic-ai/claude-agent-sdk": "^0.2.81",
+    "@agent-infrastructure/dashboard-plugin": "workspace:*"
   }
 }
