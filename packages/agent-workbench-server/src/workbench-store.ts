@@ -15,7 +15,12 @@ import type {
 
 const sourceDir = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(sourceDir, "../../..")
-const workbenchRoot = resolve(repoRoot, "workspace", "workbenches")
+const workspaceRoot =
+  process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace"
+const workbenchRoot =
+  process.env.AGENT_WORKBENCH_DATA_DIR?.trim() ||
+  resolve(workspaceRoot, "data", "workbench")
+const legacyWorkbenchRoot = resolve(repoRoot, "workspace", "workbenches")
 const defaultWorkbenchId = "agent-workbench"
 
 const defaultWorkbench: WorkbenchDocumentRecord = {
@@ -62,39 +67,69 @@ export function ensureWorkbenchRoot() {
   mkdirSync(workbenchRoot, { recursive: true })
 }
 
+function workbenchRootsInReadOrder() {
+  return [workbenchRoot, legacyWorkbenchRoot]
+}
+
+function resolveExistingWorkbenchPath(id: string) {
+  for (const root of workbenchRootsInReadOrder()) {
+    const candidate = join(root, `${id}.workbench.ts`)
+    if (existsSync(candidate)) {
+      return candidate
+    }
+  }
+  return workbenchFilePath(id)
+}
+
 export async function ensureDefaultWorkbench() {
   ensureWorkbenchRoot()
   const targetPath = workbenchFilePath(defaultWorkbenchId)
-  if (!existsSync(targetPath)) {
+  if (
+    !existsSync(targetPath) &&
+    !existsSync(resolveExistingWorkbenchPath(defaultWorkbenchId))
+  ) {
     writeFileSync(targetPath, serializeWorkbench(defaultWorkbench))
   }
-  return targetPath
+  return resolveExistingWorkbenchPath(defaultWorkbenchId)
 }
 
 export async function listWorkbenches(): Promise<WorkbenchSummary[]> {
   await ensureDefaultWorkbench()
-  return readdirSync(workbenchRoot)
-    .filter((entry: string) => entry.endsWith(".workbench.ts"))
-    .map((entry: string) => {
-      const filePath = join(workbenchRoot, entry)
+  const summariesById = new Map<string, WorkbenchSummary>()
+
+  for (const root of workbenchRootsInReadOrder()) {
+    if (!existsSync(root)) {
+      continue
+    }
+    for (const entry of readdirSync(root)) {
+      if (!entry.endsWith(".workbench.ts")) {
+        continue
+      }
+      const filePath = join(root, entry)
       const stats = statSync(filePath)
-      return {
-        id: basename(entry, ".workbench.ts"),
-        title: basename(entry, ".workbench.ts"),
+      const id = basename(entry, ".workbench.ts")
+      if (summariesById.has(id)) {
+        continue
+      }
+      summariesById.set(id, {
+        id,
+        title: id,
         path: filePath,
         updatedAtMs: stats.mtimeMs,
-      } satisfies WorkbenchSummary
-    })
-    .sort(
-      (left: WorkbenchSummary, right: WorkbenchSummary) =>
-        right.updatedAtMs - left.updatedAtMs,
-    )
+      })
+    }
+  }
+
+  return [...summariesById.values()].sort(
+    (left: WorkbenchSummary, right: WorkbenchSummary) =>
+      right.updatedAtMs - left.updatedAtMs,
+  )
 }
 
 export async function readWorkbench(id?: string) {
   const summaries = await listWorkbenches()
   const selectedId = id?.trim() || summaries[0]?.id || defaultWorkbenchId
-  const filePath = workbenchFilePath(selectedId)
+  const filePath = resolveExistingWorkbenchPath(selectedId)
   if (!existsSync(filePath)) {
     throw new Error(`Workbench not found: ${selectedId}`)
   }

@@ -114,7 +114,7 @@ AgentWorkbench.enforces(`
 - Text edges and text handles are allowed, but neither requires visible text to exist.
 - Double-clicking empty workbench space creates a new text node at the clicked location.
 - A text node should be directly editable through a resizable text area.
-- Workbench state must persist as source documents under workspace/workbenches rather than as opaque browser-only state.
+- Workbench state must persist as source documents under workspace/data/workbench rather than as opaque browser-only state.
 - The first implementation milestone should close a full text-node vertical slice before richer workbench behavior expands.
 - The first implementation milestone is loading a workbench document, rendering the React Flow canvas, creating text nodes, editing text nodes, moving text nodes, and persisting those changes durably.
 - Labeled edges, handles, and Agentish lift tooling may be modeled now without blocking the first implementation milestone.
@@ -128,7 +128,7 @@ AgentWorkbench.enforces(`
 
 AgentWorkbench.defines(`
 - WorkbenchWorkspace means the dashboard feature surface where one workbench document is viewed and edited.
-- WorkbenchDocument means one durable graph document stored as source under workspace/workbenches.
+- WorkbenchDocument means one durable graph document stored as source under workspace/data/workbench.
 - WorkbenchCanvas means the graph editing plane shown to the operator.
 - WorkbenchViewport means the persisted pan and zoom state for one workbench view.
 - WorkbenchTextNode means the initial authorable graph object with editable multiline text content.
@@ -249,7 +249,7 @@ Package.workbenchServer.dependsOn(Package.workbenchProtocol);
 AgentWorkbench.implementsThrough(`
 - packages/agent-workbench-ui owns the React Flow workbench screen, text-node rendering, text-node editing, edge labeling, and save-triggering UI.
 - The first implementation milestone should prioritize canvas boot, text-node creation, text-node editing, text-node movement, and file-backed save or reload before richer graph authoring.
-- packages/agent-workbench-server owns workbench document discovery, `.workbench.ts` read and write behavior, and source-of-truth persistence under workspace/workbenches.
+- packages/agent-workbench-server owns workbench document discovery, `.workbench.ts` read and write behavior, and source-of-truth persistence under workspace/data/workbench.
 - packages/agent-workbench-protocol owns the shared workbench record contracts used by the dashboard UI and server.
 - packages/dashboard-ui and packages/dashboard register the Agent Workbench feature as a first-party full-screen dashboard route.
 - The initial workbench route should open directly into the graph surface rather than into a list-first shell that hides the main workbench.
@@ -268,7 +268,7 @@ Package.workbenchUi.owns(
 Package.workbenchServer.owns(
   "workbench source file discovery",
   "workbench source parsing and serialization",
-  "source-of-truth persistence in workspace/workbenches",
+  "source-of-truth persistence in workspace/data/workbench",
 );
 
 Package.workbenchProtocol.owns(
@@ -280,7 +280,7 @@ Package.workbenchProtocol.owns(
 
 AgentWorkbench.usesFiles(`
 - blueprints/agent-workbench/agent-workbench.agentish.ts
-- workspace/workbenches/*.workbench.ts
+- workspace/data/workbench/*.workbench.ts
 - packages/agent-workbench-ui/src/AgentWorkbenchScreen.tsx
 - packages/agent-workbench-ui/src/TextWorkbenchNode.tsx
 - packages/agent-workbench-server/src/index.ts
@@ -346,12 +346,12 @@ Storage.record.defines(`
 - WorkbenchNodeRecord contains stable node identity, multiline text content, persisted position, and optional persisted size.
 - WorkbenchEdgeRecord contains stable edge identity, source node identity, target node identity, optional source and target handle ids, and optional edge text.
 - WorkbenchHandleRecord contains stable handle identity, owning node identity, placement on the node, and optional handle text.
-- WorkbenchSourceFile is a `.workbench.ts` source document stored under workspace/workbenches.
+- WorkbenchSourceFile is a `.workbench.ts` source document stored under workspace/data/workbench.
 `);
 
 when(Storage.file.exists())
   .then(Storage.file.expects("a `.workbench.ts` extension"))
-  .and(Storage.file.expects("a location under workspace/workbenches"));
+  .and(Storage.file.expects("a location under workspace/data/workbench"));
 
 when(Storage.edgeRecord.exists())
   .then(Storage.edgeRecord.requires(Contract.edgeId))
