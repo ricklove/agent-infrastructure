@@ -48,6 +48,7 @@ const CurrentReality = {
   noFolderOrganization: define.concept("NoCanonicalFolderOrganization"),
   plannedProviders: define.concept("PlannedButUnimplementedProviders"),
   noWorkspaceRepoDurability: define.concept("NoManagerControlledWorkspaceRepoDurability"),
+  dashboardSessionBoundary: define.concept("DashboardSessionBoundary"),
   deferredScope: define.concept("DeferredProductScope"),
   workflowAlignment: define.concept("DevelopmentProcessAlignment"),
 };
@@ -102,6 +103,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.noFolderOrganization,
   CurrentReality.plannedProviders,
   CurrentReality.noWorkspaceRepoDurability,
+  CurrentReality.dashboardSessionBoundary,
   CurrentReality.deferredScope,
   CurrentReality.workflowAlignment,
 );
@@ -369,6 +371,11 @@ CurrentReality.plannedProviders.means(`
 - OpenRouter and Gemini still appear in the provider catalog as planned entries
 - new sessions cannot be created with those planned providers because the backend rejects non-ready provider selections
 - the multi-provider blueprint direction is established, but the implementation is still partial rather than blueprint-complete
+`);
+
+CurrentReality.dashboardSessionBoundary.means(`
+- Agent Chat UI request authorization now reads dashboard session state through a shared dashboard-plugin helper instead of keeping feature-local session-storage plumbing in the screen file
+- websocket auth remains chat-specific because it carries the dashboard session token through the websocket protocol handshake, but plain HTTP request auth now stays on the shared dashboard infrastructure side of the package boundary
 `);
 
 CurrentReality.deferredScope.means(`
