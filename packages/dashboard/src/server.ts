@@ -698,19 +698,6 @@ async function waitForBackendHealthy(
   throw new Error(`${backend.id} did not become healthy in time`)
 }
 
-function ensureBackendLogPath(logPath: string): string {
-  try {
-    mkdirSync(dirname(logPath), { recursive: true })
-    writeFileSync(logPath, "")
-    return logPath
-  } catch {
-    const fallback = `/tmp/${basename(logPath, ".log")}-${process.pid}.log`
-    mkdirSync(dirname(fallback), { recursive: true })
-    writeFileSync(fallback, "")
-    return fallback
-  }
-}
-
 async function startBackend(backend: GatewayBackendDefinition): Promise<void> {
   if (!backend.startCommand || backend.startCommand.length === 0) {
     throw new Error(`${backend.id} backend is not configured for lazy start`)
@@ -718,7 +705,8 @@ async function startBackend(backend: GatewayBackendDefinition): Promise<void> {
 
   const command = backend.startCommand.map(shellQuote).join(" ")
   if (backend.logPath) {
-    backend.logPath = ensureBackendLogPath(backend.logPath)
+    mkdirSync(dirname(backend.logPath), { recursive: true })
+    writeFileSync(backend.logPath, "")
   }
   logSystemStep("dashboard-server", `start ${backend.id} command=${command}`)
 

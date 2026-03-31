@@ -1,5 +1,3 @@
-import { appendFileSync, mkdirSync } from "node:fs"
-import { dirname } from "node:path"
 import type {
   WorkbenchDocumentRecord,
   WorkbenchSnapshotResponse,
@@ -10,35 +8,7 @@ import {
   writeWorkbench,
 } from "./workbench-store.js"
 
-const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
-const requestedLogPath =
-  process.env.AGENT_WORKBENCH_LOG_PATH?.trim() ||
-  `${stateDir}/logs/agent-workbench-server.log`
 const port = Number.parseInt(process.env.AGENT_WORKBENCH_PORT ?? "8792", 10)
-
-function writableLogPath(candidate: string): string {
-  try {
-    mkdirSync(dirname(candidate), { recursive: true })
-    appendFileSync(candidate, "")
-    return candidate
-  } catch {
-    const fallback = `/tmp/agent-workbench-server-${process.pid}.log`
-    mkdirSync(dirname(fallback), { recursive: true })
-    appendFileSync(fallback, "")
-    return fallback
-  }
-}
-
-const logPath = writableLogPath(requestedLogPath)
-
-function log(message: string) {
-  try {
-    appendFileSync(
-      logPath,
-      `[${new Date().toISOString()}:agent-workbench-server] ${message}\n`,
-    )
-  } catch {}
-}
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -54,10 +24,13 @@ function textError(message: string, status = 400) {
 }
 
 await ensureDefaultWorkbench()
-if (logPath !== requestedLogPath) {
-  log(`fallback log path active requested=${requestedLogPath} actual=${logPath}`)
-}
-log(`starting on :${port}`)
+console.log(
+  JSON.stringify({
+    ok: true,
+    event: "agent_workbench_server_started",
+    port,
+  }),
+)
 
 Bun.serve({
   port,
@@ -84,7 +57,13 @@ Bun.serve({
         } satisfies WorkbenchSnapshotResponse)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        log(`load failed: ${message}`)
+        console.error(
+          JSON.stringify({
+            ok: false,
+            event: "agent_workbench_load_failed",
+            error: message,
+          }),
+        )
         return textError(message, 404)
       }
     }
@@ -104,7 +83,13 @@ Bun.serve({
         } satisfies WorkbenchSnapshotResponse)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        log(`save failed: ${message}`)
+        console.error(
+          JSON.stringify({
+            ok: false,
+            event: "agent_workbench_save_failed",
+            error: message,
+          }),
+        )
         return textError(message, 400)
       }
     }

@@ -35,6 +35,12 @@ type WorkbenchNodeData = {
   onResize(nodeId: string, width: number, height: number): void
 }
 
+type PaneClickState = {
+  atMs: number
+  clientX: number
+  clientY: number
+}
+
 function TextWorkbenchNode({
   id,
   data,
@@ -133,7 +139,20 @@ function flowEdgesToRecords(edges: Edge[]): WorkbenchDocumentRecord["edges"] {
 }
 
 function createNodeId() {
-  return `node-${crypto.randomUUID()}`
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `node-${crypto.randomUUID()}`
+  }
+  return `node-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function updateWorkbenchDebug(patch: Record<string, unknown>) {
+  const globalState = globalThis as typeof globalThis & {
+    __workbenchDebug?: Record<string, unknown>
+  }
+  globalState.__workbenchDebug = {
+    ...(globalState.__workbenchDebug ?? {}),
+    ...patch,
+  }
 }
 
 export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
@@ -153,12 +172,18 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   const saveTimerRef = useRef<number | null>(null)
   const suspendAutosaveRef = useRef(true)
   const workbenchRef = useRef<WorkbenchDocumentRecord | null>(null)
+  const nodesRef = useRef<Node<WorkbenchNodeData>[]>([])
   const edgesRef = useRef<Edge[]>([])
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 })
+  const lastPaneClickRef = useRef<PaneClickState | null>(null)
 
   useEffect(() => {
     workbenchRef.current = workbench
   }, [workbench])
+
+  useEffect(() => {
+    nodesRef.current = nodes
+  }, [nodes])
 
   useEffect(() => {
     edgesRef.current = edges
@@ -331,10 +356,19 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
 
   const createNodeAtClientPoint = useCallback(
     (clientX: number, clientY: number, target: EventTarget | null) => {
+      updateWorkbenchDebug({
+        createNodeCalls:
+          ((globalThis as { __workbenchDebug?: { createNodeCalls?: number } })
+            .__workbenchDebug?.createNodeCalls ?? 0) + 1,
+        lastClientPoint: { clientX, clientY },
+        lastTargetTag:
+          target instanceof Element ? target.tagName : typeof target,
+      })
       if (!canvasRef.current) {
         return
       }
       if (target instanceof Element && target.closest(".react-flow__node")) {
+        updateWorkbenchDebug({ blockedOnExistingNode: true })
         return
       }
 
@@ -359,8 +393,10 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
               }
             })()
       if (!point) {
+        updateWorkbenchDebug({ missingPoint: true })
         return
       }
+      updateWorkbenchDebug({ lastFlowPoint: point })
       const newNode = nodeRecordToFlowNode({
         id: createNodeId(),
         type: "text",
@@ -368,23 +404,69 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
         x: point.x,
         y: point.y,
       })
-      setNodes((currentNodes) => {
-        const nextNodes = [...currentNodes, newNode]
-        queueSave(nextNodes, edgesRef.current, viewportRef.current)
-        return nextNodes
-      })
+      updateWorkbenchDebug({ builtNodeId: newNode.id })
+      const nextNodes = [...nodesRef.current, newNode]
+      updateWorkbenchDebug({ nextNodeCount: nextNodes.length })
+      try {
+        setNodes(nextNodes)
+        updateWorkbenchDebug({ setNodesCalled: true })
+      } catch (error) {
+        updateWorkbenchDebug({
+          setNodesCalled: false,
+          setNodesError: error instanceof Error ? error.message : String(error),
+        })
+      }
+      queueSave(nextNodes, edgesRef.current, viewportRef.current)
     },
     [nodeRecordToFlowNode, queueSave, reactFlowInstance, setNodes],
   )
 
-  const handlePaneDoubleClick = useCallback(
+  const handlePaneClick = useCallback(
+    (event: ReactMouseEvent<Element>) => {
+      const nowMs = performance.now()
+      const lastClick = lastPaneClickRef.current
+      const deltaMs = lastClick ? nowMs - lastClick.atMs : null
+      const deltaX = lastClick ? Math.abs(lastClick.clientX - event.clientX) : null
+      const deltaY = lastClick ? Math.abs(lastClick.clientY - event.clientY) : null
+      updateWorkbenchDebug({
+        paneClickCount:
+          ((globalThis as { __workbenchDebug?: { paneClickCount?: number } })
+            .__workbenchDebug?.paneClickCount ?? 0) + 1,
+        lastPaneDetail: event.detail,
+        lastPaneClient: { x: event.clientX, y: event.clientY },
+        lastPaneDelta: { deltaMs, deltaX, deltaY },
+      })
+      const isSecondClick =
+        lastClick &&
+        nowMs - lastClick.atMs <= 900 &&
+        Math.abs(lastClick.clientX - event.clientX) <= 32 &&
+        Math.abs(lastClick.clientY - event.clientY) <= 32
+
+      if (isSecondClick) {
+        updateWorkbenchDebug({ secondClickAccepted: true })
+        lastPaneClickRef.current = null
+        createNodeAtClientPoint(event.clientX, event.clientY, event.target)
+        return
+      }
+
+      updateWorkbenchDebug({ secondClickAccepted: false })
+      lastPaneClickRef.current = {
+        atMs: nowMs,
+        clientX: event.clientX,
+        clientY: event.clientY,
+      }
+    },
+    [createNodeAtClientPoint],
+  )
+
+  const handleCanvasDoubleClickCapture = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
-      if (!(event.target instanceof Element)) {
-        return
-      }
-      if (!event.target.closest(".react-flow__pane")) {
-        return
-      }
+      updateWorkbenchDebug({
+        captureDoubleClickCount:
+          ((globalThis as {
+            __workbenchDebug?: { captureDoubleClickCount?: number }
+          }).__workbenchDebug?.captureDoubleClickCount ?? 0) + 1,
+      })
       createNodeAtClientPoint(event.clientX, event.clientY, event.target)
     },
     [createNodeAtClientPoint],
@@ -426,7 +508,11 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
           {error ? <span className="text-rose-600">{error}</span> : null}
         </div>
       </div>
-      <div ref={canvasRef} className="min-h-0 flex-1">
+      <div
+        ref={canvasRef}
+        className="min-h-0 flex-1"
+        onDoubleClickCapture={handleCanvasDoubleClickCapture}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -435,7 +521,7 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
           onConnect={handleConnect}
           onNodeDragStop={handleNodeDragStop}
           onMoveEnd={handleMoveEnd}
-          onDoubleClick={handlePaneDoubleClick}
+          onPaneClick={handlePaneClick}
           onInit={(instance) => {
             setReactFlowInstance(instance)
             instance.setViewport(viewport)
