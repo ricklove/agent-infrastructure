@@ -603,8 +603,10 @@ export function DashboardShell({
         ) : null}
         <aside
           className={[
-            "fixed inset-y-0 left-0 z-40 flex w-14 shrink-0 flex-col items-center gap-3 overflow-visible border-r border-white/10 bg-[#0a0f17] px-1.5 py-2 transition-transform md:relative md:z-30 md:translate-x-0",
-            mobileFeatureMenuOpen ? "translate-x-0" : "-translate-x-full",
+            "fixed inset-y-0 left-0 z-40 flex shrink-0 flex-col gap-3 overflow-visible border-r border-white/10 bg-[#0a0f17] py-2 transition-transform md:relative md:z-30 md:w-14 md:translate-x-0 md:items-center md:px-1.5",
+            mobileFeatureMenuOpen
+              ? "translate-x-0 w-56 items-stretch px-2.5"
+              : "-translate-x-full w-14 items-center px-1.5",
           ].join(" ")}
         >
           <div className="group relative">
@@ -683,27 +685,35 @@ export function DashboardShell({
               </div>
             </div>
           </div>
-          <nav className="mt-1 flex w-full flex-1 flex-col items-center gap-1.5">
+          <nav className="mt-1 flex w-full flex-1 flex-col items-stretch gap-1.5 md:items-center">
             {featureDefinitions.map((feature) => {
               const isActive = feature.id === activeFeatureId
               const Icon = feature.iconComponent
+              const showLabel = mobileFeatureMenuOpen
 
               return (
                 <button
                   key={feature.id}
                   type="button"
+                  aria-label={feature.label}
                   title={feature.label}
                   onClick={() => {
                     navigateToFeature(feature.id)
                   }}
                   className={[
-                    "group flex h-10 w-10 items-center justify-center rounded-xl transition",
+                    "group flex h-10 items-center rounded-xl transition",
+                    showLabel ? "w-full justify-start gap-3 px-3" : "w-10 justify-center",
                     isActive
                       ? "bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-950/40"
                       : "text-slate-500 hover:bg-white/5 hover:text-white",
                   ].join(" ")}
                 >
                   <Icon className="h-5 w-5" />
+                  {showLabel ? (
+                    <span className="truncate text-sm font-medium tracking-wide">
+                      {feature.label}
+                    </span>
+                  ) : null}
                 </button>
               )
             })}
