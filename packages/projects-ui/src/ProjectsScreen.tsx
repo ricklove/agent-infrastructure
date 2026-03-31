@@ -400,7 +400,7 @@ export function ProjectsScreen({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-stone-950 text-stone-100">
-      <div className="border-b border-stone-800 px-6 py-4">
+      <div className="border-b border-stone-800 py-4 pl-16 pr-6 md:px-6">
         <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
         <p className="mt-1 max-w-3xl text-sm text-stone-400">
           Add GitHub App access first for private repos, then discover repos
