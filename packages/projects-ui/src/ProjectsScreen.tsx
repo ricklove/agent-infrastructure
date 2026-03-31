@@ -1,4 +1,4 @@
-import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-session-ui"
+import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
@@ -52,7 +52,7 @@ export type ProjectsScreenProps = {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  return dashboardSessionFetch(path, init)
+  return dashboardSessionFetch(path, init) as Promise<Response>
 }
 
 function featurePath(apiRootUrl: string, pathname: string): string {

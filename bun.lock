@@ -62,7 +62,6 @@
       "dependencies": {
         "@agent-infrastructure/agent-chat-server": "workspace:*",
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
-        "@agent-infrastructure/dashboard-session-ui": "workspace:*",
         "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
@@ -200,12 +199,6 @@
         "typescript": "^5.4.5",
       },
     },
-    "packages/dashboard-session-ui": {
-      "name": "@agent-infrastructure/dashboard-session-ui",
-      "devDependencies": {
-        "typescript": "^5.4.5",
-      },
-    },
     "packages/dashboard-terminal-server": {
       "name": "@agent-infrastructure/dashboard-terminal-server",
       "devDependencies": {
@@ -280,7 +273,6 @@
       "name": "@agent-infrastructure/projects-ui",
       "dependencies": {
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
-        "@agent-infrastructure/dashboard-session-ui": "workspace:*",
         "@agent-infrastructure/projects-server": "workspace:*",
         "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",
@@ -348,8 +340,6 @@
     "@agent-infrastructure/dashboard-app": ["@agent-infrastructure/dashboard-app@workspace:apps/dashboard-app"],
 
     "@agent-infrastructure/dashboard-plugin": ["@agent-infrastructure/dashboard-plugin@workspace:packages/dashboard-plugin"],
-
-    "@agent-infrastructure/dashboard-session-ui": ["@agent-infrastructure/dashboard-session-ui@workspace:packages/dashboard-session-ui"],
 
     "@agent-infrastructure/dashboard-terminal-server": ["@agent-infrastructure/dashboard-terminal-server@workspace:packages/dashboard-terminal-server"],
 

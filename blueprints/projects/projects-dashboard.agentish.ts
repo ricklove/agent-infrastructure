@@ -130,6 +130,7 @@ ProjectsDashboard.enforces(`
 - Project integration settings are project configuration, not a separate per-project process blueprint.
 - The gateway should proxy Projects feature traffic and lazy-start the backend on first use.
 - Dashboard session auth must remain gateway-owned; the Projects feature must not invent a separate browser auth model.
+- Projects browser session auth should be consumed through shared dashboard package helpers rather than feature-local sessionStorage and Authorization-header wiring.
 - GitHub App credentials and installation metadata are durable app data and must not live under temporary runtime state.
 - GitHub validation and clone or push capability checks may fail clearly, but they must not mutate repo configuration into an ambiguous partial state.
 `);

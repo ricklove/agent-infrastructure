@@ -1,7 +1,7 @@
 import {
+  dashboardSessionWebSocketProtocols as buildDashboardSessionWebSocketProtocols,
   dashboardSessionFetch,
-  readDashboardSessionToken,
-} from "@agent-infrastructure/dashboard-session-ui"
+} from "@agent-infrastructure/dashboard-plugin"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
   type ClipboardEvent,
@@ -725,12 +725,9 @@ function readClipboardImage(file: File) {
 }
 
 function dashboardSessionWebSocketProtocols(): string[] {
-  const sessionToken = readDashboardSessionToken().trim()
-  if (!sessionToken) {
-    return []
-  }
-
-  return [`${dashboardSessionWebSocketProtocolPrefix}${sessionToken}`]
+  return buildDashboardSessionWebSocketProtocols(
+    dashboardSessionWebSocketProtocolPrefix,
+  )
 }
 
 function draftStorageKey(sessionId: string) {
@@ -769,7 +766,7 @@ function readSessionRailWidth() {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  return dashboardSessionFetch(path, init)
+  return dashboardSessionFetch(path, init) as Promise<Response>
 }
 
 function activityLabel(activity: SessionActivity) {

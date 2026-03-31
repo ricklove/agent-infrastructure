@@ -510,6 +510,7 @@ AgentChat.contains(AgentChatImplementationPlan);
 AgentChatImplementationPlan.defines(`
 - Agent Chat ships as a real dashboard feature with a feature-owned backend, browser-owned UI state, gateway-proxied transport, and canonical app-owned persistence.
 - The browser owns session list rendering, transcript rendering, composer state, reconnect behavior, queued-message visibility, waiting-state chrome, and provider-setting forms.
+- Agent Chat browser session auth for HTTP and dashboard-session websocket transport should be consumed through shared dashboard package helpers rather than feature-local sessionStorage utilities.
 - The backend owns canonical transcript history, provider adapter orchestration, websocket fanout, retry policy, process-blueprint expectation handling, watchdog eligibility, and provider-state normalization into canonical activity.
 - Canonical storage is file-backed durable app data outside state/, with in-memory caches treated as derived and disposable.
 - Provider adapters are explicit runtime bindings for Codex, OpenRouter, Claude Agent SDK, Gemini, and future providers through one provider-agnostic boundary.
