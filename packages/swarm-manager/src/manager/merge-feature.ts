@@ -64,8 +64,19 @@ function usage(): never {
   process.exit(1);
 }
 
+function setSharedCheckoutWritable(writable: boolean): void {
+  const mode = writable ? "u+w" : "a-w";
+  const script = [
+    "set -euo pipefail",
+    `repo=${shellQuote(DEFAULT_REPO_PATH)}`,
+    `chmod ${mode} "$repo"`,
+    'find "$repo" -path "$repo/.git" -prune -o -exec chmod ' + mode + ' {} +',
+  ].join("\n");
+  runChecked(["bash", "-lc", script]);
+}
+
 function refreshSharedDevelopmentCheckout(): void {
-  runChecked(["chmod", "-R", "u+w", DEFAULT_REPO_PATH]);
+  setSharedCheckoutWritable(true);
   try {
     runChecked(["git", "fetch", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH);
     const currentBranch = runChecked(["git", "rev-parse", "--abbrev-ref", "HEAD"], DEFAULT_REPO_PATH);
@@ -74,7 +85,7 @@ function refreshSharedDevelopmentCheckout(): void {
     }
     runChecked(["git", "pull", "--ff-only", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH);
   } finally {
-    runChecked(["chmod", "-R", "a-w", DEFAULT_REPO_PATH]);
+    setSharedCheckoutWritable(false);
   }
 }
 
