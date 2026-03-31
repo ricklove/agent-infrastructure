@@ -1,0 +1,28 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/agent-chat-server/tsconfig.json" },
+    { "path": "./packages/agent-chat-ui/tsconfig.json" },
+    { "path": "./packages/agent-graph-core/tsconfig.json" },
+    { "path": "./packages/agent-graph-protocol/tsconfig.json" },
+    { "path": "./packages/agent-graph-server/tsconfig.json" },
+    { "path": "./packages/agent-graph-store/tsconfig.json" },
+    { "path": "./packages/agent-graph-ui/tsconfig.json" },
+    { "path": "./packages/agent-swarm-ui/tsconfig.json" },
+    { "path": "./packages/aws-setup/tsconfig.json" },
+    { "path": "./packages/dashboard-access/tsconfig.json" },
+    { "path": "./packages/dashboard-plugin/tsconfig.json" },
+    { "path": "./packages/dashboard-terminal-server/tsconfig.json" },
+    { "path": "./packages/dashboard-terminal-ui/tsconfig.json" },
+    { "path": "./packages/dashboard-ui/tsconfig.json" },
+    { "path": "./packages/dashboard/tsconfig.json" },
+    { "path": "./packages/floating-window-debug-ui/tsconfig.json" },
+    { "path": "./packages/projects-server/tsconfig.json" },
+    { "path": "./packages/projects-ui/tsconfig.json" },
+    { "path": "./packages/render-diagnostics/tsconfig.json" },
+    { "path": "./packages/swarm-manager/tsconfig.json" },
+    { "path": "./packages/ui-design-canvas-ui/tsconfig.json" },
+    { "path": "./apps/agentish-studio/tsconfig.json" },
+    { "path": "./apps/dashboard-app/tsconfig.json" }
+  ]
+}

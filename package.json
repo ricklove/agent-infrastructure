@@ -6,8 +6,8 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "bun run --filter '*' build",
-    "check": "bun run --filter '*' check",
+    "build": "bun ./scripts/tsgo-project-build.ts",
+    "check": "bun ./scripts/tsgo-project-build.ts",
     "lint": "biome check apps/dashboard-app packages/dashboard-ui packages/ui-design-canvas-ui packages/floating-window-debug-ui packages/agent-swarm-ui packages/agent-chat-ui",
     "format": "biome format --write apps/dashboard-app packages/dashboard-ui packages/ui-design-canvas-ui packages/floating-window-debug-ui packages/agent-swarm-ui packages/agent-chat-ui",
     "connect-vscode": "bash ./tools/connect-vscode.sh --profile agent-team-admin",
@@ -36,6 +36,7 @@
     "destroy:aws-setup": "bun run --filter @agent-infrastructure/aws-setup destroy"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.9"
+    "@biomejs/biome": "^2.4.9",
+    "@typescript/native-preview": "^7.0.0-dev.20260330.1"
   }
 }
