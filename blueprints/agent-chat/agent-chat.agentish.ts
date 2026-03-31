@@ -94,6 +94,13 @@ const Observability = {
   inspection: define.entity("ContextInspection"),
 };
 
+const Verification = {
+  serverProcessLifecycle: define.concept("ServerProcessLifecycleVerification"),
+  headlessStateStore: define.concept("HeadlessStateStoreVerification"),
+  deterministicProviderFixture: define.concept("DeterministicProviderFixture"),
+  deferredBrowserE2E: define.concept("DeferredBrowserProcessE2E"),
+};
+
 const AgentChatImplementationPlan = define.section("AgentChatImplementationPlanSection");
 
 AgentChat.enforces(`
@@ -102,6 +109,11 @@ AgentChat.enforces(`
 - A workspace chat session is the primary object the user opens, names, resumes, inspects, imports into, and references.
 - Session identity survives provider switching.
 - Provider bindings may change without rewriting canonical session history.
+- Agent Chat process behavior should be verified primarily through Bun server integration tests that exercise the real server HTTP and websocket surfaces.
+- Agent Chat client process behavior should also be verified through headless state-store tests that exercise the same state projection, queue handling, and selector logic used by the UI without requiring DOM rendering.
+- Process-lifecycle verification should cover session creation, process reassignment, interruption, resumed work on the same active ticket, completion-token handling, blocked-token handling, queued human follow-up, and idle continuation edge cases.
+- Deterministic provider fixtures should be preferred over live provider credentials for process-lifecycle verification so streamed deltas, waiting flags, retries, interruption, blocked outcomes, and completion outcomes remain reproducible.
+- Full browser process end-to-end coverage may be added later, but it is deferred verification rather than the primary requirement for initial process-lifecycle completeness.
 - Provider-backed chat sessions must inherit the shared development-process blueprint so implementation work inside a chat follows the same blueprint-first workflow.
 - A session may optionally select a process blueprint that defines its expectation contract and idle-watchdog behavior.
 - A session with an active process should surface one active agent ticket whose state is the authoritative runtime holder for that process instance.
@@ -234,6 +246,10 @@ AgentChat.defines(`
 - A workspace chat session is a workspace-owned conversational artifact, not a provider-owned thread.
 - A canonical transcript is the durable event record for the session.
 - A provider binding is an execution attachment between one participant and one provider runtime.
+- ServerProcessLifecycleVerification means Bun integration tests start the real Agent Chat backend, call its real HTTP routes, subscribe to its real websocket session stream, and verify canonical persistence plus process-lifecycle behavior through the public server contract.
+- HeadlessStateStoreVerification means tests drive the Agent Chat client state layer without DOM rendering so websocket events, optimistic actions, selector sentinels, blocked-send rules, and queued-message projection can be verified as pure state behavior.
+- DeterministicProviderFixture means a controllable fake provider transport that emits scripted started, delta, waiting, activity, token-usage, blocked, completed, error, idle, and interrupted outcomes so process-lifecycle tests remain deterministic.
+- DeferredBrowserProcessE2E means browser-driven process verification may still exist later, but it is follow-on coverage after server and headless state-store verification already prove the canonical behavior.
 - A workspace reference is a durable pointer between a session and any workspace entity such as a board, layer, document, project, artifact, or run.
 - A ticket window is a session-related floating view that presents one specific ticket's live or historical state while remaining distinct from the transcript item that opened it.
 - A session folder is a workspace-owned grouping container used to organize sessions without changing their identity.
@@ -251,6 +267,13 @@ AgentChat.defines(`
 - Ticket continuation state is the inspectable record of whether expectation-aware immediate idle continuation has been armed, triggered, or resolved for the session.
 - Token usage, compaction events, active context, provider binding state, worker state, ticket continuation state, and approvals are inspectable session data.
 `);
+
+AgentChat.contains(
+  Verification.serverProcessLifecycle,
+  Verification.headlessStateStore,
+  Verification.deterministicProviderFixture,
+  Verification.deferredBrowserE2E,
+);
 
 Session.conversation.means(`
 - one stable user-facing conversation
@@ -330,6 +353,30 @@ Observability.usage.means(`
 - should be presented as latest reported usage rather than as a false claim of timeless exactness when no active provider turn is running
 - Codex-local session artifacts such as ~/.codex session logs may be used as an implementation source when they are the canonical place the provider runtime already emits token-count events
 - provider usage telemetry belongs to inspectable session observability and should remain distinct from canonical transcript content unless the provider reaches an exhaustion or limit state significant enough to become transcript history
+`);
+
+Verification.serverProcessLifecycle.means(`
+- the real agent-chat-server process is started in a temporary Bun test environment
+- tests call the real session HTTP endpoints and subscribe to the real session websocket stream
+- assertions focus on canonical transcript writes, session metadata, queue consumption, interrupt semantics, resume semantics, and watchdog or idle-continuation behavior
+- this is the primary verification layer for process-lifecycle behavior
+`);
+
+Verification.headlessStateStore.means(`
+- tests exercise the same client state machinery used by the Agent Chat UI without mounting the browser DOM
+- assertions focus on local interpretation of snapshots, incremental websocket events, optimistic session patches, process selector states, blocked-send behavior, and queued-message presentation
+- this is the primary client-side verification layer for process-aware operator workflows
+`);
+
+Verification.deterministicProviderFixture.means(`
+- process-lifecycle tests use scripted provider fixtures rather than live provider credentials when verifying edge cases and runtime sequencing
+- the fixture may emit turn start, assistant deltas, task or activity updates, waiting flags, retries, token usage, completion tokens, blocked tokens, explicit idle, provider errors, and interrupt acknowledgements
+- deterministic fixtures exist to make Bun verification fast, reproducible, and independent of external provider timing
+`);
+
+Verification.deferredBrowserE2E.means(`
+- browser-driven end-to-end coverage is deferred until the server and headless client verification layers are in place
+- later browser coverage should validate only a narrow set of operator-critical workflows rather than re-proving every backend edge case
 `);
 
 AgentChatImplementationPlan.prescribes(`

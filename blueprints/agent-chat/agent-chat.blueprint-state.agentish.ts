@@ -22,6 +22,7 @@ const CurrentReality = {
   viewportBoundLayout: define.concept("ViewportBoundThreadLayout"),
   filePersistence: define.concept("FileBackedCanonicalSessions"),
   realtime: define.concept("RealtimeSessionUpdates"),
+  processLifecycleVerificationGap: define.concept("ProcessLifecycleVerificationGap"),
   directoryAndTitleQueueing: define.concept("QueuedDirectoryAndTitleInstructions"),
   codexAndClaudeExecution: define.concept("CodexAndClaudeProviderExecution"),
   claudeProcessModePolicy: define.concept("ClaudeProcessModePolicy"),
@@ -61,6 +62,7 @@ AgentChatBlueprintState.defines(`
 - This blueprint-state compares current implementation reality against the ideal Agent Chat product blueprint in agent-chat.agentish.ts, the implementation-resolved dashboard blueprint in agent-chat-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
 - ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
 - ImplementationGap also includes chat durability still stopping at canonical file persistence rather than extending into manager-controlled workspace git commit and push.
+- ImplementationGap also includes the lack of a full layered verification suite for process lifecycle behavior at the real server boundary and at the headless client state-store boundary.
 - KnownIssue means the provider catalog and UI still include planned providers that do not yet execute in the backend today.
 - KnownIssue also includes the current Agent Chat provider layer still being uneven, with Codex and Claude implemented while OpenRouter and Gemini remain planned.
 - KnownIssue also includes the current Codex adapter retaining an adapter-level timeout policy that remains separate from the newer Claude path.
@@ -77,6 +79,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.viewportBoundLayout,
   CurrentReality.filePersistence,
   CurrentReality.realtime,
+  CurrentReality.processLifecycleVerificationGap,
   CurrentReality.directoryAndTitleQueueing,
   CurrentReality.codexAndClaudeExecution,
   CurrentReality.claudeProcessModePolicy,
@@ -134,6 +137,14 @@ CurrentReality.realtime.means(`
 - the backend tracks per-session runtime activity in memory
 - websocket subscribers receive session snapshots, incremental updates, run activity, run deltas, run completion, run interruption, and run failure events
 - the browser uses those events to keep transcript, queued-message, and activity state live
+`);
+
+CurrentReality.processLifecycleVerificationGap.means(`
+- Agent Chat does not yet have a blueprint-complete layered verification suite for process lifecycle behavior
+- the current gap is concentrated in Bun server integration coverage for the real HTTP plus websocket contract and in headless client state-store coverage for process-aware operator workflow state
+- process creation, process reassignment, interruption, resume on the same active ticket, completion-token handling, blocked-ticket handling, queued follow-up handling, and idle continuation behavior should be treated as priority verification scope
+- deterministic provider fixtures are the intended way to cover those server-level edge cases without depending on live provider credentials
+- full browser end-to-end process coverage is intentionally deferred until the server and state-store layers exist
 `);
 
 CurrentReality.directoryAndTitleQueueing.means(`
@@ -400,6 +411,9 @@ when(CurrentReality.plannedProviders.exists())
   .and(AgentChatBlueprintState.records(Assessment.issue));
 
 when(CurrentReality.genericSessionActivity.exists())
+  .then(AgentChatBlueprintState.records(Assessment.gap));
+
+when(CurrentReality.processLifecycleVerificationGap.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap));
 
 when(CurrentReality.claudeSdkModelCatalog.exists())
