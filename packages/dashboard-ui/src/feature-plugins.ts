@@ -1,6 +1,7 @@
 import { agentChatDashboardUiPlugin } from "@agent-infrastructure/agent-chat-ui/ui-plugin"
 import { agentGraphDashboardUiPlugin } from "@agent-infrastructure/agent-graph-ui/ui-plugin"
 import { agentSwarmDashboardUiPlugin } from "@agent-infrastructure/agent-swarm-ui/ui-plugin"
+import { agentWorkbenchDashboardUiPlugin } from "@agent-infrastructure/agent-workbench-ui/ui-plugin"
 import type { DashboardFeatureUiPlugin } from "@agent-infrastructure/dashboard-plugin"
 import { dashboardTerminalUiPlugin } from "@agent-infrastructure/dashboard-terminal-ui/ui-plugin"
 import { floatingWindowDebugDashboardUiPlugin } from "@agent-infrastructure/floating-window-debug-ui/ui-plugin"
@@ -9,6 +10,7 @@ import { uiDesignCanvasDashboardUiPlugin } from "@agent-infrastructure/ui-design
 
 export const dashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
   agentSwarmDashboardUiPlugin,
+  agentWorkbenchDashboardUiPlugin,
   uiDesignCanvasDashboardUiPlugin,
   floatingWindowDebugDashboardUiPlugin,
   projectsDashboardUiPlugin,

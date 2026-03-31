@@ -146,6 +146,40 @@
         "typescript": "^5.4.5",
       },
     },
+    "packages/agent-workbench-protocol": {
+      "name": "@agent-infrastructure/agent-workbench-protocol",
+      "devDependencies": {
+        "typescript": "^5.4.5",
+      },
+    },
+    "packages/agent-workbench-server": {
+      "name": "@agent-infrastructure/agent-workbench-server",
+      "dependencies": {
+        "@agent-infrastructure/agent-workbench-protocol": "workspace:*",
+        "@agent-infrastructure/dashboard-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^20.11.30",
+        "bun-types": "^1.3.10",
+        "typescript": "^5.4.5",
+      },
+    },
+    "packages/agent-workbench-ui": {
+      "name": "@agent-infrastructure/agent-workbench-ui",
+      "dependencies": {
+        "@agent-infrastructure/agent-workbench-protocol": "workspace:*",
+        "@agent-infrastructure/agent-workbench-server": "workspace:*",
+        "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "reactflow": "^11.11.4",
+      },
+      "devDependencies": {
+        "@types/react": "^18.3.3",
+        "@types/react-dom": "^18.3.0",
+        "typescript": "^5.4.5",
+      },
+    },
     "packages/aws-setup": {
       "name": "@agent-infrastructure/aws-setup",
       "dependencies": {
@@ -165,6 +199,7 @@
         "@agent-infrastructure/agent-chat-server": "workspace:*",
         "@agent-infrastructure/agent-graph-ui": "workspace:*",
         "@agent-infrastructure/agent-swarm-ui": "workspace:*",
+        "@agent-infrastructure/agent-workbench-server": "workspace:*",
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
         "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
         "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
@@ -227,6 +262,7 @@
         "@agent-infrastructure/agent-chat-ui": "workspace:*",
         "@agent-infrastructure/agent-graph-ui": "workspace:*",
         "@agent-infrastructure/agent-swarm-ui": "workspace:*",
+        "@agent-infrastructure/agent-workbench-ui": "workspace:*",
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
         "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
         "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
@@ -328,6 +364,12 @@
     "@agent-infrastructure/agent-graph-ui": ["@agent-infrastructure/agent-graph-ui@workspace:packages/agent-graph-ui"],
 
     "@agent-infrastructure/agent-swarm-ui": ["@agent-infrastructure/agent-swarm-ui@workspace:packages/agent-swarm-ui"],
+
+    "@agent-infrastructure/agent-workbench-protocol": ["@agent-infrastructure/agent-workbench-protocol@workspace:packages/agent-workbench-protocol"],
+
+    "@agent-infrastructure/agent-workbench-server": ["@agent-infrastructure/agent-workbench-server@workspace:packages/agent-workbench-server"],
+
+    "@agent-infrastructure/agent-workbench-ui": ["@agent-infrastructure/agent-workbench-ui@workspace:packages/agent-workbench-ui"],
 
     "@agent-infrastructure/agentish-studio": ["@agent-infrastructure/agentish-studio@workspace:apps/agentish-studio"],
 

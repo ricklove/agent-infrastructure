@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@agent-infrastructure/agent-chat-ui": "workspace:*",
+    "@agent-infrastructure/agent-workbench-ui": "workspace:*",
     "@agent-infrastructure/agent-graph-ui": "workspace:*",
     "@agent-infrastructure/agent-swarm-ui": "workspace:*",
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
