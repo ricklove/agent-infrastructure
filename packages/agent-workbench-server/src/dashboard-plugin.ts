@@ -20,7 +20,7 @@ export const agentWorkbenchDashboardPlugin: DashboardFeaturePlugin = {
     startup: {
       kind: "bun-entry",
       entry: "packages/agent-workbench-server/src/index.ts",
-      logFileName: "agent-workbench-server.log",
+      logFileName: "agent-workbench-runtime.log",
     },
   },
 }

@@ -1,5 +1,3 @@
-import { appendFileSync, mkdirSync } from "node:fs"
-import { dirname } from "node:path"
 import type {
   WorkbenchDocumentRecord,
   WorkbenchSnapshotResponse,
@@ -10,20 +8,7 @@ import {
   writeWorkbench,
 } from "./workbench-store.js"
 
-const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
-const logPath =
-  process.env.AGENT_WORKBENCH_LOG_PATH?.trim() ||
-  `${stateDir}/logs/agent-workbench-server.log`
 const port = Number.parseInt(process.env.AGENT_WORKBENCH_PORT ?? "8792", 10)
-
-mkdirSync(dirname(logPath), { recursive: true })
-
-function log(message: string) {
-  appendFileSync(
-    logPath,
-    `[${new Date().toISOString()}:agent-workbench-server] ${message}\n`,
-  )
-}
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -39,7 +24,13 @@ function textError(message: string, status = 400) {
 }
 
 await ensureDefaultWorkbench()
-log(`starting on :${port}`)
+console.log(
+  JSON.stringify({
+    ok: true,
+    event: "agent_workbench_server_started",
+    port,
+  }),
+)
 
 Bun.serve({
   port,
@@ -66,7 +57,13 @@ Bun.serve({
         } satisfies WorkbenchSnapshotResponse)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        log(`load failed: ${message}`)
+        console.error(
+          JSON.stringify({
+            ok: false,
+            event: "agent_workbench_load_failed",
+            error: message,
+          }),
+        )
         return textError(message, 404)
       }
     }
@@ -86,7 +83,13 @@ Bun.serve({
         } satisfies WorkbenchSnapshotResponse)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        log(`save failed: ${message}`)
+        console.error(
+          JSON.stringify({
+            ok: false,
+            event: "agent_workbench_save_failed",
+            error: message,
+          }),
+        )
         return textError(message, 400)
       }
     }
