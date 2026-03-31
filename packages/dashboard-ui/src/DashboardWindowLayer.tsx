@@ -387,7 +387,7 @@ function ScaledWindowContent(props: {
         window.cancelAnimationFrame(rafId)
       }
     }
-  }, [props.children, props.scale])
+  }, [props.scale])
 
   const inverseScalePercent = `${100 / props.scale}%`
   const layoutHeightPx =
@@ -524,7 +524,11 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                       ? entry.fitContentWidth
                       : patch.fitContentWidth,
                 }
-                const frame = clampWindowState(nextEntry, nextEntry.minimized, surfaceBounds)
+                const frame = clampWindowState(
+                  nextEntry,
+                  nextEntry.minimized,
+                  surfaceBounds,
+                )
                 return {
                   ...nextEntry,
                   ...frame,
@@ -569,66 +573,79 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
     [focusWindow, surfaceBounds],
   )
 
-  const openWindow = useCallback((definition: DashboardWindowDefinition) => {
-    zIndexRef.current += 1
-    const nextWindowId = definition.id?.trim() || buildWindowId()
-    setWindows((current) => {
-      const existing = current.find((entry) => entry.windowId === nextWindowId)
-      if (existing) {
-        return current.map((entry) =>
-          entry.windowId === nextWindowId
-            ? (() => {
-                const nextEntry = {
-                  ...entry,
-                  title: definition.title,
-                  body: definition.body,
-                  icon: definition.icon ?? entry.icon,
-                  minimized: definition.minimized ?? entry.minimized,
-                  width: definition.width ?? entry.width,
-                  height: definition.height ?? entry.height,
-                  x: definition.x ?? entry.x,
-                  y: definition.y ?? entry.y,
-                  scale: definition.scale ?? entry.scale,
-                  fitContentWidth:
-                    definition.fitContentWidth ?? entry.fitContentWidth,
-                  zIndex: zIndexRef.current,
-                }
-                const frame = clampWindowState(nextEntry, nextEntry.minimized, surfaceBounds)
-                return {
-                  ...nextEntry,
-                  ...frame,
-                }
-              })()
-            : entry,
+  const openWindow = useCallback(
+    (definition: DashboardWindowDefinition) => {
+      zIndexRef.current += 1
+      const nextWindowId = definition.id?.trim() || buildWindowId()
+      setWindows((current) => {
+        const existing = current.find(
+          (entry) => entry.windowId === nextWindowId,
         )
-      }
-      const offsetIndex = current.length % 6
-      const defaultFrame = defaultWindowFrame(offsetIndex, surfaceBounds)
-      const nextEntry = {
-        windowId: nextWindowId,
-        title: definition.title,
-        body: definition.body,
-        icon: definition.icon ?? null,
-        minimized: definition.minimized ?? false,
-        x: definition.x ?? defaultFrame.x,
-        y: definition.y ?? defaultFrame.y,
-        width: definition.width ?? defaultFrame.width,
-        height: definition.height ?? defaultFrame.height,
-        scale: definition.scale ?? 1,
-        fitContentWidth: definition.fitContentWidth ?? minWindowWidth,
-        zIndex: zIndexRef.current,
-      }
-      const frame = clampWindowState(nextEntry, nextEntry.minimized, surfaceBounds)
-      return [
-        ...current,
-        {
-          ...nextEntry,
-          ...frame,
-        },
-      ]
-    })
-    return nextWindowId
-  }, [surfaceBounds])
+        if (existing) {
+          return current.map((entry) =>
+            entry.windowId === nextWindowId
+              ? (() => {
+                  const nextEntry = {
+                    ...entry,
+                    title: definition.title,
+                    body: definition.body,
+                    icon: definition.icon ?? entry.icon,
+                    minimized: definition.minimized ?? entry.minimized,
+                    width: definition.width ?? entry.width,
+                    height: definition.height ?? entry.height,
+                    x: definition.x ?? entry.x,
+                    y: definition.y ?? entry.y,
+                    scale: definition.scale ?? entry.scale,
+                    fitContentWidth:
+                      definition.fitContentWidth ?? entry.fitContentWidth,
+                    zIndex: zIndexRef.current,
+                  }
+                  const frame = clampWindowState(
+                    nextEntry,
+                    nextEntry.minimized,
+                    surfaceBounds,
+                  )
+                  return {
+                    ...nextEntry,
+                    ...frame,
+                  }
+                })()
+              : entry,
+          )
+        }
+        const offsetIndex = current.length % 6
+        const defaultFrame = defaultWindowFrame(offsetIndex, surfaceBounds)
+        const nextEntry = {
+          windowId: nextWindowId,
+          title: definition.title,
+          body: definition.body,
+          icon: definition.icon ?? null,
+          minimized: definition.minimized ?? false,
+          x: definition.x ?? defaultFrame.x,
+          y: definition.y ?? defaultFrame.y,
+          width: definition.width ?? defaultFrame.width,
+          height: definition.height ?? defaultFrame.height,
+          scale: definition.scale ?? 1,
+          fitContentWidth: definition.fitContentWidth ?? minWindowWidth,
+          zIndex: zIndexRef.current,
+        }
+        const frame = clampWindowState(
+          nextEntry,
+          nextEntry.minimized,
+          surfaceBounds,
+        )
+        return [
+          ...current,
+          {
+            ...nextEntry,
+            ...frame,
+          },
+        ]
+      })
+      return nextWindowId
+    },
+    [surfaceBounds],
+  )
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
@@ -989,27 +1006,29 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                 className="pointer-events-none absolute inset-0 overflow-hidden"
               >
                 {blockingInteraction ? (
-                  <div
-                  className="absolute inset-0 pointer-events-auto"
-                  style={{
-                    cursor: interactionCursor(blockingInteraction.mode),
-                    touchAction: "none",
-                    overscrollBehavior: "none",
-                  }}
-                  onClick={consumeEvent}
-                  onPointerDown={consumeEvent}
-                  onPointerMove={consumeEvent}
-                  onPointerUp={(event) => {
-                    consumeEvent(event)
-                    interactionRef.current = null
-                    setBlockingInteraction(null)
-                  }}
-                  onPointerCancel={(event) => {
-                    consumeEvent(event)
-                    interactionRef.current = null
-                    setBlockingInteraction(null)
-                  }}
-                  onWheel={consumeEvent}
+                  <button
+                    type="button"
+                    aria-label="Block dashboard window interaction"
+                    className="absolute inset-0 pointer-events-auto"
+                    style={{
+                      cursor: interactionCursor(blockingInteraction.mode),
+                      touchAction: "none",
+                      overscrollBehavior: "none",
+                    }}
+                    onClick={consumeEvent}
+                    onPointerDown={consumeEvent}
+                    onPointerMove={consumeEvent}
+                    onPointerUp={(event) => {
+                      consumeEvent(event)
+                      interactionRef.current = null
+                      setBlockingInteraction(null)
+                    }}
+                    onPointerCancel={(event) => {
+                      consumeEvent(event)
+                      interactionRef.current = null
+                      setBlockingInteraction(null)
+                    }}
+                    onWheel={consumeEvent}
                   />
                 ) : null}
                 <div className="pointer-events-none absolute inset-0">

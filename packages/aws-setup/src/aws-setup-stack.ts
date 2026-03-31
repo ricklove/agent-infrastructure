@@ -1,48 +1,48 @@
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import {
   CfnOutput,
   Duration,
   RemovalPolicy,
   SecretValue,
   Stack,
-  StackProps,
+  type StackProps,
   Tags,
-} from "aws-cdk-lib";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
-import * as iam from "aws-cdk-lib/aws-iam";
-import * as lambda from "aws-cdk-lib/aws-lambda";
-import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
-import * as s3 from "aws-cdk-lib/aws-s3";
-import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
-import { Construct } from "constructs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+} from "aws-cdk-lib"
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb"
+import * as ec2 from "aws-cdk-lib/aws-ec2"
+import * as iam from "aws-cdk-lib/aws-iam"
+import * as lambda from "aws-cdk-lib/aws-lambda"
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs"
+import * as s3 from "aws-cdk-lib/aws-s3"
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager"
+import type { Construct } from "constructs"
 
-const sourceDir = dirname(fileURLToPath(import.meta.url));
+const sourceDir = dirname(fileURLToPath(import.meta.url))
 
 export interface AwsSetupStackProps extends StackProps {
-  agentHome: string;
-  dashboardEnrollmentSecret: string;
-  cloudflareTunnelConfigParameterName?: string;
-  managerInstanceType: string;
-  workerInstanceType: string;
-  swarmMaxSize: number;
+  agentHome: string
+  dashboardEnrollmentSecret: string
+  cloudflareTunnelConfigParameterName?: string
+  managerInstanceType: string
+  workerInstanceType: string
+  swarmMaxSize: number
 }
 
 export class AwsSetupStack extends Stack {
   constructor(scope: Construct, id: string, props: AwsSetupStackProps) {
-    super(scope, id, props);
+    super(scope, id, props)
 
     if (!Number.isFinite(props.swarmMaxSize) || props.swarmMaxSize < 1) {
-      throw new Error("swarmMaxSize must be a positive integer");
+      throw new Error("swarmMaxSize must be a positive integer")
     }
-    if (!props.agentHome || !props.agentHome.startsWith("/")) {
-      throw new Error("agentHome must be an absolute path");
+    if (!props.agentHome?.startsWith("/")) {
+      throw new Error("agentHome must be an absolute path")
     }
 
-    const swarmTagKey = "AgentSwarm";
-    const swarmTagValue = `${this.stackName}-workers`;
-    const managerMonitorPort = 8787;
+    const swarmTagKey = "AgentSwarm"
+    const swarmTagValue = `${this.stackName}-workers`
+    const managerMonitorPort = 8787
     const dashboardEnrollmentSecretSecret = new secretsmanager.Secret(
       this,
       "DashboardEnrollmentSecret",
@@ -51,22 +51,24 @@ export class AwsSetupStack extends Stack {
           props.dashboardEnrollmentSecret,
         ),
       },
-    );
-    const dashboardEnrollmentRuntimeSecret = secretsmanager.Secret.fromSecretNameV2(
-      this,
-      "DashboardEnrollmentRuntimeSecret",
-      `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
-    );
+    )
+    const dashboardEnrollmentRuntimeSecret =
+      secretsmanager.Secret.fromSecretNameV2(
+        this,
+        "DashboardEnrollmentRuntimeSecret",
+        `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
+      )
     const cloudflareTunnelTokenSecret = secretsmanager.Secret.fromSecretNameV2(
       this,
       "CloudflareTunnelToken",
       `/agent-infrastructure/${this.stackName}/cloudflare/tunnel-token`,
-    );
-    const runtimeRepoUrl = "https://github.com/ricklove/agent-infrastructure.git";
-    const runtimeRepoRef = "development";
-    const runtimeRoot = `${props.agentHome}/runtime`;
-    const stateRoot = `${props.agentHome}/state`;
-    const workspaceRoot = `${props.agentHome}/workspace`;
+    )
+    const runtimeRepoUrl =
+      "https://github.com/ricklove/agent-infrastructure.git"
+    const runtimeRepoRef = "development"
+    const runtimeRoot = `${props.agentHome}/runtime`
+    const stateRoot = `${props.agentHome}/state`
+    const workspaceRoot = `${props.agentHome}/workspace`
     const workerRuntimeReleaseBucket = new s3.Bucket(
       this,
       "WorkerRuntimeReleaseBucket",
@@ -78,7 +80,7 @@ export class AwsSetupStack extends Stack {
         removalPolicy: RemovalPolicy.DESTROY,
         autoDeleteObjects: true,
       },
-    );
+    )
     const vpc = new ec2.Vpc(this, "AgentSwarmVpc", {
       maxAzs: 1,
       natGateways: 0,
@@ -89,9 +91,9 @@ export class AwsSetupStack extends Stack {
           cidrMask: 24,
         },
       ],
-    });
+    })
 
-    Tags.of(vpc).add(swarmTagKey, swarmTagValue);
+    Tags.of(vpc).add(swarmTagKey, swarmTagValue)
 
     const managerSecurityGroup = new ec2.SecurityGroup(
       this,
@@ -101,7 +103,7 @@ export class AwsSetupStack extends Stack {
         description: "Security group for the agent swarm manager instance",
         allowAllOutbound: true,
       },
-    );
+    )
 
     const workerSecurityGroup = new ec2.SecurityGroup(
       this,
@@ -111,35 +113,35 @@ export class AwsSetupStack extends Stack {
         description: "Security group for isolated agent swarm worker instances",
         allowAllOutbound: true,
       },
-    );
+    )
 
     workerSecurityGroup.addIngressRule(
       workerSecurityGroup,
       ec2.Port.allTraffic(),
       "Allow worker-to-worker traffic inside the swarm",
-    );
+    )
     workerSecurityGroup.addIngressRule(
       managerSecurityGroup,
       ec2.Port.allTraffic(),
       "Allow manager traffic to worker instances",
-    );
+    )
     managerSecurityGroup.addIngressRule(
       workerSecurityGroup,
       ec2.Port.allTraffic(),
       "Allow worker traffic to the manager instance over private IPs",
-    );
+    )
 
     const workerRole = new iam.Role(this, "WorkerInstanceRole", {
       assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
       description: "Role attached to agent swarm worker instances",
-    });
+    })
     workerRole.addManagedPolicy(
       iam.ManagedPolicy.fromAwsManagedPolicyName(
         "AmazonSSMManagedInstanceCore",
       ),
-    );
-    workerRuntimeReleaseBucket.grantRead(workerRole);
-    Tags.of(workerRole).add(swarmTagKey, swarmTagValue);
+    )
+    workerRuntimeReleaseBucket.grantRead(workerRole)
+    Tags.of(workerRole).add(swarmTagKey, swarmTagValue)
 
     const workerInstanceProfile = new iam.CfnInstanceProfile(
       this,
@@ -147,20 +149,20 @@ export class AwsSetupStack extends Stack {
       {
         roles: [workerRole.roleName],
       },
-    );
+    )
 
     const managerRole = new iam.Role(this, "ManagerInstanceRole", {
       assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
       description:
         "Role attached to the manager instance that launches and manages the worker swarm",
-    });
+    })
     managerRole.addManagedPolicy(
       iam.ManagedPolicy.fromAwsManagedPolicyName(
         "AmazonSSMManagedInstanceCore",
       ),
-    );
-    dashboardEnrollmentSecretSecret.grantRead(managerRole);
-    cloudflareTunnelTokenSecret.grantRead(managerRole);
+    )
+    dashboardEnrollmentSecretSecret.grantRead(managerRole)
+    cloudflareTunnelTokenSecret.grantRead(managerRole)
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "ReadCloudflareTunnelConfig",
@@ -173,8 +175,8 @@ export class AwsSetupStack extends Stack {
           }),
         ],
       }),
-    );
-    workerRuntimeReleaseBucket.grantReadWrite(managerRole);
+    )
+    workerRuntimeReleaseBucket.grantReadWrite(managerRole)
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "ReadEc2Inventory",
@@ -198,14 +200,14 @@ export class AwsSetupStack extends Stack {
         ],
         resources: ["*"],
       }),
-    );
+    )
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "RunTaggedWorkerInstances",
         actions: ["ec2:RunInstances"],
         resources: ["*"],
       }),
-    );
+    )
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "TagWorkerInstancesOnLaunch",
@@ -217,7 +219,7 @@ export class AwsSetupStack extends Stack {
           },
         },
       }),
-    );
+    )
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "ManageTaggedWorkerInstances",
@@ -236,7 +238,7 @@ export class AwsSetupStack extends Stack {
           },
         },
       }),
-    );
+    )
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "ManageWorkerImageBuilders",
@@ -255,14 +257,14 @@ export class AwsSetupStack extends Stack {
           },
         },
       }),
-    );
+    )
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "CreateWorkerImages",
         actions: ["ec2:CreateImage"],
         resources: ["*"],
       }),
-    );
+    )
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "TagWorkerImagesOnCreate",
@@ -274,7 +276,7 @@ export class AwsSetupStack extends Stack {
           },
         },
       }),
-    );
+    )
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "PassWorkerRole",
@@ -286,7 +288,7 @@ export class AwsSetupStack extends Stack {
           },
         },
       }),
-    );
+    )
     managerRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "OperateWorkersWithSsm",
@@ -298,7 +300,7 @@ export class AwsSetupStack extends Stack {
         ],
         resources: ["*"],
       }),
-    );
+    )
 
     const managerInstance = new ec2.Instance(this, "ManagerInstance", {
       vpc,
@@ -311,14 +313,14 @@ export class AwsSetupStack extends Stack {
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
       httpTokens: ec2.HttpTokens.REQUIRED,
       ssmSessionPermissions: false,
-    });
+    })
 
-    Tags.of(managerInstance).add("Role", "agent-swarm-manager");
-    Tags.of(managerInstance).add(swarmTagKey, swarmTagValue);
+    Tags.of(managerInstance).add("Role", "agent-swarm-manager")
+    Tags.of(managerInstance).add(swarmTagKey, swarmTagValue)
 
     const workerSubnets = vpc.selectSubnets({
       subnetType: ec2.SubnetType.PUBLIC,
-    }).subnetIds;
+    }).subnetIds
 
     const dashboardPasskeyTable = new dynamodb.Table(
       this,
@@ -330,7 +332,7 @@ export class AwsSetupStack extends Stack {
         },
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       },
-    );
+    )
 
     const dashboardAccessStateTable = new dynamodb.Table(
       this,
@@ -342,7 +344,7 @@ export class AwsSetupStack extends Stack {
         },
         billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       },
-    );
+    )
 
     const dashboardAccessFunction = new NodejsFunction(
       this,
@@ -355,22 +357,22 @@ export class AwsSetupStack extends Stack {
         memorySize: 512,
         environment: {
           DASHBOARD_PASSKEY_TABLE_NAME: dashboardPasskeyTable.tableName,
-          DASHBOARD_ACCESS_STATE_TABLE_NAME: dashboardAccessStateTable.tableName,
+          DASHBOARD_ACCESS_STATE_TABLE_NAME:
+            dashboardAccessStateTable.tableName,
           DASHBOARD_ENROLLMENT_SECRET: props.dashboardEnrollmentSecret,
-          DASHBOARD_ENROLLMENT_SECRET_SECRET_NAME:
-            `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
+          DASHBOARD_ENROLLMENT_SECRET_SECRET_NAME: `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
           MANAGER_SWARM_TAG_VALUE: swarmTagValue,
           AGENT_HOME: props.agentHome,
           DASHBOARD_SESSION_TTL_SECONDS: "900",
         },
       },
-    );
+    )
     const dashboardAccessUrl = dashboardAccessFunction.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE,
-    });
-    dashboardPasskeyTable.grantReadWriteData(dashboardAccessFunction);
-    dashboardAccessStateTable.grantReadWriteData(dashboardAccessFunction);
-    dashboardEnrollmentRuntimeSecret.grantRead(dashboardAccessFunction);
+    })
+    dashboardPasskeyTable.grantReadWriteData(dashboardAccessFunction)
+    dashboardAccessStateTable.grantReadWriteData(dashboardAccessFunction)
+    dashboardEnrollmentRuntimeSecret.grantRead(dashboardAccessFunction)
     dashboardAccessFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: [
@@ -381,7 +383,7 @@ export class AwsSetupStack extends Stack {
         ],
         resources: ["*"],
       }),
-    );
+    )
 
     const bootstrapPayload = {
       region: this.region,
@@ -399,7 +401,7 @@ export class AwsSetupStack extends Stack {
       swarmMaxSize: props.swarmMaxSize,
       dashboardAccessApiBaseUrl: dashboardAccessUrl.url.replace(/\/$/, ""),
       dashboardEnrollmentSecret: props.dashboardEnrollmentSecret,
-    };
+    }
 
     managerInstance.userData.addCommands(
       "dnf install -y git",
@@ -411,51 +413,51 @@ export class AwsSetupStack extends Stack {
       )}\nEOF`,
       `if [[ -d ${runtimeRoot}/.git ]]; then cd ${runtimeRoot} && git fetch --tags origin && git checkout "${runtimeRepoRef}" && git pull --ff-only origin "${runtimeRepoRef}"; else rm -rf ${runtimeRoot} && git clone --branch "${runtimeRepoRef}" --single-branch "${runtimeRepoUrl}" ${runtimeRoot}; fi`,
       `bash ${runtimeRoot}/scripts/setup.sh --runtime-dir ${runtimeRoot} --state-dir ${stateRoot} --workspace-dir ${workspaceRoot} --bootstrap-context ${stateRoot}/bootstrap-context.json`,
-    );
+    )
 
     new CfnOutput(this, "ManagerInstanceId", {
       value: managerInstance.instanceId,
-    });
+    })
     new CfnOutput(this, "ManagerRoleArn", {
       value: managerRole.roleArn,
-    });
+    })
     new CfnOutput(this, "ManagerPrivateIp", {
       value: managerInstance.instancePrivateIp,
-    });
+    })
     new CfnOutput(this, "ManagerSecurityGroupId", {
       value: managerSecurityGroup.securityGroupId,
-    });
+    })
     new CfnOutput(this, "ManagerMonitorPort", {
       value: String(managerMonitorPort),
-    });
+    })
     new CfnOutput(this, "WorkerRoleArn", {
       value: workerRole.roleArn,
-    });
+    })
     new CfnOutput(this, "WorkerInstanceProfileArn", {
       value: workerInstanceProfile.attrArn,
-    });
+    })
     new CfnOutput(this, "WorkerSecurityGroupId", {
       value: workerSecurityGroup.securityGroupId,
-    });
+    })
     new CfnOutput(this, "WorkerSubnetIds", {
       value: workerSubnets.join(","),
-    });
+    })
     new CfnOutput(this, "SwarmTag", {
       value: `${swarmTagKey}=${swarmTagValue}`,
-    });
+    })
     new CfnOutput(this, "DashboardAccessUrl", {
       value: dashboardAccessUrl.url,
-    });
+    })
     new CfnOutput(this, "WorkerRuntimeReleaseBucketName", {
       value: workerRuntimeReleaseBucket.bucketName,
-    });
+    })
     new CfnOutput(this, "DashboardEnrollmentSecretArn", {
       value: dashboardEnrollmentSecretSecret.secretArn,
-    });
+    })
     if (props.cloudflareTunnelConfigParameterName) {
       new CfnOutput(this, "CloudflareTunnelConfigParameterName", {
         value: props.cloudflareTunnelConfigParameterName,
-      });
+      })
     }
   }
 }

@@ -1,66 +1,66 @@
-import { Database } from "bun:sqlite";
-import { randomUUID } from "node:crypto";
+import { Database } from "bun:sqlite"
+import { randomUUID } from "node:crypto"
 import {
   appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync as readBinaryFileSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
-import type { AgentChatProviderKind } from "./catalog.js";
+} from "node:fs"
+import { dirname, join } from "node:path"
+import type { AgentChatProviderKind } from "./catalog.js"
 
-const attachmentRoutePrefix = "/api/agent-chat/sessions";
+const attachmentRoutePrefix = "/api/agent-chat/sessions"
 
 export type StoredMessageContentBlock =
   | { type: "text"; text: string }
-  | { type: "image"; url: string };
+  | { type: "image"; url: string }
 
 export type StoredAttachment = {
-  fileName: string;
-  mediaType: string;
-  path: string;
-  url: string;
-};
+  fileName: string
+  mediaType: string
+  path: string
+  url: string
+}
 
 export type SessionWatchdogState = {
-  status: "unconfigured" | "unresolved" | "nudged" | "completed" | "blocked";
-  nudgeCount: number;
-  lastNudgedAtMs: number | null;
-  completedAtMs: number | null;
+  status: "unconfigured" | "unresolved" | "nudged" | "completed" | "blocked"
+  nudgeCount: number
+  lastNudgedAtMs: number | null
+  completedAtMs: number | null
 }
 
 export type StoredSession = {
-  id: string;
-  title: string;
-  archived: boolean;
-  processBlueprintId: string | null;
-  watchdogState: SessionWatchdogState;
-  providerKind: AgentChatProviderKind;
-  modelRef: string;
-  cwd: string;
-  pendingSystemInstruction: string | null;
-  authProfile: string | null;
-  imageModelRef: string | null;
-  providerThreadId: string | null;
-  providerThreadPath: string | null;
-  createdAtMs: number;
-  updatedAtMs: number;
-  preview: string | null;
-  messageCount: number;
-};
+  id: string
+  title: string
+  archived: boolean
+  processBlueprintId: string | null
+  watchdogState: SessionWatchdogState
+  providerKind: AgentChatProviderKind
+  modelRef: string
+  cwd: string
+  pendingSystemInstruction: string | null
+  authProfile: string | null
+  imageModelRef: string | null
+  providerThreadId: string | null
+  providerThreadPath: string | null
+  createdAtMs: number
+  updatedAtMs: number
+  preview: string | null
+  messageCount: number
+}
 
 type PendingInstructionConsumeOptions = {
-  excludePrefixes?: string[];
-};
+  excludePrefixes?: string[]
+}
 
 export type StoredMessage = {
-  id: string;
-  sessionId: string;
-  role: "user" | "assistant" | "system";
+  id: string
+  sessionId: string
+  role: "user" | "assistant" | "system"
   kind:
     | "chat"
     | "activity"
@@ -68,109 +68,117 @@ export type StoredMessage = {
     | "directoryInstruction"
     | "watchdogPrompt"
     | "thought"
-    | "streamCheckpoint";
-  replyToMessageId: string | null;
-  ticketId: string | null;
-  providerSeenAtMs: number | null;
-  content: StoredMessageContentBlock[];
-  createdAtMs: number;
-};
+    | "streamCheckpoint"
+  replyToMessageId: string | null
+  ticketId: string | null
+  providerSeenAtMs: number | null
+  content: StoredMessageContentBlock[]
+  createdAtMs: number
+}
 
 export type CreateSessionInput = {
-  title?: string;
-  providerKind: AgentChatProviderKind;
-  modelRef: string;
-  cwd: string;
-  authProfile?: string | null;
-  imageModelRef?: string | null;
-};
+  title?: string
+  providerKind: AgentChatProviderKind
+  modelRef: string
+  cwd: string
+  authProfile?: string | null
+  imageModelRef?: string | null
+}
 
 type CanonicalWriteEvent = {
-  sessionId: string;
+  sessionId: string
   reason:
     | "session-created"
     | "attachment-persisted"
     | "message-appended"
     | "session-metadata-updated"
-    | "message-visibility-updated";
-};
+    | "message-visibility-updated"
+}
 
 type AgentChatStoreOptions = {
-  dataDir: string;
-  legacySqlitePath?: string | null;
-  onCanonicalWrite?: (event: CanonicalWriteEvent) => void;
-};
+  dataDir: string
+  legacySqlitePath?: string | null
+  onCanonicalWrite?: (event: CanonicalWriteEvent) => void
+}
 
-type SessionMetadata = Omit<StoredSession, "preview" | "messageCount">;
+type SessionMetadata = Omit<StoredSession, "preview" | "messageCount">
 
-const defaultWatchdogState = (processBlueprintId: string | null): SessionWatchdogState => ({
+const defaultWatchdogState = (
+  processBlueprintId: string | null,
+): SessionWatchdogState => ({
   status: processBlueprintId ? "unresolved" : "unconfigured",
   nudgeCount: 0,
   lastNudgedAtMs: null,
   completedAtMs: null,
-});
+})
 
 function safeJsonParse<T>(raw: string): T {
-  return JSON.parse(raw) as T;
+  return JSON.parse(raw) as T
 }
 
 function summarizePreview(messages: StoredMessage[]): string | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
+    const message = messages[index]
     if (message.kind === "activity" || message.kind === "ticketEvent") {
-      continue;
+      continue
     }
-    const textBlock = message?.content.find((block) => block.type === "text");
-    const preview = textBlock?.type === "text" ? textBlock.text.trim() : "";
+    const textBlock = message?.content.find((block) => block.type === "text")
+    const preview = textBlock?.type === "text" ? textBlock.text.trim() : ""
     if (preview) {
-      return preview;
+      return preview
     }
-    const imageCount = message?.content.filter((block) => block.type === "image").length ?? 0;
+    const imageCount =
+      message?.content.filter((block) => block.type === "image").length ?? 0
     if (imageCount > 0) {
-      return imageCount === 1 ? "Shared an image" : `Shared ${imageCount} images`;
+      return imageCount === 1
+        ? "Shared an image"
+        : `Shared ${imageCount} images`
     }
   }
-  return null;
+  return null
 }
 
-function sessionSummary(metadata: SessionMetadata, messages: StoredMessage[]): StoredSession {
+function sessionSummary(
+  metadata: SessionMetadata,
+  messages: StoredMessage[],
+): StoredSession {
   return {
     ...metadata,
     preview: summarizePreview(messages),
     messageCount: messages.length,
-  };
+  }
 }
 
 export class AgentChatStore {
-  private readonly sessionsDir: string;
-  private readonly onCanonicalWrite?: (event: CanonicalWriteEvent) => void;
-  private readonly sessionCache = new Map<string, StoredSession>();
-  private readonly messageCache = new Map<string, StoredMessage[]>();
+  private readonly sessionsDir: string
+  private readonly onCanonicalWrite?: (event: CanonicalWriteEvent) => void
+  private readonly sessionCache = new Map<string, StoredSession>()
+  private readonly messageCache = new Map<string, StoredMessage[]>()
 
   constructor(options: AgentChatStoreOptions) {
-    this.sessionsDir = join(options.dataDir, "sessions");
-    this.onCanonicalWrite = options.onCanonicalWrite;
-    mkdirSync(this.sessionsDir, { recursive: true });
-    this.importLegacySqliteIfNeeded(options.legacySqlitePath ?? null);
-    this.loadCache();
+    this.sessionsDir = join(options.dataDir, "sessions")
+    this.onCanonicalWrite = options.onCanonicalWrite
+    mkdirSync(this.sessionsDir, { recursive: true })
+    this.importLegacySqliteIfNeeded(options.legacySqlitePath ?? null)
+    this.loadCache()
   }
 
   listSessions(): StoredSession[] {
     return Array.from(this.sessionCache.values()).sort((left, right) => {
       if (right.updatedAtMs !== left.updatedAtMs) {
-        return right.updatedAtMs - left.updatedAtMs;
+        return right.updatedAtMs - left.updatedAtMs
       }
-      return right.createdAtMs - left.createdAtMs;
-    });
+      return right.createdAtMs - left.createdAtMs
+    })
   }
 
   getSession(sessionId: string): StoredSession | null {
-    return this.sessionCache.get(sessionId) ?? null;
+    return this.sessionCache.get(sessionId) ?? null
   }
 
   createSession(input: CreateSessionInput): StoredSession {
-    const now = Date.now();
-    const sessionId = randomUUID();
+    const now = Date.now()
+    const sessionId = randomUUID()
     const metadata: SessionMetadata = {
       id: sessionId,
       title: input.title?.trim() || "New chat",
@@ -187,59 +195,61 @@ export class AgentChatStore {
       providerThreadPath: null,
       createdAtMs: now,
       updatedAtMs: now,
-    };
-    const messages: StoredMessage[] = [];
+    }
+    const messages: StoredMessage[] = []
 
-    this.writeSessionFiles(metadata, messages);
-    const summary = sessionSummary(metadata, messages);
-    this.sessionCache.set(sessionId, summary);
-    this.messageCache.set(sessionId, messages);
+    this.writeSessionFiles(metadata, messages)
+    const summary = sessionSummary(metadata, messages)
+    this.sessionCache.set(sessionId, summary)
+    this.messageCache.set(sessionId, messages)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-created",
-    });
-    return summary;
+    })
+    return summary
   }
 
   listMessages(sessionId: string): StoredMessage[] {
-    return [...(this.messageCache.get(sessionId) ?? [])];
+    return [...(this.messageCache.get(sessionId) ?? [])]
   }
 
   listMessagesPage(
     sessionId: string,
     input?: {
-      beforeMessageId?: string | null;
-      limit?: number;
+      beforeMessageId?: string | null
+      limit?: number
     },
   ): {
-    messages: StoredMessage[];
-    hasOlderMessages: boolean;
+    messages: StoredMessage[]
+    hasOlderMessages: boolean
   } {
-    const allMessages = this.messageCache.get(sessionId) ?? [];
-    const limit = Math.max(1, Math.min(200, input?.limit ?? 50));
-    const beforeMessageId = input?.beforeMessageId?.trim() ?? "";
+    const allMessages = this.messageCache.get(sessionId) ?? []
+    const limit = Math.max(1, Math.min(200, input?.limit ?? 50))
+    const beforeMessageId = input?.beforeMessageId?.trim() ?? ""
 
     if (!beforeMessageId) {
-      const startIndex = Math.max(0, allMessages.length - limit);
+      const startIndex = Math.max(0, allMessages.length - limit)
       return {
         messages: allMessages.slice(startIndex),
         hasOlderMessages: startIndex > 0,
-      };
+      }
     }
 
-    const endIndex = allMessages.findIndex((message) => message.id === beforeMessageId);
+    const endIndex = allMessages.findIndex(
+      (message) => message.id === beforeMessageId,
+    )
     if (endIndex <= 0) {
       return {
         messages: [],
         hasOlderMessages: false,
-      };
+      }
     }
 
-    const startIndex = Math.max(0, endIndex - limit);
+    const startIndex = Math.max(0, endIndex - limit)
     return {
       messages: allMessages.slice(startIndex, endIndex),
       hasOlderMessages: startIndex > 0,
-    };
+    }
   }
 
   listQueuedMessages(sessionId: string): StoredMessage[] {
@@ -247,49 +257,49 @@ export class AgentChatStore {
       (message) =>
         message.providerSeenAtMs === null &&
         (message.role === "user" || message.role === "system"),
-    );
+    )
   }
 
   persistAttachment(
     sessionId: string,
     input: {
-      mediaType: string;
-      bytes: Uint8Array;
+      mediaType: string
+      bytes: Uint8Array
     },
   ): StoredAttachment {
-    const current = this.sessionCache.get(sessionId);
+    const current = this.sessionCache.get(sessionId)
     if (!current) {
-      throw new Error(`Unknown session ${sessionId}`);
+      throw new Error(`Unknown session ${sessionId}`)
     }
 
-    const extension = fileExtensionForMediaType(input.mediaType);
-    const fileName = `${randomUUID()}.${extension}`;
-    const path = this.attachmentPath(sessionId, fileName);
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, input.bytes);
+    const extension = fileExtensionForMediaType(input.mediaType)
+    const fileName = `${randomUUID()}.${extension}`
+    const path = this.attachmentPath(sessionId, fileName)
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, input.bytes)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "attachment-persisted",
-    });
+    })
     return {
       fileName,
       mediaType: input.mediaType,
       path,
       url: this.attachmentUrl(sessionId, fileName),
-    };
+    }
   }
 
   resolveAttachment(url: string): StoredAttachment | null {
-    const match = attachmentUrlPattern.exec(url);
+    const match = attachmentUrlPattern.exec(url)
     if (!match) {
-      return null;
+      return null
     }
 
-    const sessionId = decodeURIComponent(match[1] ?? "");
-    const fileName = decodeURIComponent(match[2] ?? "");
-    const path = this.attachmentPath(sessionId, fileName);
+    const sessionId = decodeURIComponent(match[1] ?? "")
+    const fileName = decodeURIComponent(match[2] ?? "")
+    const path = this.attachmentPath(sessionId, fileName)
     if (!existsSync(path)) {
-      return null;
+      return null
     }
 
     return {
@@ -297,19 +307,21 @@ export class AgentChatStore {
       mediaType: mediaTypeForFileName(fileName),
       path,
       url: this.attachmentUrl(sessionId, fileName),
-    };
+    }
   }
 
-  readAttachmentBytes(url: string): { attachment: StoredAttachment; bytes: Buffer } | null {
-    const attachment = this.resolveAttachment(url);
+  readAttachmentBytes(
+    url: string,
+  ): { attachment: StoredAttachment; bytes: Buffer } | null {
+    const attachment = this.resolveAttachment(url)
     if (!attachment) {
-      return null;
+      return null
     }
 
     return {
       attachment,
       bytes: readBinaryFileSync(attachment.path),
-    };
+    }
   }
 
   listQueuedUserMessages(sessionId: string): StoredMessage[] {
@@ -319,26 +331,26 @@ export class AgentChatStore {
         (message.role === "user" ||
           message.kind === "watchdogPrompt" ||
           message.kind === "ticketEvent"),
-    );
+    )
   }
 
   appendMessage(
     sessionId: string,
     input: {
-      role: StoredMessage["role"];
-      content: StoredMessage["content"];
-      kind?: StoredMessage["kind"];
-      replyToMessageId?: string | null;
-      ticketId?: string | null;
-      providerSeenAtMs?: number | null;
+      role: StoredMessage["role"]
+      content: StoredMessage["content"]
+      kind?: StoredMessage["kind"]
+      replyToMessageId?: string | null
+      ticketId?: string | null
+      providerSeenAtMs?: number | null
     },
   ): StoredMessage {
-    const session = this.sessionCache.get(sessionId);
+    const session = this.sessionCache.get(sessionId)
     if (!session) {
-      throw new Error(`Unknown session ${sessionId}`);
+      throw new Error(`Unknown session ${sessionId}`)
     }
 
-    const createdAtMs = Date.now();
+    const createdAtMs = Date.now()
     const message: StoredMessage = {
       id: randomUUID(),
       sessionId,
@@ -347,29 +359,31 @@ export class AgentChatStore {
       replyToMessageId: input.replyToMessageId ?? null,
       ticketId: input.ticketId?.trim() || null,
       providerSeenAtMs:
-        input.providerSeenAtMs === undefined ? createdAtMs : input.providerSeenAtMs,
+        input.providerSeenAtMs === undefined
+          ? createdAtMs
+          : input.providerSeenAtMs,
       content: input.content,
       createdAtMs,
-    };
+    }
 
-    const nextMessages = [...(this.messageCache.get(sessionId) ?? []), message];
-    this.messageCache.set(sessionId, nextMessages);
+    const nextMessages = [...(this.messageCache.get(sessionId) ?? []), message]
+    this.messageCache.set(sessionId, nextMessages)
 
     const nextSession: StoredSession = {
       ...session,
       updatedAtMs: createdAtMs,
       preview: summarizePreview(nextMessages),
       messageCount: nextMessages.length,
-    };
+    }
 
-    this.writeSessionMetadata(nextSession);
-    appendFileSync(this.messagesPath(sessionId), `${JSON.stringify(message)}\n`);
-    this.sessionCache.set(sessionId, nextSession);
+    this.writeSessionMetadata(nextSession)
+    appendFileSync(this.messagesPath(sessionId), `${JSON.stringify(message)}\n`)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-appended",
-    });
-    return message;
+    })
+    return message
   }
 
   updateMessageContent(
@@ -377,46 +391,51 @@ export class AgentChatStore {
     messageId: string,
     content: StoredMessage["content"],
   ): StoredMessage | null {
-    return this.updateMessage(sessionId, messageId, { content });
+    return this.updateMessage(sessionId, messageId, { content })
   }
 
   updateMessage(
     sessionId: string,
     messageId: string,
     input: {
-      content?: StoredMessage["content"];
-      kind?: StoredMessage["kind"];
-      providerSeenAtMs?: number | null;
-      replyToMessageId?: string | null;
-      ticketId?: string | null;
+      content?: StoredMessage["content"]
+      kind?: StoredMessage["kind"]
+      providerSeenAtMs?: number | null
+      replyToMessageId?: string | null
+      ticketId?: string | null
     },
   ): StoredMessage | null {
-    const currentMessages = this.messageCache.get(sessionId);
-    const currentSession = this.sessionCache.get(sessionId);
+    const currentMessages = this.messageCache.get(sessionId)
+    const currentSession = this.sessionCache.get(sessionId)
     if (!currentMessages?.length || !currentSession) {
-      return null;
+      return null
     }
 
-    let updatedMessage: StoredMessage | null = null;
+    let updatedMessage: StoredMessage | null = null
     const nextMessages = currentMessages.map((message) => {
       if (message.id !== messageId) {
-        return message;
+        return message
       }
       updatedMessage = {
         ...message,
         content: input.content ?? message.content,
         kind: input.kind ?? message.kind,
         providerSeenAtMs:
-          input.providerSeenAtMs === undefined ? message.providerSeenAtMs : input.providerSeenAtMs,
+          input.providerSeenAtMs === undefined
+            ? message.providerSeenAtMs
+            : input.providerSeenAtMs,
         replyToMessageId:
-          input.replyToMessageId === undefined ? message.replyToMessageId : input.replyToMessageId,
-        ticketId: input.ticketId === undefined ? message.ticketId : input.ticketId,
-      };
-      return updatedMessage;
-    });
+          input.replyToMessageId === undefined
+            ? message.replyToMessageId
+            : input.replyToMessageId,
+        ticketId:
+          input.ticketId === undefined ? message.ticketId : input.ticketId,
+      }
+      return updatedMessage
+    })
 
     if (!updatedMessage) {
-      return null;
+      return null
     }
 
     const nextSession: StoredSession = {
@@ -424,61 +443,67 @@ export class AgentChatStore {
       updatedAtMs: Date.now(),
       preview: summarizePreview(nextMessages),
       messageCount: nextMessages.length,
-    };
+    }
 
-    this.messageCache.set(sessionId, nextMessages);
-    this.writeSessionMetadata(nextSession);
-    this.writeMessagesFile(sessionId, nextMessages);
-    this.sessionCache.set(sessionId, nextSession);
+    this.messageCache.set(sessionId, nextMessages)
+    this.writeSessionMetadata(nextSession)
+    this.writeMessagesFile(sessionId, nextMessages)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-visibility-updated",
-    });
-    return updatedMessage;
+    })
+    return updatedMessage
   }
 
   updateSessionTitle(sessionId: string, title: string): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
-    const nextTitle = title.trim();
+    const current = this.sessionCache.get(sessionId)
+    const nextTitle = title.trim()
     if (!current || !nextTitle) {
-      return current ?? null;
+      return current ?? null
     }
 
     const nextSession: StoredSession = {
       ...current,
       title: nextTitle,
       updatedAtMs: Date.now(),
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",
-    });
-    return nextSession;
+    })
+    return nextSession
   }
 
-  updateSessionArchived(sessionId: string, archived: boolean): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
+  updateSessionArchived(
+    sessionId: string,
+    archived: boolean,
+  ): StoredSession | null {
+    const current = this.sessionCache.get(sessionId)
     if (!current || current.archived === archived) {
-      return current ?? null;
+      return current ?? null
     }
 
     const nextSession: StoredSession = {
       ...current,
       archived,
       updatedAtMs: Date.now(),
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
-    return nextSession;
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
+    return nextSession
   }
 
-  updateSessionProcessBlueprint(sessionId: string, processBlueprintId: string | null): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
-    const normalizedId = processBlueprintId?.trim() || null;
+  updateSessionProcessBlueprint(
+    sessionId: string,
+    processBlueprintId: string | null,
+  ): StoredSession | null {
+    const current = this.sessionCache.get(sessionId)
+    const normalizedId = processBlueprintId?.trim() || null
     if (!current || current.processBlueprintId === normalizedId) {
-      return current ?? null;
+      return current ?? null
     }
 
     const nextSession: StoredSession = {
@@ -486,23 +511,23 @@ export class AgentChatStore {
       processBlueprintId: normalizedId,
       watchdogState: defaultWatchdogState(normalizedId),
       updatedAtMs: Date.now(),
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",
-    });
-    return nextSession;
+    })
+    return nextSession
   }
 
   updateSessionWatchdogState(
     sessionId: string,
     watchdogState: SessionWatchdogState,
   ): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
+    const current = this.sessionCache.get(sessionId)
     if (!current) {
-      return null;
+      return null
     }
 
     const nextSession: StoredSession = {
@@ -514,34 +539,34 @@ export class AgentChatStore {
         completedAtMs: watchdogState.completedAtMs,
       },
       updatedAtMs: Date.now(),
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",
-    });
-    return nextSession;
+    })
+    return nextSession
   }
 
   resetSessionWatchdogState(sessionId: string): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
+    const current = this.sessionCache.get(sessionId)
     if (!current) {
-      return null;
+      return null
     }
     return this.updateSessionWatchdogState(
       sessionId,
       defaultWatchdogState(current.processBlueprintId),
-    );
+    )
   }
 
   updateProviderThread(
     sessionId: string,
     input: { threadId: string | null; threadPath: string | null },
   ): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
+    const current = this.sessionCache.get(sessionId)
     if (!current) {
-      return null;
+      return null
     }
 
     const nextSession: StoredSession = {
@@ -549,54 +574,54 @@ export class AgentChatStore {
       providerThreadId: input.threadId,
       providerThreadPath: input.threadPath,
       updatedAtMs: Date.now(),
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",
-    });
-    return nextSession;
+    })
+    return nextSession
   }
 
   updateSessionCwd(sessionId: string, cwd: string): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
-    const nextCwd = cwd.trim();
+    const current = this.sessionCache.get(sessionId)
+    const nextCwd = cwd.trim()
     if (!current || !nextCwd) {
-      return current ?? null;
+      return current ?? null
     }
 
     const nextSession: StoredSession = {
       ...current,
       cwd: nextCwd,
       updatedAtMs: Date.now(),
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",
-    });
-    return nextSession;
+    })
+    return nextSession
   }
 
   updateSessionProviderSettings(
     sessionId: string,
     input: {
-      providerKind: AgentChatProviderKind;
-      modelRef: string;
-      authProfile: string | null;
-      imageModelRef: string | null;
-      clearProviderThread?: boolean;
+      providerKind: AgentChatProviderKind
+      modelRef: string
+      authProfile: string | null
+      imageModelRef: string | null
+      clearProviderThread?: boolean
     },
   ): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
-    const nextModelRef = input.modelRef.trim();
+    const current = this.sessionCache.get(sessionId)
+    const nextModelRef = input.modelRef.trim()
     if (!current || !nextModelRef) {
-      return current ?? null;
+      return current ?? null
     }
 
-    const clearProviderThread = input.clearProviderThread ?? true;
+    const clearProviderThread = input.clearProviderThread ?? true
     const nextSession: StoredSession = {
       ...current,
       providerKind: input.providerKind,
@@ -604,25 +629,27 @@ export class AgentChatStore {
       authProfile: input.authProfile?.trim() || null,
       imageModelRef: input.imageModelRef?.trim() || null,
       providerThreadId: clearProviderThread ? null : current.providerThreadId,
-      providerThreadPath: clearProviderThread ? null : current.providerThreadPath,
+      providerThreadPath: clearProviderThread
+        ? null
+        : current.providerThreadPath,
       updatedAtMs: Date.now(),
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",
-    });
-    return nextSession;
+    })
+    return nextSession
   }
 
   queuePendingSystemInstruction(
     sessionId: string,
     instruction: string,
   ): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
+    const current = this.sessionCache.get(sessionId)
     if (!current) {
-      return null;
+      return null
     }
 
     const nextSession: StoredSession = {
@@ -631,14 +658,14 @@ export class AgentChatStore {
         ? `${current.pendingSystemInstruction}\n${instruction}`
         : instruction,
       updatedAtMs: Date.now(),
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",
-    });
-    return nextSession;
+    })
+    return nextSession
   }
 
   replacePendingSystemInstructionByPrefix(
@@ -646,9 +673,9 @@ export class AgentChatStore {
     prefix: string,
     instruction: string,
   ): StoredSession | null {
-    const current = this.sessionCache.get(sessionId);
+    const current = this.sessionCache.get(sessionId)
     if (!current) {
-      return null;
+      return null
     }
 
     const existingLines = current.pendingSystemInstruction
@@ -657,89 +684,95 @@ export class AgentChatStore {
           .map((line) => line.trim())
           .filter(Boolean)
           .filter((line) => !line.startsWith(prefix))
-      : [];
-    existingLines.push(instruction);
+      : []
+    existingLines.push(instruction)
 
     const nextSession: StoredSession = {
       ...current,
       pendingSystemInstruction: existingLines.join("\n"),
       updatedAtMs: Date.now(),
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",
-    });
-    return nextSession;
+    })
+    return nextSession
   }
 
   consumePendingSystemInstruction(
     sessionId: string,
     options?: PendingInstructionConsumeOptions,
   ): string | null {
-    const current = this.sessionCache.get(sessionId);
-    if (!current || !current.pendingSystemInstruction) {
-      return null;
+    const current = this.sessionCache.get(sessionId)
+    if (!current?.pendingSystemInstruction) {
+      return null
     }
 
-    const excludePrefixes = options?.excludePrefixes?.filter(Boolean) ?? [];
+    const excludePrefixes = options?.excludePrefixes?.filter(Boolean) ?? []
     const instructionLines = current.pendingSystemInstruction
       .split("\n")
       .map((line) => line.trim())
-      .filter(Boolean);
-    const retainedLines: string[] = [];
-    const consumedLines: string[] = [];
+      .filter(Boolean)
+    const retainedLines: string[] = []
+    const consumedLines: string[] = []
 
     for (const line of instructionLines) {
       if (excludePrefixes.some((prefix) => line.startsWith(prefix))) {
-        retainedLines.push(line);
+        retainedLines.push(line)
       } else {
-        consumedLines.push(line);
+        consumedLines.push(line)
       }
     }
 
     if (consumedLines.length === 0) {
-      return null;
+      return null
     }
 
-    const instruction = consumedLines.join("\n");
+    const instruction = consumedLines.join("\n")
     const nextSession: StoredSession = {
       ...current,
-      pendingSystemInstruction: retainedLines.length > 0 ? retainedLines.join("\n") : null,
-    };
-    this.writeSessionMetadata(nextSession);
-    this.sessionCache.set(sessionId, nextSession);
-    const consumedText = new Set(consumedLines);
+      pendingSystemInstruction:
+        retainedLines.length > 0 ? retainedLines.join("\n") : null,
+    }
+    this.writeSessionMetadata(nextSession)
+    this.sessionCache.set(sessionId, nextSession)
+    const consumedText = new Set(consumedLines)
     const messageIds = this.listQueuedMessages(sessionId)
       .filter((message) => {
         if (message.role !== "system") {
-          return false;
+          return false
         }
-        const firstText = message.content.find((block) => block.type === "text");
-        return firstText?.type === "text" && consumedText.has(firstText.text.trim());
+        const firstText = message.content.find((block) => block.type === "text")
+        return (
+          firstText?.type === "text" && consumedText.has(firstText.text.trim())
+        )
       })
-      .map((message) => message.id);
-    this.markMessagesSeen(sessionId, messageIds);
+      .map((message) => message.id)
+    this.markMessagesSeen(sessionId, messageIds)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-metadata-updated",
-    });
-    return instruction;
+    })
+    return instruction
   }
 
-  markQueuedDirectoryInstructionsSeen(sessionId: string, seenAtMs = Date.now()) {
+  markQueuedDirectoryInstructionsSeen(
+    sessionId: string,
+    seenAtMs = Date.now(),
+  ) {
     const messageIds = this.listQueuedMessages(sessionId)
       .filter((message) => message.role === "system")
-      .map((message) => message.id);
-    this.markMessagesSeen(sessionId, messageIds, seenAtMs);
+      .map((message) => message.id)
+    this.markMessagesSeen(sessionId, messageIds, seenAtMs)
   }
 
   markQueuedSystemMessagesSeen(sessionId: string, seenAtMs = Date.now()) {
     const messageIds = this.listQueuedMessages(sessionId)
       .filter((message) => message.role === "system")
-      .map((message) => message.id);
-    this.markMessagesSeen(sessionId, messageIds, seenAtMs);
+      .map((message) => message.id)
+    this.markMessagesSeen(sessionId, messageIds, seenAtMs)
   }
 
   markQueuedSystemMessagesSeenByPrefix(
@@ -750,121 +783,133 @@ export class AgentChatStore {
     const messageIds = this.listQueuedMessages(sessionId)
       .filter((message) => {
         if (message.role !== "system") {
-          return false;
+          return false
         }
-        const firstText = message.content.find((block) => block.type === "text");
-        return firstText?.type === "text" && firstText.text.startsWith(prefix);
+        const firstText = message.content.find((block) => block.type === "text")
+        return firstText?.type === "text" && firstText.text.startsWith(prefix)
       })
-      .map((message) => message.id);
-    this.markMessagesSeen(sessionId, messageIds, seenAtMs);
+      .map((message) => message.id)
+    this.markMessagesSeen(sessionId, messageIds, seenAtMs)
   }
 
-  markMessagesSeen(sessionId: string, messageIds: string[], seenAtMs = Date.now()) {
+  markMessagesSeen(
+    sessionId: string,
+    messageIds: string[],
+    seenAtMs = Date.now(),
+  ) {
     if (messageIds.length === 0) {
-      return;
+      return
     }
 
-    const currentMessages = this.messageCache.get(sessionId);
+    const currentMessages = this.messageCache.get(sessionId)
     if (!currentMessages?.length) {
-      return;
+      return
     }
 
-    const targets = new Set(messageIds);
-    let changed = false;
+    const targets = new Set(messageIds)
+    let changed = false
     const nextMessages = currentMessages.map((message) => {
       if (!targets.has(message.id) || message.providerSeenAtMs !== null) {
-        return message;
+        return message
       }
-      changed = true;
+      changed = true
       return {
         ...message,
         providerSeenAtMs: seenAtMs,
-      };
-    });
+      }
+    })
 
     if (!changed) {
-      return;
+      return
     }
 
-    this.messageCache.set(sessionId, nextMessages);
-    this.writeMessagesFile(sessionId, nextMessages);
-    const metadata = this.readSessionMetadata(sessionId);
-    this.sessionCache.set(sessionId, sessionSummary(metadata, nextMessages));
+    this.messageCache.set(sessionId, nextMessages)
+    this.writeMessagesFile(sessionId, nextMessages)
+    const metadata = this.readSessionMetadata(sessionId)
+    this.sessionCache.set(sessionId, sessionSummary(metadata, nextMessages))
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-visibility-updated",
-    });
+    })
   }
 
   private notifyCanonicalWrite(event: CanonicalWriteEvent) {
     try {
-      this.onCanonicalWrite?.(event);
+      this.onCanonicalWrite?.(event)
     } catch {}
   }
 
   private loadCache() {
-    this.sessionCache.clear();
-    this.messageCache.clear();
+    this.sessionCache.clear()
+    this.messageCache.clear()
 
     for (const sessionId of this.listSessionDirectories()) {
-      const metadata = this.readSessionMetadata(sessionId);
-      const messages = this.readMessages(sessionId);
-      const summary = sessionSummary(metadata, messages);
-      this.sessionCache.set(sessionId, summary);
-      this.messageCache.set(sessionId, messages);
+      const metadata = this.readSessionMetadata(sessionId)
+      const messages = this.readMessages(sessionId)
+      const summary = sessionSummary(metadata, messages)
+      this.sessionCache.set(sessionId, summary)
+      this.messageCache.set(sessionId, messages)
     }
   }
 
   private listSessionDirectories() {
     if (!existsSync(this.sessionsDir)) {
-      return [];
+      return []
     }
 
     return readdirSync(this.sessionsDir).filter((entry) => {
       try {
-        return statSync(join(this.sessionsDir, entry)).isDirectory();
+        return statSync(join(this.sessionsDir, entry)).isDirectory()
       } catch {
-        return false;
+        return false
       }
-    });
+    })
   }
 
   private sessionDir(sessionId: string) {
-    return join(this.sessionsDir, sessionId);
+    return join(this.sessionsDir, sessionId)
   }
 
   private sessionMetadataPath(sessionId: string) {
-    return join(this.sessionDir(sessionId), "session.json");
+    return join(this.sessionDir(sessionId), "session.json")
   }
 
   private messagesPath(sessionId: string) {
-    return join(this.sessionDir(sessionId), "messages.jsonl");
+    return join(this.sessionDir(sessionId), "messages.jsonl")
   }
 
   private attachmentDir(sessionId: string) {
-    return join(this.sessionDir(sessionId), "attachments");
+    return join(this.sessionDir(sessionId), "attachments")
   }
 
   private attachmentPath(sessionId: string, fileName: string) {
-    return join(this.attachmentDir(sessionId), fileName);
+    return join(this.attachmentDir(sessionId), fileName)
   }
 
   private attachmentUrl(sessionId: string, fileName: string) {
-    return `${attachmentRoutePrefix}/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(fileName)}`;
+    return `${attachmentRoutePrefix}/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(fileName)}`
   }
 
-  private writeSessionFiles(metadata: SessionMetadata, messages: StoredMessage[]) {
-    mkdirSync(this.sessionDir(metadata.id), { recursive: true });
-    mkdirSync(dirname(this.sessionMetadataPath(metadata.id)), { recursive: true });
-    mkdirSync(dirname(this.messagesPath(metadata.id)), { recursive: true });
-    writeFileSync(this.sessionMetadataPath(metadata.id), `${JSON.stringify(metadata, null, 2)}\n`);
-    this.writeMessagesFile(metadata.id, messages);
+  private writeSessionFiles(
+    metadata: SessionMetadata,
+    messages: StoredMessage[],
+  ) {
+    mkdirSync(this.sessionDir(metadata.id), { recursive: true })
+    mkdirSync(dirname(this.sessionMetadataPath(metadata.id)), {
+      recursive: true,
+    })
+    mkdirSync(dirname(this.messagesPath(metadata.id)), { recursive: true })
+    writeFileSync(
+      this.sessionMetadataPath(metadata.id),
+      `${JSON.stringify(metadata, null, 2)}\n`,
+    )
+    this.writeMessagesFile(metadata.id, messages)
   }
 
   private writeMessagesFile(sessionId: string, messages: StoredMessage[]) {
-    mkdirSync(dirname(this.messagesPath(sessionId)), { recursive: true });
-    const lines = messages.map((message) => JSON.stringify(message)).join("\n");
-    writeFileSync(this.messagesPath(sessionId), lines ? `${lines}\n` : "");
+    mkdirSync(dirname(this.messagesPath(sessionId)), { recursive: true })
+    const lines = messages.map((message) => JSON.stringify(message)).join("\n")
+    writeFileSync(this.messagesPath(sessionId), lines ? `${lines}\n` : "")
   }
 
   private writeSessionMetadata(session: StoredSession) {
@@ -884,21 +929,28 @@ export class AgentChatStore {
       providerThreadPath: session.providerThreadPath,
       createdAtMs: session.createdAtMs,
       updatedAtMs: session.updatedAtMs,
-    };
-    mkdirSync(this.sessionDir(session.id), { recursive: true });
-    mkdirSync(dirname(this.sessionMetadataPath(session.id)), { recursive: true });
-    writeFileSync(this.sessionMetadataPath(session.id), `${JSON.stringify(metadata, null, 2)}\n`);
+    }
+    mkdirSync(this.sessionDir(session.id), { recursive: true })
+    mkdirSync(dirname(this.sessionMetadataPath(session.id)), {
+      recursive: true,
+    })
+    writeFileSync(
+      this.sessionMetadataPath(session.id),
+      `${JSON.stringify(metadata, null, 2)}\n`,
+    )
   }
 
   private readSessionMetadata(sessionId: string): SessionMetadata {
     const parsed = safeJsonParse<Partial<SessionMetadata>>(
       readFileSync(this.sessionMetadataPath(sessionId), "utf8"),
-    );
+    )
     return {
       id: String(parsed.id),
       title: String(parsed.title),
       archived: Boolean(parsed.archived),
-      processBlueprintId: parsed.processBlueprintId ? String(parsed.processBlueprintId) : null,
+      processBlueprintId: parsed.processBlueprintId
+        ? String(parsed.processBlueprintId)
+        : null,
       watchdogState: {
         status:
           parsed.watchdogState?.status === "blocked" ||
@@ -910,7 +962,8 @@ export class AgentChatStore {
               ? "unresolved"
               : "unconfigured",
         nudgeCount:
-          parsed.watchdogState?.nudgeCount === null || parsed.watchdogState?.nudgeCount === undefined
+          parsed.watchdogState?.nudgeCount === null ||
+          parsed.watchdogState?.nudgeCount === undefined
             ? 0
             : Number(parsed.watchdogState.nudgeCount),
         lastNudgedAtMs:
@@ -932,26 +985,30 @@ export class AgentChatStore {
         : null,
       authProfile: parsed.authProfile ? String(parsed.authProfile) : null,
       imageModelRef: parsed.imageModelRef ? String(parsed.imageModelRef) : null,
-      providerThreadId: parsed.providerThreadId ? String(parsed.providerThreadId) : null,
-      providerThreadPath: parsed.providerThreadPath ? String(parsed.providerThreadPath) : null,
+      providerThreadId: parsed.providerThreadId
+        ? String(parsed.providerThreadId)
+        : null,
+      providerThreadPath: parsed.providerThreadPath
+        ? String(parsed.providerThreadPath)
+        : null,
       createdAtMs: Number(parsed.createdAtMs),
       updatedAtMs: Number(parsed.updatedAtMs),
-    };
+    }
   }
 
   private readMessages(sessionId: string): StoredMessage[] {
-    const path = this.messagesPath(sessionId);
+    const path = this.messagesPath(sessionId)
     if (!existsSync(path)) {
-      return [];
+      return []
     }
 
-    const raw = readFileSync(path, "utf8");
+    const raw = readFileSync(path, "utf8")
     return raw
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const parsed = safeJsonParse<Partial<StoredMessage>>(line);
+        const parsed = safeJsonParse<Partial<StoredMessage>>(line)
         return {
           id: String(parsed.id),
           sessionId: String(parsed.sessionId),
@@ -961,75 +1018,86 @@ export class AgentChatStore {
               ? "directoryInstruction"
               : parsed.kind === "activity"
                 ? "activity"
-              : parsed.kind === "ticketEvent"
-                ? "ticketEvent"
-              : parsed.kind === "watchdogPrompt"
-                ? "watchdogPrompt"
-              : parsed.kind === "streamCheckpoint"
-                ? "streamCheckpoint"
-              : parsed.kind === "thought"
-                ? "thought"
-              : "chat",
-          replyToMessageId: parsed.replyToMessageId ? String(parsed.replyToMessageId) : null,
+                : parsed.kind === "ticketEvent"
+                  ? "ticketEvent"
+                  : parsed.kind === "watchdogPrompt"
+                    ? "watchdogPrompt"
+                    : parsed.kind === "streamCheckpoint"
+                      ? "streamCheckpoint"
+                      : parsed.kind === "thought"
+                        ? "thought"
+                        : "chat",
+          replyToMessageId: parsed.replyToMessageId
+            ? String(parsed.replyToMessageId)
+            : null,
           ticketId:
             typeof parsed.ticketId === "string" && parsed.ticketId.trim()
               ? parsed.ticketId
               : null,
           providerSeenAtMs:
-            parsed.providerSeenAtMs === null || parsed.providerSeenAtMs === undefined
+            parsed.providerSeenAtMs === null ||
+            parsed.providerSeenAtMs === undefined
               ? null
               : Number(parsed.providerSeenAtMs),
           content: (parsed.content ?? []) as StoredMessage["content"],
           createdAtMs: Number(parsed.createdAtMs),
-        } satisfies StoredMessage;
+        } satisfies StoredMessage
       })
       .sort((left, right) => {
         if (left.createdAtMs !== right.createdAtMs) {
-          return left.createdAtMs - right.createdAtMs;
+          return left.createdAtMs - right.createdAtMs
         }
-        return left.id.localeCompare(right.id);
-      });
+        return left.id.localeCompare(right.id)
+      })
   }
 
   private importLegacySqliteIfNeeded(legacySqlitePath: string | null) {
     if (!legacySqlitePath || !existsSync(legacySqlitePath)) {
-      return;
+      return
     }
 
     if (this.listSessionDirectories().length > 0) {
-      return;
+      return
     }
 
-    const legacyDb = new Database(legacySqlitePath, { create: false, readonly: true });
+    const legacyDb = new Database(legacySqlitePath, {
+      create: false,
+      readonly: true,
+    })
 
     try {
       const tables = new Set(
-        (legacyDb.query(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as Array<{
-          name: string;
-        }>).map((row) => row.name),
-      );
+        (
+          legacyDb
+            .query(`SELECT name FROM sqlite_master WHERE type = 'table'`)
+            .all() as Array<{
+            name: string
+          }>
+        ).map((row) => row.name),
+      )
 
       if (!tables.has("sessions") || !tables.has("messages")) {
-        return;
+        return
       }
 
       const sessionColumns = new Set(
         (
           legacyDb.query(`PRAGMA table_info(sessions)`).all() as Array<{
-            name: string;
+            name: string
           }>
         ).map((row) => row.name),
-      );
+      )
       const messageColumns = new Set(
         (
           legacyDb.query(`PRAGMA table_info(messages)`).all() as Array<{
-            name: string;
+            name: string
           }>
         ).map((row) => row.name),
-      );
-      const legacyHasCwd = sessionColumns.has("cwd");
+      )
+      const legacyHasCwd = sessionColumns.has("cwd")
 
-      const sessionRows = legacyDb.query(`
+      const sessionRows = legacyDb
+        .query(`
         SELECT
           id,
           title,
@@ -1045,7 +1113,8 @@ export class AgentChatStore {
           updated_at_ms
         FROM sessions
         ORDER BY created_at_ms ASC, id ASC
-      `).all() as Array<Record<string, unknown>>;
+      `)
+        .all() as Array<Record<string, unknown>>
 
       const messageQuery = legacyDb.query(`
         SELECT
@@ -1060,7 +1129,7 @@ export class AgentChatStore {
         FROM messages
         WHERE session_id = ?
         ORDER BY created_at_ms ASC, id ASC
-      `);
+      `)
 
       for (const row of sessionRows) {
         const metadata: SessionMetadata = {
@@ -1076,21 +1145,29 @@ export class AgentChatStore {
             ? String(row.pending_system_instruction)
             : null,
           authProfile: row.auth_profile ? String(row.auth_profile) : null,
-          imageModelRef: row.image_model_ref ? String(row.image_model_ref) : null,
-          providerThreadId: row.provider_thread_id ? String(row.provider_thread_id) : null,
-          providerThreadPath: row.provider_thread_path ? String(row.provider_thread_path) : null,
+          imageModelRef: row.image_model_ref
+            ? String(row.image_model_ref)
+            : null,
+          providerThreadId: row.provider_thread_id
+            ? String(row.provider_thread_id)
+            : null,
+          providerThreadPath: row.provider_thread_path
+            ? String(row.provider_thread_path)
+            : null,
           createdAtMs: Number(row.created_at_ms),
           updatedAtMs: Number(row.updated_at_ms),
-        };
+        }
 
         const messages = messageQuery.all(metadata.id).map((messageRow) => {
-          const rowObject = messageRow as Record<string, unknown>;
+          const rowObject = messageRow as Record<string, unknown>
           return {
             id: String(rowObject.id),
             sessionId: String(rowObject.session_id),
             role: rowObject.role as StoredMessage["role"],
             kind:
-              rowObject.kind === "directoryInstruction" ? "directoryInstruction" : "chat",
+              rowObject.kind === "directoryInstruction"
+                ? "directoryInstruction"
+                : "chat",
             replyToMessageId: rowObject.reply_to_message_id
               ? String(rowObject.reply_to_message_id)
               : null,
@@ -1100,45 +1177,47 @@ export class AgentChatStore {
               rowObject.provider_seen_at_ms === undefined
                 ? null
                 : Number(rowObject.provider_seen_at_ms),
-            content: safeJsonParse<StoredMessage["content"]>(String(rowObject.content_json)),
+            content: safeJsonParse<StoredMessage["content"]>(
+              String(rowObject.content_json),
+            ),
             createdAtMs: Number(rowObject.created_at_ms),
-          } satisfies StoredMessage;
-        });
+          } satisfies StoredMessage
+        })
 
-        this.writeSessionFiles(metadata, messages);
+        this.writeSessionFiles(metadata, messages)
       }
     } finally {
-      legacyDb.close();
+      legacyDb.close()
     }
   }
 }
 
 const attachmentUrlPattern =
-  /^\/api\/agent-chat\/sessions\/([^/]+)\/attachments\/([^/]+)$/;
+  /^\/api\/agent-chat\/sessions\/([^/]+)\/attachments\/([^/]+)$/
 
 function fileExtensionForMediaType(mediaType: string) {
   switch (mediaType) {
     case "image/jpeg":
-      return "jpg";
+      return "jpg"
     case "image/gif":
-      return "gif";
+      return "gif"
     case "image/webp":
-      return "webp";
+      return "webp"
     default:
-      return "png";
+      return "png"
   }
 }
 
 function mediaTypeForFileName(fileName: string) {
-  const normalized = fileName.toLowerCase();
+  const normalized = fileName.toLowerCase()
   if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) {
-    return "image/jpeg";
+    return "image/jpeg"
   }
   if (normalized.endsWith(".gif")) {
-    return "image/gif";
+    return "image/gif"
   }
   if (normalized.endsWith(".webp")) {
-    return "image/webp";
+    return "image/webp"
   }
-  return "image/png";
+  return "image/png"
 }

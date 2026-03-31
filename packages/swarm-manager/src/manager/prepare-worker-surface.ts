@@ -1,18 +1,18 @@
-import { DEFAULT_WORKSPACE_DIR } from "../paths.js";
+import { DEFAULT_WORKSPACE_DIR } from "../paths.js"
 
-const DEFAULT_BASE_BRANCH = "development";
-const DEFAULT_REPO_PATH = `${DEFAULT_WORKSPACE_DIR}/projects/agent-infrastructure`;
-const DEFAULT_WORKTREE_ROOT = `${DEFAULT_WORKSPACE_DIR}/projects-worktrees/agent-infrastructure`;
+const DEFAULT_BASE_BRANCH = "development"
+const DEFAULT_REPO_PATH = `${DEFAULT_WORKSPACE_DIR}/projects/agent-infrastructure`
+const DEFAULT_WORKTREE_ROOT = `${DEFAULT_WORKSPACE_DIR}/projects-worktrees/agent-infrastructure`
 
 type CommandResult = {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-};
+  exitCode: number
+  stdout: string
+  stderr: string
+}
 
 function fail(message: string): never {
-  console.error(`[prepare-worker-surface] ${message}`);
-  process.exit(1);
+  console.error(`[prepare-worker-surface] ${message}`)
+  process.exit(1)
 }
 
 function runCommand(command: string[], cwd?: string): CommandResult {
@@ -22,36 +22,36 @@ function runCommand(command: string[], cwd?: string): CommandResult {
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
-  });
+  })
 
   return {
     exitCode: result.exitCode,
     stdout: result.stdout.toString("utf8"),
     stderr: result.stderr.toString("utf8"),
-  };
+  }
 }
 
 function runChecked(command: string[], cwd?: string): string {
-  const result = runCommand(command, cwd);
+  const result = runCommand(command, cwd)
   if (result.exitCode !== 0) {
-    const stderr = result.stderr.trim();
+    const stderr = result.stderr.trim()
     if (stderr) {
-      console.error(stderr);
+      console.error(stderr)
     }
-    fail(`command failed: ${command.join(" ")}`);
+    fail(`command failed: ${command.join(" ")}`)
   }
-  return result.stdout.trim();
+  return result.stdout.trim()
 }
 
 function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\"'\"'`)}'`;
+  return `'${value.replaceAll("'", `'"'"'`)}'`
 }
 
 function usage(): never {
   console.log(
     "Usage: bun run src/manager/prepare-worker-surface.ts -- <feature-branch-name>",
-  );
-  process.exit(1);
+  )
+  process.exit(1)
 }
 
 function branchDirName(branchName: string): string {
@@ -59,7 +59,7 @@ function branchDirName(branchName: string): string {
     .trim()
     .replaceAll(/[^A-Za-z0-9._-]+/g, "-")
     .replaceAll(/-+/g, "-")
-    .replaceAll(/^-|-$/g, "");
+    .replaceAll(/^-|-$/g, "")
 }
 
 function resolveHostAlias(): string {
@@ -69,31 +69,35 @@ function resolveHostAlias(): string {
     "src/manager/connect-worker-ec2-ssh.ts",
     "--no-connect",
     "--print-host-alias",
-  ]);
+  ])
   const lines = stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean);
-  const alias = lines.at(-1) ?? "";
+    .filter(Boolean)
+  const alias = lines.at(-1) ?? ""
   if (!alias || alias.startsWith("[connect-worker-ec2-ssh]")) {
-    fail("could not resolve worker SSH alias");
+    fail("could not resolve worker SSH alias")
   }
-  return alias;
+  return alias
 }
 
 function main() {
-  const branchName = process.argv.slice(2).find((value) => value !== "--")?.trim() ?? "";
+  const branchName =
+    process.argv
+      .slice(2)
+      .find((value) => value !== "--")
+      ?.trim() ?? ""
   if (!branchName) {
-    usage();
+    usage()
   }
 
-  const worktreeDirName = branchDirName(branchName);
+  const worktreeDirName = branchDirName(branchName)
   if (!worktreeDirName) {
-    fail("feature branch name must contain at least one path-safe character");
+    fail("feature branch name must contain at least one path-safe character")
   }
 
-  const hostAlias = resolveHostAlias();
-  const worktreePath = `${DEFAULT_WORKTREE_ROOT}/${worktreeDirName}`;
+  const hostAlias = resolveHostAlias()
+  const worktreePath = `${DEFAULT_WORKTREE_ROOT}/${worktreeDirName}`
 
   const remoteScript = [
     "set -euo pipefail",
@@ -117,15 +121,15 @@ function main() {
     'git worktree add -b "$BRANCH" "$WORKTREE" "origin/$BASE_BRANCH"',
     'cd "$WORKTREE"',
     "bun install",
-  ].join("\n");
+  ].join("\n")
 
-  runChecked(["ssh", hostAlias, remoteScript]);
+  runChecked(["ssh", hostAlias, remoteScript])
 
-  const startCommand = `ssh ${hostAlias} 'cd ${worktreePath} && exec bash -l'`;
-  console.log(`worker_alias=${hostAlias}`);
-  console.log(`branch=${branchName}`);
-  console.log(`worktree=${worktreePath}`);
-  console.log(`start_command=${startCommand}`);
+  const startCommand = `ssh ${hostAlias} 'cd ${worktreePath} && exec bash -l'`
+  console.log(`worker_alias=${hostAlias}`)
+  console.log(`branch=${branchName}`)
+  console.log(`worktree=${worktreePath}`)
+  console.log(`start_command=${startCommand}`)
 }
 
-main();
+main()

@@ -1,17 +1,20 @@
 import {
   buildCompleteGraph,
   buildDiffLayers,
-  planSourceMutation,
   type GraphIntent,
-} from "@agent-infrastructure/agent-graph-core";
-import type { ClientMessage, ServerMessage } from "@agent-infrastructure/agent-graph-protocol";
-import { applySourceMutation } from "./apply-source-mutation.js";
-import type { DocumentRepository } from "./document-repository.js";
-import { saveBoardFile } from "./workspace-state-repository.js";
+  planSourceMutation,
+} from "@agent-infrastructure/agent-graph-core"
+import type {
+  ClientMessage,
+  ServerMessage,
+} from "@agent-infrastructure/agent-graph-protocol"
+import { applySourceMutation } from "./apply-source-mutation.js"
+import type { DocumentRepository } from "./document-repository.js"
+import { saveBoardFile } from "./workspace-state-repository.js"
 
 function snapshotMessage(repository: DocumentRepository): ServerMessage {
-  const sourceWorkspace = repository.getSourceWorkspace();
-  const workspaceState = repository.getWorkspaceState();
+  const sourceWorkspace = repository.getSourceWorkspace()
+  const workspaceState = repository.getWorkspaceState()
   return {
     type: "server/connected",
     workspace: {
@@ -35,7 +38,7 @@ function snapshotMessage(repository: DocumentRepository): ServerMessage {
       current: sourceWorkspace,
       workspaceState,
     }),
-  };
+  }
 }
 
 function addNodesToLayer(
@@ -50,46 +53,53 @@ function addNodesToLayer(
           nodeIds: [...new Set([...layer.nodeIds, ...sourceNodeIds])],
         }
       : layer,
-  );
+  )
 }
 
-function parsePortalNodeId(
-  portalNodeId: string,
-): { direction: "incoming" | "outgoing"; sourceNodeId: string; layerId: string } | null {
-  const match = /^portal:(incoming|outgoing):(.+?)::(.+)$/.exec(portalNodeId);
+function parsePortalNodeId(portalNodeId: string): {
+  direction: "incoming" | "outgoing"
+  sourceNodeId: string
+  layerId: string
+} | null {
+  const match = /^portal:(incoming|outgoing):(.+?)::(.+)$/.exec(portalNodeId)
   if (!match) {
-    return null;
+    return null
   }
 
-  const [, rawDirection, sourceNodeId, layerId] = match;
+  const [, rawDirection, sourceNodeId, layerId] = match
   if (!sourceNodeId || !layerId) {
-    return null;
+    return null
   }
 
-  const direction = rawDirection === "incoming" ? "incoming" : "outgoing";
-  return { direction, sourceNodeId, layerId };
+  const direction = rawDirection === "incoming" ? "incoming" : "outgoing"
+  return { direction, sourceNodeId, layerId }
 }
 
 function graphNodeId(sourceNodeId: string, layerId: string): string {
-  return `${sourceNodeId}::${layerId}`;
+  return `${sourceNodeId}::${layerId}`
 }
 
 async function persistWorkspaceState(
   repository: DocumentRepository,
   workspaceState: ReturnType<DocumentRepository["getWorkspaceState"]>,
 ): Promise<void> {
-  repository.setWorkspaceState(workspaceState);
-  await saveBoardFile(repository.getBoardPath(), repository.getBoardFile());
+  repository.setWorkspaceState(workspaceState)
+  await saveBoardFile(repository.getBoardPath(), repository.getBoardFile())
 }
 
-async function applyWorkspaceIntent(repository: DocumentRepository, intent: GraphIntent): Promise<ServerMessage[]> {
-  const workspaceState = structuredClone(repository.getWorkspaceState());
+async function applyWorkspaceIntent(
+  repository: DocumentRepository,
+  intent: GraphIntent,
+): Promise<ServerMessage[]> {
+  const workspaceState = structuredClone(repository.getWorkspaceState())
 
   switch (intent.kind) {
     case "clone-layer": {
-      const layer = workspaceState.layers.find((candidate) => candidate.id === intent.layerId);
+      const layer = workspaceState.layers.find(
+        (candidate) => candidate.id === intent.layerId,
+      )
       if (!layer) {
-        return [];
+        return []
       }
       workspaceState.layers.push({
         ...layer,
@@ -98,9 +108,9 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         x: layer.x + 520,
         y: layer.y + 40,
         derivedFromLayerId: layer.id,
-      });
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+      })
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -109,14 +119,16 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "move-layer": {
       workspaceState.layers = workspaceState.layers.map((layer) =>
-        layer.id === intent.layerId ? { ...layer, x: intent.x, y: intent.y } : layer,
-      );
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+        layer.id === intent.layerId
+          ? { ...layer, x: intent.x, y: intent.y }
+          : layer,
+      )
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -125,14 +137,16 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "set-layer-visibility": {
       workspaceState.layers = workspaceState.layers.map((layer) =>
-        layer.id === intent.layerId ? { ...layer, visible: intent.visible } : layer,
-      );
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+        layer.id === intent.layerId
+          ? { ...layer, visible: intent.visible }
+          : layer,
+      )
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -141,15 +155,15 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "move-node": {
       workspaceState.nodePositions[intent.nodeId] = {
         x: intent.x,
         y: intent.y,
-      };
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+      }
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -158,17 +172,17 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "move-nodes": {
       for (const position of intent.positions) {
         workspaceState.nodePositions[position.nodeId] = {
           x: position.x,
           y: position.y,
-        };
+        }
       }
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -177,14 +191,16 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "set-node-pinned": {
       workspaceState.pinnedNodeIds = intent.pinned
         ? [...new Set([...workspaceState.pinnedNodeIds, intent.nodeId])]
-        : workspaceState.pinnedNodeIds.filter((nodeId) => nodeId !== intent.nodeId);
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+        : workspaceState.pinnedNodeIds.filter(
+            (nodeId) => nodeId !== intent.nodeId,
+          )
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -193,22 +209,22 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "toggle-layer-node": {
       workspaceState.layers = workspaceState.layers.map((layer) => {
         if (layer.id !== intent.layerId) {
-          return layer;
+          return layer
         }
         return {
           ...layer,
           nodeIds: intent.include
             ? [...new Set([...layer.nodeIds, intent.sourceNodeId])]
             : layer.nodeIds.filter((nodeId) => nodeId !== intent.sourceNodeId),
-        };
-      });
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+        }
+      })
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -217,23 +233,23 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "toggle-layer-nodes": {
-      const sourceNodeIdSet = new Set(intent.sourceNodeIds);
+      const sourceNodeIdSet = new Set(intent.sourceNodeIds)
       workspaceState.layers = workspaceState.layers.map((layer) => {
         if (layer.id !== intent.layerId) {
-          return layer;
+          return layer
         }
         return {
           ...layer,
           nodeIds: intent.include
             ? [...new Set([...layer.nodeIds, ...intent.sourceNodeIds])]
             : layer.nodeIds.filter((nodeId) => !sourceNodeIdSet.has(nodeId)),
-        };
-      });
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+        }
+      })
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -242,15 +258,15 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "reveal-hidden-context": {
-      const portal = parsePortalNodeId(intent.portalNodeId);
+      const portal = parsePortalNodeId(intent.portalNodeId)
       if (!portal) {
-        return [];
+        return []
       }
 
-      const sourceWorkspace = repository.getSourceWorkspace();
+      const sourceWorkspace = repository.getSourceWorkspace()
       const revealedNodeIds = sourceWorkspace.edges
         .filter((edge) =>
           portal.direction === "incoming"
@@ -259,10 +275,10 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
         )
         .map((edge) =>
           portal.direction === "incoming" ? edge.sourceId : edge.targetId,
-        );
-      addNodesToLayer(workspaceState, portal.layerId, revealedNodeIds);
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+        )
+      addNodesToLayer(workspaceState, portal.layerId, revealedNodeIds)
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -271,21 +287,27 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "reveal-hidden-node": {
-      const portal = parsePortalNodeId(intent.portalNodeId);
+      const portal = parsePortalNodeId(intent.portalNodeId)
       if (!portal) {
-        return [];
+        return []
       }
 
-      addNodesToLayer(workspaceState, portal.layerId, [intent.hiddenNodeId]);
-      const revealedGraphNodeId = graphNodeId(intent.hiddenNodeId, portal.layerId);
-      if (intent.position && !workspaceState.nodePositions[revealedGraphNodeId]) {
-        workspaceState.nodePositions[revealedGraphNodeId] = intent.position;
+      addNodesToLayer(workspaceState, portal.layerId, [intent.hiddenNodeId])
+      const revealedGraphNodeId = graphNodeId(
+        intent.hiddenNodeId,
+        portal.layerId,
+      )
+      if (
+        intent.position &&
+        !workspaceState.nodePositions[revealedGraphNodeId]
+      ) {
+        workspaceState.nodePositions[revealedGraphNodeId] = intent.position
       }
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -294,22 +316,22 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "reveal-connected-hidden-context": {
-      const sourceWorkspace = repository.getSourceWorkspace();
+      const sourceWorkspace = repository.getSourceWorkspace()
       const revealedNodeIds = sourceWorkspace.edges.flatMap((edge) => {
         if (edge.sourceId === intent.sourceNodeId) {
-          return [edge.targetId];
+          return [edge.targetId]
         }
         if (edge.targetId === intent.sourceNodeId) {
-          return [edge.sourceId];
+          return [edge.sourceId]
         }
-        return [];
-      });
-      addNodesToLayer(workspaceState, intent.layerId, revealedNodeIds);
-      workspaceState.revision += 1;
-      await persistWorkspaceState(repository, workspaceState);
+        return []
+      })
+      addNodesToLayer(workspaceState, intent.layerId, revealedNodeIds)
+      workspaceState.revision += 1
+      await persistWorkspaceState(repository, workspaceState)
       return [
         {
           type: "server/graph",
@@ -318,7 +340,7 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     case "request-diff": {
       return [
@@ -330,45 +352,45 @@ async function applyWorkspaceIntent(repository: DocumentRepository, intent: Grap
             workspaceState,
           }),
         },
-      ];
+      ]
     }
     default:
-      return [];
+      return []
   }
 }
 
 export function createWsMessageHandler(repository: DocumentRepository) {
   return async function handleMessage(raw: string): Promise<ServerMessage[]> {
-    const message = JSON.parse(raw) as ClientMessage;
+    const message = JSON.parse(raw) as ClientMessage
 
     if (message.type === "client/hello") {
-      return [snapshotMessage(repository)];
+      return [snapshotMessage(repository)]
     }
 
-    const intent = message.intent;
+    const intent = message.intent
     if (
       intent.kind === "edit-node-meaning" ||
       intent.kind === "connect-visible-nodes"
     ) {
-      const sourceWorkspace = repository.getSourceWorkspace();
+      const sourceWorkspace = repository.getSourceWorkspace()
       const plan = planSourceMutation({
         sourceWorkspace,
         intent,
-      });
+      })
 
       if (!plan.ok) {
         return [
           { type: "server/validation", validation: plan.validation },
           { type: "server/conflict", conflict: plan.conflict },
-        ];
+        ]
       }
 
-      repository.setPreviousSourceWorkspace(structuredClone(sourceWorkspace));
+      repository.setPreviousSourceWorkspace(structuredClone(sourceWorkspace))
       const nextWorkspace = applySourceMutation({
         sourceWorkspace,
         mutation: plan.mutation,
-      });
-      repository.setSourceWorkspace(nextWorkspace);
+      })
+      repository.setSourceWorkspace(nextWorkspace)
 
       return [
         { type: "server/validation", validation: plan.validation },
@@ -387,9 +409,9 @@ export function createWsMessageHandler(repository: DocumentRepository) {
             workspaceState: repository.getWorkspaceState(),
           }),
         },
-      ];
+      ]
     }
 
-    return applyWorkspaceIntent(repository, intent);
-  };
+    return applyWorkspaceIntent(repository, intent)
+  }
 }

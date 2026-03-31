@@ -1,73 +1,73 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import {
   DEFAULT_BOOTSTRAP_CONTEXT_PATH,
   DEFAULT_RUNTIME_DIR,
-} from "../paths.js";
+} from "../paths.js"
 import {
   defaultWorkerImageProfileStorePath,
   getWorkerImageProfile,
   promoteWorkerImageProfile,
-} from "./worker-image-profiles.js";
+} from "./worker-image-profiles.js"
 
 type BootstrapContext = {
-  region?: string;
-  workerInstanceProfileArn?: string;
-  workerSecurityGroupId?: string;
-  workerSubnetIds?: string[];
-};
+  region?: string
+  workerInstanceProfileArn?: string
+  workerSecurityGroupId?: string
+  workerSubnetIds?: string[]
+}
 
 type BuildWorkflowResult = {
-  ok: true;
-  workflow: string;
-  builderInstanceId: string;
-  imageId: string;
-  imageName: string;
-  provisionResult: Record<string, unknown>;
-};
+  ok: true
+  workflow: string
+  builderInstanceId: string
+  imageId: string
+  imageName: string
+  provisionResult: Record<string, unknown>
+}
 
 type BuildWorkerImageConfig = {
-  runtimeDir: string;
-  workflow: string;
-  profile: string;
-  promote: boolean;
-  imageName: string;
-  region: string;
-  subnetId: string;
-  securityGroupId: string;
-  instanceProfileArn: string;
-  baseAmiId: string;
-  builderInstanceType: string;
-  profileStorePath: string;
-};
+  runtimeDir: string
+  workflow: string
+  profile: string
+  promote: boolean
+  imageName: string
+  region: string
+  subnetId: string
+  securityGroupId: string
+  instanceProfileArn: string
+  baseAmiId: string
+  builderInstanceType: string
+  profileStorePath: string
+}
 
 function optionalOne(args: string[], flag: string): string | undefined {
-  const index = args.findIndex((value) => value === `--${flag}`);
+  const index = args.indexOf(`--${flag}`)
   if (index === -1) {
-    return undefined;
+    return undefined
   }
 
-  const next = args[index + 1];
+  const next = args[index + 1]
   if (!next || next.startsWith("--")) {
-    return undefined;
+    return undefined
   }
 
-  return next;
+  return next
 }
 
 function hasFlag(args: string[], flag: string): boolean {
-  return args.includes(`--${flag}`);
+  return args.includes(`--${flag}`)
 }
 
 function readBootstrapContext(path: string): BootstrapContext {
   if (!existsSync(path)) {
-    return {};
+    return {}
   }
 
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as BootstrapContext;
+    return JSON.parse(readFileSync(path, "utf8")) as BootstrapContext
   } catch {
-    return {};
+    return {}
   }
 }
 
@@ -77,13 +77,13 @@ function runChecked(command: string[], cwd?: string): string {
     env: process.env,
     stdout: "pipe",
     stderr: "inherit",
-  });
+  })
 
   if (result.exitCode !== 0) {
-    throw new Error(`command failed: ${command.join(" ")}`);
+    throw new Error(`command failed: ${command.join(" ")}`)
   }
 
-  return result.stdout.toString("utf8").trim();
+  return result.stdout.toString("utf8").trim()
 }
 
 function lookupLatestAmazonLinuxAmiId(region: string): string {
@@ -99,7 +99,7 @@ function lookupLatestAmazonLinuxAmiId(region: string): string {
     "Parameter.Value",
     "--output",
     "text",
-  ]).trim();
+  ]).trim()
 }
 
 function resolveBaseAmiId(
@@ -109,52 +109,55 @@ function resolveBaseAmiId(
   profileStorePath: string,
 ): string {
   if (explicitImageId?.trim()) {
-    return explicitImageId.trim();
+    return explicitImageId.trim()
   }
 
-  const existingProfile = getWorkerImageProfile(profile, profileStorePath);
+  const existingProfile = getWorkerImageProfile(profile, profileStorePath)
   if (existingProfile?.imageId?.trim()) {
-    return existingProfile.imageId.trim();
+    return existingProfile.imageId.trim()
   }
 
-  return lookupLatestAmazonLinuxAmiId(region);
+  return lookupLatestAmazonLinuxAmiId(region)
 }
 
 function parseArgs(argv: string[]): BuildWorkerImageConfig {
   const bootstrapContextPath =
-    optionalOne(argv, "bootstrap-context") ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH;
-  const bootstrapContext = readBootstrapContext(bootstrapContextPath);
-  const runtimeDir = optionalOne(argv, "runtime-dir") ?? DEFAULT_RUNTIME_DIR;
-  const workflow = optionalOne(argv, "workflow") ?? "bun-worker";
-  const profile = optionalOne(argv, "profile") ?? workflow;
-  const region = optionalOne(argv, "region") ?? bootstrapContext.region?.trim() ?? "";
+    optionalOne(argv, "bootstrap-context") ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH
+  const bootstrapContext = readBootstrapContext(bootstrapContextPath)
+  const runtimeDir = optionalOne(argv, "runtime-dir") ?? DEFAULT_RUNTIME_DIR
+  const workflow = optionalOne(argv, "workflow") ?? "bun-worker"
+  const profile = optionalOne(argv, "profile") ?? workflow
+  const region =
+    optionalOne(argv, "region") ?? bootstrapContext.region?.trim() ?? ""
   const subnetId =
     optionalOne(argv, "subnet-id") ??
     bootstrapContext.workerSubnetIds?.[0]?.trim() ??
-    "";
+    ""
   const securityGroupId =
     optionalOne(argv, "security-group-id") ??
     bootstrapContext.workerSecurityGroupId?.trim() ??
-    "";
+    ""
   const instanceProfileArn =
     optionalOne(argv, "instance-profile-arn") ??
     bootstrapContext.workerInstanceProfileArn?.trim() ??
-    "";
-  const builderInstanceType = optionalOne(argv, "builder-instance-type") ?? "t3.small";
+    ""
+  const builderInstanceType =
+    optionalOne(argv, "builder-instance-type") ?? "t3.small"
   const profileStorePath =
-    optionalOne(argv, "profile-store-path") ?? defaultWorkerImageProfileStorePath;
+    optionalOne(argv, "profile-store-path") ??
+    defaultWorkerImageProfileStorePath
 
   if (!region) {
-    throw new Error("region is required");
+    throw new Error("region is required")
   }
   if (!subnetId) {
-    throw new Error("subnet id is required");
+    throw new Error("subnet id is required")
   }
   if (!securityGroupId) {
-    throw new Error("security group id is required");
+    throw new Error("security group id is required")
   }
   if (!instanceProfileArn) {
-    throw new Error("instance profile arn is required");
+    throw new Error("instance profile arn is required")
   }
 
   return {
@@ -177,19 +180,19 @@ function parseArgs(argv: string[]): BuildWorkerImageConfig {
     ),
     builderInstanceType,
     profileStorePath,
-  };
+  }
 }
 
 async function main(): Promise<void> {
-  const config = parseArgs(process.argv.slice(2));
+  const config = parseArgs(process.argv.slice(2))
   const workflowDir = join(
     config.runtimeDir,
     "packages/swarm-manager/scripts/worker-images",
     config.workflow,
-  );
-  const buildScriptPath = join(workflowDir, "build.sh");
+  )
+  const buildScriptPath = join(workflowDir, "build.sh")
   if (!existsSync(buildScriptPath)) {
-    throw new Error(`worker image workflow not found: ${config.workflow}`);
+    throw new Error(`worker image workflow not found: ${config.workflow}`)
   }
 
   const output = runChecked(
@@ -212,10 +215,10 @@ async function main(): Promise<void> {
       config.imageName,
     ],
     config.runtimeDir,
-  );
+  )
 
-  const result = JSON.parse(output) as BuildWorkflowResult;
-  let promotedProfile: Record<string, unknown> | undefined;
+  const result = JSON.parse(output) as BuildWorkflowResult
+  let promotedProfile: Record<string, unknown> | undefined
   if (config.promote) {
     const promoted = promoteWorkerImageProfile(
       {
@@ -226,8 +229,8 @@ async function main(): Promise<void> {
         promotedAtMs: Date.now(),
       },
       config.profileStorePath,
-    );
-    promotedProfile = promoted;
+    )
+    promotedProfile = promoted
   }
 
   console.log(
@@ -238,7 +241,7 @@ async function main(): Promise<void> {
       promotedProfile,
       profileStorePath: config.profileStorePath,
     }),
-  );
+  )
 }
 
-await main();
+await main()

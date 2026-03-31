@@ -1,79 +1,79 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { basename } from "node:path";
+import { readdirSync, readFileSync } from "node:fs"
+import { basename } from "node:path"
 
 type CpuSnapshot = {
-  idle: number;
-  total: number;
-};
+  idle: number
+  total: number
+}
 
 type WorkerMetrics = {
-  cpuPercent: number;
-  memoryUsedBytes: number;
-  memoryTotalBytes: number;
-  memoryPercent: number;
-  containerCount: number;
-};
+  cpuPercent: number
+  memoryUsedBytes: number
+  memoryTotalBytes: number
+  memoryPercent: number
+  containerCount: number
+}
 
 type ProcessSample = {
-  pid: number;
-  comm: string;
-  state: string;
-  cpuPercent: number;
-  rssBytes: number;
-};
+  pid: number
+  comm: string
+  state: string
+  cpuPercent: number
+  rssBytes: number
+}
 
 type ProcessWindow = {
-  sampledAt: number;
-  intervalMs: number;
-  topCpu: ProcessSample[];
-  topMemory: ProcessSample[];
-};
+  sampledAt: number
+  intervalMs: number
+  topCpu: ProcessSample[]
+  topMemory: ProcessSample[]
+}
 
 type ContainerMetrics = {
-  containerId: string;
-  containerName: string;
-  projectId: string | null;
-  cpuPercent: number;
-  memoryUsedBytes: number;
-  memoryLimitBytes: number;
-  memoryPercent: number;
-};
+  containerId: string
+  containerName: string
+  projectId: string | null
+  cpuPercent: number
+  memoryUsedBytes: number
+  memoryLimitBytes: number
+  memoryPercent: number
+}
 
 type HeartbeatPayload = {
-  type: "heartbeat";
-  workerId: string;
-  instanceId: string;
-  privateIp: string;
-  nodeRole: "manager" | "worker";
-  timestamp: number;
-  worker: WorkerMetrics;
-  containers: ContainerMetrics[];
-  processWindow?: ProcessWindow;
-};
+  type: "heartbeat"
+  workerId: string
+  instanceId: string
+  privateIp: string
+  nodeRole: "manager" | "worker"
+  timestamp: number
+  worker: WorkerMetrics
+  containers: ContainerMetrics[]
+  processWindow?: ProcessWindow
+}
 
 type ProcessSnapshot = {
-  totalCpuTicks: number;
-  rssBytes: number;
-  state: string;
-  comm: string;
-};
+  totalCpuTicks: number
+  rssBytes: number
+  state: string
+  comm: string
+}
 
 type LifecycleEventType =
   | "telemetry_process_started"
   | "telemetry_connect_started"
   | "shutdown"
-  | "disconnected";
+  | "disconnected"
 
 const config: {
-  managerUrl: string;
-  sharedToken: string;
-  reconnectDelayMs: number;
-  workerIdOverride: string;
-  instanceIdOverride: string;
-  privateIpOverride: string;
-  nodeRole: "manager" | "worker";
-  processSampleIntervalMs: number;
-  processTopCount: number;
+  managerUrl: string
+  sharedToken: string
+  reconnectDelayMs: number
+  workerIdOverride: string
+  instanceIdOverride: string
+  privateIpOverride: string
+  nodeRole: "manager" | "worker"
+  processSampleIntervalMs: number
+  processTopCount: number
 } = {
   managerUrl: process.env.MONITOR_MANAGER_URL ?? "",
   sharedToken: process.env.MONITOR_SHARED_TOKEN ?? "",
@@ -86,21 +86,21 @@ const config: {
     process.env.MONITOR_PROCESS_SAMPLE_INTERVAL_MS ?? "10000",
   ),
   processTopCount: Number(process.env.MONITOR_PROCESS_TOP_COUNT ?? "5"),
-};
-
-if (!config.managerUrl || !config.sharedToken) {
-  throw new Error("MONITOR_MANAGER_URL and MONITOR_SHARED_TOKEN must be set");
 }
 
-let currentSocket: WebSocket | null = null;
-let previousCpuSnapshot: CpuSnapshot | null = null;
-let previousProcessCpuSnapshot: CpuSnapshot | null = null;
-let previousProcessSampleAt = 0;
-let previousProcessByPid = new Map<number, ProcessSnapshot>();
-let workerId = "";
-let instanceId = "";
-let privateIp = "";
-let heartbeatInFlight = false;
+if (!config.managerUrl || !config.sharedToken) {
+  throw new Error("MONITOR_MANAGER_URL and MONITOR_SHARED_TOKEN must be set")
+}
+
+let currentSocket: WebSocket | null = null
+let previousCpuSnapshot: CpuSnapshot | null = null
+let previousProcessCpuSnapshot: CpuSnapshot | null = null
+let previousProcessSampleAt = 0
+let previousProcessByPid = new Map<number, ProcessSnapshot>()
+let workerId = ""
+let instanceId = ""
+let privateIp = ""
+let heartbeatInFlight = false
 
 async function fetchImdsToken(): Promise<string> {
   const response = await fetch("http://169.254.169.254/latest/api/token", {
@@ -108,92 +108,95 @@ async function fetchImdsToken(): Promise<string> {
     headers: {
       "X-aws-ec2-metadata-token-ttl-seconds": "21600",
     },
-  });
+  })
 
   if (!response.ok) {
-    throw new Error(`failed to fetch IMDS token: ${response.status}`);
+    throw new Error(`failed to fetch IMDS token: ${response.status}`)
   }
 
-  return response.text();
+  return response.text()
 }
 
 async function fetchMetadata(path: string, token: string): Promise<string> {
-  const response = await fetch(`http://169.254.169.254/latest/meta-data/${path}`, {
-    headers: {
-      "X-aws-ec2-metadata-token": token,
+  const response = await fetch(
+    `http://169.254.169.254/latest/meta-data/${path}`,
+    {
+      headers: {
+        "X-aws-ec2-metadata-token": token,
+      },
     },
-  });
+  )
 
   if (!response.ok) {
-    throw new Error(`failed to fetch metadata ${path}: ${response.status}`);
+    throw new Error(`failed to fetch metadata ${path}: ${response.status}`)
   }
 
-  return response.text();
+  return response.text()
 }
 
 function parseCpuSnapshot(): CpuSnapshot {
-  const statLine = readFileSync("/proc/stat", "utf8").split("\n")[0] ?? "";
-  const fields = statLine.trim().split(/\s+/).slice(1).map(Number);
-  const idle = (fields[3] ?? 0) + (fields[4] ?? 0);
-  const total = fields.reduce((sum: number, value: number) => sum + value, 0);
-  return { idle, total };
+  const statLine = readFileSync("/proc/stat", "utf8").split("\n")[0] ?? ""
+  const fields = statLine.trim().split(/\s+/).slice(1).map(Number)
+  const idle = (fields[3] ?? 0) + (fields[4] ?? 0)
+  const total = fields.reduce((sum: number, value: number) => sum + value, 0)
+  return { idle, total }
 }
 
 function readCpuPercent(): number {
-  const snapshot = parseCpuSnapshot();
+  const snapshot = parseCpuSnapshot()
 
   if (!previousCpuSnapshot) {
-    previousCpuSnapshot = snapshot;
-    return 0;
+    previousCpuSnapshot = snapshot
+    return 0
   }
 
-  const totalDelta = snapshot.total - previousCpuSnapshot.total;
-  const idleDelta = snapshot.idle - previousCpuSnapshot.idle;
-  previousCpuSnapshot = snapshot;
+  const totalDelta = snapshot.total - previousCpuSnapshot.total
+  const idleDelta = snapshot.idle - previousCpuSnapshot.idle
+  previousCpuSnapshot = snapshot
 
   if (totalDelta <= 0) {
-    return 0;
+    return 0
   }
 
-  return Number((((totalDelta - idleDelta) / totalDelta) * 100).toFixed(2));
+  return Number((((totalDelta - idleDelta) / totalDelta) * 100).toFixed(2))
 }
 
 function readMemoryMetrics(): {
-  memoryUsedBytes: number;
-  memoryTotalBytes: number;
-  memoryPercent: number;
+  memoryUsedBytes: number
+  memoryTotalBytes: number
+  memoryPercent: number
 } {
-  const meminfo = readFileSync("/proc/meminfo", "utf8");
-  const totalMatch = meminfo.match(/^MemTotal:\s+(\d+)\s+kB$/m);
-  const availableMatch = meminfo.match(/^MemAvailable:\s+(\d+)\s+kB$/m);
+  const meminfo = readFileSync("/proc/meminfo", "utf8")
+  const totalMatch = meminfo.match(/^MemTotal:\s+(\d+)\s+kB$/m)
+  const availableMatch = meminfo.match(/^MemAvailable:\s+(\d+)\s+kB$/m)
 
-  const totalKb = Number(totalMatch?.[1] ?? "0");
-  const availableKb = Number(availableMatch?.[1] ?? "0");
-  const totalBytes = totalKb * 1024;
-  const usedBytes = Math.max(totalKb - availableKb, 0) * 1024;
+  const totalKb = Number(totalMatch?.[1] ?? "0")
+  const availableKb = Number(availableMatch?.[1] ?? "0")
+  const totalBytes = totalKb * 1024
+  const usedBytes = Math.max(totalKb - availableKb, 0) * 1024
   const memoryPercent =
-    totalBytes > 0 ? Number(((usedBytes / totalBytes) * 100).toFixed(2)) : 0;
+    totalBytes > 0 ? Number(((usedBytes / totalBytes) * 100).toFixed(2)) : 0
 
   return {
     memoryUsedBytes: usedBytes,
     memoryTotalBytes: totalBytes,
     memoryPercent,
-  };
+  }
 }
 
 function parsePercent(value: string): number {
-  return Number.parseFloat(value.replace("%", "").trim()) || 0;
+  return Number.parseFloat(value.replace("%", "").trim()) || 0
 }
 
 function parseBytes(value: string): number {
-  const normalized = value.trim();
-  const match = normalized.match(/^([\d.]+)\s*([KMGTP]?i?B|B)$/i);
+  const normalized = value.trim()
+  const match = normalized.match(/^([\d.]+)\s*([KMGTP]?i?B|B)$/i)
   if (!match) {
-    return 0;
+    return 0
   }
 
-  const amount = Number.parseFloat(match[1] ?? "0");
-  const unit = (match[2] ?? "B").toUpperCase();
+  const amount = Number.parseFloat(match[1] ?? "0")
+  const unit = (match[2] ?? "B").toUpperCase()
   const multipliers: Record<string, number> = {
     B: 1,
     KB: 1000,
@@ -206,13 +209,13 @@ function parseBytes(value: string): number {
     GIB: 1024 ** 3,
     TIB: 1024 ** 4,
     PIB: 1024 ** 5,
-  };
+  }
 
-  return Math.round(amount * (multipliers[unit] ?? 1));
+  return Math.round(amount * (multipliers[unit] ?? 1))
 }
 
 function readContainerMetrics(): ContainerMetrics[] {
-  let result: Bun.SyncSubprocess;
+  let result: Bun.SyncSubprocess
   try {
     result = Bun.spawnSync([
       "docker",
@@ -220,24 +223,24 @@ function readContainerMetrics(): ContainerMetrics[] {
       "--no-stream",
       "--format",
       "{{json .}}",
-    ]);
+    ])
   } catch {
-    return [];
+    return []
   }
 
   if (result.exitCode !== 0) {
-    return [];
+    return []
   }
 
-  const stdout = new TextDecoder().decode(result.stdout);
+  const stdout = new TextDecoder().decode(result.stdout)
   return stdout
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .map((line) => JSON.parse(line) as Record<string, string>)
     .map((container) => {
-      const usage = container.MemUsage ?? "0B / 0B";
-      const [usedRaw, limitRaw] = usage.split("/").map((part) => part.trim());
+      const usage = container.MemUsage ?? "0B / 0B"
+      const [usedRaw, limitRaw] = usage.split("/").map((part) => part.trim())
       return {
         containerId: container.ID ?? "",
         containerName: container.Name ?? "",
@@ -246,38 +249,41 @@ function readContainerMetrics(): ContainerMetrics[] {
         memoryUsedBytes: parseBytes(usedRaw ?? "0B"),
         memoryLimitBytes: parseBytes(limitRaw ?? "0B"),
         memoryPercent: parsePercent(container.MemPerc ?? "0%"),
-      };
+      }
     })
-    .filter((container) => container.containerId.length > 0);
+    .filter((container) => container.containerId.length > 0)
 }
 
 function parseProcessSnapshot(pid: number): ProcessSnapshot | null {
   try {
-    const statText = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const commStart = statText.indexOf("(");
-    const commEnd = statText.lastIndexOf(")");
+    const statText = readFileSync(`/proc/${pid}/stat`, "utf8")
+    const commStart = statText.indexOf("(")
+    const commEnd = statText.lastIndexOf(")")
     if (commStart < 0 || commEnd <= commStart) {
-      return null;
+      return null
     }
 
-    const comm = statText.slice(commStart + 1, commEnd);
-    const rest = statText.slice(commEnd + 2).trim().split(/\s+/);
-    const state = rest[0] ?? "?";
-    const utime = Number(rest[11] ?? "0");
-    const stime = Number(rest[12] ?? "0");
+    const comm = statText.slice(commStart + 1, commEnd)
+    const rest = statText
+      .slice(commEnd + 2)
+      .trim()
+      .split(/\s+/)
+    const state = rest[0] ?? "?"
+    const utime = Number(rest[11] ?? "0")
+    const stime = Number(rest[12] ?? "0")
 
-    const statusText = readFileSync(`/proc/${pid}/status`, "utf8");
-    const rssMatch = statusText.match(/^VmRSS:\s+(\d+)\s+kB$/m);
-    const rssBytes = Number(rssMatch?.[1] ?? "0") * 1024;
+    const statusText = readFileSync(`/proc/${pid}/status`, "utf8")
+    const rssMatch = statusText.match(/^VmRSS:\s+(\d+)\s+kB$/m)
+    const rssBytes = Number(rssMatch?.[1] ?? "0") * 1024
 
     return {
       totalCpuTicks: utime + stime,
       rssBytes,
       state,
       comm,
-    };
+    }
   } catch {
-    return null;
+    return null
   }
 }
 
@@ -293,13 +299,18 @@ function summarizeProcessLabel(pid: number, fallbackComm: string): string {
     }
 
     const executable = basename(cmdline[0] ?? fallbackComm)
-    const primaryArg = cmdline.find((part, index) => index > 0 && !part.startsWith("-"))
+    const primaryArg = cmdline.find(
+      (part, index) => index > 0 && !part.startsWith("-"),
+    )
     const typeArg = cmdline.find((part) => part.startsWith("--type="))
     const utilitySubtypeArg = cmdline.find((part) =>
       part.startsWith("--utility-sub-type="),
     )
 
-    if (["node", "bun", "python", "python3"].includes(executable) && primaryArg) {
+    if (
+      ["node", "bun", "python", "python3"].includes(executable) &&
+      primaryArg
+    ) {
       return `${executable}:${basename(primaryArg)}`
     }
 
@@ -325,35 +336,37 @@ function rankProcesses(
 ): ProcessWindow | undefined {
   const intervalMs = previousProcessSampleAt
     ? sampledAt - previousProcessSampleAt
-    : 0;
-  previousProcessSampleAt = sampledAt;
+    : 0
+  previousProcessSampleAt = sampledAt
 
   const pids = readdirSync("/proc", { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && /^\d+$/.test(entry.name))
     .map((entry) => Number(entry.name))
-    .filter((pid) => Number.isInteger(pid));
+    .filter((pid) => Number.isInteger(pid))
 
-  const nextProcessByPid = new Map<number, ProcessSnapshot>();
-  const processSamples: ProcessSample[] = [];
+  const nextProcessByPid = new Map<number, ProcessSnapshot>()
+  const processSamples: ProcessSample[] = []
 
   const totalCpuDelta = previousProcessCpuSnapshot
     ? currentCpuSnapshot.total - previousProcessCpuSnapshot.total
-    : 0;
-  previousProcessCpuSnapshot = currentCpuSnapshot;
+    : 0
+  previousProcessCpuSnapshot = currentCpuSnapshot
 
   for (const pid of pids) {
-    const snapshot = parseProcessSnapshot(pid);
+    const snapshot = parseProcessSnapshot(pid)
     if (!snapshot) {
-      continue;
+      continue
     }
 
-    nextProcessByPid.set(pid, snapshot);
-    const previous = previousProcessByPid.get(pid);
-    const cpuDelta = previous ? snapshot.totalCpuTicks - previous.totalCpuTicks : 0;
+    nextProcessByPid.set(pid, snapshot)
+    const previous = previousProcessByPid.get(pid)
+    const cpuDelta = previous
+      ? snapshot.totalCpuTicks - previous.totalCpuTicks
+      : 0
     const cpuPercent =
       totalCpuDelta > 0 && cpuDelta > 0
         ? Number(((cpuDelta / totalCpuDelta) * 100).toFixed(2))
-        : 0;
+        : 0
 
     processSamples.push({
       pid,
@@ -361,43 +374,43 @@ function rankProcesses(
       state: snapshot.state,
       cpuPercent,
       rssBytes: snapshot.rssBytes,
-    });
+    })
   }
 
-  previousProcessByPid = nextProcessByPid;
+  previousProcessByPid = nextProcessByPid
 
   if (intervalMs <= 0) {
-    return undefined;
+    return undefined
   }
 
-  const topCount = Math.max(1, config.processTopCount);
+  const topCount = Math.max(1, config.processTopCount)
   const topCpu = [...processSamples]
     .sort((left, right) => {
       if (right.cpuPercent !== left.cpuPercent) {
-        return right.cpuPercent - left.cpuPercent;
+        return right.cpuPercent - left.cpuPercent
       }
-      return right.rssBytes - left.rssBytes;
+      return right.rssBytes - left.rssBytes
     })
-    .slice(0, topCount);
+    .slice(0, topCount)
   const topMemory = [...processSamples]
     .sort((left, right) => {
       if (right.rssBytes !== left.rssBytes) {
-        return right.rssBytes - left.rssBytes;
+        return right.rssBytes - left.rssBytes
       }
-      return right.cpuPercent - left.cpuPercent;
+      return right.cpuPercent - left.cpuPercent
     })
-    .slice(0, topCount);
+    .slice(0, topCount)
 
-  const labelByPid = new Map<number, string>();
+  const labelByPid = new Map<number, string>()
   function withBetterLabel(sample: ProcessSample): ProcessSample {
     const label =
       labelByPid.get(sample.pid) ??
-      summarizeProcessLabel(sample.pid, sample.comm);
-    labelByPid.set(sample.pid, label);
+      summarizeProcessLabel(sample.pid, sample.comm)
+    labelByPid.set(sample.pid, label)
     return {
       ...sample,
       comm: label,
-    };
+    }
   }
 
   return {
@@ -405,20 +418,20 @@ function rankProcesses(
     intervalMs,
     topCpu: topCpu.map(withBetterLabel),
     topMemory: topMemory.map(withBetterLabel),
-  };
+  }
 }
 
 function buildHeartbeat(): HeartbeatPayload {
-  const sampledAt = Date.now();
-  const memory = readMemoryMetrics();
-  const containers = readContainerMetrics();
-  const currentCpuSnapshot = parseCpuSnapshot();
+  const sampledAt = Date.now()
+  const memory = readMemoryMetrics()
+  const containers = readContainerMetrics()
+  const currentCpuSnapshot = parseCpuSnapshot()
   const processWindow =
     config.processSampleIntervalMs > 0 &&
     (previousProcessSampleAt === 0 ||
       sampledAt - previousProcessSampleAt >= config.processSampleIntervalMs)
       ? rankProcesses(currentCpuSnapshot, sampledAt)
-      : undefined;
+      : undefined
 
   return {
     type: "heartbeat",
@@ -436,7 +449,7 @@ function buildHeartbeat(): HeartbeatPayload {
     },
     containers,
     processWindow,
-  };
+  }
 }
 
 function sendAuth(): void {
@@ -449,13 +462,15 @@ function sendAuth(): void {
       privateIp,
       nodeRole: config.nodeRole,
     }),
-  );
+  )
 }
 
 function managerHttpBaseUrl(): string {
   return config.managerUrl
-    .replace(/^wss?:\/\//, (match) => (match === "wss://" ? "https://" : "http://"))
-    .replace(/\/workers\/stream$/, "");
+    .replace(/^wss?:\/\//, (match) =>
+      match === "wss://" ? "https://" : "http://",
+    )
+    .replace(/\/workers\/stream$/, "")
 }
 
 async function emitLifecycleEvent(
@@ -478,46 +493,46 @@ async function emitLifecycleEvent(
         eventTsMs: Date.now(),
         details: details ?? {},
       }),
-    });
+    })
   } catch {}
 }
 
 function connect(): void {
-  const socket = new WebSocket(config.managerUrl);
-  currentSocket = socket;
+  const socket = new WebSocket(config.managerUrl)
+  currentSocket = socket
 
   socket.addEventListener("open", () => {
-    sendAuth();
-  });
+    sendAuth()
+  })
 
   socket.addEventListener("close", () => {
-    void emitLifecycleEvent("disconnected");
+    void emitLifecycleEvent("disconnected")
     if (currentSocket === socket) {
-      currentSocket = null;
+      currentSocket = null
     }
 
-    setTimeout(connect, config.reconnectDelayMs);
-  });
+    setTimeout(connect, config.reconnectDelayMs)
+  })
 
   socket.addEventListener("error", () => {
-    socket.close();
-  });
+    socket.close()
+  })
 }
 
 async function tick(): Promise<void> {
   if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN) {
-    return;
+    return
   }
 
   if (heartbeatInFlight) {
-    return;
+    return
   }
 
-  heartbeatInFlight = true;
+  heartbeatInFlight = true
   try {
-    currentSocket.send(JSON.stringify(buildHeartbeat()));
+    currentSocket.send(JSON.stringify(buildHeartbeat()))
   } finally {
-    heartbeatInFlight = false;
+    heartbeatInFlight = false
   }
 }
 
@@ -526,22 +541,22 @@ if (
   config.instanceIdOverride &&
   config.privateIpOverride
 ) {
-  workerId = config.workerIdOverride;
-  instanceId = config.instanceIdOverride;
-  privateIp = config.privateIpOverride;
+  workerId = config.workerIdOverride
+  instanceId = config.instanceIdOverride
+  privateIp = config.privateIpOverride
 } else {
-  const token = await fetchImdsToken();
-  instanceId = await fetchMetadata("instance-id", token);
-  privateIp = await fetchMetadata("local-ipv4", token);
-  workerId = instanceId;
+  const token = await fetchImdsToken()
+  instanceId = await fetchMetadata("instance-id", token)
+  privateIp = await fetchMetadata("local-ipv4", token)
+  workerId = instanceId
 }
 
 await emitLifecycleEvent("telemetry_process_started", {
   managerUrl: config.managerUrl,
   nodeRole: config.nodeRole,
-});
-await emitLifecycleEvent("telemetry_connect_started");
-connect();
+})
+await emitLifecycleEvent("telemetry_connect_started")
+connect()
 setInterval(() => {
-  void tick();
-}, 1000);
+  void tick()
+}, 1000)

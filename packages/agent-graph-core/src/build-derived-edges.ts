@@ -1,68 +1,81 @@
-import type { GraphEdge, LayerDefinition, SourceEdge } from "./types.js";
+import type { GraphEdge, LayerDefinition, SourceEdge } from "./types.js"
 
 type PathResult = {
-  pathEdgeIds: string[];
-  targetId: string;
-};
+  pathEdgeIds: string[]
+  targetId: string
+}
 
 function shortestHiddenPath(args: {
-  sourceId: string;
-  targetId: string;
-  sourceEdges: SourceEdge[];
-  visibleSourceIds: Set<string>;
+  sourceId: string
+  targetId: string
+  sourceEdges: SourceEdge[]
+  visibleSourceIds: Set<string>
 }): PathResult | null {
-  const { sourceId, targetId, sourceEdges, visibleSourceIds } = args;
+  const { sourceId, targetId, sourceEdges, visibleSourceIds } = args
   const queue: Array<{ nodeId: string; pathEdgeIds: string[] }> = [
     { nodeId: sourceId, pathEdgeIds: [] },
-  ];
-  const visited = new Set<string>([sourceId]);
+  ]
+  const visited = new Set<string>([sourceId])
 
   while (queue.length > 0) {
-    const current = queue.shift()!;
-    for (const edge of sourceEdges.filter((candidate) => candidate.sourceId === current.nodeId)) {
-      const isTarget = edge.targetId === targetId;
-      const nextVisible = visibleSourceIds.has(edge.targetId);
-      const nextHiddenAllowed = !nextVisible || isTarget;
+    const current = queue.shift()
+    if (!current) {
+      break
+    }
+    for (const edge of sourceEdges.filter(
+      (candidate) => candidate.sourceId === current.nodeId,
+    )) {
+      const isTarget = edge.targetId === targetId
+      const nextVisible = visibleSourceIds.has(edge.targetId)
+      const nextHiddenAllowed = !nextVisible || isTarget
 
       if (!nextHiddenAllowed || visited.has(edge.targetId)) {
-        continue;
+        continue
       }
 
-      const nextPath = [...current.pathEdgeIds, edge.id];
+      const nextPath = [...current.pathEdgeIds, edge.id]
       if (isTarget && nextPath.length > 1) {
         return {
           pathEdgeIds: nextPath,
           targetId,
-        };
+        }
       }
 
-      visited.add(edge.targetId);
+      visited.add(edge.targetId)
       queue.push({
         nodeId: edge.targetId,
         pathEdgeIds: nextPath,
-      });
+      })
     }
   }
 
-  return null;
+  return null
 }
 
 export function buildDerivedEdges(args: {
-  layers: LayerDefinition[];
-  renderedNodeIdsBySourceId: Map<string, string[]>;
-  sourceEdges: SourceEdge[];
-  visibleSourceIds: Set<string>;
+  layers: LayerDefinition[]
+  renderedNodeIdsBySourceId: Map<string, string[]>
+  sourceEdges: SourceEdge[]
+  visibleSourceIds: Set<string>
 }): GraphEdge[] {
-  const { layers, renderedNodeIdsBySourceId, sourceEdges, visibleSourceIds } = args;
-  const visibleIds = [...visibleSourceIds];
-  const derivedEdges: GraphEdge[] = [];
-  const directPairs = new Set(sourceEdges.map((edge) => `${edge.sourceId}->${edge.targetId}`));
-  const visibleLayerIds = new Set(layers.filter((layer) => layer.visible).map((layer) => layer.id));
+  const { layers, renderedNodeIdsBySourceId, sourceEdges, visibleSourceIds } =
+    args
+  const visibleIds = [...visibleSourceIds]
+  const derivedEdges: GraphEdge[] = []
+  const directPairs = new Set(
+    sourceEdges.map((edge) => `${edge.sourceId}->${edge.targetId}`),
+  )
+  const visibleLayerIds = new Set(
+    layers.filter((layer) => layer.visible).map((layer) => layer.id),
+  )
 
   for (const sourceId of visibleIds) {
     for (const targetId of visibleIds) {
-      if (sourceId === targetId || directPairs.has(`${sourceId}->${targetId}`)) {
-        continue;
+      if (
+        sourceId === targetId ||
+        directPairs.has(`${sourceId}->${targetId}`)
+      ) {
+        continue
       }
 
       const path = shortestHiddenPath({
@@ -70,27 +83,27 @@ export function buildDerivedEdges(args: {
         targetId,
         sourceEdges,
         visibleSourceIds,
-      });
+      })
       if (!path) {
-        continue;
+        continue
       }
 
       const sourceRenderedIds =
         renderedNodeIdsBySourceId.get(sourceId)?.filter((id) => {
-          const [, layerId] = id.split("::");
-          return visibleLayerIds.has(layerId);
-        }) ?? [];
+          const [, layerId] = id.split("::")
+          return visibleLayerIds.has(layerId)
+        }) ?? []
       const targetRenderedIds =
         renderedNodeIdsBySourceId.get(targetId)?.filter((id) => {
-          const [, layerId] = id.split("::");
-          return visibleLayerIds.has(layerId);
-        }) ?? [];
+          const [, layerId] = id.split("::")
+          return visibleLayerIds.has(layerId)
+        }) ?? []
 
       for (const sourceRenderedId of sourceRenderedIds) {
         for (const targetRenderedId of targetRenderedIds) {
-          const edgeId = `derived:${sourceRenderedId}:${targetRenderedId}`;
+          const edgeId = `derived:${sourceRenderedId}:${targetRenderedId}`
           if (derivedEdges.some((edge) => edge.id === edgeId)) {
-            continue;
+            continue
           }
 
           derivedEdges.push({
@@ -102,11 +115,11 @@ export function buildDerivedEdges(args: {
             label: "derived connection",
             multiplicity: 1,
             supportingPathIds: path.pathEdgeIds,
-          });
+          })
         }
       }
     }
   }
 
-  return derivedEdges;
+  return derivedEdges
 }

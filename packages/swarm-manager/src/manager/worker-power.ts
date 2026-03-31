@@ -1,66 +1,66 @@
-import { existsSync, readFileSync } from "node:fs";
-import { DEFAULT_BOOTSTRAP_CONTEXT_PATH } from "../paths.js";
+import { existsSync, readFileSync } from "node:fs"
+import { DEFAULT_BOOTSTRAP_CONTEXT_PATH } from "../paths.js"
 
-type Action = "hibernate" | "wake";
+type Action = "hibernate" | "wake"
 
 type BootstrapContext = {
-  region?: string;
-  swarmSharedToken?: string;
-};
+  region?: string
+  swarmSharedToken?: string
+}
 
 type Ec2InstanceState = {
-  instanceId: string;
-  privateIp: string;
-};
+  instanceId: string
+  privateIp: string
+}
 
 function optionalOne(args: string[], flag: string): string | undefined {
-  const index = args.findIndex((value) => value === `--${flag}`);
+  const index = args.indexOf(`--${flag}`)
   if (index === -1) {
-    return undefined;
+    return undefined
   }
 
-  const next = args[index + 1];
+  const next = args[index + 1]
   if (!next || next.startsWith("--")) {
-    return undefined;
+    return undefined
   }
 
-  return next;
+  return next
 }
 
 function positionalArgs(args: string[]): string[] {
-  const values: string[] = [];
+  const values: string[] = []
   for (let index = 0; index < args.length; index += 1) {
-    const value = args[index];
+    const value = args[index]
     if (value.startsWith("--")) {
-      index += 1;
-      continue;
+      index += 1
+      continue
     }
-    values.push(value);
+    values.push(value)
   }
-  return values;
+  return values
 }
 
 function loadBootstrapContext(path: string): BootstrapContext {
   if (!existsSync(path)) {
-    return {};
+    return {}
   }
 
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as BootstrapContext;
+    return JSON.parse(readFileSync(path, "utf8")) as BootstrapContext
   } catch {
-    return {};
+    return {}
   }
 }
 
 function nowMs(): number {
-  return Date.now();
+  return Date.now()
 }
 
 type CommandResult = {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-};
+  exitCode: number
+  stdout: string
+  stderr: string
+}
 
 function runCommand(command: string[]): CommandResult {
   const result = Bun.spawnSync(command, {
@@ -68,27 +68,27 @@ function runCommand(command: string[]): CommandResult {
     stderr: "pipe",
     stdin: "ignore",
     env: process.env,
-  });
+  })
 
   return {
     exitCode: result.exitCode,
     stdout: result.stdout.toString(),
     stderr: result.stderr.toString(),
-  };
+  }
 }
 
 function runChecked(command: string[]): string {
-  const result = runCommand(command);
+  const result = runCommand(command)
 
   if (result.exitCode !== 0) {
-    const stderr = result.stderr.trim();
+    const stderr = result.stderr.trim()
     if (stderr.length > 0) {
-      console.error(stderr);
+      console.error(stderr)
     }
-    throw new Error(`command failed: ${command.join(" ")}`);
+    throw new Error(`command failed: ${command.join(" ")}`)
   }
 
-  return result.stdout;
+  return result.stdout
 }
 
 async function postLifecycleEvent(
@@ -113,14 +113,17 @@ async function postLifecycleEvent(
       eventTsMs,
       details,
     }),
-  });
+  })
 
   if (!response.ok) {
-    throw new Error(`failed to record ${eventType}: ${response.status}`);
+    throw new Error(`failed to record ${eventType}: ${response.status}`)
   }
 }
 
-function listInstances(region: string, instanceIds: string[]): Ec2InstanceState[] {
+function listInstances(
+  region: string,
+  instanceIds: string[],
+): Ec2InstanceState[] {
   const output = runChecked([
     "aws",
     "ec2",
@@ -133,61 +136,67 @@ function listInstances(region: string, instanceIds: string[]): Ec2InstanceState[
     "Reservations[].Instances[].{instanceId:InstanceId,privateIp:PrivateIpAddress}",
     "--output",
     "json",
-  ]);
+  ])
 
-  return JSON.parse(output) as Ec2InstanceState[];
+  return JSON.parse(output) as Ec2InstanceState[]
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 async function main(): Promise<void> {
-  const argv = process.argv.slice(2);
-  const action = optionalOne(argv, "action") as Action | undefined;
+  const argv = process.argv.slice(2)
+  const action = optionalOne(argv, "action") as Action | undefined
   if (!action || !["hibernate", "wake"].includes(action)) {
-    throw new Error("expected --action hibernate|wake");
+    throw new Error("expected --action hibernate|wake")
   }
 
-  const instanceIds = positionalArgs(argv);
+  const instanceIds = positionalArgs(argv)
   if (instanceIds.length === 0) {
-    throw new Error("at least one worker instance id is required");
+    throw new Error("at least one worker instance id is required")
   }
 
   const bootstrapContextPath =
-    optionalOne(argv, "bootstrap-context") ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH;
-  const bootstrapContext = loadBootstrapContext(bootstrapContextPath);
-  const region = optionalOne(argv, "region") ?? bootstrapContext.region?.trim() ?? "";
+    optionalOne(argv, "bootstrap-context") ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH
+  const bootstrapContext = loadBootstrapContext(bootstrapContextPath)
+  const region =
+    optionalOne(argv, "region") ?? bootstrapContext.region?.trim() ?? ""
   const sharedToken =
     optionalOne(argv, "shared-token") ??
     bootstrapContext.swarmSharedToken?.trim() ??
-    "";
+    ""
 
   if (!region) {
-    throw new Error("region is required");
+    throw new Error("region is required")
   }
 
   if (!sharedToken) {
-    throw new Error("shared token is required");
+    throw new Error("shared token is required")
   }
 
-  const workers = listInstances(region, instanceIds);
+  const workers = listInstances(region, instanceIds)
   if (workers.length !== instanceIds.length) {
-    throw new Error("failed to resolve all worker instance ids");
+    throw new Error("failed to resolve all worker instance ids")
   }
 
-  const requestedAtMs = nowMs();
+  const requestedAtMs = nowMs()
   const requestedEventType =
-    action === "hibernate" ? "hibernate_requested" : "wakeup_requested";
-  const completedEventType = action === "hibernate" ? "hibernated" : "wakeup";
+    action === "hibernate" ? "hibernate_requested" : "wakeup_requested"
+  const completedEventType = action === "hibernate" ? "hibernated" : "wakeup"
 
   for (const worker of workers) {
-    await postLifecycleEvent(sharedToken, worker, requestedEventType, requestedAtMs);
+    await postLifecycleEvent(
+      sharedToken,
+      worker,
+      requestedEventType,
+      requestedAtMs,
+    )
   }
 
   if (action === "hibernate") {
-    const deadline = nowMs() + 10 * 60 * 1000;
-    let retryCount = 0;
+    const deadline = nowMs() + 10 * 60 * 1000
+    let retryCount = 0
     while (true) {
       const result = runCommand([
         "aws",
@@ -198,9 +207,9 @@ async function main(): Promise<void> {
         "--hibernate",
         "--instance-ids",
         ...instanceIds,
-      ]);
+      ])
       if (result.exitCode === 0) {
-        const acceptedAtMs = nowMs();
+        const acceptedAtMs = nowMs()
         for (const worker of workers) {
           await postLifecycleEvent(
             sharedToken,
@@ -210,27 +219,27 @@ async function main(): Promise<void> {
             {
               retryCount,
             },
-          );
+          )
         }
-        break;
+        break
       }
 
-      const stderr = result.stderr.trim();
+      const stderr = result.stderr.trim()
       if (
         stderr.includes("is not ready to hibernate yet") &&
         nowMs() < deadline
       ) {
-        retryCount += 1;
-        await sleep(15000);
-        continue;
+        retryCount += 1
+        await sleep(15000)
+        continue
       }
 
       if (stderr.length > 0) {
-        console.error(stderr);
+        console.error(stderr)
       }
       throw new Error(
         `command failed: aws ec2 stop-instances --region ${region} --hibernate --instance-ids ${instanceIds.join(" ")}`,
-      );
+      )
     }
     runChecked([
       "aws",
@@ -241,7 +250,7 @@ async function main(): Promise<void> {
       region,
       "--instance-ids",
       ...instanceIds,
-    ]);
+    ])
   } else {
     runChecked([
       "aws",
@@ -251,7 +260,7 @@ async function main(): Promise<void> {
       region,
       "--instance-ids",
       ...instanceIds,
-    ]);
+    ])
     runChecked([
       "aws",
       "ec2",
@@ -261,19 +270,25 @@ async function main(): Promise<void> {
       region,
       "--instance-ids",
       ...instanceIds,
-    ]);
+    ])
   }
 
-  const completedAtMs = nowMs();
+  const completedAtMs = nowMs()
   const elapsedSeconds = Math.max(
     0,
     Math.round((completedAtMs - requestedAtMs) / 1000),
-  );
+  )
 
   for (const worker of workers) {
-    await postLifecycleEvent(sharedToken, worker, completedEventType, completedAtMs, {
-      elapsedSeconds,
-    });
+    await postLifecycleEvent(
+      sharedToken,
+      worker,
+      completedEventType,
+      completedAtMs,
+      {
+        elapsedSeconds,
+      },
+    )
   }
 
   console.log(
@@ -285,7 +300,7 @@ async function main(): Promise<void> {
       completedAtMs,
       elapsedSeconds,
     }),
-  );
+  )
 }
 
-await main();
+await main()

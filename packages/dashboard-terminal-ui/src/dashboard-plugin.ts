@@ -1,4 +1,4 @@
-import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin";
+import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin"
 
 export const dashboardTerminalPlugin: DashboardFeaturePlugin = {
   id: "terminal",
@@ -26,4 +26,4 @@ export const dashboardTerminalPlugin: DashboardFeaturePlugin = {
       logFileName: "dashboard-terminal-server.log",
     },
   },
-};
+}

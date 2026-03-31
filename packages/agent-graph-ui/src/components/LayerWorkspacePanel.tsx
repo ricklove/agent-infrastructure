@@ -1,25 +1,25 @@
+import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
-import { observer, useSelector } from "@legendapp/state/react";
-import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
+import { observer, useSelector } from "@legendapp/state/react"
 
 type LayerWorkspacePanelProps = {
-  store: AgentGraphStore;
+  store: AgentGraphStore
   actions: {
-    cloneLayer(layerId: string): void;
-    requestDiff(): void;
-    setLayerVisibility(layerId: string, visible: boolean): void;
-    setActiveLayer(layerId: string): void;
-  };
-};
+    cloneLayer(layerId: string): void
+    requestDiff(): void
+    setLayerVisibility(layerId: string, visible: boolean): void
+    setActiveLayer(layerId: string): void
+  }
+}
 
 function IconButton({
   title,
   onClick,
   children,
 }: {
-  title: string;
-  onClick(): void;
-  children: React.ReactNode;
+  title: string
+  onClick(): void
+  children: React.ReactNode
 }) {
   useRenderCounter("IconButton")
   return (
@@ -32,28 +32,46 @@ function IconButton({
     >
       {children}
     </button>
-  );
+  )
 }
 
 function DiffIcon() {
   useRenderCounter("DiffIcon")
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 3v18" />
       <path d="M5 8l7-5 7 5" />
       <path d="M19 16l-7 5-7-5" />
     </svg>
-  );
+  )
 }
 
 function CopyIcon() {
   useRenderCounter("CopyIcon")
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <rect x="9" y="9" width="11" height="11" rx="2" />
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </svg>
-  );
+  )
 }
 
 function VisibilityIcon({ visible }: { visible: boolean }) {
@@ -73,29 +91,29 @@ function VisibilityIcon({ visible }: { visible: boolean }) {
       <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
       {visible ? null : <path d="M4 20 20 4" />}
     </svg>
-  );
+  )
 }
 
 export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
   store,
   actions,
 }: LayerWorkspacePanelProps) {
-  const graph = useSelector(store.state$.graph);
-  const activeLayerId = useSelector(store.state$.activeLayerId);
+  const graph = useSelector(store.state$.graph)
+  const activeLayerId = useSelector(store.state$.activeLayerId)
   const layers = [...(graph?.layers ?? [])].sort((left, right) => {
     if (left.id === activeLayerId) {
-      return -1;
+      return -1
     }
     if (right.id === activeLayerId) {
-      return 1;
+      return 1
     }
     if (left.visible !== right.visible) {
-      return left.visible ? -1 : 1;
+      return left.visible ? -1 : 1
     }
-    return left.label.localeCompare(right.label);
-  });
-  const visibleCount = layers.filter((layer) => layer.visible).length;
-  const hiddenCount = layers.length - visibleCount;
+    return left.label.localeCompare(right.label)
+  })
+  const visibleCount = layers.filter((layer) => layer.visible).length
+  const hiddenCount = layers.length - visibleCount
 
   return (
     <aside className="flex h-full min-h-0 flex-col rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
@@ -131,7 +149,9 @@ export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
               <div className="flex min-w-0 flex-1 items-start gap-2.5">
                 <button
                   type="button"
-                  onClick={() => actions.setLayerVisibility(layer.id, !layer.visible)}
+                  onClick={() =>
+                    actions.setLayerVisibility(layer.id, !layer.visible)
+                  }
                   className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
                     layer.visible
                       ? "border-emerald-500/40 text-emerald-200 hover:bg-emerald-500/10"
@@ -149,10 +169,14 @@ export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
                   <div className="flex items-center gap-2">
                     <span
                       className={`h-2 w-2 shrink-0 rounded-full ${
-                        activeLayerId === layer.id ? "bg-emerald-400" : "bg-stone-600"
+                        activeLayerId === layer.id
+                          ? "bg-emerald-400"
+                          : "bg-stone-600"
                       }`}
                     />
-                    <h3 className="truncate text-sm font-medium text-stone-100">{layer.label}</h3>
+                    <h3 className="truncate text-sm font-medium text-stone-100">
+                      {layer.label}
+                    </h3>
                   </div>
                   <div className="mt-1 text-[11px] text-stone-400">
                     {layer.nodeIds.length} nodes
@@ -160,7 +184,10 @@ export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
                 </button>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                <IconButton title="Clone layer" onClick={() => actions.cloneLayer(layer.id)}>
+                <IconButton
+                  title="Clone layer"
+                  onClick={() => actions.cloneLayer(layer.id)}
+                >
                   <CopyIcon />
                 </IconButton>
               </div>
@@ -173,5 +200,5 @@ export const LayerWorkspacePanel = observer(function LayerWorkspacePanel({
         )}
       </div>
     </aside>
-  );
-});
+  )
+})

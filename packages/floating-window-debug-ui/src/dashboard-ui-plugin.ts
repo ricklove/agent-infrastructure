@@ -4,6 +4,7 @@ import { floatingWindowDebugDashboardPlugin } from "./dashboard-plugin"
 export const floatingWindowDebugDashboardUiPlugin: DashboardFeatureUiPlugin = {
   ...floatingWindowDebugDashboardPlugin,
   loadScreen: async () => ({
-    default: (await import("./FloatingWindowDebugScreen.js")).FloatingWindowDebugScreen,
+    default: (await import("./FloatingWindowDebugScreen.js"))
+      .FloatingWindowDebugScreen,
   }),
 }
