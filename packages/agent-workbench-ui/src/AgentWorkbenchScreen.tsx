@@ -6,7 +6,9 @@ import type {
 } from "@agent-infrastructure/agent-workbench-protocol"
 import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
 import { useDashboardWindowLayer } from "@agent-infrastructure/dashboard-ui"
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
+  memo,
   type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
@@ -170,7 +172,10 @@ function TextWorkbenchNode({
   )
 }
 
-function WorkbenchControlsWindow(props: WorkbenchControlsWindowProps) {
+const WorkbenchControlsWindow = memo(function WorkbenchControlsWindow(
+  props: WorkbenchControlsWindowProps,
+) {
+  useRenderCounter("AgentWorkbenchScreen.WorkbenchControlsWindow")
   const filteredWorkbenches = useMemo(() => {
     const query = props.searchQuery.trim().toLowerCase()
     if (!query) {
@@ -252,7 +257,7 @@ function WorkbenchControlsWindow(props: WorkbenchControlsWindowProps) {
       </div>
     </div>
   )
-}
+})
 
 const nodeTypes = {
   textWorkbenchNode: TextWorkbenchNode,
@@ -299,6 +304,7 @@ function flowEdgesToRecords(edges: Edge[]): WorkbenchDocumentRecord["edges"] {
 }
 
 export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
+  useRenderCounter("AgentWorkbenchScreen")
   const { openWindow, updateWindow, closeWindow } = useDashboardWindowLayer()
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkbenchNodeData>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
@@ -325,6 +331,14 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   const lastPaneClickRef = useRef<PaneClickState | null>(null)
   const createCooldownUntilRef = useRef(0)
   const nodeDragActiveRef = useRef(false)
+  const controlsWindowOpenedRef = useRef(false)
+  const openWindowRef = useRef(openWindow)
+  const updateWindowRef = useRef(updateWindow)
+  const closeWindowRef = useRef(closeWindow)
+  const controlsIconRef = useRef<ReturnType<typeof WorkbenchIcon> | null>(null)
+  const controlsBodyRef = useRef<ReturnType<
+    typeof WorkbenchControlsWindow
+  > | null>(null)
   const pendingSaveRef = useRef<PendingSaveState>({
     dirtyCycleActive: false,
     pending: false,
@@ -349,6 +363,18 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   useEffect(() => {
     viewportRef.current = viewport
   }, [viewport])
+
+  useEffect(() => {
+    openWindowRef.current = openWindow
+  }, [openWindow])
+
+  useEffect(() => {
+    updateWindowRef.current = updateWindow
+  }, [updateWindow])
+
+  useEffect(() => {
+    closeWindowRef.current = closeWindow
+  }, [closeWindow])
 
   const applySavedSnapshot = useCallback(
     (payload: WorkbenchSnapshotResponse) => {
@@ -622,6 +648,15 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
     }
   }, [apiRootUrl, applyLoadedSnapshot, flushAllSaves])
 
+  const controlsIcon = useMemo(
+    () => <WorkbenchIcon className="h-3.5 w-3.5" />,
+    [],
+  )
+
+  useEffect(() => {
+    controlsIconRef.current = controlsIcon
+  }, [controlsIcon])
+
   const controlsBody = useMemo(
     () => (
       <WorkbenchControlsWindow
@@ -654,30 +689,43 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
     ],
   )
 
+  if (controlsIconRef.current == null) {
+    controlsIconRef.current = controlsIcon
+  }
+  if (controlsBodyRef.current == null) {
+    controlsBodyRef.current = controlsBody
+  }
+
   useEffect(() => {
-    openWindow({
+    openWindowRef.current({
       id: controlsWindowId,
       title: "Workbench Files",
-      icon: <WorkbenchIcon className="h-3.5 w-3.5" />,
-      body: controlsBody,
+      icon: controlsIconRef.current,
+      body: controlsBodyRef.current,
       width: 320,
       height: 460,
       x: 24,
       y: 24,
       fitContentWidth: 320,
     })
+    controlsWindowOpenedRef.current = true
     return () => {
-      closeWindow(controlsWindowId)
+      controlsWindowOpenedRef.current = false
+      closeWindowRef.current(controlsWindowId)
     }
-  }, [closeWindow, controlsBody, openWindow])
+  }, [])
 
   useEffect(() => {
-    updateWindow(controlsWindowId, {
+    controlsBodyRef.current = controlsBody
+    if (!controlsWindowOpenedRef.current) {
+      return
+    }
+    updateWindowRef.current(controlsWindowId, {
       title: "Workbench Files",
-      icon: <WorkbenchIcon className="h-3.5 w-3.5" />,
+      icon: controlsIcon,
       body: controlsBody,
     })
-  }, [controlsBody, updateWindow])
+  }, [controlsBody, controlsIcon])
 
   const createNodeAtClientPoint = useCallback(
     (clientX: number, clientY: number, target: EventTarget | null) => {

@@ -16,6 +16,7 @@
     "@agent-infrastructure/agent-workbench-server": "workspace:*",
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
     "@agent-infrastructure/dashboard-ui": "workspace:*",
+    "@agent-infrastructure/render-diagnostics": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "reactflow": "^11.11.4"
