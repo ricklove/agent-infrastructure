@@ -1,10 +1,11 @@
-import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin";
+import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin"
 
 export const projectsDashboardPlugin: DashboardFeaturePlugin = {
   id: "projects",
   label: "Projects",
   route: "/projects",
-  description: "Manage private repos, GitHub App access, and project integration settings.",
+  description:
+    "Manage private repos, GitHub App access, and project integration settings.",
   icon: "projects",
   screen: {
     getProps: ({ windowOrigin }) => ({
@@ -23,4 +24,4 @@ export const projectsDashboardPlugin: DashboardFeaturePlugin = {
       logFileName: "projects-server.log",
     },
   },
-};
+}

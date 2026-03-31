@@ -6,10 +6,10 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "bun run --filter '*' build",
-    "check": "bun run --filter '*' check",
-    "lint": "biome check apps/dashboard-app packages/dashboard-ui packages/ui-design-canvas-ui packages/floating-window-debug-ui packages/agent-swarm-ui packages/agent-chat-ui",
-    "format": "biome format --write apps/dashboard-app packages/dashboard-ui packages/ui-design-canvas-ui packages/floating-window-debug-ui packages/agent-swarm-ui packages/agent-chat-ui",
+    "build": "bun ./scripts/tsgo-project-build.ts",
+    "check": "bun ./scripts/tsgo-project-build.ts",
+    "lint": "./node_modules/.bin/biome check apps packages",
+    "format": "./node_modules/.bin/biome format --write apps packages",
     "connect-vscode": "bash ./tools/connect-vscode.sh --profile agent-team-admin",
     "connect-ssh": "bash ./tools/connect-ssh.sh --profile agent-team-admin",
     "agent:connect-worker-ec2-ssh": "bun run --filter @agent-infrastructure/swarm-manager run:connect-worker-ec2-ssh",
@@ -23,6 +23,7 @@
     "start:agent-graph": "cd packages/agent-graph-server && bun run start",
     "dev:dashboard": "bun run --filter @agent-infrastructure/dashboard-app dev",
     "build:dashboard": "bun run --filter @agent-infrastructure/dashboard-app build",
+    "codex:app-server-turn": "bun ./scripts/run-codex-app-server-turn.ts",
     "eval:agentish-quality": "bun ./scripts/evaluate-agentish-quality.ts",
     "deploy-manager-runtime": "bash ./scripts/deploy-manager-runtime.sh",
     "issue:dashboard-session": "bash ./scripts/issue-dashboard-session.sh",
@@ -36,6 +37,7 @@
     "destroy:aws-setup": "bun run --filter @agent-infrastructure/aws-setup destroy"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.9"
+    "@biomejs/biome": "^2.4.9",
+    "@typescript/native-preview": "^7.0.0-dev.20260330.1"
   }
 }

@@ -2,11 +2,9 @@
   "$schema": "https://biomejs.dev/schemas/2.4.9/schema.json",
   "files": {
     "includes": [
-      "**/apps/dashboard-app/**",
-      "**/packages/dashboard-ui/**",
-      "**/packages/agent-swarm-ui/**",
-      "**/packages/agent-chat-ui/**",
-      "!**/dist/**",
+      "apps/**",
+      "packages/**",
+      "!apps/**/dist/**",
       "!**/node_modules/**"
     ]
   },

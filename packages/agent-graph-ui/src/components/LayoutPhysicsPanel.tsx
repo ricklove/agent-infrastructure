@@ -1,19 +1,19 @@
-import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 
 type LayoutPhysicsPanelProps = {
-  pinnedNodeCount: number;
-  movableNodeCount: number;
-  physicsEnabled: boolean;
-  springStrength: number;
-  springLength: number;
-  repulsionStrength: number;
+  pinnedNodeCount: number
+  movableNodeCount: number
+  physicsEnabled: boolean
+  springStrength: number
+  springLength: number
+  repulsionStrength: number
   actions: {
-    setPhysicsEnabled(enabled: boolean): void;
-    setSpringStrength(value: number): void;
-    setSpringLength(value: number): void;
-    setRepulsionStrength(value: number): void;
-  };
-};
+    setPhysicsEnabled(enabled: boolean): void
+    setSpringStrength(value: number): void
+    setSpringLength(value: number): void
+    setRepulsionStrength(value: number): void
+  }
+}
 
 export function LayoutPhysicsPanel({
   pinnedNodeCount,
@@ -33,7 +33,8 @@ export function LayoutPhysicsPanel({
             Layout
           </h2>
           <p className="mt-1 text-xs text-stone-400">
-            Pinned nodes stay fixed. Unpinned visible nodes in the active layer settle by connection.
+            Pinned nodes stay fixed. Unpinned visible nodes in the active layer
+            settle by connection.
           </p>
         </div>
         <button
@@ -48,11 +49,15 @@ export function LayoutPhysicsPanel({
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-stone-300">
         <div className="rounded-2xl border border-stone-800 bg-stone-950/70 px-3 py-2">
           <div className="text-stone-500">Pinned</div>
-          <div className="mt-1 text-sm font-medium text-stone-100">{pinnedNodeCount}</div>
+          <div className="mt-1 text-sm font-medium text-stone-100">
+            {pinnedNodeCount}
+          </div>
         </div>
         <div className="rounded-2xl border border-stone-800 bg-stone-950/70 px-3 py-2">
           <div className="text-stone-500">Moving</div>
-          <div className="mt-1 text-sm font-medium text-stone-100">{movableNodeCount}</div>
+          <div className="mt-1 text-sm font-medium text-stone-100">
+            {movableNodeCount}
+          </div>
         </div>
       </div>
 
@@ -68,7 +73,9 @@ export function LayoutPhysicsPanel({
             max="1"
             step="0.01"
             value={springStrength}
-            onChange={(event) => actions.setSpringStrength(Number(event.target.value))}
+            onChange={(event) =>
+              actions.setSpringStrength(Number(event.target.value))
+            }
             className="w-full accent-sky-400"
           />
         </label>
@@ -84,7 +91,9 @@ export function LayoutPhysicsPanel({
             max="280"
             step="2"
             value={springLength}
-            onChange={(event) => actions.setSpringLength(Number(event.target.value))}
+            onChange={(event) =>
+              actions.setSpringLength(Number(event.target.value))
+            }
             className="w-full accent-sky-400"
           />
         </label>
@@ -100,11 +109,13 @@ export function LayoutPhysicsPanel({
             max="1200"
             step="10"
             value={repulsionStrength}
-            onChange={(event) => actions.setRepulsionStrength(Number(event.target.value))}
+            onChange={(event) =>
+              actions.setRepulsionStrength(Number(event.target.value))
+            }
             className="w-full accent-emerald-400"
           />
         </label>
       </div>
     </section>
-  );
+  )
 }

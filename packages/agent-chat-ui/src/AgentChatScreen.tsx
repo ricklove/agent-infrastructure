@@ -352,7 +352,7 @@ const openTicketWindowEventName = "dashboard-open-ticket-window"
 const typingHeartbeatMs = 1000
 const composerDraftPersistMs = 250
 const transcriptRenderPageSize = 200
-const minCollapsedActivityClusterSize = 3
+const _minCollapsedActivityClusterSize = 3
 const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
 const websocketWarningDelayMs = 5_000
 const chatSessionQueryParam = "sessionId"
@@ -1236,7 +1236,8 @@ function parseChatReferenceTarget(targetUrl: string) {
     return null
   }
 
-  const sessionId = parsedUrl.searchParams.get(chatSessionQueryParam)?.trim() ?? ""
+  const sessionId =
+    parsedUrl.searchParams.get(chatSessionQueryParam)?.trim() ?? ""
   const hash = parsedUrl.hash.trim()
   if (!sessionId || !hash.startsWith(chatMessageHashPrefix)) {
     return null
@@ -1318,13 +1319,14 @@ function renderStyledInlineMarkdown(
   return text
     .split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*)/g)
     .filter(Boolean)
-    .map((segment, index) => {
+    .map((segment) => {
+      const segmentKey = `${keyPrefix}-segment-${crypto.randomUUID()}`
       const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(segment)
       if (linkMatch) {
         if (isLikelyLocalFileReferenceTarget(linkMatch[2] ?? "")) {
           return (
             <FileReferenceLink
-              key={`${keyPrefix}-link-${index}`}
+              key={`${segmentKey}-link`}
               pathname={linkMatch[2] ?? ""}
               label={linkMatch[1] ?? ""}
               onOpenFileReference={onOpenFileReference}
@@ -1333,7 +1335,7 @@ function renderStyledInlineMarkdown(
         }
         return (
           <a
-            key={`${keyPrefix}-link-${index}`}
+            key={`${segmentKey}-link`}
             href={linkMatch[2]}
             target="_blank"
             rel="noreferrer"
@@ -1346,7 +1348,10 @@ function renderStyledInlineMarkdown(
 
       if (segment.startsWith("**") && segment.endsWith("**")) {
         return (
-          <strong key={`${keyPrefix}-strong-${index}`} className="font-semibold text-white">
+          <strong
+            key={`${segmentKey}-strong`}
+            className="font-semibold text-white"
+          >
             {segment.slice(2, -2)}
           </strong>
         )
@@ -1358,13 +1363,13 @@ function renderStyledInlineMarkdown(
         segment.length > 2
       ) {
         return (
-          <em key={`${keyPrefix}-em-${index}`} className="italic text-slate-50">
+          <em key={`${segmentKey}-em`} className="italic text-slate-50">
             {segment.slice(1, -1)}
           </em>
         )
       }
 
-      return <Fragment key={`${keyPrefix}-text-${index}`}>{segment}</Fragment>
+      return <Fragment key={`${segmentKey}-text`}>{segment}</Fragment>
     })
 }
 
@@ -1376,7 +1381,8 @@ function renderInlineMarkdown(
   return text
     .split(/(`[^`]+`)/g)
     .filter(Boolean)
-    .map((segment, index) => {
+    .map((segment) => {
+      const segmentKey = `${keyPrefix}-segment-${crypto.randomUUID()}`
       if (
         segment.startsWith("`") &&
         segment.endsWith("`") &&
@@ -1392,12 +1398,8 @@ function renderInlineMarkdown(
         )
       }
       return (
-        <Fragment key={`${keyPrefix}-segment-${index}`}>
-          {renderStyledInlineMarkdown(
-            segment,
-            `${keyPrefix}-${index}`,
-            onOpenFileReference,
-          )}
+        <Fragment key={segmentKey}>
+          {renderStyledInlineMarkdown(segment, segmentKey, onOpenFileReference)}
         </Fragment>
       )
     })
@@ -1411,11 +1413,7 @@ function renderMarkdownParagraph(
   return lines.map((line, index) => (
     <Fragment key={`${keyPrefix}-line-${line}`}>
       {index > 0 ? <br /> : null}
-      {renderInlineMarkdown(
-        line,
-        `${keyPrefix}-${line}`,
-        onOpenFileReference,
-      )}
+      {renderInlineMarkdown(line, `${keyPrefix}-${line}`, onOpenFileReference)}
     </Fragment>
   ))
 }
@@ -1701,17 +1699,17 @@ function renderMarkdownBlocks(
 function renderRawMessageContent(message: SessionMessage) {
   return (
     <div className="space-y-2">
-      {message.content.map((block, index) =>
+      {message.content.map((block) =>
         block.type === "text" ? (
           <pre
-            key={`${message.id}-raw-text-${index}`}
+            key={`${message.id}-raw-text-${block.type === "text" ? block.text : ""}`}
             className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/85 px-3 py-3 text-[13px] leading-6 text-slate-100 whitespace-pre-wrap"
           >
             <code className="font-mono">{block.text}</code>
           </pre>
         ) : (
           <pre
-            key={`${message.id}-raw-image-${index}`}
+            key={`${message.id}-raw-image-${block.type === "image" ? block.url : ""}`}
             className="overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/85 px-3 py-3 text-[13px] leading-6 text-slate-100 whitespace-pre-wrap"
           >
             <code className="font-mono">{block.url}</code>
@@ -1766,11 +1764,15 @@ function ChatReferenceAsset(props: {
       <div className="space-y-1 px-3 py-2 text-xs text-slate-300">
         <p>
           Session:{" "}
-          <span className="font-mono text-slate-200">{props.targetSessionId}</span>
+          <span className="font-mono text-slate-200">
+            {props.targetSessionId}
+          </span>
         </p>
         <p>
           Message:{" "}
-          <span className="font-mono text-slate-200">{props.targetMessageId}</span>
+          <span className="font-mono text-slate-200">
+            {props.targetMessageId}
+          </span>
         </p>
         {message ? (
           <>
@@ -1818,24 +1820,37 @@ function detectFileReferenceLanguage(pathname: string) {
   return "text"
 }
 
-function highlightFileReferenceLine(line: string, language: string, keyPrefix: string) {
+function highlightFileReferenceLine(
+  line: string,
+  language: string,
+  keyPrefix: string,
+) {
   const keywordPattern =
     language === "json"
       ? /\b(true|false|null)\b/g
       : /\b(const|let|var|function|return|if|else|switch|case|break|for|while|import|from|export|default|type|interface|extends|implements|async|await|try|catch|throw|new)\b/g
-  const commentPattern =
-    language === "shell" ? /(#.*$)/g : /(\/\/.*$)/g
-  const stringPattern = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g
+  const commentPattern = language === "shell" ? /(#.*$)/g : /(\/\/.*$)/g
+  const stringPattern =
+    /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g
   const numberPattern = /\b\d+(?:\.\d+)?\b/g
   const pattern = new RegExp(
-    [commentPattern.source, stringPattern.source, keywordPattern.source, numberPattern.source].join("|"),
+    [
+      commentPattern.source,
+      stringPattern.source,
+      keywordPattern.source,
+      numberPattern.source,
+    ].join("|"),
     "g",
   )
   const nodes: ReactNode[] = []
   let lastIndex = 0
   let match: RegExpExecArray | null = null
   let tokenIndex = 0
-  while ((match = pattern.exec(line))) {
+  while (true) {
+    match = pattern.exec(line)
+    if (!match) {
+      break
+    }
     if (match.index > lastIndex) {
       nodes.push(
         <Fragment key={`${keyPrefix}-text-${tokenIndex}`}>
@@ -1845,7 +1860,9 @@ function highlightFileReferenceLine(line: string, language: string, keyPrefix: s
       tokenIndex += 1
     }
     const token = match[0] ?? ""
-    const className = token.match(new RegExp(`^${commentPattern.source.replace(/\$$/, "")}`))
+    const className = token.match(
+      new RegExp(`^${commentPattern.source.replace(/\$$/, "")}`),
+    )
       ? "text-emerald-300"
       : token.match(new RegExp(`^${stringPattern.source}`))
         ? "text-amber-200"
@@ -1875,20 +1892,23 @@ function renderHighlightedFileReferenceContent(
   language: string,
   keyPrefix: string,
 ) {
-  return content.split("\n").map((line, index) => (
-    <div key={`${keyPrefix}-line-${index}`} className="flex min-w-max gap-4">
-      <span className="select-none text-right text-slate-600">{index + 1}</span>
+  return content.split("\n").map((line, lineIndex) => (
+    <div key={`${keyPrefix}-${line}`} className="flex min-w-max gap-4">
+      <span className="select-none text-right text-slate-600">
+        {lineIndex + 1}
+      </span>
       <code className="whitespace-pre text-slate-100">
-        {highlightFileReferenceLine(line, language, `${keyPrefix}-${index}`)}
+        {highlightFileReferenceLine(
+          line,
+          language,
+          `${keyPrefix}-${lineIndex}`,
+        )}
       </code>
     </div>
   ))
 }
 
-function FileReferenceModal(props: {
-  pathname: string
-  onClose: () => void
-}) {
+function FileReferenceModal(props: { pathname: string; onClose: () => void }) {
   const [content, setContent] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(true)
@@ -1967,15 +1987,25 @@ function FileReferenceModal(props: {
   }
 
   return createPortal(
+    // biome-ignore lint/a11y/useSemanticElements: full-screen modal overlay remains keyboard accessible while closing on backdrop interaction
     <div
       className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
       onClick={props.onClose}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          props.onClose()
+        }
+      }}
     >
       <div
         role="dialog"
         aria-modal="true"
         className="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(2,6,23,0.98))] shadow-[0_24px_100px_rgba(0,0,0,0.55)]"
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
       >
         <div className="border-b border-white/10 px-5 py-4">
           <div className="flex items-start justify-between gap-4">
@@ -2100,8 +2130,7 @@ function MessageImageAsset(props: {
   const normalizedSourceUrl = normalizeMarkdownImageSource(props.sourceUrl)
   const provenance = markdownImageProvenance(props.sessionId, props.sourceUrl)
   const canDirectRenderExternal =
-    provenance === "external" &&
-    /^https?:\/\//i.test(normalizedSourceUrl)
+    provenance === "external" && /^https?:\/\//i.test(normalizedSourceUrl)
 
   useEffect(() => {
     let active = true
@@ -2113,9 +2142,9 @@ function MessageImageAsset(props: {
           `${props.apiRootUrl}/sessions/${props.sessionId}/media?source=${encodeURIComponent(normalizedSourceUrl)}`,
         )
         if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as
-            | { error?: string }
-            | null
+          const payload = (await response.json().catch(() => null)) as {
+            error?: string
+          } | null
           throw new Error(
             payload?.error ??
               `Image request failed with status ${response.status}.`,
@@ -2190,7 +2219,9 @@ function MessageImageAsset(props: {
       props.onImageKept(payload)
     } catch (nextError) {
       setError(
-        nextError instanceof Error ? nextError.message : "Image could not be kept.",
+        nextError instanceof Error
+          ? nextError.message
+          : "Image could not be kept.",
       )
     } finally {
       setKeeping(false)
@@ -3161,9 +3192,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     useState("")
   const [activeSessionProcessBlueprintId, setActiveSessionProcessBlueprintId] =
     useState("")
-  const [activeSessionTickets, setActiveSessionTickets] = useState<AgentTicket[]>(
-    [],
-  )
+  const [activeSessionTickets, setActiveSessionTickets] = useState<
+    AgentTicket[]
+  >([])
   const [updatingDirectory, setUpdatingDirectory] = useState(false)
   const [updatingQuickProcessBlueprint, setUpdatingQuickProcessBlueprint] =
     useState(false)
@@ -3239,7 +3270,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     () => summarizeProviderUsage(activeSession?.providerUsage ?? null),
     [activeSession?.providerUsage],
   )
-  const hasBlockedActiveTicket = activeSession?.activeTicket?.status === "blocked"
+  const hasBlockedActiveTicket =
+    activeSession?.activeTicket?.status === "blocked"
   const processTerminalStatus =
     activeSession?.processBlueprintId &&
     activeSession.activity.status !== "running" &&
@@ -3340,13 +3372,15 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       if (pendingActivityMessages.length === 0) {
         return
       }
+      const firstPendingActivityMessage = pendingActivityMessages[0]
       if (
         pendingActivityMessages.length === 1 &&
-        shouldKeepExpandedActivityMessage(pendingActivityMessages[0]!)
+        firstPendingActivityMessage &&
+        shouldKeepExpandedActivityMessage(firstPendingActivityMessage)
       ) {
         items.push({
           type: "message",
-          message: pendingActivityMessages[0]!,
+          message: firstPendingActivityMessage,
           precedingStreamCheckpoints: [],
         })
         pendingActivityMessages = []
@@ -4156,13 +4190,7 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     return () => {
       cancelled = true
     }
-  }, [
-    activeSession?.activeTicket?.id,
-    activeSession?.activeTicket?.status,
-    activeSession?.activeTicket?.updatedAtMs,
-    activeSessionId,
-    loadSessionTickets,
-  ])
+  }, [activeSessionId, loadSessionTickets])
 
   useEffect(() => {
     if (!activeSessionId) {
@@ -4438,7 +4466,12 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
       clearWarningTimer()
       socket?.close()
     }
-  }, [activeSessionId, props.wsRootUrl, updateActiveSessionRuntime])
+  }, [
+    activeSessionId,
+    props.wsRootUrl,
+    updateActiveSessionRuntime,
+    scrollMessageIntoView,
+  ])
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -4817,7 +4850,6 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     [
       activeSession,
       activeSessionId,
-      mergeSession,
       processResolutionRequired,
       props.apiRootUrl,
       syncCurrentChatSettingsFromSession,
@@ -5637,16 +5669,21 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                                 message.ticketId ? (
                                   <button
                                     type="button"
-                                    onClick={() =>
+                                    onClick={() => {
+                                      const ticketId = message.ticketId
+                                      if (!ticketId) {
+                                        return
+                                      }
                                       openTicketWindow(
-                                        message.ticketId!,
+                                        ticketId,
                                         message.sessionId,
                                         activeSession?.activeTicket?.id ===
-                                          message.ticketId
-                                          ? activeSession.activeTicket.title
+                                          ticketId
+                                          ? (activeSession.activeTicket.title ??
+                                              "Ticket")
                                           : "Ticket",
                                       )
-                                    }
+                                    }}
                                     className="rounded-full border border-cyan-300/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100 hover:border-cyan-200/40 hover:text-cyan-50"
                                     title="Open ticket window"
                                   >
@@ -5941,7 +5978,9 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                         ) : null}
                         {activeSession?.activeTicket ? (
                           <p className="mt-2 text-xs text-emerald-200/80">
-                            {activeTicketStatusLabel(activeSession.activeTicket)}
+                            {activeTicketStatusLabel(
+                              activeSession.activeTicket,
+                            )}
                           </p>
                         ) : null}
                       </div>
@@ -6028,18 +6067,25 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
                             {activeSessionProcessBlueprint.expectation}
                           </p>
                         ) : null}
-{activeSession?.activeTicket && activeSession.activeTicket.checklist.length > 0 ? (
+                        {activeSession?.activeTicket &&
+                        activeSession.activeTicket.checklist.length > 0 ? (
                           <div className="mt-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3">
                             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                               Ticket Checklist
                             </p>
-                            {activeTicketStatusLabel(activeSession.activeTicket) ? (
+                            {activeTicketStatusLabel(
+                              activeSession.activeTicket,
+                            ) ? (
                               <p className="mt-2 text-xs text-emerald-200/80">
-                                {activeTicketStatusLabel(activeSession.activeTicket)}
+                                {activeTicketStatusLabel(
+                                  activeSession.activeTicket,
+                                )}
                               </p>
                             ) : null}
                             <div className="mt-3 space-y-2">
-                              {renderTicketChecklistItems(activeSession.activeTicket.checklist)}
+                              {renderTicketChecklistItems(
+                                activeSession.activeTicket.checklist,
+                              )}
                             </div>
                           </div>
                         ) : null}

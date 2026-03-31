@@ -1,1 +1,1 @@
-export { UiDesignCanvasScreen } from "./UiDesignCanvasScreen";
+export { UiDesignCanvasScreen } from "./UiDesignCanvasScreen"

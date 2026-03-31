@@ -1,10 +1,11 @@
-import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin";
+import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin"
 
 export const uiDesignCanvasDashboardPlugin: DashboardFeaturePlugin = {
   id: "design",
   label: "UI Design",
   route: "/design",
-  description: "Rapid human and AI design exploration with prompts, variants, and sketch feedback.",
+  description:
+    "Rapid human and AI design exploration with prompts, variants, and sketch feedback.",
   icon: "design",
   screen: {
     getProps: ({ windowOrigin, windowWsOrigin }) => ({
@@ -15,4 +16,4 @@ export const uiDesignCanvasDashboardPlugin: DashboardFeaturePlugin = {
       defaultProcessBlueprintId: "discuss",
     }),
   },
-};
+}

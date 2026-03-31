@@ -1,62 +1,68 @@
-import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from "aws-lambda";
-import { randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto"
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb"
 import {
   DescribeInstancesCommand,
   EC2Client,
   RebootInstancesCommand,
-} from "@aws-sdk/client-ec2";
+} from "@aws-sdk/client-ec2"
 import {
   GetSecretValueCommand,
   SecretsManagerClient,
-} from "@aws-sdk/client-secrets-manager";
+} from "@aws-sdk/client-secrets-manager"
 import {
-  DynamoDBClient,
-} from "@aws-sdk/client-dynamodb";
+  GetCommandInvocationCommand,
+  type GetCommandInvocationCommandOutput,
+  SendCommandCommand,
+  SSMClient,
+} from "@aws-sdk/client-ssm"
 import {
-  DynamoDBDocumentClient,
   DeleteCommand,
+  DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
   ScanCommand,
   UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
-import {
-  GetCommandInvocationCommand,
-  SendCommandCommand,
-  SSMClient,
-} from "@aws-sdk/client-ssm";
+} from "@aws-sdk/lib-dynamodb"
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
-} from "@simplewebauthn/server";
+} from "@simplewebauthn/server"
+import type {
+  APIGatewayProxyEventV2,
+  APIGatewayProxyStructuredResultV2,
+} from "aws-lambda"
 
 type CredentialRecord = {
-  credentialId: string;
-  credentialPublicKey: string;
-  counter: number;
-  transports?: string[];
-  credentialDeviceType?: string;
-  credentialBackedUp?: boolean;
-  createdAtMs: number;
-};
+  credentialId: string
+  credentialPublicKey: string
+  counter: number
+  transports?: string[]
+  credentialDeviceType?: string
+  credentialBackedUp?: boolean
+  createdAtMs: number
+}
 
 type StateRecord = {
-  stateId: string;
-  kind: "enrollment" | "registration" | "authentication" | "authentication-status";
-  challenge?: string;
-  expiresAtMs: number;
-  usedAtMs?: number;
-  progressStep?: string;
-  progressMessage?: string;
-  progressDetail?: Record<string, unknown> | null;
-  failureStep?: string;
-  error?: string;
-  dashboardUrl?: string;
-};
+  stateId: string
+  kind:
+    | "enrollment"
+    | "registration"
+    | "authentication"
+    | "authentication-status"
+  challenge?: string
+  expiresAtMs: number
+  usedAtMs?: number
+  progressStep?: string
+  progressMessage?: string
+  progressDetail?: Record<string, unknown> | null
+  failureStep?: string
+  error?: string
+  dashboardUrl?: string
+}
 
-type JsonBody = Record<string, unknown> | null;
+type JsonBody = Record<string, unknown> | null
 
 const config = {
   passkeyTableName: process.env.DASHBOARD_PASSKEY_TABLE_NAME ?? "",
@@ -69,7 +75,7 @@ const config = {
     process.env.DASHBOARD_SESSION_TTL_SECONDS ?? "900",
     10,
   ),
-};
+}
 
 if (
   !config.passkeyTableName ||
@@ -78,22 +84,22 @@ if (
   !config.managerSwarmTagValue ||
   !config.agentHome
 ) {
-  throw new Error("dashboard access lambda is not fully configured");
+  throw new Error("dashboard access lambda is not fully configured")
 }
 
-const ec2 = new EC2Client({});
-const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const ssm = new SSMClient({});
-const secrets = new SecretsManagerClient({});
-let resolvedManagerInstanceId: string | null = null;
-let resolvedEnrollmentSecretPromise: Promise<string> | null = null;
+const ec2 = new EC2Client({})
+const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}))
+const ssm = new SSMClient({})
+const secrets = new SecretsManagerClient({})
+let resolvedManagerInstanceId: string | null = null
+let resolvedEnrollmentSecretPromise: Promise<string> | null = null
 
 function logAuthStep(step: string, detail?: Record<string, unknown>): void {
   if (detail) {
-    console.log(`[dashboard-access] ${step}`, detail);
-    return;
+    console.log(`[dashboard-access] ${step}`, detail)
+    return
   }
-  console.log(`[dashboard-access] ${step}`);
+  console.log(`[dashboard-access] ${step}`)
 }
 
 function errorDetail(error: unknown): Record<string, unknown> {
@@ -102,16 +108,16 @@ function errorDetail(error: unknown): Record<string, unknown> {
       name: error.name,
       message: error.message,
       stack: error.stack,
-    };
+    }
   }
 
   return {
     error: String(error),
-  };
+  }
 }
 
 function nowMs(): number {
-  return Date.now();
+  return Date.now()
 }
 
 async function getEnrollmentSecret(): Promise<string> {
@@ -121,16 +127,16 @@ async function getEnrollmentSecret(): Promise<string> {
         new GetSecretValueCommand({
           SecretId: config.enrollmentSecretSecretName,
         }),
-      );
-      const secret = response.SecretString?.trim() || "";
+      )
+      const secret = response.SecretString?.trim() || ""
       if (!secret) {
-        throw new Error("dashboard enrollment secret is empty");
+        throw new Error("dashboard enrollment secret is empty")
       }
-      return secret;
-    })();
+      return secret
+    })()
   }
 
-  return resolvedEnrollmentSecretPromise;
+  return resolvedEnrollmentSecretPromise
 }
 
 function jsonResponse(
@@ -146,7 +152,7 @@ function jsonResponse(
       ...extraHeaders,
     },
     body: JSON.stringify(body),
-  };
+  }
 }
 
 function htmlResponse(html: string): APIGatewayProxyStructuredResultV2 {
@@ -157,7 +163,7 @@ function htmlResponse(html: string): APIGatewayProxyStructuredResultV2 {
       "cache-control": "no-store",
     },
     body: html,
-  };
+  }
 }
 
 function redirectResponse(location: string): APIGatewayProxyStructuredResultV2 {
@@ -168,45 +174,45 @@ function redirectResponse(location: string): APIGatewayProxyStructuredResultV2 {
       "cache-control": "no-store",
     },
     body: "",
-  };
+  }
 }
 
 async function parseJsonBody(event: APIGatewayProxyEventV2): Promise<JsonBody> {
   if (!event.body) {
-    return null;
+    return null
   }
 
   try {
     const raw = event.isBase64Encoded
       ? Buffer.from(event.body, "base64").toString("utf8")
-      : event.body;
-    return JSON.parse(raw) as Record<string, unknown>;
+      : event.body
+    return JSON.parse(raw) as Record<string, unknown>
   } catch {
-    return null;
+    return null
   }
 }
 
 function randomId(bytes = 24): string {
-  return randomBytes(bytes).toString("hex");
+  return randomBytes(bytes).toString("hex")
 }
 
 function authStatusStateId(flowId: string): string {
-  return `auth-status:${flowId}`;
+  return `auth-status:${flowId}`
 }
 
 function normalizeCredentialId(value: string | Uint8Array): string {
   return typeof value === "string"
     ? value
-    : Buffer.from(value).toString("base64url");
+    : Buffer.from(value).toString("base64url")
 }
 
 function getOrigin(event: APIGatewayProxyEventV2): string {
-  const host = event.headers.host ?? event.requestContext.domainName ?? "";
-  return `https://${host}`;
+  const host = event.headers.host ?? event.requestContext.domainName ?? ""
+  return `https://${host}`
 }
 
 function getRpId(event: APIGatewayProxyEventV2): string {
-  return event.headers.host ?? event.requestContext.domainName ?? "";
+  return event.headers.host ?? event.requestContext.domainName ?? ""
 }
 
 async function putState(record: StateRecord): Promise<void> {
@@ -215,7 +221,7 @@ async function putState(record: StateRecord): Promise<void> {
       TableName: config.stateTableName,
       Item: record,
     }),
-  );
+  )
 }
 
 async function getState(stateId: string): Promise<StateRecord | null> {
@@ -224,25 +230,25 @@ async function getState(stateId: string): Promise<StateRecord | null> {
       TableName: config.stateTableName,
       Key: { stateId },
     }),
-  );
+  )
 
-  return (response.Item as StateRecord | undefined) ?? null;
+  return (response.Item as StateRecord | undefined) ?? null
 }
 
 async function updateState(
   stateId: string,
   attributes: Record<string, unknown>,
 ): Promise<void> {
-  const names: Record<string, string> = {};
-  const values: Record<string, unknown> = {};
-  const expressions: string[] = [];
+  const names: Record<string, string> = {}
+  const values: Record<string, unknown> = {}
+  const expressions: string[] = []
 
   for (const [index, [key, value]] of Object.entries(attributes).entries()) {
-    const nameKey = `#n${index}`;
-    const valueKey = `:v${index}`;
-    names[nameKey] = key;
-    values[valueKey] = value;
-    expressions.push(`${nameKey} = ${valueKey}`);
+    const nameKey = `#n${index}`
+    const valueKey = `:v${index}`
+    names[nameKey] = key
+    values[valueKey] = value
+    expressions.push(`${nameKey} = ${valueKey}`)
   }
 
   await dynamo.send(
@@ -253,36 +259,44 @@ async function updateState(
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
     }),
-  );
+  )
 }
 
 async function putAuthStatus(
   flowId: string,
   attributes: Partial<StateRecord>,
 ): Promise<void> {
-  const currentTime = nowMs();
-  const current = await getState(authStatusStateId(flowId));
+  const currentTime = nowMs()
+  const current = await getState(authStatusStateId(flowId))
   await putState({
     stateId: authStatusStateId(flowId),
     kind: "authentication-status",
     expiresAtMs: current?.expiresAtMs ?? currentTime + 10 * 60 * 1000,
     ...(current ?? {}),
     ...attributes,
-  });
+  })
 }
 
 async function getAuthStatus(flowId: string): Promise<StateRecord | null> {
-  const record = await getState(authStatusStateId(flowId));
-  if (!record || record.kind !== "authentication-status" || record.expiresAtMs <= nowMs()) {
-    return null;
+  const record = await getState(authStatusStateId(flowId))
+  if (
+    !record ||
+    record.kind !== "authentication-status" ||
+    record.expiresAtMs <= nowMs()
+  ) {
+    return null
   }
 
-  return record;
+  return record
 }
 
 function canUseRecoveryAction(status: StateRecord | null): boolean {
-  if (!status || status.kind !== "authentication-status" || status.expiresAtMs <= nowMs()) {
-    return false;
+  if (
+    !status ||
+    status.kind !== "authentication-status" ||
+    status.expiresAtMs <= nowMs()
+  ) {
+    return false
   }
 
   const allowedSteps = new Set([
@@ -298,19 +312,19 @@ function canUseRecoveryAction(status: StateRecord | null): boolean {
     "auth.finish.error",
     "admin.reboot.requested",
     "admin.reboot.completed",
-  ]);
+  ])
 
-  return allowedSteps.has(status.progressStep ?? "");
+  return allowedSteps.has(status.progressStep ?? "")
 }
 
 async function isEnrollmentTicketValid(ticket: string): Promise<boolean> {
-  const ticketState = await getState(ticket);
+  const ticketState = await getState(ticket)
   return Boolean(
     ticketState &&
       ticketState.kind === "enrollment" &&
       ticketState.expiresAtMs > nowMs() &&
       !ticketState.usedAtMs,
-  );
+  )
 }
 
 async function listCredentials(): Promise<CredentialRecord[]> {
@@ -318,20 +332,22 @@ async function listCredentials(): Promise<CredentialRecord[]> {
     new ScanCommand({
       TableName: config.passkeyTableName,
     }),
-  );
+  )
 
-  return (response.Items as CredentialRecord[] | undefined) ?? [];
+  return (response.Items as CredentialRecord[] | undefined) ?? []
 }
 
-async function getCredential(credentialId: string): Promise<CredentialRecord | null> {
+async function getCredential(
+  credentialId: string,
+): Promise<CredentialRecord | null> {
   const response = await dynamo.send(
     new GetCommand({
       TableName: config.passkeyTableName,
       Key: { credentialId },
     }),
-  );
+  )
 
-  return (response.Item as CredentialRecord | undefined) ?? null;
+  return (response.Item as CredentialRecord | undefined) ?? null
 }
 
 async function putCredential(record: CredentialRecord): Promise<void> {
@@ -340,7 +356,7 @@ async function putCredential(record: CredentialRecord): Promise<void> {
       TableName: config.passkeyTableName,
       Item: record,
     }),
-  );
+  )
 }
 
 async function beginRegistration(
@@ -348,27 +364,28 @@ async function beginRegistration(
   body: JsonBody,
 ): Promise<APIGatewayProxyStructuredResultV2> {
   logAuthStep("register.begin.requested", {
-    hasTicket: typeof body?.ticket === "string" && body.ticket.trim().length > 0,
-  });
-  const ticket = typeof body?.ticket === "string" ? body.ticket.trim() : "";
+    hasTicket:
+      typeof body?.ticket === "string" && body.ticket.trim().length > 0,
+  })
+  const ticket = typeof body?.ticket === "string" ? body.ticket.trim() : ""
   if (!ticket) {
-    logAuthStep("register.begin.rejected", { reason: "missing-ticket" });
-    return jsonResponse({ ok: false, error: "ticket is required" }, 400);
+    logAuthStep("register.begin.rejected", { reason: "missing-ticket" })
+    return jsonResponse({ ok: false, error: "ticket is required" }, 400)
   }
 
-  const ticketState = await getState(ticket);
+  const ticketState = await getState(ticket)
   if (
     !ticketState ||
     ticketState.kind !== "enrollment" ||
     ticketState.expiresAtMs <= nowMs() ||
     ticketState.usedAtMs
   ) {
-    logAuthStep("register.begin.rejected", { reason: "invalid-ticket" });
-    return jsonResponse({ ok: false, error: "invalid enrollment ticket" }, 401);
+    logAuthStep("register.begin.rejected", { reason: "invalid-ticket" })
+    return jsonResponse({ ok: false, error: "invalid enrollment ticket" }, 401)
   }
 
-  const rpID = getRpId(event);
-  const existingCredentials = await listCredentials();
+  const rpID = getRpId(event)
+  const existingCredentials = await listCredentials()
   const options = await generateRegistrationOptions({
     rpName: "Agent Infrastructure Dashboard",
     rpID,
@@ -384,24 +401,24 @@ async function beginRegistration(
       residentKey: "required",
       userVerification: "required",
     },
-  });
+  })
 
   await putState({
     stateId: `registration:${ticket}`,
     kind: "registration",
     challenge: options.challenge,
     expiresAtMs: nowMs() + 5 * 60 * 1000,
-  });
+  })
 
   logAuthStep("register.begin.ready", {
     rpId: rpID,
     excludedCredentialCount: existingCredentials.length,
-  });
+  })
 
   return jsonResponse({
     ok: true,
     options,
-  });
+  })
 }
 
 async function finishRegistration(
@@ -409,19 +426,25 @@ async function finishRegistration(
   body: JsonBody,
 ): Promise<APIGatewayProxyStructuredResultV2> {
   logAuthStep("register.finish.requested", {
-    hasTicket: typeof body?.ticket === "string" && body.ticket.trim().length > 0,
+    hasTicket:
+      typeof body?.ticket === "string" && body.ticket.trim().length > 0,
     hasCredential: Boolean(body?.credential),
-  });
-  const ticket = typeof body?.ticket === "string" ? body.ticket.trim() : "";
-  const credential = body?.credential;
+  })
+  const ticket = typeof body?.ticket === "string" ? body.ticket.trim() : ""
+  const credential = body?.credential
 
   if (!ticket || !credential) {
-    logAuthStep("register.finish.rejected", { reason: "missing-ticket-or-credential" });
-    return jsonResponse({ ok: false, error: "ticket and credential are required" }, 400);
+    logAuthStep("register.finish.rejected", {
+      reason: "missing-ticket-or-credential",
+    })
+    return jsonResponse(
+      { ok: false, error: "ticket and credential are required" },
+      400,
+    )
   }
 
-  const ticketState = await getState(ticket);
-  const registrationState = await getState(`registration:${ticket}`);
+  const ticketState = await getState(ticket)
+  const registrationState = await getState(`registration:${ticket}`)
   if (
     !ticketState ||
     !registrationState ||
@@ -431,8 +454,13 @@ async function finishRegistration(
     registrationState.expiresAtMs <= nowMs() ||
     ticketState.usedAtMs
   ) {
-    logAuthStep("register.finish.rejected", { reason: "registration-ticket-invalid" });
-    return jsonResponse({ ok: false, error: "registration ticket is no longer valid" }, 401);
+    logAuthStep("register.finish.rejected", {
+      reason: "registration-ticket-invalid",
+    })
+    return jsonResponse(
+      { ok: false, error: "registration ticket is no longer valid" },
+      401,
+    )
   }
 
   const verification = await verifyRegistrationResponse({
@@ -441,41 +469,50 @@ async function finishRegistration(
     expectedOrigin: getOrigin(event),
     expectedRPID: getRpId(event),
     requireUserVerification: true,
-  });
+  })
 
   if (!verification.verified || !verification.registrationInfo) {
-    logAuthStep("register.finish.rejected", { reason: "verification-failed" });
-    return jsonResponse({ ok: false, error: "passkey registration failed" }, 401);
+    logAuthStep("register.finish.rejected", { reason: "verification-failed" })
+    return jsonResponse(
+      { ok: false, error: "passkey registration failed" },
+      401,
+    )
   }
 
   await putCredential({
-    credentialId: normalizeCredentialId(verification.registrationInfo.credential.id),
+    credentialId: normalizeCredentialId(
+      verification.registrationInfo.credential.id,
+    ),
     credentialPublicKey: Buffer.from(
       verification.registrationInfo.credential.publicKey,
     ).toString("base64url"),
     counter: verification.registrationInfo.credential.counter,
-    transports:
-      Array.isArray((credential as { response?: { transports?: string[] } }).response?.transports)
-        ? ((credential as { response?: { transports?: string[] } }).response
-            ?.transports as string[])
-        : undefined,
+    transports: Array.isArray(
+      (credential as { response?: { transports?: string[] } }).response
+        ?.transports,
+    )
+      ? ((credential as { response?: { transports?: string[] } }).response
+          ?.transports as string[])
+      : undefined,
     credentialDeviceType: verification.registrationInfo.credentialDeviceType,
     credentialBackedUp: verification.registrationInfo.credentialBackedUp,
     createdAtMs: nowMs(),
-  });
-  await updateState(ticket, { usedAtMs: nowMs() });
+  })
+  await updateState(ticket, { usedAtMs: nowMs() })
   await dynamo.send(
     new DeleteCommand({
       TableName: config.stateTableName,
       Key: { stateId: `registration:${ticket}` },
     }),
-  );
+  )
 
   logAuthStep("register.finish.completed", {
-    credentialId: normalizeCredentialId(verification.registrationInfo.credential.id),
-  });
+    credentialId: normalizeCredentialId(
+      verification.registrationInfo.credential.id,
+    ),
+  })
 
-  return jsonResponse({ ok: true });
+  return jsonResponse({ ok: true })
 }
 
 async function beginAuthentication(
@@ -484,20 +521,20 @@ async function beginAuthentication(
   logAuthStep("auth.begin.requested", {
     rpId: getRpId(event),
     origin: getOrigin(event),
-  });
-  const flowId = `auth:${randomId(18)}`;
+  })
+  const flowId = `auth:${randomId(18)}`
   const options = await generateAuthenticationOptions({
     rpID: getRpId(event),
     userVerification: "required",
     allowCredentials: [],
-  });
+  })
 
   await putState({
     stateId: flowId,
     kind: "authentication",
     challenge: options.challenge,
     expiresAtMs: nowMs() + 5 * 60 * 1000,
-  });
+  })
   await putAuthStatus(flowId, {
     progressStep: "auth.begin.ready",
     progressMessage: "Passkey challenge created.",
@@ -505,20 +542,20 @@ async function beginAuthentication(
     error: undefined,
     failureStep: undefined,
     dashboardUrl: undefined,
-  });
+  })
 
-  logAuthStep("auth.begin.ready", { flowId });
+  logAuthStep("auth.begin.ready", { flowId })
 
   return jsonResponse({
     ok: true,
     flowId,
     options,
-  });
+  })
 }
 
 async function resolveManagerInstanceId(): Promise<string> {
   if (resolvedManagerInstanceId) {
-    return resolvedManagerInstanceId;
+    return resolvedManagerInstanceId
   }
 
   const response = await ec2.send(
@@ -538,69 +575,81 @@ async function resolveManagerInstanceId(): Promise<string> {
         },
       ],
     }),
-  );
+  )
 
-  const instanceId = response.Reservations?.flatMap((reservation) => reservation.Instances ?? [])
+  const instanceId = response.Reservations?.flatMap(
+    (reservation) => reservation.Instances ?? [],
+  )
     .map((instance) => instance.InstanceId ?? "")
-    .find((value) => value.length > 0);
+    .find((value) => value.length > 0)
 
   if (!instanceId) {
-    throw new Error("manager instance was not found");
+    throw new Error("manager instance was not found")
   }
 
-  resolvedManagerInstanceId = instanceId;
-  return instanceId;
+  resolvedManagerInstanceId = instanceId
+  return instanceId
 }
 
 async function issueDashboardAccess(): Promise<string> {
-  return runDashboardSessionCommand("issue-dashboard-session.sh", "auth.finish.dashboard-session.issue");
+  return runDashboardSessionCommand(
+    "issue-dashboard-session.sh",
+    "auth.finish.dashboard-session.issue",
+  )
 }
 
 async function rebootManager(
   body: JsonBody,
 ): Promise<APIGatewayProxyStructuredResultV2> {
-  const flowId = typeof body?.flowId === "string" ? body.flowId.trim() : "";
+  const flowId = typeof body?.flowId === "string" ? body.flowId.trim() : ""
   if (!flowId) {
-    return jsonResponse({ ok: false, error: "flowId is required" }, 400);
+    return jsonResponse({ ok: false, error: "flowId is required" }, 400)
   }
 
-  const status = await getAuthStatus(flowId);
+  const status = await getAuthStatus(flowId)
   if (!canUseRecoveryAction(status)) {
-    logAuthStep("admin.reboot.rejected", { reason: "recovery-not-authorized", flowId });
-    return jsonResponse({ ok: false, error: "recovery action is not authorized" }, 403);
+    logAuthStep("admin.reboot.rejected", {
+      reason: "recovery-not-authorized",
+      flowId,
+    })
+    return jsonResponse(
+      { ok: false, error: "recovery action is not authorized" },
+      403,
+    )
   }
 
-  const managerInstanceId = await resolveManagerInstanceId();
-  logAuthStep("admin.reboot.requested", { flowId, managerInstanceId });
+  const managerInstanceId = await resolveManagerInstanceId()
+  logAuthStep("admin.reboot.requested", { flowId, managerInstanceId })
   await putAuthStatus(flowId, {
     progressStep: "admin.reboot.requested",
     progressMessage: "Reboot requested for the manager instance.",
     progressDetail: { flowId, managerInstanceId },
     error: undefined,
-  });
+  })
 
   await ec2.send(
     new RebootInstancesCommand({
       InstanceIds: [managerInstanceId],
     }),
-  );
+  )
 
-  logAuthStep("admin.reboot.completed", { flowId, managerInstanceId });
+  logAuthStep("admin.reboot.completed", { flowId, managerInstanceId })
   await putAuthStatus(flowId, {
     progressStep: "admin.reboot.completed",
-    progressMessage: "Manager reboot requested. Wait for recovery, then try again.",
+    progressMessage:
+      "Manager reboot requested. Wait for recovery, then try again.",
     progressDetail: { flowId, managerInstanceId },
-  });
+  })
 
   return jsonResponse({
     ok: true,
     managerInstanceId,
     message: "Manager reboot requested.",
-  });
+  })
 }
 
 function shellToken(value: string): string {
-  return `'${value.replaceAll("'", "'\"'\"'")}'`;
+  return `'${value.replaceAll("'", "'\"'\"'")}'`
 }
 
 async function runDashboardSessionCommand(
@@ -609,9 +658,12 @@ async function runDashboardSessionCommand(
   extraArgs: string[] = [],
   extraDetail?: Record<string, unknown>,
 ): Promise<string> {
-  logAuthStep(`${logPrefix}.requested`, extraDetail);
-  const managerInstanceId = await resolveManagerInstanceId();
-  logAuthStep(`${logPrefix}.manager.resolved`, { managerInstanceId, ...extraDetail });
+  logAuthStep(`${logPrefix}.requested`, extraDetail)
+  const managerInstanceId = await resolveManagerInstanceId()
+  logAuthStep(`${logPrefix}.manager.resolved`, {
+    managerInstanceId,
+    ...extraDetail,
+  })
   const send = await ssm.send(
     new SendCommandCommand({
       InstanceIds: [managerInstanceId],
@@ -630,26 +682,29 @@ async function runDashboardSessionCommand(
         ],
       },
     }),
-  );
+  )
 
-  const commandId = send.Command?.CommandId;
+  const commandId = send.Command?.CommandId
   if (!commandId) {
-    logAuthStep(`${logPrefix}.failed`, { reason: "missing-command-id", ...extraDetail });
-    throw new Error("failed to create dashboard session command");
+    logAuthStep(`${logPrefix}.failed`, {
+      reason: "missing-command-id",
+      ...extraDetail,
+    })
+    throw new Error("failed to create dashboard session command")
   }
 
-  logAuthStep(`${logPrefix}.command.sent`, { commandId, ...extraDetail });
+  logAuthStep(`${logPrefix}.command.sent`, { commandId, ...extraDetail })
 
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
-    let invocation;
+    let invocation: GetCommandInvocationCommandOutput
     try {
       invocation = await ssm.send(
         new GetCommandInvocationCommand({
           CommandId: commandId,
           InstanceId: managerInstanceId,
         }),
-      );
+      )
     } catch (error) {
       if (
         typeof error === "object" &&
@@ -657,35 +712,44 @@ async function runDashboardSessionCommand(
         "name" in error &&
         error.name === "InvocationDoesNotExist"
       ) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        continue;
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        continue
       }
 
-      throw error;
+      throw error
     }
 
     if (invocation.Status === "Success") {
-      const stdout = invocation.StandardOutputContent ?? "";
+      const stdout = invocation.StandardOutputContent ?? ""
       const line = stdout
         .split("\n")
         .map((value) => value.trim())
         .filter((value) => value.startsWith("{") && value.endsWith("}"))
-        .at(-1);
+        .at(-1)
 
       if (!line) {
-        logAuthStep(`${logPrefix}.failed`, { reason: "missing-json-output", ...extraDetail });
-        throw new Error("dashboard session command did not return JSON");
+        logAuthStep(`${logPrefix}.failed`, {
+          reason: "missing-json-output",
+          ...extraDetail,
+        })
+        throw new Error("dashboard session command did not return JSON")
       }
 
-      const payload = JSON.parse(line) as { sessionUrl?: string };
+      const payload = JSON.parse(line) as { sessionUrl?: string }
       if (!payload.sessionUrl) {
-        logAuthStep(`${logPrefix}.failed`, { reason: "missing-session-url", ...extraDetail });
-        throw new Error("dashboard session URL was missing");
+        logAuthStep(`${logPrefix}.failed`, {
+          reason: "missing-session-url",
+          ...extraDetail,
+        })
+        throw new Error("dashboard session URL was missing")
       }
 
-      logAuthStep(`${logPrefix}.issued`, { sessionUrl: payload.sessionUrl, ...extraDetail });
+      logAuthStep(`${logPrefix}.issued`, {
+        sessionUrl: payload.sessionUrl,
+        ...extraDetail,
+      })
 
-      return payload.sessionUrl;
+      return payload.sessionUrl
     }
 
     if (
@@ -697,42 +761,51 @@ async function runDashboardSessionCommand(
       logAuthStep(`${logPrefix}.failed`, {
         reason: invocation.Status ?? "unknown-status",
         ...extraDetail,
-      });
+      })
       throw new Error(
-        invocation.StandardErrorContent?.trim() || "dashboard session command failed",
-      );
+        invocation.StandardErrorContent?.trim() ||
+          "dashboard session command failed",
+      )
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 
-  logAuthStep(`${logPrefix}.failed`, { reason: "timeout", ...extraDetail });
-  throw new Error("dashboard session command timed out");
+  logAuthStep(`${logPrefix}.failed`, { reason: "timeout", ...extraDetail })
+  throw new Error("dashboard session command timed out")
 }
 
-async function waitForDashboardAccessReady(dashboardUrl: string): Promise<void> {
-  logAuthStep("auth.finish.dashboard-session.readiness.waiting", { dashboardUrl });
-  const url = new URL(dashboardUrl);
-  const readinessUrl = `${url.origin}/api/config`;
-  const deadline = Date.now() + 30_000;
+async function waitForDashboardAccessReady(
+  dashboardUrl: string,
+): Promise<void> {
+  logAuthStep("auth.finish.dashboard-session.readiness.waiting", {
+    dashboardUrl,
+  })
+  const url = new URL(dashboardUrl)
+  const readinessUrl = `${url.origin}/api/config`
+  const deadline = Date.now() + 30_000
 
   while (Date.now() < deadline) {
     try {
       const response = await fetch(readinessUrl, {
         method: "GET",
-      });
+      })
 
       if (response.ok) {
-        logAuthStep("auth.finish.dashboard-session.readiness.ready", { dashboardUrl });
-        return;
+        logAuthStep("auth.finish.dashboard-session.readiness.ready", {
+          dashboardUrl,
+        })
+        return
       }
     } catch {}
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 
-  logAuthStep("auth.finish.dashboard-session.readiness.failed", { reason: "timeout" });
-  throw new Error("dashboard access URL did not become ready in time");
+  logAuthStep("auth.finish.dashboard-session.readiness.failed", {
+    reason: "timeout",
+  })
+  throw new Error("dashboard access URL did not become ready in time")
 }
 
 async function finishAuthentication(
@@ -740,38 +813,54 @@ async function finishAuthentication(
   body: JsonBody,
 ): Promise<APIGatewayProxyStructuredResultV2> {
   logAuthStep("auth.finish.requested", {
-    hasFlowId: typeof body?.flowId === "string" && body.flowId.trim().length > 0,
+    hasFlowId:
+      typeof body?.flowId === "string" && body.flowId.trim().length > 0,
     hasCredential: Boolean(body?.credential),
     credentialId:
-      body?.credential && typeof (body.credential as Record<string, unknown>).id === "string"
+      body?.credential &&
+      typeof (body.credential as Record<string, unknown>).id === "string"
         ? (body.credential as Record<string, unknown>).id
         : null,
-  });
-  const flowId = typeof body?.flowId === "string" ? body.flowId.trim() : "";
-  const credential = body?.credential as Record<string, unknown> | undefined;
+  })
+  const flowId = typeof body?.flowId === "string" ? body.flowId.trim() : ""
+  const credential = body?.credential as Record<string, unknown> | undefined
 
   if (!flowId || !credential || typeof credential.id !== "string") {
-    logAuthStep("auth.finish.rejected", { reason: "missing-flow-or-credential" });
-    return jsonResponse({ ok: false, error: "flowId and credential are required" }, 400);
+    logAuthStep("auth.finish.rejected", {
+      reason: "missing-flow-or-credential",
+    })
+    return jsonResponse(
+      { ok: false, error: "flowId and credential are required" },
+      400,
+    )
   }
 
-  const authState = await getState(flowId);
+  const authState = await getState(flowId)
   if (
     !authState ||
     authState.kind !== "authentication" ||
     authState.expiresAtMs <= nowMs()
   ) {
-    logAuthStep("auth.finish.rejected", { reason: "authentication-session-expired", flowId });
-    return jsonResponse({ ok: false, error: "authentication session expired" }, 401);
+    logAuthStep("auth.finish.rejected", {
+      reason: "authentication-session-expired",
+      flowId,
+    })
+    return jsonResponse(
+      { ok: false, error: "authentication session expired" },
+      401,
+    )
   }
 
-  const credentialRecord = await getCredential(credential.id);
+  const credentialRecord = await getCredential(credential.id)
   if (!credentialRecord) {
-    logAuthStep("auth.finish.rejected", { reason: "unknown-passkey", credentialId: credential.id });
-    return jsonResponse({ ok: false, error: "unknown passkey" }, 401);
+    logAuthStep("auth.finish.rejected", {
+      reason: "unknown-passkey",
+      credentialId: credential.id,
+    })
+    return jsonResponse({ ok: false, error: "unknown passkey" }, 401)
   }
 
-  let failureStep = "verification";
+  let failureStep = "verification"
   try {
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.verification.started",
@@ -785,14 +874,14 @@ async function finishAuthentication(
       error: undefined,
       failureStep: undefined,
       dashboardUrl: undefined,
-    });
+    })
     logAuthStep("auth.finish.verification.started", {
       flowId,
       credentialId: credential.id,
       expectedOrigin: getOrigin(event),
       expectedRpId: getRpId(event),
       storedCounter: credentialRecord.counter,
-    });
+    })
 
     const verification = await verifyAuthenticationResponse({
       response: credential as never,
@@ -801,23 +890,32 @@ async function finishAuthentication(
       expectedRPID: getRpId(event),
       credential: {
         id: credentialRecord.credentialId,
-        publicKey: Buffer.from(credentialRecord.credentialPublicKey, "base64url"),
+        publicKey: Buffer.from(
+          credentialRecord.credentialPublicKey,
+          "base64url",
+        ),
         counter: credentialRecord.counter,
         transports: credentialRecord.transports as never,
       },
       requireUserVerification: true,
-    });
+    })
 
     if (!verification.verified) {
-      logAuthStep("auth.finish.rejected", { reason: "verification-failed", flowId });
-      return jsonResponse({ ok: false, error: "passkey authentication failed" }, 401);
+      logAuthStep("auth.finish.rejected", {
+        reason: "verification-failed",
+        flowId,
+      })
+      return jsonResponse(
+        { ok: false, error: "passkey authentication failed" },
+        401,
+      )
     }
 
     logAuthStep("auth.finish.verified", {
       flowId,
       credentialId: credential.id,
       newCounter: verification.authenticationInfo.newCounter,
-    });
+    })
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.verified",
       progressMessage: "Passkey verified.",
@@ -825,14 +923,14 @@ async function finishAuthentication(
         credentialId: credential.id,
         newCounter: verification.authenticationInfo.newCounter,
       },
-    });
+    })
 
     logAuthStep("auth.finish.credential.update.started", {
       flowId,
       credentialId: credential.id,
       newCounter: verification.authenticationInfo.newCounter,
-    });
-    failureStep = "credential.update";
+    })
+    failureStep = "credential.update"
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.credential.update.started",
       progressMessage: "Updating credential counter.",
@@ -840,146 +938,147 @@ async function finishAuthentication(
         credentialId: credential.id,
         newCounter: verification.authenticationInfo.newCounter,
       },
-    });
+    })
     await putCredential({
       ...credentialRecord,
       counter: verification.authenticationInfo.newCounter,
-    });
+    })
     logAuthStep("auth.finish.credential.update.completed", {
       flowId,
       credentialId: credential.id,
-    });
+    })
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.credential.update.completed",
       progressMessage: "Credential counter updated.",
       progressDetail: {
         credentialId: credential.id,
       },
-    });
+    })
 
-    logAuthStep("auth.finish.state.delete.started", { flowId });
-    failureStep = "state.delete";
+    logAuthStep("auth.finish.state.delete.started", { flowId })
+    failureStep = "state.delete"
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.state.delete.started",
       progressMessage: "Clearing authentication flow state.",
       progressDetail: { flowId },
-    });
+    })
     await dynamo.send(
       new DeleteCommand({
         TableName: config.stateTableName,
         Key: { stateId: flowId },
       }),
-    );
-    logAuthStep("auth.finish.state.delete.completed", { flowId });
+    )
+    logAuthStep("auth.finish.state.delete.completed", { flowId })
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.state.delete.completed",
       progressMessage: "Authentication flow state cleared.",
       progressDetail: { flowId },
-    });
+    })
 
-    logAuthStep("auth.finish.dashboard-session.started", { flowId });
-    failureStep = "dashboard.session.issue";
+    logAuthStep("auth.finish.dashboard-session.started", { flowId })
+    failureStep = "dashboard.session.issue"
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.dashboard-session.started",
       progressMessage: "Requesting dashboard session from manager.",
       progressDetail: { flowId },
-    });
-    let dashboardUrl = await issueDashboardAccess();
-    logAuthStep("auth.finish.dashboard-session.url.received", { flowId, dashboardUrl });
+    })
+    const dashboardUrl = await issueDashboardAccess()
+    logAuthStep("auth.finish.dashboard-session.url.received", {
+      flowId,
+      dashboardUrl,
+    })
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.dashboard-session.url.received",
       progressMessage: "Dashboard session URL received.",
       progressDetail: { flowId, dashboardUrl },
       dashboardUrl,
-    });
+    })
 
-    failureStep = "dashboard.session.readiness";
+    failureStep = "dashboard.session.readiness"
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.dashboard-session.readiness.started",
       progressMessage: "Waiting for dashboard readiness.",
       progressDetail: { flowId, dashboardUrl },
       dashboardUrl,
-    });
-    await waitForDashboardAccessReady(dashboardUrl);
-    logAuthStep("auth.finish.completed", { flowId, dashboardUrl });
+    })
+    await waitForDashboardAccessReady(dashboardUrl)
+    logAuthStep("auth.finish.completed", { flowId, dashboardUrl })
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.completed",
       progressMessage: "Authentication complete.",
       progressDetail: { flowId, dashboardUrl },
       dashboardUrl,
-    });
+    })
     return jsonResponse({
       ok: true,
       dashboardUrl,
-    });
+    })
   } catch (error) {
     logAuthStep("auth.finish.error", {
       flowId,
       credentialId: credential.id,
       failureStep,
       ...errorDetail(error),
-    });
+    })
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.error",
       progressMessage: "Authentication failed.",
       progressDetail: {
-          flowId,
-          credentialId: credential.id,
-          ...errorDetail(error),
-        },
-        failureStep,
+        flowId,
+        credentialId: credential.id,
+        ...errorDetail(error),
+      },
+      failureStep,
+      error:
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : "authentication failed",
+    })
+    return jsonResponse(
+      {
+        ok: false,
         error:
           error instanceof Error && error.message.trim().length > 0
             ? error.message
             : "authentication failed",
-      });
-      return jsonResponse(
-        {
-          ok: false,
-          error:
-            error instanceof Error && error.message.trim().length > 0
-              ? error.message
-              : "authentication failed",
-          failureStep,
-        },
-        500,
-      );
-    }
+        failureStep,
+      },
+      500,
+    )
+  }
 }
 
 async function createEnrollmentTicket(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
-  const enrollmentSecret = await getEnrollmentSecret();
-  if (
-    event.headers["x-dashboard-enrollment-secret"] !== enrollmentSecret
-  ) {
-    logAuthStep("enrollment-ticket.rejected", { reason: "forbidden" });
-    return jsonResponse({ ok: false, error: "forbidden" }, 403);
+  const enrollmentSecret = await getEnrollmentSecret()
+  if (event.headers["x-dashboard-enrollment-secret"] !== enrollmentSecret) {
+    logAuthStep("enrollment-ticket.rejected", { reason: "forbidden" })
+    return jsonResponse({ ok: false, error: "forbidden" }, 403)
   }
 
-  const ticket = `enroll:${randomId(18)}`;
-  const expiresAtMs = nowMs() + 15 * 60 * 1000;
+  const ticket = `enroll:${randomId(18)}`
+  const expiresAtMs = nowMs() + 15 * 60 * 1000
   await putState({
     stateId: ticket,
     kind: "enrollment",
     expiresAtMs,
-  });
+  })
 
-  logAuthStep("enrollment-ticket.created", { ticket, expiresAtMs });
+  logAuthStep("enrollment-ticket.created", { ticket, expiresAtMs })
 
   return jsonResponse({
     ok: true,
     registrationUrl: `${getOrigin(event)}/register?ticket=${encodeURIComponent(ticket)}`,
     expiresAtMs,
-  });
+  })
 }
 
 function renderPage(
   mode: "login" | "register",
   registrationTicket = "",
 ): string {
-  const title = mode === "register" ? "Register Passkey" : "Dashboard Access";
+  const title = mode === "register" ? "Register Passkey" : "Dashboard Access"
 
   return `<!doctype html>
 <html lang="en">
@@ -1473,61 +1572,61 @@ function renderPage(
       });
     </script>
   </body>
-</html>`;
+</html>`
 }
 
 export async function handler(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyStructuredResultV2> {
-  const path = event.rawPath || "/";
-  const method = event.requestContext.http.method;
+  const path = event.rawPath || "/"
+  const method = event.requestContext.http.method
 
   if (method === "GET" && path === "/") {
-    return htmlResponse(renderPage("login"));
+    return htmlResponse(renderPage("login"))
   }
 
   if (method === "GET" && path === "/register") {
-    const ticket = event.queryStringParameters?.ticket?.trim() ?? "";
+    const ticket = event.queryStringParameters?.ticket?.trim() ?? ""
     if (!ticket || !(await isEnrollmentTicketValid(ticket))) {
-      return redirectResponse("/");
+      return redirectResponse("/")
     }
 
-    return htmlResponse(renderPage("register", ticket));
+    return htmlResponse(renderPage("register", ticket))
   }
 
   if (method === "POST" && path === "/api/admin/enrollment-ticket") {
-    return createEnrollmentTicket(event);
+    return createEnrollmentTicket(event)
   }
 
   if (method === "POST" && path === "/api/admin/reboot-manager") {
-    return rebootManager(await parseJsonBody(event));
+    return rebootManager(await parseJsonBody(event))
   }
 
   if (method === "POST" && path === "/api/passkeys/register/begin") {
-    return beginRegistration(event, await parseJsonBody(event));
+    return beginRegistration(event, await parseJsonBody(event))
   }
 
   if (method === "POST" && path === "/api/passkeys/register/finish") {
-    return finishRegistration(event, await parseJsonBody(event));
+    return finishRegistration(event, await parseJsonBody(event))
   }
 
   if (method === "POST" && path === "/api/passkeys/auth/begin") {
-    return beginAuthentication(event);
+    return beginAuthentication(event)
   }
 
   if (method === "POST" && path === "/api/passkeys/auth/finish") {
-    return finishAuthentication(event, await parseJsonBody(event));
+    return finishAuthentication(event, await parseJsonBody(event))
   }
 
   if (method === "GET" && path === "/api/passkeys/auth/status") {
-    const flowId = event.queryStringParameters?.flowId?.trim() ?? "";
+    const flowId = event.queryStringParameters?.flowId?.trim() ?? ""
     if (!flowId) {
-      return jsonResponse({ ok: false, error: "flowId is required" }, 400);
+      return jsonResponse({ ok: false, error: "flowId is required" }, 400)
     }
 
-    const status = await getAuthStatus(flowId);
+    const status = await getAuthStatus(flowId)
     if (!status) {
-      return jsonResponse({ ok: false, error: "status not found" }, 404);
+      return jsonResponse({ ok: false, error: "status not found" }, 404)
     }
 
     return jsonResponse({
@@ -1538,8 +1637,8 @@ export async function handler(
       failureStep: status.failureStep ?? null,
       error: status.error ?? null,
       dashboardUrl: status.dashboardUrl ?? null,
-    });
+    })
   }
 
-  return jsonResponse({ ok: false, error: "not found" }, 404);
+  return jsonResponse({ ok: false, error: "not found" }, 404)
 }

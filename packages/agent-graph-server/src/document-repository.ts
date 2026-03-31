@@ -1,63 +1,62 @@
-import {
-  type SourceWorkspace,
-  type BoardFile,
-  type WorkspaceState,
-  type DocumentSummary,
-} from "@agent-infrastructure/agent-graph-core";
+import { basename, relative } from "node:path"
+import type {
+  BoardFile,
+  BoardSummary,
+  DocumentSummary,
+  SourceWorkspace,
+  WorkspaceState,
+} from "@agent-infrastructure/agent-graph-core"
 import {
   boardFileWithWorkspaceState,
-  DEFAULT_AGENT_GRAPH_BOARD_PATH,
   loadAgentishBoard,
-} from "./load-agentish-workspace.js";
-import type { BoardSummary } from "@agent-infrastructure/agent-graph-core";
-import { basename, dirname, relative } from "node:path";
+} from "./load-agentish-workspace.js"
 
-const WORKSPACE_ROOT = "/home/ec2-user/workspace";
+const WORKSPACE_ROOT = "/home/ec2-user/workspace"
 
 export type DocumentRepository = {
-  getBoardPath(): string;
-  getBoardFile(): BoardFile;
-  setBoardFile(nextBoardFile: BoardFile): void;
-  getBoardSummary(): BoardSummary;
-  listBoards(): Promise<BoardSummary[]>;
-  listDocuments(): Promise<DocumentSummary[]>;
-  openBoard(boardPath: string): Promise<void>;
-  getSourceWorkspace(): SourceWorkspace;
-  setSourceWorkspace(nextWorkspace: SourceWorkspace): void;
-  getWorkspaceState(): WorkspaceState;
-  setWorkspaceState(nextState: WorkspaceState): void;
-  getPreviousSourceWorkspace(): SourceWorkspace;
-  setPreviousSourceWorkspace(nextWorkspace: SourceWorkspace): void;
-};
+  getBoardPath(): string
+  getBoardFile(): BoardFile
+  setBoardFile(nextBoardFile: BoardFile): void
+  getBoardSummary(): BoardSummary
+  listBoards(): Promise<BoardSummary[]>
+  listDocuments(): Promise<DocumentSummary[]>
+  openBoard(boardPath: string): Promise<void>
+  getSourceWorkspace(): SourceWorkspace
+  setSourceWorkspace(nextWorkspace: SourceWorkspace): void
+  getWorkspaceState(): WorkspaceState
+  setWorkspaceState(nextState: WorkspaceState): void
+  getPreviousSourceWorkspace(): SourceWorkspace
+  setPreviousSourceWorkspace(nextWorkspace: SourceWorkspace): void
+}
 
 function toBoardSummary(boardPath: string, boardFile: BoardFile): BoardSummary {
   return {
     path: relative(WORKSPACE_ROOT, boardPath) || basename(boardPath),
     id: boardFile.id,
     label: boardFile.label,
-  };
+  }
 }
 
 export async function createDocumentRepository(): Promise<DocumentRepository> {
-  const loadedBoard = await loadAgentishBoard();
-  let boardPath = loadedBoard.boardPath;
-  let boardFile = loadedBoard.boardFile;
-  let sourceWorkspace = loadedBoard.sourceWorkspace;
-  let previousSourceWorkspace = structuredClone(sourceWorkspace);
-  let workspaceState = loadedBoard.workspaceState;
+  const loadedBoard = await loadAgentishBoard()
+  let boardPath = loadedBoard.boardPath
+  let boardFile = loadedBoard.boardFile
+  let sourceWorkspace = loadedBoard.sourceWorkspace
+  let previousSourceWorkspace = structuredClone(sourceWorkspace)
+  let workspaceState = loadedBoard.workspaceState
 
   return {
     getBoardPath() {
-      return boardPath;
+      return boardPath
     },
     getBoardFile() {
-      return boardFile;
+      return boardFile
     },
     setBoardFile(nextBoardFile) {
-      boardFile = nextBoardFile;
+      boardFile = nextBoardFile
     },
     getBoardSummary() {
-      return toBoardSummary(boardPath, boardFile);
+      return toBoardSummary(boardPath, boardFile)
     },
     async listBoards() {
       const boardPaths = await Array.fromAsync(
@@ -65,14 +64,14 @@ export async function createDocumentRepository(): Promise<DocumentRepository> {
           cwd: WORKSPACE_ROOT,
           absolute: true,
         }),
-      );
+      )
       const boards = await Promise.all(
         boardPaths.map(async (nextBoardPath) => {
-          const loaded = await loadAgentishBoard(nextBoardPath);
-          return toBoardSummary(nextBoardPath, loaded.boardFile);
+          const loaded = await loadAgentishBoard(nextBoardPath)
+          return toBoardSummary(nextBoardPath, loaded.boardFile)
         }),
-      );
-      return boards.sort((left, right) => left.label.localeCompare(right.label));
+      )
+      return boards.sort((left, right) => left.label.localeCompare(right.label))
     },
     async listDocuments() {
       const documentPaths = await Array.fromAsync(
@@ -80,40 +79,41 @@ export async function createDocumentRepository(): Promise<DocumentRepository> {
           cwd: WORKSPACE_ROOT,
           absolute: true,
         }),
-      );
+      )
       return documentPaths
         .map((documentPath) => ({
-          path: relative(WORKSPACE_ROOT, documentPath) || basename(documentPath),
+          path:
+            relative(WORKSPACE_ROOT, documentPath) || basename(documentPath),
           label: basename(documentPath),
         }))
-        .sort((left, right) => left.path.localeCompare(right.path));
+        .sort((left, right) => left.path.localeCompare(right.path))
     },
     async openBoard(nextBoardPath) {
-      const loaded = await loadAgentishBoard(nextBoardPath);
-      boardPath = loaded.boardPath;
-      boardFile = loaded.boardFile;
-      sourceWorkspace = loaded.sourceWorkspace;
-      previousSourceWorkspace = structuredClone(sourceWorkspace);
-      workspaceState = loaded.workspaceState;
+      const loaded = await loadAgentishBoard(nextBoardPath)
+      boardPath = loaded.boardPath
+      boardFile = loaded.boardFile
+      sourceWorkspace = loaded.sourceWorkspace
+      previousSourceWorkspace = structuredClone(sourceWorkspace)
+      workspaceState = loaded.workspaceState
     },
     getSourceWorkspace() {
-      return sourceWorkspace;
+      return sourceWorkspace
     },
     setSourceWorkspace(nextWorkspace) {
-      sourceWorkspace = nextWorkspace;
+      sourceWorkspace = nextWorkspace
     },
     getWorkspaceState() {
-      return workspaceState;
+      return workspaceState
     },
     setWorkspaceState(nextState) {
-      workspaceState = nextState;
-      boardFile = boardFileWithWorkspaceState(boardFile, nextState);
+      workspaceState = nextState
+      boardFile = boardFileWithWorkspaceState(boardFile, nextState)
     },
     getPreviousSourceWorkspace() {
-      return previousSourceWorkspace;
+      return previousSourceWorkspace
     },
     setPreviousSourceWorkspace(nextWorkspace) {
-      previousSourceWorkspace = nextWorkspace;
+      previousSourceWorkspace = nextWorkspace
     },
-  };
+  }
 }

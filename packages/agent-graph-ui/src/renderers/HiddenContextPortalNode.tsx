@@ -1,29 +1,31 @@
-import { memo, useState } from "react";
-import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
-import { NodeAvatar } from "../components/NodeAvatar";
-import { Handle, Position, type NodeProps } from "reactflow";
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
+import { memo, useState } from "react"
+import { Handle, type NodeProps, Position } from "reactflow"
+import { NodeAvatar } from "../components/NodeAvatar"
 
-export const HiddenContextPortalNode = memo(function HiddenContextPortalNode({ data }: NodeProps<{
-  label: string;
-  summary: string;
-  sourceId: string;
-  hiddenCount: number;
+export const HiddenContextPortalNode = memo(function HiddenContextPortalNode({
+  data,
+}: NodeProps<{
+  label: string
+  summary: string
+  sourceId: string
+  hiddenCount: number
   hiddenNodes?: Array<{
-    sourceId: string;
-    label: string;
-    sourcePath?: string;
-  }>;
-  onRevealHiddenNode?: (hiddenNodeId: string) => void;
-  isHidePreview?: boolean;
+    sourceId: string
+    label: string
+    sourcePath?: string
+  }>
+  onRevealHiddenNode?: (hiddenNodeId: string) => void
+  isHidePreview?: boolean
 }>) {
-  useRenderCounter("HiddenContextPortalNode");
-  const [expanded, setExpanded] = useState(false);
-  const hiddenNodes = data.hiddenNodes ?? [];
-  const previewNodes = expanded ? hiddenNodes : hiddenNodes.slice(0, 3);
+  useRenderCounter("HiddenContextPortalNode")
+  const [expanded, setExpanded] = useState(false)
+  const hiddenNodes = data.hiddenNodes ?? []
+  const previewNodes = expanded ? hiddenNodes : hiddenNodes.slice(0, 3)
   const columnCount = expanded
     ? Math.max(1, Math.ceil(Math.sqrt(hiddenNodes.length)))
-    : previewNodes.length;
-  const canToggle = hiddenNodes.length > 3;
+    : previewNodes.length
+  const canToggle = hiddenNodes.length > 3
 
   return (
     <div
@@ -39,20 +41,30 @@ export const HiddenContextPortalNode = memo(function HiddenContextPortalNode({ d
       />
       <div
         className="grid gap-1"
-        style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
+        style={{
+          gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+        }}
       >
         {previewNodes.map((hiddenNode) => (
           <button
             key={hiddenNode.sourceId}
             type="button"
-            title={hiddenNode.sourcePath ? `${hiddenNode.label}\n${hiddenNode.sourcePath}` : hiddenNode.label}
+            title={
+              hiddenNode.sourcePath
+                ? `${hiddenNode.label}\n${hiddenNode.sourcePath}`
+                : hiddenNode.label
+            }
             onClick={(event) => {
-              event.stopPropagation();
-              data.onRevealHiddenNode?.(hiddenNode.sourceId);
+              event.stopPropagation()
+              data.onRevealHiddenNode?.(hiddenNode.sourceId)
             }}
             className="nodrag nopan rounded-full transition hover:scale-110 focus:outline-none focus:ring-2 focus:ring-amber-300/70"
           >
-            <NodeAvatar nodeKey={hiddenNode.sourceId} label={hiddenNode.label} size="sm" />
+            <NodeAvatar
+              nodeKey={hiddenNode.sourceId}
+              label={hiddenNode.label}
+              size="sm"
+            />
           </button>
         ))}
       </div>
@@ -60,8 +72,8 @@ export const HiddenContextPortalNode = memo(function HiddenContextPortalNode({ d
         <button
           type="button"
           onClick={(event) => {
-            event.stopPropagation();
-            setExpanded((current) => !current);
+            event.stopPropagation()
+            setExpanded((current) => !current)
           }}
           className="nodrag nopan mt-2 rounded-full border border-amber-400/40 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-amber-200 hover:bg-amber-500/10"
         >
@@ -74,5 +86,5 @@ export const HiddenContextPortalNode = memo(function HiddenContextPortalNode({ d
         className="!h-2 !w-2 !border-amber-300 !bg-amber-400 !opacity-0"
       />
     </div>
-  );
-});
+  )
+})

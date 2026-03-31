@@ -1,9 +1,13 @@
-import type { LayerDefinition, SourceWorkspace, WorkspaceState } from "./types.js";
+import type {
+  LayerDefinition,
+  SourceWorkspace,
+  WorkspaceState,
+} from "./types.js"
 
 const agentGraphBlueprintPath =
-  (((globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ??
-    {})["AGENT_GRAPH_BLUEPRINT_PATH"]) ??
-  "/home/ec2-user/workspace/projects/agent-infrastructure/blueprints/agent-graph/agent-graph.agentish.ts";
+  (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process?.env?.AGENT_GRAPH_BLUEPRINT_PATH ??
+  "/home/ec2-user/workspace/projects/agent-infrastructure/blueprints/agent-graph/agent-graph.agentish.ts"
 
 export function createSampleSourceWorkspace(): SourceWorkspace {
   return {
@@ -23,14 +27,16 @@ export function createSampleSourceWorkspace(): SourceWorkspace {
         documentId: "doc-agent-graph",
         label: "Whole-System Comprehension",
         kind: "scenario-family",
-        summary: "Understand the complete multi-document graph and trust its completeness.",
+        summary:
+          "Understand the complete multi-document graph and trust its completeness.",
       },
       {
         id: "family-compose",
         documentId: "doc-agent-graph",
         label: "View Composition",
         kind: "scenario-family",
-        summary: "Compose persistent semantic slices and compare them together.",
+        summary:
+          "Compose persistent semantic slices and compare them together.",
       },
       {
         id: "family-inspection",
@@ -51,7 +57,8 @@ export function createSampleSourceWorkspace(): SourceWorkspace {
         documentId: "doc-agent-graph",
         label: "Trust Under Change",
         kind: "scenario-family",
-        summary: "Understand external changes and conflicts through graph-native diff.",
+        summary:
+          "Understand external changes and conflicts through graph-native diff.",
       },
       {
         id: "component-screen",
@@ -128,14 +135,16 @@ export function createSampleSourceWorkspace(): SourceWorkspace {
         documentId: "doc-agent-graph",
         label: "BunGraphServer",
         kind: "runtime",
-        summary: "Authoritative server for snapshots, validation, and persistence.",
+        summary:
+          "Authoritative server for snapshots, validation, and persistence.",
       },
       {
         id: "runtime-filesystem",
         documentId: "doc-agent-graph",
         label: "WorkspaceFilesystem",
         kind: "runtime",
-        summary: "Authoritative persistence layer for source and workspace sidecar state.",
+        summary:
+          "Authoritative persistence layer for source and workspace sidecar state.",
       },
       {
         id: "workspace-op-reveal",
@@ -266,7 +275,7 @@ export function createSampleSourceWorkspace(): SourceWorkspace {
         label: "reveal hidden context enters inspection flow",
       },
     ],
-  };
+  }
 }
 
 export function createInitialWorkspaceState(): WorkspaceState {
@@ -287,7 +296,7 @@ export function createInitialWorkspaceState(): WorkspaceState {
       y: 40,
       derivedFromLayerId: null,
     },
-  ];
+  ]
 
   return {
     rootId: "agent-graph",
@@ -295,5 +304,5 @@ export function createInitialWorkspaceState(): WorkspaceState {
     layers,
     nodePositions: {},
     pinnedNodeIds: [],
-  };
+  }
 }
