@@ -19,6 +19,7 @@ const Artifact = {
   targetBlueprint: define.document("TargetBlueprintFile"),
   sectionMap: define.document("BlueprintSectionTableOfContents"),
   sharedConcept: define.document("SharedBlueprintConcept"),
+  qualityBlueprint: define.document("AgentishQualityBlueprint"),
   combinedDraft: define.document("CombinedBlueprintDraft"),
   sectionFeedback: define.document("SectionFeedbackSet"),
   proposalBlueprint: define.document("ProposalBlueprint"),
@@ -49,6 +50,7 @@ DefineBlueprintWithTeamGuide.contains(
   Artifact.targetBlueprint,
   Artifact.sectionMap,
   Artifact.sharedConcept,
+  Artifact.qualityBlueprint,
   Artifact.combinedDraft,
   Artifact.sectionFeedback,
   Artifact.proposalBlueprint,
@@ -78,6 +80,7 @@ DefineBlueprintWithTeamGuide.enforces(`
 - The process should improve blueprint quality before implementation by forcing section-level decomposition, independent section authorship, and whole-file review before acceptance.
 - The subject of this process is the team-authored blueprint workflow itself.
 - The shared concept and the assigned section scope are fixed inputs for section authors.
+- The Agentish quality blueprint is a required input for every section-writing and section-review agent in this process.
 - A section author may draft only its assigned section and may not rewrite the whole blueprint opportunistically.
 - No section becomes authoritative until the whole file has been recombined and accepted.
 - Review and rewrite may refine the draft, but they do not transfer authority away from whole-file recombination.
@@ -100,6 +103,7 @@ Section.scenarios.answers(
 DefineBlueprintWithTeamGuide.defines(`
 - BlueprintSectionTableOfContents means the ordered list of sections the final subject blueprint will contain.
 - SharedBlueprintConcept means the common subject intent all section authors preserve while drafting and rewriting.
+- AgentishQualityBlueprint means the repository quality blueprint that section-writing and section-review agents must load before judging or drafting Agentish output.
 - FixedInput means the shared concept, canonical section map, and assigned section scope given to a team sub agent before drafting.
 - DraftableOutput means the one assigned section draft produced by that team sub agent.
 - WholeFileRecombination means the point where section drafts become one proposal blueprint and later one accepted blueprint.
@@ -159,20 +163,34 @@ when(Step.collectReview.contains("section feedback"))
 when(Step.assignDrafting.starts())
   .then(DefineBlueprintWithTeamGuide.requires(Artifact.sectionMap))
   .and(DefineBlueprintWithTeamGuide.requires(Artifact.sharedConcept))
+  .and(DefineBlueprintWithTeamGuide.requires(Artifact.qualityBlueprint))
   .and(DefineBlueprintWithTeamGuide.requires("an explicit team sub agent owner for each section"))
-  .and(DefineBlueprintWithTeamGuide.expects("each sub agent to load the relevant agent-team profile, the canonical Agentish sections blueprint, the assigned section name, and the shared concept before drafting"));
+  .and(DefineBlueprintWithTeamGuide.expects("each sub agent to load the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, the assigned section name, and the shared concept before drafting"));
 
 when(Step.combineDrafts.starts())
   .then(DefineBlueprintWithTeamGuide.requires("all drafted sections"))
   .and(DefineBlueprintWithTeamGuide.preserves("section boundaries inside the combined draft"));
 
+when(Step.collectReview.contains("section feedback"))
+  .then(DefineBlueprintWithTeamGuide.requires(Artifact.qualityBlueprint))
+  .and(DefineBlueprintWithTeamGuide.expects("each reviewing agent to load the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, and the whole blueprint draft before producing section feedback"));
+
 when(Step.assignRewrites.starts())
   .then(DefineBlueprintWithTeamGuide.requires(Artifact.combinedDraft))
   .and(DefineBlueprintWithTeamGuide.requires(Artifact.sectionFeedback))
+  .and(DefineBlueprintWithTeamGuide.requires(Artifact.qualityBlueprint))
   .and(DefineBlueprintWithTeamGuide.prefers("the same owner for each section unless reassignment is explicitly needed"));
 
 when(Step.collectReview.contains("section feedback"))
   .then(DefineBlueprintWithTeamGuide.requires("cross-section dependencies called out explicitly when they exist"));
+
+when(Step.assignRewrites.starts())
+  .then(DefineBlueprintWithTeamGuide.expects("each rewrite agent to load the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, the assigned section name, the combined draft, and the section-grouped feedback before rewriting"));
+
+when(Step.collectFinalReview.starts())
+  .then(DefineBlueprintWithTeamGuide.requires(Artifact.proposalBlueprint))
+  .and(DefineBlueprintWithTeamGuide.requires(Artifact.qualityBlueprint))
+  .and(DefineBlueprintWithTeamGuide.expects("each final-review agent to load the relevant agent-team profile, the Agentish quality blueprint, the canonical Agentish sections blueprint, and the proposal blueprint before suggesting final changes"));
 
 when(Step.decideAcceptance.encounters("requested final changes"))
   .then(DefineBlueprintWithTeamGuide.returnsTo(Step.assignRewrites))
