@@ -3,7 +3,14 @@ import type {
   WorkbenchNodeRecord,
   WorkbenchSnapshotResponse,
 } from "@agent-infrastructure/agent-workbench-protocol"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
+import {
+  type MouseEvent as ReactMouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import ReactFlow, {
   addEdge,
   Background,
@@ -178,7 +185,7 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
         setSaving(true)
         setError("")
         try {
-          const response = await fetch(
+          const response = (await dashboardSessionFetch(
             `${apiRootUrl}/workbench?id=${encodeURIComponent(currentWorkbench.id)}`,
             {
               method: "PUT",
@@ -191,8 +198,8 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
                 edges: flowEdgesToRecords(nextEdges),
                 viewport: nextViewport,
               } satisfies WorkbenchDocumentRecord),
-            },
-          )
+            } as RequestInit,
+          )) as Response
           if (!response.ok) {
             throw new Error(await response.text())
           }
@@ -271,7 +278,9 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
       setLoading(true)
       setError("")
       try {
-        const response = await fetch(`${apiRootUrl}/workbench`)
+        const response = (await dashboardSessionFetch(
+          `${apiRootUrl}/workbench`,
+        )) as Response
         if (!response.ok) {
           throw new Error(await response.text())
         }
@@ -329,16 +338,35 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
         return
       }
 
-      const bounds = canvasRef.current.getBoundingClientRect()
       const viewportState = viewportRef.current
-      const x = (clientX - bounds.left - viewportState.x) / viewportState.zoom
-      const y = (clientY - bounds.top - viewportState.y) / viewportState.zoom
+      const point =
+        reactFlowInstance && "screenToFlowPosition" in reactFlowInstance
+          ? reactFlowInstance.screenToFlowPosition({
+              x: clientX,
+              y: clientY,
+            })
+          : (() => {
+              const bounds = canvasRef.current?.getBoundingClientRect()
+              if (!bounds) {
+                return null
+              }
+              return {
+                x:
+                  (clientX - bounds.left - viewportState.x) /
+                  viewportState.zoom,
+                y:
+                  (clientY - bounds.top - viewportState.y) / viewportState.zoom,
+              }
+            })()
+      if (!point) {
+        return
+      }
       const newNode = nodeRecordToFlowNode({
         id: createNodeId(),
         type: "text",
         text: "",
-        x,
-        y,
+        x: point.x,
+        y: point.y,
       })
       setNodes((currentNodes) => {
         const nextNodes = [...currentNodes, newNode]
@@ -346,26 +374,21 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
         return nextNodes
       })
     },
-    [nodeRecordToFlowNode, queueSave, setNodes],
+    [nodeRecordToFlowNode, queueSave, reactFlowInstance, setNodes],
   )
 
-  useEffect(() => {
-    if (!reactFlowInstance || !canvasRef.current) {
-      return
-    }
-
-    function handleCanvasClick(event: MouseEvent) {
-      if (event.detail !== 2) {
+  const handlePaneDoubleClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (!(event.target instanceof Element)) {
+        return
+      }
+      if (!event.target.closest(".react-flow__pane")) {
         return
       }
       createNodeAtClientPoint(event.clientX, event.clientY, event.target)
-    }
-
-    const canvasElement = canvasRef.current
-    canvasElement.addEventListener("click", handleCanvasClick, true)
-    return () =>
-      canvasElement.removeEventListener("click", handleCanvasClick, true)
-  }, [createNodeAtClientPoint, reactFlowInstance])
+    },
+    [createNodeAtClientPoint],
+  )
 
   function handleNodeDragStop() {
     queueSave(nodes, edgesRef.current, viewportRef.current)
@@ -412,6 +435,7 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
           onConnect={handleConnect}
           onNodeDragStop={handleNodeDragStop}
           onMoveEnd={handleMoveEnd}
+          onDoubleClick={handlePaneDoubleClick}
           onInit={(instance) => {
             setReactFlowInstance(instance)
             instance.setViewport(viewport)

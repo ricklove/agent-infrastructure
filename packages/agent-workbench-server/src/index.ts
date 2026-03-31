@@ -11,18 +11,33 @@ import {
 } from "./workbench-store.js"
 
 const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
-const logPath =
+const requestedLogPath =
   process.env.AGENT_WORKBENCH_LOG_PATH?.trim() ||
   `${stateDir}/logs/agent-workbench-server.log`
 const port = Number.parseInt(process.env.AGENT_WORKBENCH_PORT ?? "8792", 10)
 
-mkdirSync(dirname(logPath), { recursive: true })
+function writableLogPath(candidate: string): string {
+  try {
+    mkdirSync(dirname(candidate), { recursive: true })
+    appendFileSync(candidate, "")
+    return candidate
+  } catch {
+    const fallback = `/tmp/agent-workbench-server-${process.pid}.log`
+    mkdirSync(dirname(fallback), { recursive: true })
+    appendFileSync(fallback, "")
+    return fallback
+  }
+}
+
+const logPath = writableLogPath(requestedLogPath)
 
 function log(message: string) {
-  appendFileSync(
-    logPath,
-    `[${new Date().toISOString()}:agent-workbench-server] ${message}\n`,
-  )
+  try {
+    appendFileSync(
+      logPath,
+      `[${new Date().toISOString()}:agent-workbench-server] ${message}\n`,
+    )
+  } catch {}
 }
 
 function jsonResponse(payload: unknown, status = 200) {
@@ -39,6 +54,9 @@ function textError(message: string, status = 400) {
 }
 
 await ensureDefaultWorkbench()
+if (logPath !== requestedLogPath) {
+  log(`fallback log path active requested=${requestedLogPath} actual=${logPath}`)
+}
 log(`starting on :${port}`)
 
 Bun.serve({
