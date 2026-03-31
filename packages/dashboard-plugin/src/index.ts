@@ -5,7 +5,7 @@ export type DashboardFeatureId =
   | "terminal"
   | "projects"
   | "design"
-  | "debug";
+  | "debug"
 
 export type DashboardFeatureIcon =
   | "swarm"
@@ -14,52 +14,52 @@ export type DashboardFeatureIcon =
   | "terminal"
   | "projects"
   | "design"
-  | "debug";
+  | "debug"
 
 export type DashboardScreenModule = {
-  default: unknown;
-};
+  default: unknown
+}
 
 export type DashboardFeatureScreenContext = {
-  windowOrigin: string;
-  windowWsOrigin: string;
-};
+  windowOrigin: string
+  windowWsOrigin: string
+}
 
 export type DashboardFeatureScreenOptions = {
-  props?: Record<string, unknown>;
-  getProps?: (context: DashboardFeatureScreenContext) => Record<string, unknown>;
-};
+  props?: Record<string, unknown>
+  getProps?: (context: DashboardFeatureScreenContext) => Record<string, unknown>
+}
 
 export type DashboardFeatureStartupDefinition = {
-  kind: "bun-entry";
-  entry: string;
-  logFileName?: string;
-};
+  kind: "bun-entry"
+  entry: string
+  logFileName?: string
+}
 
-export type DashboardFeatureBackendStartupPolicy = "lazy" | "always";
+export type DashboardFeatureBackendStartupPolicy = "lazy" | "always"
 
 export type DashboardFeatureBackendDefinition = {
-  id: string;
-  apiBasePath?: string;
-  wsBasePath?: string;
-  upstreamWsPath?: string;
-  upstreamBaseUrlEnv?: string;
-  defaultBaseUrl?: string;
-  healthPath: string;
-  startupPolicy: DashboardFeatureBackendStartupPolicy;
-  startup?: DashboardFeatureStartupDefinition;
-};
+  id: string
+  apiBasePath?: string
+  wsBasePath?: string
+  upstreamWsPath?: string
+  upstreamBaseUrlEnv?: string
+  defaultBaseUrl?: string
+  healthPath: string
+  startupPolicy: DashboardFeatureBackendStartupPolicy
+  startup?: DashboardFeatureStartupDefinition
+}
 
 export type DashboardFeaturePlugin = {
-  id: DashboardFeatureId;
-  label: string;
-  route: `/${string}`;
-  description: string;
-  icon: DashboardFeatureIcon;
-  screen?: DashboardFeatureScreenOptions;
-  backend?: DashboardFeatureBackendDefinition;
-};
+  id: DashboardFeatureId
+  label: string
+  route: `/${string}`
+  description: string
+  icon: DashboardFeatureIcon
+  screen?: DashboardFeatureScreenOptions
+  backend?: DashboardFeatureBackendDefinition
+}
 
 export type DashboardFeatureUiPlugin = DashboardFeaturePlugin & {
-  loadScreen: () => Promise<DashboardScreenModule>;
-};
+  loadScreen: () => Promise<DashboardScreenModule>
+}

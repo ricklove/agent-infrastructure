@@ -1,37 +1,30 @@
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
-import { nodeAvatarColors } from "./graphColors";
+import { nodeAvatarColors } from "./graphColors"
 
 function initialsForLabel(label: string): string {
   const words = label
     .split(/[^A-Za-z0-9]+/)
     .map((part) => part.trim())
-    .filter(Boolean);
+    .filter(Boolean)
   if (words.length === 0) {
-    return "?";
+    return "?"
   }
   if (words.length === 1) {
-    return words[0].slice(0, 2).toUpperCase();
+    return words[0].slice(0, 2).toUpperCase()
   }
-  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase();
+  return `${words[0][0] ?? ""}${words[1][0] ?? ""}`.toUpperCase()
 }
 
 type NodeAvatarProps = {
-  nodeKey: string;
-  label: string;
-  size?: "sm" | "md";
-};
+  nodeKey: string
+  label: string
+  size?: "sm" | "md"
+}
 
-export function NodeAvatar({
-  nodeKey,
-  label,
-  size = "md",
-}: NodeAvatarProps) {
+export function NodeAvatar({ nodeKey, label, size = "md" }: NodeAvatarProps) {
   useRenderCounter("NodeAvatar")
-  const colors = nodeAvatarColors(nodeKey);
-  const sizing =
-    size === "sm"
-      ? "h-4 w-4 text-[8px]"
-      : "h-5 w-5 text-[9px]";
+  const colors = nodeAvatarColors(nodeKey)
+  const sizing = size === "sm" ? "h-4 w-4 text-[8px]" : "h-5 w-5 text-[9px]"
 
   return (
     <span
@@ -46,5 +39,5 @@ export function NodeAvatar({
     >
       {initialsForLabel(label)}
     </span>
-  );
+  )
 }

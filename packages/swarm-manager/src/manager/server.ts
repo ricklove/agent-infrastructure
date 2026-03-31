@@ -1,79 +1,79 @@
-import { Database } from "bun:sqlite";
-import { existsSync, readFileSync } from "node:fs";
+import { Database } from "bun:sqlite"
+import { existsSync, readFileSync } from "node:fs"
 import {
   DEFAULT_BOOTSTRAP_CONTEXT_PATH,
   DEFAULT_METRICS_DB_PATH,
-} from "../paths.js";
+} from "../paths.js"
 
 type WorkerAuthMessage = {
-  type: "auth";
-  token: string;
-  workerId: string;
-  instanceId: string;
-  privateIp: string;
-  nodeRole: "manager" | "worker";
-};
+  type: "auth"
+  token: string
+  workerId: string
+  instanceId: string
+  privateIp: string
+  nodeRole: "manager" | "worker"
+}
 
 type WorkerMetrics = {
-  cpuPercent: number;
-  memoryUsedBytes: number;
-  memoryTotalBytes: number;
-  memoryPercent: number;
-  containerCount: number;
-};
+  cpuPercent: number
+  memoryUsedBytes: number
+  memoryTotalBytes: number
+  memoryPercent: number
+  containerCount: number
+}
 
 type ProcessSample = {
-  pid: number;
-  comm: string;
-  state: string;
-  cpuPercent: number;
-  rssBytes: number;
-};
+  pid: number
+  comm: string
+  state: string
+  cpuPercent: number
+  rssBytes: number
+}
 
 type ProcessWindow = {
-  sampledAt: number;
-  intervalMs: number;
-  topCpu: ProcessSample[];
-  topMemory: ProcessSample[];
-};
+  sampledAt: number
+  intervalMs: number
+  topCpu: ProcessSample[]
+  topMemory: ProcessSample[]
+}
 
 type ContainerMetrics = {
-  containerId: string;
-  containerName: string;
-  projectId: string | null;
-  cpuPercent: number;
-  memoryUsedBytes: number;
-  memoryLimitBytes: number;
-  memoryPercent: number;
-};
+  containerId: string
+  containerName: string
+  projectId: string | null
+  cpuPercent: number
+  memoryUsedBytes: number
+  memoryLimitBytes: number
+  memoryPercent: number
+}
 
 type WorkerHeartbeatMessage = {
-  type: "heartbeat";
-  workerId: string;
-  instanceId: string;
-  privateIp: string;
-  nodeRole: "manager" | "worker";
-  timestamp: number;
-  worker: WorkerMetrics;
-  containers: ContainerMetrics[];
-  processWindow?: ProcessWindow;
-};
+  type: "heartbeat"
+  workerId: string
+  instanceId: string
+  privateIp: string
+  nodeRole: "manager" | "worker"
+  timestamp: number
+  worker: WorkerMetrics
+  containers: ContainerMetrics[]
+  processWindow?: ProcessWindow
+}
 
-type IncomingMessage = WorkerAuthMessage | WorkerHeartbeatMessage;
+type IncomingMessage = WorkerAuthMessage | WorkerHeartbeatMessage
 
 type SocketData = {
-  authenticated: boolean;
-  workerId?: string;
-  instanceId?: string;
-  privateIp?: string;
-  nodeRole?: "manager" | "worker";
-};
+  authenticated: boolean
+  workerId?: string
+  instanceId?: string
+  privateIp?: string
+  nodeRole?: "manager" | "worker"
+}
 
 type LiveWorkerState = {
-  workerId: string;
-  instanceId: string;
-  privateIp: string;
-  nodeRole: "manager" | "worker";
+  workerId: string
+  instanceId: string
+  privateIp: string
+  nodeRole: "manager" | "worker"
   status:
     | "booting"
     | "connected"
@@ -84,47 +84,47 @@ type LiveWorkerState = {
     | "hibernating"
     | "shutdown"
     | "terminated"
-    | "zombie";
-  lastHeartbeatAt: number;
-  lastMetrics: WorkerMetrics | null;
-  lastContainers: ContainerMetrics[];
-};
+    | "zombie"
+  lastHeartbeatAt: number
+  lastMetrics: WorkerMetrics | null
+  lastContainers: ContainerMetrics[]
+}
 
 type WorkerSampleRow = {
-  workerId: string;
-  instanceId: string;
-  tsMs: number;
-  cpuPercent: number;
-  memoryUsedBytes: number;
-  memoryTotalBytes: number;
-  memoryPercent: number;
-  containerCount: number;
-};
+  workerId: string
+  instanceId: string
+  tsMs: number
+  cpuPercent: number
+  memoryUsedBytes: number
+  memoryTotalBytes: number
+  memoryPercent: number
+  containerCount: number
+}
 
 type ContainerSampleRow = {
-  workerId: string;
-  projectId: string | null;
-  containerId: string;
-  containerName: string;
-  tsMs: number;
-  cpuPercent: number;
-  memoryUsedBytes: number;
-  memoryLimitBytes: number;
-  memoryPercent: number;
-};
+  workerId: string
+  projectId: string | null
+  containerId: string
+  containerName: string
+  tsMs: number
+  cpuPercent: number
+  memoryUsedBytes: number
+  memoryLimitBytes: number
+  memoryPercent: number
+}
 
 type ProcessSampleRow = {
-  workerId: string;
-  instanceId: string;
-  tsMs: number;
-  ranking: "cpu" | "memory";
-  rank: number;
-  pid: number;
-  comm: string;
-  state: string;
-  cpuPercent: number;
-  rssBytes: number;
-};
+  workerId: string
+  instanceId: string
+  tsMs: number
+  ranking: "cpu" | "memory"
+  rank: number
+  pid: number
+  comm: string
+  state: string
+  cpuPercent: number
+  rssBytes: number
+}
 
 type WorkerLifecycleEventType =
   | "launch_request_started"
@@ -167,84 +167,84 @@ type WorkerLifecycleEventType =
   | "wakeup"
   | "shutdown_requested"
   | "shutdown"
-  | "terminated";
+  | "terminated"
 
 type WorkerLifecycleEventRecord = {
-  workerId: string;
-  instanceId: string;
-  privateIp: string;
-  nodeRole: "manager" | "worker";
-  eventType: WorkerLifecycleEventType;
-  eventTsMs: number;
-  details: Record<string, unknown> | null;
-};
+  workerId: string
+  instanceId: string
+  privateIp: string
+  nodeRole: "manager" | "worker"
+  eventType: WorkerLifecycleEventType
+  eventTsMs: number
+  details: Record<string, unknown> | null
+}
 
 type WorkerLifecycleEventBody = {
-  workerId: string;
-  instanceId: string;
-  privateIp: string;
-  nodeRole?: "manager" | "worker";
-  eventType: WorkerLifecycleEventType;
-  eventTsMs?: number;
-  details?: Record<string, unknown>;
-};
+  workerId: string
+  instanceId: string
+  privateIp: string
+  nodeRole?: "manager" | "worker"
+  eventType: WorkerLifecycleEventType
+  eventTsMs?: number
+  details?: Record<string, unknown>
+}
 
 type ServiceRecord = {
-  namespace: string;
-  serviceName: string;
-  instanceId: string;
-  workerId: string;
-  workerPrivateIp: string;
-  hostPort: number;
-  containerPort: number;
-  protocol: string;
-  healthy: boolean;
-  updatedAtMs: number;
-};
+  namespace: string
+  serviceName: string
+  instanceId: string
+  workerId: string
+  workerPrivateIp: string
+  hostPort: number
+  containerPort: number
+  protocol: string
+  healthy: boolean
+  updatedAtMs: number
+}
 
 type ServiceRegistrationBody = {
-  namespace: string;
-  serviceName: string;
-  instanceId: string;
-  workerId: string;
-  workerPrivateIp: string;
-  hostPort: number;
-  containerPort: number;
-  protocol?: string;
-  healthy?: boolean;
-};
+  namespace: string
+  serviceName: string
+  instanceId: string
+  workerId: string
+  workerPrivateIp: string
+  hostPort: number
+  containerPort: number
+  protocol?: string
+  healthy?: boolean
+}
 
 type ServiceReleaseBody = {
-  namespace: string;
-  serviceName: string;
-  instanceId: string;
-};
+  namespace: string
+  serviceName: string
+  instanceId: string
+}
 
 type PortLeaseRequestBody = {
-  workerId: string;
-  namespace: string;
-  serviceName: string;
-  instanceId: string;
-  requestedPort?: number;
-};
+  workerId: string
+  namespace: string
+  serviceName: string
+  instanceId: string
+  requestedPort?: number
+}
 
 type PortReleaseBody = {
-  workerId: string;
-  hostPort: number;
-};
+  workerId: string
+  hostPort: number
+}
 
 type BootstrapContext = {
-  region?: string;
-  swarmTagKey?: string;
-  swarmTagValue?: string;
-};
+  region?: string
+  swarmTagKey?: string
+  swarmTagValue?: string
+}
 
 type Ec2InstanceInventory = {
-  instanceId: string;
-  privateIp: string;
-  state: string;
-  launchTimeMs: number | null;
-};
+  instanceId: string
+  privateIp: string
+  state: string
+  launchTimeMs: number | null
+}
 
 const config = {
   hostname: process.env.MANAGER_WS_HOST ?? "0.0.0.0",
@@ -256,17 +256,9 @@ const config = {
   rawRetentionMs:
     Number(process.env.RAW_RETENTION_DAYS ?? "7") * 24 * 60 * 60 * 1000,
   rollup1mRetentionMs:
-    Number(process.env.ROLLUP_1M_RETENTION_DAYS ?? "30") *
-    24 *
-    60 *
-    60 *
-    1000,
+    Number(process.env.ROLLUP_1M_RETENTION_DAYS ?? "30") * 24 * 60 * 60 * 1000,
   rollup1hRetentionMs:
-    Number(process.env.ROLLUP_1H_RETENTION_DAYS ?? "365") *
-    24 *
-    60 *
-    60 *
-    1000,
+    Number(process.env.ROLLUP_1H_RETENTION_DAYS ?? "365") * 24 * 60 * 60 * 1000,
   rootNamespace: process.env.SWARM_ROOT_NAMESPACE ?? "root",
   portRangeStart: Number(process.env.SWARM_SERVICE_PORT_RANGE_START ?? "20000"),
   portRangeEnd: Number(process.env.SWARM_SERVICE_PORT_RANGE_END ?? "40000"),
@@ -277,10 +269,10 @@ const config = {
   bootstrapContextPath:
     process.env.SWARM_BOOTSTRAP_CONTEXT_PATH ?? DEFAULT_BOOTSTRAP_CONTEXT_PATH,
   ec2InventoryJson: process.env.SWARM_EC2_INVENTORY_JSON ?? "",
-};
+}
 
 if (!config.sharedToken) {
-  throw new Error("SWARM_SHARED_TOKEN must be set");
+  throw new Error("SWARM_SHARED_TOKEN must be set")
 }
 
 if (
@@ -289,10 +281,10 @@ if (
   config.portRangeStart <= 0 ||
   config.portRangeEnd < config.portRangeStart
 ) {
-  throw new Error("SWARM service port range is invalid");
+  throw new Error("SWARM service port range is invalid")
 }
 
-const db = new Database(config.dbPath, { create: true });
+const db = new Database(config.dbPath, { create: true })
 db.exec(`
   PRAGMA journal_mode = WAL;
   PRAGMA synchronous = NORMAL;
@@ -455,7 +447,7 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_worker_lifecycle_events_ts
     ON worker_lifecycle_events(event_ts_ms DESC);
-`);
+`)
 
 const insertWorkerSample = db.query(
   `INSERT INTO worker_samples (
@@ -468,7 +460,7 @@ const insertWorkerSample = db.query(
     memory_percent,
     container_count
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-);
+)
 
 const insertContainerSample = db.query(
   `INSERT INTO container_samples (
@@ -482,7 +474,7 @@ const insertContainerSample = db.query(
     memory_limit_bytes,
     memory_percent
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-);
+)
 
 const insertProcessSample = db.query(
   `INSERT INTO process_samples (
@@ -497,7 +489,7 @@ const insertProcessSample = db.query(
     cpu_percent,
     rss_bytes
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-);
+)
 
 const upsertServiceRecord = db.query(
   `INSERT INTO service_instances (
@@ -521,12 +513,12 @@ const upsertServiceRecord = db.query(
     protocol = excluded.protocol,
     healthy = excluded.healthy,
     updated_at_ms = excluded.updated_at_ms`,
-);
+)
 
 const deleteServiceRecord = db.query(
   `DELETE FROM service_instances
    WHERE namespace = ? AND service_name = ? AND instance_id = ?`,
-);
+)
 
 const listServiceRecords = db.query(
   `SELECT
@@ -542,7 +534,7 @@ const listServiceRecords = db.query(
       updated_at_ms
    FROM service_instances
    ORDER BY namespace, service_name, updated_at_ms DESC`,
-);
+)
 
 const lookupServiceRecords = db.query(
   `SELECT
@@ -559,7 +551,7 @@ const lookupServiceRecords = db.query(
    FROM service_instances
    WHERE namespace = ? AND service_name = ? AND healthy = 1
    ORDER BY updated_at_ms DESC`,
-);
+)
 
 const lookupAnyServiceRecords = db.query(
   `SELECT
@@ -576,7 +568,7 @@ const lookupAnyServiceRecords = db.query(
    FROM service_instances
    WHERE namespace = ? AND service_name = ?
    ORDER BY updated_at_ms DESC`,
-);
+)
 
 const leaseSpecificPort = db.query(
   `INSERT INTO port_leases (
@@ -587,30 +579,30 @@ const leaseSpecificPort = db.query(
     instance_id,
     leased_at_ms
   ) VALUES (?, ?, ?, ?, ?, ?)`,
-);
+)
 
 const lookupExistingLease = db.query(
   `SELECT host_port
    FROM port_leases
    WHERE worker_id = ? AND namespace = ? AND service_name = ? AND instance_id = ?`,
-);
+)
 
 const listWorkerLeases = db.query(
   `SELECT host_port
    FROM port_leases
    WHERE worker_id = ?
    ORDER BY host_port ASC`,
-);
+)
 
 const deletePortLeaseByWorkerPort = db.query(
   `DELETE FROM port_leases
    WHERE worker_id = ? AND host_port = ?`,
-);
+)
 
 const deletePortLeaseByService = db.query(
   `DELETE FROM port_leases
    WHERE worker_id = ? AND namespace = ? AND service_name = ? AND instance_id = ?`,
-);
+)
 
 const insertWorkerLifecycleEvent = db.query(
   `INSERT INTO worker_lifecycle_events (
@@ -622,7 +614,7 @@ const insertWorkerLifecycleEvent = db.query(
     event_ts_ms,
     details_json
   ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-);
+)
 
 const listWorkerLifecycleEvents = db.query(
   `SELECT
@@ -636,7 +628,7 @@ const listWorkerLifecycleEvents = db.query(
    FROM worker_lifecycle_events
    ORDER BY event_ts_ms DESC
    LIMIT ?`,
-);
+)
 
 const listWorkerLifecycleEventsByWorker = db.query(
   `SELECT
@@ -651,7 +643,7 @@ const listWorkerLifecycleEventsByWorker = db.query(
    WHERE worker_id = ?
    ORDER BY event_ts_ms DESC
    LIMIT ?`,
-);
+)
 
 const listWorkerLifecycleEventsByWorkerBefore = db.query(
   `SELECT
@@ -666,7 +658,7 @@ const listWorkerLifecycleEventsByWorkerBefore = db.query(
    WHERE worker_id = ? AND event_ts_ms < ?
    ORDER BY event_ts_ms DESC
    LIMIT ?`,
-);
+)
 
 const listLatestWorkerLifecycleEvents = db.query(
   `SELECT
@@ -688,72 +680,72 @@ const listLatestWorkerLifecycleEvents = db.query(
     AND events.event_ts_ms = latest.max_event_ts_ms
    WHERE events.node_role = 'worker'
    ORDER BY events.event_ts_ms DESC`,
-);
+)
 
-const workerSampleBuffer: WorkerSampleRow[] = [];
-const containerSampleBuffer: ContainerSampleRow[] = [];
-const processSampleBuffer: ProcessSampleRow[] = [];
-const liveWorkers = new Map<string, LiveWorkerState>();
-const ec2InventoryWorkers = new Map<string, LiveWorkerState>();
-const sessions = new Map<string, Bun.ServerWebSocket<SocketData>>();
-const bootstrapContext = loadBootstrapContext();
+const workerSampleBuffer: WorkerSampleRow[] = []
+const containerSampleBuffer: ContainerSampleRow[] = []
+const processSampleBuffer: ProcessSampleRow[] = []
+const liveWorkers = new Map<string, LiveWorkerState>()
+const ec2InventoryWorkers = new Map<string, LiveWorkerState>()
+const sessions = new Map<string, Bun.ServerWebSocket<SocketData>>()
+const bootstrapContext = loadBootstrapContext()
 
 function nowMs(): number {
-  return Date.now();
+  return Date.now()
 }
 
 function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+  return typeof value === "number" && Number.isFinite(value)
 }
 
 function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
+  return typeof value === "string" && value.trim().length > 0
 }
 
 function normalizeName(value: string): string {
-  return value.trim();
+  return value.trim()
 }
 
 function loadBootstrapContext(): BootstrapContext {
   if (!existsSync(config.bootstrapContextPath)) {
-    return {};
+    return {}
   }
 
   try {
-    const raw = readFileSync(config.bootstrapContextPath, "utf8");
-    return JSON.parse(raw) as BootstrapContext;
+    const raw = readFileSync(config.bootstrapContextPath, "utf8")
+    return JSON.parse(raw) as BootstrapContext
   } catch (error) {
-    console.error("failed to load bootstrap context", error);
-    return {};
+    console.error("failed to load bootstrap context", error)
+    return {}
   }
 }
 
 function isWorkerMetrics(value: unknown): value is WorkerMetrics {
   if (!value || typeof value !== "object") {
-    return false;
+    return false
   }
 
-  const metrics = value as Record<string, unknown>;
+  const metrics = value as Record<string, unknown>
   return (
     isFiniteNumber(metrics.cpuPercent) &&
     isFiniteNumber(metrics.memoryUsedBytes) &&
     isFiniteNumber(metrics.memoryTotalBytes) &&
     isFiniteNumber(metrics.memoryPercent) &&
     isFiniteNumber(metrics.containerCount)
-  );
+  )
 }
 
 function isContainerMetricsArray(value: unknown): value is ContainerMetrics[] {
   if (!Array.isArray(value)) {
-    return false;
+    return false
   }
 
   return value.every((container) => {
     if (!container || typeof container !== "object") {
-      return false;
+      return false
     }
 
-    const item = container as Record<string, unknown>;
+    const item = container as Record<string, unknown>
     return (
       typeof item.containerId === "string" &&
       typeof item.containerName === "string" &&
@@ -762,48 +754,48 @@ function isContainerMetricsArray(value: unknown): value is ContainerMetrics[] {
       isFiniteNumber(item.memoryUsedBytes) &&
       isFiniteNumber(item.memoryLimitBytes) &&
       isFiniteNumber(item.memoryPercent)
-    );
-  });
+    )
+  })
 }
 
 function isProcessSampleArray(value: unknown): value is ProcessSample[] {
   if (!Array.isArray(value)) {
-    return false;
+    return false
   }
 
   return value.every((process) => {
     if (!process || typeof process !== "object") {
-      return false;
+      return false
     }
 
-    const item = process as Record<string, unknown>;
+    const item = process as Record<string, unknown>
     return (
       isFiniteNumber(item.pid) &&
       typeof item.comm === "string" &&
       typeof item.state === "string" &&
       isFiniteNumber(item.cpuPercent) &&
       isFiniteNumber(item.rssBytes)
-    );
-  });
+    )
+  })
 }
 
 function isProcessWindow(value: unknown): value is ProcessWindow {
   if (!value || typeof value !== "object") {
-    return false;
+    return false
   }
 
-  const item = value as Record<string, unknown>;
+  const item = value as Record<string, unknown>
   return (
     isFiniteNumber(item.sampledAt) &&
     isFiniteNumber(item.intervalMs) &&
     isProcessSampleArray(item.topCpu) &&
     isProcessSampleArray(item.topMemory)
-  );
+  )
 }
 
 function parseMessage(raw: string | Buffer): IncomingMessage | null {
-  const text = typeof raw === "string" ? raw : raw.toString("utf8");
-  const parsed = JSON.parse(text) as Record<string, unknown>;
+  const text = typeof raw === "string" ? raw : raw.toString("utf8")
+  const parsed = JSON.parse(text) as Record<string, unknown>
 
   if (parsed.type === "auth") {
     if (
@@ -815,10 +807,10 @@ function parseMessage(raw: string | Buffer): IncomingMessage | null {
       return {
         ...(parsed as Omit<WorkerAuthMessage, "nodeRole">),
         nodeRole: parsed.nodeRole === "manager" ? "manager" : "worker",
-      };
+      }
     }
 
-    return null;
+    return null
   }
 
   if (parsed.type === "heartbeat") {
@@ -829,18 +821,19 @@ function parseMessage(raw: string | Buffer): IncomingMessage | null {
       isFiniteNumber(parsed.timestamp) &&
       isWorkerMetrics(parsed.worker) &&
       isContainerMetricsArray(parsed.containers) &&
-      (parsed.processWindow === undefined || isProcessWindow(parsed.processWindow))
+      (parsed.processWindow === undefined ||
+        isProcessWindow(parsed.processWindow))
     ) {
       return {
         ...(parsed as Omit<WorkerHeartbeatMessage, "nodeRole">),
         nodeRole: parsed.nodeRole === "manager" ? "manager" : "worker",
-      };
+      }
     }
 
-    return null;
+    return null
   }
 
-  return null;
+  return null
 }
 
 function jsonError(status: number, message: string): Response {
@@ -850,32 +843,34 @@ function jsonError(status: number, message: string): Response {
       error: message,
     },
     { status },
-  );
+  )
 }
 
 async function parseJsonBody<T>(request: Request): Promise<T | null> {
   try {
-    return (await request.json()) as T;
+    return (await request.json()) as T
   } catch {
-    return null;
+    return null
   }
 }
 
 function requireManagerToken(request: Request): Response | null {
-  const token = request.headers.get("x-swarm-token");
+  const token = request.headers.get("x-swarm-token")
   if (token !== config.sharedToken) {
-    return jsonError(401, "unauthorized");
+    return jsonError(401, "unauthorized")
   }
 
-  return null;
+  return null
 }
 
-function isServiceRegistrationBody(value: unknown): value is ServiceRegistrationBody {
+function isServiceRegistrationBody(
+  value: unknown,
+): value is ServiceRegistrationBody {
   if (!value || typeof value !== "object") {
-    return false;
+    return false
   }
 
-  const body = value as Record<string, unknown>;
+  const body = value as Record<string, unknown>
   return (
     isNonEmptyString(body.namespace) &&
     isNonEmptyString(body.serviceName) &&
@@ -886,47 +881,49 @@ function isServiceRegistrationBody(value: unknown): value is ServiceRegistration
     Number.isInteger(body.containerPort) &&
     (body.protocol === undefined || isNonEmptyString(body.protocol)) &&
     (body.healthy === undefined || typeof body.healthy === "boolean")
-  );
+  )
 }
 
 function isServiceReleaseBody(value: unknown): value is ServiceReleaseBody {
   if (!value || typeof value !== "object") {
-    return false;
+    return false
   }
 
-  const body = value as Record<string, unknown>;
+  const body = value as Record<string, unknown>
   return (
     isNonEmptyString(body.namespace) &&
     isNonEmptyString(body.serviceName) &&
     isNonEmptyString(body.instanceId)
-  );
+  )
 }
 
 function isPortLeaseRequestBody(value: unknown): value is PortLeaseRequestBody {
   if (!value || typeof value !== "object") {
-    return false;
+    return false
   }
 
-  const body = value as Record<string, unknown>;
+  const body = value as Record<string, unknown>
   return (
     isNonEmptyString(body.workerId) &&
     isNonEmptyString(body.namespace) &&
     isNonEmptyString(body.serviceName) &&
     isNonEmptyString(body.instanceId) &&
     (body.requestedPort === undefined || Number.isInteger(body.requestedPort))
-  );
+  )
 }
 
 function isPortReleaseBody(value: unknown): value is PortReleaseBody {
   if (!value || typeof value !== "object") {
-    return false;
+    return false
   }
 
-  const body = value as Record<string, unknown>;
-  return isNonEmptyString(body.workerId) && Number.isInteger(body.hostPort);
+  const body = value as Record<string, unknown>
+  return isNonEmptyString(body.workerId) && Number.isInteger(body.hostPort)
 }
 
-function isLifecycleEventType(value: unknown): value is WorkerLifecycleEventType {
+function isLifecycleEventType(
+  value: unknown,
+): value is WorkerLifecycleEventType {
   return [
     "launch_request_started",
     "launch_requested",
@@ -969,17 +966,17 @@ function isLifecycleEventType(value: unknown): value is WorkerLifecycleEventType
     "shutdown_requested",
     "shutdown",
     "terminated",
-  ].includes(String(value));
+  ].includes(String(value))
 }
 
 function isWorkerLifecycleEventBody(
   value: unknown,
 ): value is WorkerLifecycleEventBody {
   if (!value || typeof value !== "object") {
-    return false;
+    return false
   }
 
-  const body = value as Record<string, unknown>;
+  const body = value as Record<string, unknown>
   return (
     isNonEmptyString(body.workerId) &&
     isNonEmptyString(body.instanceId) &&
@@ -991,7 +988,7 @@ function isWorkerLifecycleEventBody(
     (body.eventTsMs === undefined || isFiniteNumber(body.eventTsMs)) &&
     (body.details === undefined ||
       (typeof body.details === "object" && body.details !== null))
-  );
+  )
 }
 
 function mapServiceRow(row: Record<string, unknown>): ServiceRecord {
@@ -1006,7 +1003,7 @@ function mapServiceRow(row: Record<string, unknown>): ServiceRecord {
     protocol: String(row.protocol),
     healthy: Number(row.healthy) === 1,
     updatedAtMs: Number(row.updated_at_ms),
-  };
+  }
 }
 
 function mapLifecycleEventRow(
@@ -1023,12 +1020,10 @@ function mapLifecycleEventRow(
       typeof row.details_json === "string" && row.details_json.length > 0
         ? (JSON.parse(String(row.details_json)) as Record<string, unknown>)
         : null,
-  };
+  }
 }
 
-function recordWorkerLifecycleEvent(
-  event: WorkerLifecycleEventRecord,
-): void {
+function recordWorkerLifecycleEvent(event: WorkerLifecycleEventRecord): void {
   insertWorkerLifecycleEvent.run(
     event.workerId,
     event.instanceId,
@@ -1037,7 +1032,7 @@ function recordWorkerLifecycleEvent(
     event.eventType,
     event.eventTsMs,
     event.details ? JSON.stringify(event.details) : null,
-  );
+  )
 }
 
 function getWorkerLifecycleEvents(
@@ -1045,7 +1040,7 @@ function getWorkerLifecycleEvents(
   workerId?: string,
   beforeEventTsMs?: number,
 ): WorkerLifecycleEventRecord[] {
-  const normalizedLimit = Math.max(1, Math.min(limit, 500));
+  const normalizedLimit = Math.max(1, Math.min(limit, 500))
   const rows = workerId
     ? beforeEventTsMs !== undefined
       ? listWorkerLifecycleEventsByWorkerBefore.all(
@@ -1054,48 +1049,49 @@ function getWorkerLifecycleEvents(
           normalizedLimit,
         )
       : listWorkerLifecycleEventsByWorker.all(workerId, normalizedLimit)
-    : listWorkerLifecycleEvents.all(normalizedLimit);
-  return rows.map((row) =>
-    mapLifecycleEventRow(row as Record<string, unknown>),
-  );
+    : listWorkerLifecycleEvents.all(normalizedLimit)
+  return rows.map((row) => mapLifecycleEventRow(row as Record<string, unknown>))
 }
 
 function getLatestWorkerLifecycleEvent(
   workerId: string,
 ): WorkerLifecycleEventRecord | null {
-  const events = getWorkerLifecycleEvents(1, workerId);
-  return events[0] ?? null;
+  const events = getWorkerLifecycleEvents(1, workerId)
+  return events[0] ?? null
 }
 
 function getLatestLifecycleEventsByWorker(): WorkerLifecycleEventRecord[] {
   return listLatestWorkerLifecycleEvents
     .all()
-    .map((row) => mapLifecycleEventRow(row as Record<string, unknown>));
+    .map((row) => mapLifecycleEventRow(row as Record<string, unknown>))
 }
 
 function getLatestLifecycleEventOfTypes(
   workerId: string,
   eventTypes: WorkerLifecycleEventType[],
 ): WorkerLifecycleEventRecord | null {
-  const events = getWorkerLifecycleEvents(50, workerId);
-  return events.find((event) => eventTypes.includes(event.eventType)) ?? null;
+  const events = getWorkerLifecycleEvents(50, workerId)
+  return events.find((event) => eventTypes.includes(event.eventType)) ?? null
 }
 
 function listEc2WorkerInstances(): Ec2InstanceInventory[] {
   if (config.ec2InventoryJson) {
     try {
-      return JSON.parse(config.ec2InventoryJson) as Ec2InstanceInventory[];
+      return JSON.parse(config.ec2InventoryJson) as Ec2InstanceInventory[]
     } catch (error) {
-      console.error("failed to parse SWARM_EC2_INVENTORY_JSON", error);
-      return [];
+      console.error("failed to parse SWARM_EC2_INVENTORY_JSON", error)
+      return []
     }
   }
 
-  const region = bootstrapContext.region ?? process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
-  const swarmTagKey = bootstrapContext.swarmTagKey;
-  const swarmTagValue = bootstrapContext.swarmTagValue;
+  const region =
+    bootstrapContext.region ??
+    process.env.AWS_REGION ??
+    process.env.AWS_DEFAULT_REGION
+  const swarmTagKey = bootstrapContext.swarmTagKey
+  const swarmTagValue = bootstrapContext.swarmTagValue
   if (!region || !swarmTagKey || !swarmTagValue) {
-    return [];
+    return []
   }
 
   const command = [
@@ -1112,27 +1108,27 @@ function listEc2WorkerInstances(): Ec2InstanceInventory[] {
     "Reservations[].Instances[].{instanceId:InstanceId,privateIp:PrivateIpAddress,state:State.Name,launchTimeMs:LaunchTime}",
     "--output",
     "json",
-  ];
+  ]
   const result = Bun.spawnSync(command, {
     stdout: "pipe",
     stderr: "pipe",
-  });
+  })
   if (result.exitCode !== 0) {
-    const stderr = Buffer.from(result.stderr).toString("utf8").trim();
+    const stderr = Buffer.from(result.stderr).toString("utf8").trim()
     if (stderr.length > 0) {
-      console.error("failed to describe worker instances", stderr);
+      console.error("failed to describe worker instances", stderr)
     }
-    return [];
+    return []
   }
 
-  const raw = Buffer.from(result.stdout).toString("utf8");
+  const raw = Buffer.from(result.stdout).toString("utf8")
   try {
     const parsed = JSON.parse(raw) as Array<{
-      instanceId: string;
-      privateIp: string;
-      state: string;
-      launchTimeMs: string | null;
-    }>;
+      instanceId: string
+      privateIp: string
+      state: string
+      launchTimeMs: string | null
+    }>
     return parsed.map((instance) => ({
       instanceId: instance.instanceId,
       privateIp: instance.privateIp ?? "",
@@ -1140,10 +1136,10 @@ function listEc2WorkerInstances(): Ec2InstanceInventory[] {
       launchTimeMs: instance.launchTimeMs
         ? Date.parse(instance.launchTimeMs)
         : null,
-    }));
+    }))
   } catch (error) {
-    console.error("failed to parse worker instance inventory", error);
-    return [];
+    console.error("failed to parse worker instance inventory", error)
+    return []
   }
 }
 
@@ -1151,113 +1147,113 @@ function deriveInventoryWorkerStatus(
   instance: Ec2InstanceInventory,
 ): LiveWorkerState["status"] {
   if (instance.state === "stopped") {
-    const latestHibernateEvent = getLatestLifecycleEventOfTypes(instance.instanceId, [
-      "hibernated",
-      "hibernate_requested",
-      "hibernating",
-    ]);
+    const latestHibernateEvent = getLatestLifecycleEventOfTypes(
+      instance.instanceId,
+      ["hibernated", "hibernate_requested", "hibernating"],
+    )
     if (latestHibernateEvent?.eventType === "hibernated") {
-      return "hibernated";
+      return "hibernated"
     }
     if (
       latestHibernateEvent?.eventType === "hibernating" ||
       latestHibernateEvent?.eventType === "hibernate_requested"
     ) {
-      return "hibernating";
+      return "hibernating"
     }
-    return "shutdown";
+    return "shutdown"
   }
 
   if (instance.state === "stopping") {
-    return "hibernating";
+    return "hibernating"
   }
 
   if (instance.state === "pending") {
-    return "booting";
+    return "booting"
   }
 
   if (instance.state !== "running") {
-    return "disconnected";
+    return "disconnected"
   }
 
-  const currentTime = nowMs();
-  const latestConnectedLikeEvent = getLatestLifecycleEventOfTypes(instance.instanceId, [
-    "connected",
-    "running",
-    "stale",
-    "disconnected",
-    "zombie",
-  ]);
+  const currentTime = nowMs()
+  const latestConnectedLikeEvent = getLatestLifecycleEventOfTypes(
+    instance.instanceId,
+    ["connected", "running", "stale", "disconnected", "zombie"],
+  )
   if (
     latestConnectedLikeEvent?.eventType === "disconnected" ||
     latestConnectedLikeEvent?.eventType === "stale"
   ) {
-    return latestConnectedLikeEvent.eventType;
+    return latestConnectedLikeEvent.eventType
   }
   if (latestConnectedLikeEvent?.eventType === "zombie") {
-    return "zombie";
+    return "zombie"
   }
 
-  const latestProgressEvent = getLatestLifecycleEventOfTypes(instance.instanceId, [
-    "service_ready",
-    "service_process_started",
-    "service_bun_install_completed",
-    "service_bun_install_started",
-    "repo_update_completed",
-    "repo_update_started",
-    "instance_status_ok",
-    "telemetry_service_start_requested",
-    "telemetry_process_started",
-    "telemetry_connect_started",
-    "telemetry_started",
-    "runtime_download_completed",
-    "container_started",
-    "container_start_requested",
-    "bootstrap_started",
-    "docker_ready",
-    "docker_enable_started",
-    "bun_install_completed",
-    "bun_install_started",
-    "packages_install_completed",
-    "packages_install_started",
-    "cloud_init_started",
-    "launch",
-    "create",
-    "launch_requested",
-    "launch_request_started",
-  ]);
+  const latestProgressEvent = getLatestLifecycleEventOfTypes(
+    instance.instanceId,
+    [
+      "service_ready",
+      "service_process_started",
+      "service_bun_install_completed",
+      "service_bun_install_started",
+      "repo_update_completed",
+      "repo_update_started",
+      "instance_status_ok",
+      "telemetry_service_start_requested",
+      "telemetry_process_started",
+      "telemetry_connect_started",
+      "telemetry_started",
+      "runtime_download_completed",
+      "container_started",
+      "container_start_requested",
+      "bootstrap_started",
+      "docker_ready",
+      "docker_enable_started",
+      "bun_install_completed",
+      "bun_install_started",
+      "packages_install_completed",
+      "packages_install_started",
+      "cloud_init_started",
+      "launch",
+      "create",
+      "launch_requested",
+      "launch_request_started",
+    ],
+  )
   const referenceTs =
-    latestProgressEvent?.eventTsMs ?? instance.launchTimeMs ?? currentTime;
+    latestProgressEvent?.eventTsMs ?? instance.launchTimeMs ?? currentTime
   if (currentTime - referenceTs >= config.workerZombieThresholdMs) {
-    return "zombie";
+    return "zombie"
   }
 
-  return "booting";
+  return "booting"
 }
 
 function refreshEc2InventoryWorkers(): void {
-  const instances = listEc2WorkerInstances();
-  const nextWorkers = new Map<string, LiveWorkerState>();
-  const inventoryWorkerIds = new Set(instances.map((instance) => instance.instanceId));
+  const instances = listEc2WorkerInstances()
+  const nextWorkers = new Map<string, LiveWorkerState>()
+  const inventoryWorkerIds = new Set(
+    instances.map((instance) => instance.instanceId),
+  )
 
   for (const instance of instances) {
     if (liveWorkers.has(instance.instanceId)) {
-      continue;
+      continue
     }
 
-    const status = deriveInventoryWorkerStatus(instance);
-    const latestEvent = getLatestWorkerLifecycleEvent(instance.instanceId);
+    const status = deriveInventoryWorkerStatus(instance)
+    const latestEvent = getLatestWorkerLifecycleEvent(instance.instanceId)
     nextWorkers.set(instance.instanceId, {
       workerId: instance.instanceId,
       instanceId: instance.instanceId,
       privateIp: instance.privateIp,
       nodeRole: "worker",
       status,
-      lastHeartbeatAt:
-        latestEvent?.eventTsMs ?? instance.launchTimeMs ?? 0,
+      lastHeartbeatAt: latestEvent?.eventTsMs ?? instance.launchTimeMs ?? 0,
       lastMetrics: null,
       lastContainers: [],
-    });
+    })
 
     if (status === "zombie" && latestEvent?.eventType !== "zombie") {
       recordWorkerLifecycleEvent({
@@ -1271,19 +1267,19 @@ function refreshEc2InventoryWorkers(): void {
           reason: "running_without_telemetry",
           ec2State: instance.state,
         },
-      });
+      })
     }
   }
 
   for (const latestEvent of getLatestLifecycleEventsByWorker()) {
     if (inventoryWorkerIds.has(latestEvent.workerId)) {
-      continue;
+      continue
     }
     if (liveWorkers.has(latestEvent.workerId)) {
-      continue;
+      continue
     }
     if (latestEvent.eventType === "terminated") {
-      continue;
+      continue
     }
 
     recordWorkerLifecycleEvent({
@@ -1297,19 +1293,19 @@ function refreshEc2InventoryWorkers(): void {
         reason: "ec2_missing_from_inventory",
         previousEventType: latestEvent.eventType,
       },
-    });
+    })
   }
 
-  ec2InventoryWorkers.clear();
+  ec2InventoryWorkers.clear()
   for (const [workerId, workerState] of nextWorkers.entries()) {
-    ec2InventoryWorkers.set(workerId, workerState);
+    ec2InventoryWorkers.set(workerId, workerState)
   }
 }
 
 function listServices(): ServiceRecord[] {
-  return listServiceRecords.all().map((row) =>
-    mapServiceRow(row as Record<string, unknown>),
-  );
+  return listServiceRecords
+    .all()
+    .map((row) => mapServiceRow(row as Record<string, unknown>))
 }
 
 function lookupServices(
@@ -1317,10 +1313,10 @@ function lookupServices(
   serviceName: string,
   healthyOnly = true,
 ): ServiceRecord[] {
-  const query = healthyOnly ? lookupServiceRecords : lookupAnyServiceRecords;
-  return query.all(namespace, serviceName).map((row) =>
-    mapServiceRow(row as Record<string, unknown>),
-  );
+  const query = healthyOnly ? lookupServiceRecords : lookupAnyServiceRecords
+  return query
+    .all(namespace, serviceName)
+    .map((row) => mapServiceRow(row as Record<string, unknown>))
 }
 
 function resolveRelativeService(
@@ -1328,27 +1324,27 @@ function resolveRelativeService(
   serviceName: string,
   fallbackNamespace = config.rootNamespace,
 ): {
-  resolvedNamespace: string;
-  serviceName: string;
-  instances: ServiceRecord[];
+  resolvedNamespace: string
+  serviceName: string
+  instances: ServiceRecord[]
 } {
-  const localMatches = lookupServices(callerNamespace, serviceName, true);
+  const localMatches = lookupServices(callerNamespace, serviceName, true)
   if (localMatches.length > 0) {
     return {
       resolvedNamespace: callerNamespace,
       serviceName,
       instances: localMatches,
-    };
+    }
   }
 
   if (fallbackNamespace && fallbackNamespace !== callerNamespace) {
-    const fallbackMatches = lookupServices(fallbackNamespace, serviceName, true);
+    const fallbackMatches = lookupServices(fallbackNamespace, serviceName, true)
     if (fallbackMatches.length > 0) {
       return {
         resolvedNamespace: fallbackNamespace,
         serviceName,
         instances: fallbackMatches,
-      };
+      }
     }
   }
 
@@ -1356,7 +1352,7 @@ function resolveRelativeService(
     resolvedNamespace: callerNamespace,
     serviceName,
     instances: [],
-  };
+  }
 }
 
 function allocatePort(
@@ -1371,10 +1367,10 @@ function allocatePort(
     namespace,
     serviceName,
     instanceId,
-  ) as { host_port: number } | null;
+  ) as { host_port: number } | null
 
   if (existingLease) {
-    return Number(existingLease.host_port);
+    return Number(existingLease.host_port)
   }
 
   const leasePort = (hostPort: number): number => {
@@ -1385,26 +1381,28 @@ function allocatePort(
       serviceName,
       instanceId,
       nowMs(),
-    );
-    return hostPort;
-  };
+    )
+    return hostPort
+  }
 
   if (requestedPort !== undefined) {
     if (
       requestedPort < config.portRangeStart ||
       requestedPort > config.portRangeEnd
     ) {
-      throw new Error("requested port is outside the configured service port range");
+      throw new Error(
+        "requested port is outside the configured service port range",
+      )
     }
 
-    return leasePort(requestedPort);
+    return leasePort(requestedPort)
   }
 
   const leasedPorts = new Set(
     listWorkerLeases
       .all(workerId)
       .map((row) => Number((row as { host_port: number }).host_port)),
-  );
+  )
 
   for (
     let candidatePort = config.portRangeStart;
@@ -1412,11 +1410,11 @@ function allocatePort(
     candidatePort += 1
   ) {
     if (!leasedPorts.has(candidatePort)) {
-      return leasePort(candidatePort);
+      return leasePort(candidatePort)
     }
   }
 
-  throw new Error("no free service ports remain on this worker");
+  throw new Error("no free service ports remain on this worker")
 }
 
 function releasePortForService(
@@ -1425,7 +1423,7 @@ function releasePortForService(
   serviceName: string,
   instanceId: string,
 ): void {
-  deletePortLeaseByService.run(workerId, namespace, serviceName, instanceId);
+  deletePortLeaseByService.run(workerId, namespace, serviceName, instanceId)
 }
 
 function flushSamples(): void {
@@ -1434,15 +1432,18 @@ function flushSamples(): void {
     containerSampleBuffer.length === 0 &&
     processSampleBuffer.length === 0
   ) {
-    return;
+    return
   }
 
-  const pendingWorkers = workerSampleBuffer.splice(0, workerSampleBuffer.length);
+  const pendingWorkers = workerSampleBuffer.splice(0, workerSampleBuffer.length)
   const pendingContainers = containerSampleBuffer.splice(
     0,
     containerSampleBuffer.length,
-  );
-  const pendingProcesses = processSampleBuffer.splice(0, processSampleBuffer.length);
+  )
+  const pendingProcesses = processSampleBuffer.splice(
+    0,
+    processSampleBuffer.length,
+  )
 
   const transaction = db.transaction(() => {
     for (const sample of pendingWorkers) {
@@ -1455,7 +1456,7 @@ function flushSamples(): void {
         sample.memoryTotalBytes,
         sample.memoryPercent,
         sample.containerCount,
-      );
+      )
     }
 
     for (const sample of pendingContainers) {
@@ -1469,7 +1470,7 @@ function flushSamples(): void {
         sample.memoryUsedBytes,
         sample.memoryLimitBytes,
         sample.memoryPercent,
-      );
+      )
     }
 
     for (const sample of pendingProcesses) {
@@ -1484,11 +1485,11 @@ function flushSamples(): void {
         sample.state,
         sample.cpuPercent,
         sample.rssBytes,
-      );
+      )
     }
-  });
+  })
 
-  transaction();
+  transaction()
 }
 
 function rollupWorkerRaw(intervalMs: number): void {
@@ -1519,7 +1520,7 @@ function rollupWorkerRaw(intervalMs: number): void {
     FROM worker_samples
     WHERE ts_ms < ?
     GROUP BY worker_id, bucket_start_ms`,
-  ).run(intervalMs, intervalMs, nowMs() - intervalMs);
+  ).run(intervalMs, intervalMs, nowMs() - intervalMs)
 }
 
 function rollupContainerRaw(intervalMs: number): void {
@@ -1554,7 +1555,7 @@ function rollupContainerRaw(intervalMs: number): void {
     FROM container_samples
     WHERE ts_ms < ?
     GROUP BY worker_id, project_id, container_id, bucket_start_ms`,
-  ).run(intervalMs, intervalMs, nowMs() - intervalMs);
+  ).run(intervalMs, intervalMs, nowMs() - intervalMs)
 }
 
 function rollupFrom1mTo1h(
@@ -1588,8 +1589,8 @@ function rollupFrom1mTo1h(
       FROM worker_samples_1m
       WHERE bucket_start_ms < ?
       GROUP BY worker_id, hour_bucket`,
-    ).run(nowMs() - 3600000);
-    return;
+    ).run(nowMs() - 3600000)
+    return
   }
 
   db.query(
@@ -1623,42 +1624,42 @@ function rollupFrom1mTo1h(
     FROM container_samples_1m
     WHERE bucket_start_ms < ?
     GROUP BY worker_id, project_id, container_id, hour_bucket`,
-  ).run(nowMs() - 3600000);
+  ).run(nowMs() - 3600000)
 }
 
 function pruneOldData(): void {
-  const currentTime = nowMs();
+  const currentTime = nowMs()
   db.query("DELETE FROM worker_samples WHERE ts_ms < ?").run(
     currentTime - config.rawRetentionMs,
-  );
+  )
   db.query("DELETE FROM container_samples WHERE ts_ms < ?").run(
     currentTime - config.rawRetentionMs,
-  );
+  )
   db.query("DELETE FROM process_samples WHERE ts_ms < ?").run(
     currentTime - config.rawRetentionMs,
-  );
+  )
   db.query("DELETE FROM worker_samples_1m WHERE bucket_start_ms < ?").run(
     currentTime - config.rollup1mRetentionMs,
-  );
+  )
   db.query("DELETE FROM container_samples_1m WHERE bucket_start_ms < ?").run(
     currentTime - config.rollup1mRetentionMs,
-  );
+  )
   db.query("DELETE FROM worker_samples_1h WHERE bucket_start_ms < ?").run(
     currentTime - config.rollup1hRetentionMs,
-  );
+  )
   db.query("DELETE FROM container_samples_1h WHERE bucket_start_ms < ?").run(
     currentTime - config.rollup1hRetentionMs,
-  );
+  )
 }
 
 function updateStaleWorkers(): void {
-  const currentTime = nowMs();
+  const currentTime = nowMs()
   for (const worker of liveWorkers.values()) {
     if (
       worker.status === "connected" &&
       currentTime - worker.lastHeartbeatAt > config.heartbeatTimeoutMs
     ) {
-      worker.status = "stale";
+      worker.status = "stale"
       recordWorkerLifecycleEvent({
         workerId: worker.workerId,
         instanceId: worker.instanceId,
@@ -1669,48 +1670,52 @@ function updateStaleWorkers(): void {
         details: {
           lastHeartbeatAt: worker.lastHeartbeatAt,
         },
-      });
+      })
     }
   }
 }
 
 function snapshotWorkers(): LiveWorkerState[] {
-  const merged = new Map<string, LiveWorkerState>();
+  const merged = new Map<string, LiveWorkerState>()
   for (const [workerId, worker] of ec2InventoryWorkers.entries()) {
-    merged.set(workerId, worker);
+    merged.set(workerId, worker)
   }
   for (const [workerId, worker] of liveWorkers.entries()) {
-    merged.set(workerId, worker);
+    merged.set(workerId, worker)
   }
   return Array.from(merged.values()).sort((left, right) =>
     left.workerId.localeCompare(right.workerId),
-  );
+  )
 }
 
-function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: number): {
-  workerId: string;
-  sinceTsMs: number;
-  untilTsMs: number;
+function getWorkerTimeline(
+  workerId: string,
+  sinceTsMs: number,
+  untilTsMs: number,
+): {
+  workerId: string
+  sinceTsMs: number
+  untilTsMs: number
   hostSamples: Array<{
-    tsMs: number;
-    cpuPercent: number;
-    memoryPercent: number;
-    memoryUsedBytes: number;
-    memoryTotalBytes: number;
-    containerCount: number;
-  }>;
+    tsMs: number
+    cpuPercent: number
+    memoryPercent: number
+    memoryUsedBytes: number
+    memoryTotalBytes: number
+    containerCount: number
+  }>
   processSamples: Array<{
-    tsMs: number;
-    ranking: "cpu" | "memory";
-    rank: number;
-    pid: number;
-    comm: string;
-    state: string;
-    cpuPercent: number;
-    rssBytes: number;
-  }>;
+    tsMs: number
+    ranking: "cpu" | "memory"
+    rank: number
+    pid: number
+    comm: string
+    state: string
+    cpuPercent: number
+    rssBytes: number
+  }>
 } {
-  const rangeMs = Math.max(untilTsMs - sinceTsMs, 0);
+  const rangeMs = Math.max(untilTsMs - sinceTsMs, 0)
 
   const hostSamples =
     rangeMs <= 6 * 60 * 60 * 1000
@@ -1728,12 +1733,12 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
              ORDER BY ts_ms ASC`,
           )
           .all(workerId, sinceTsMs, untilTsMs) as Array<{
-          ts_ms: number;
-          cpu_percent: number;
-          memory_percent: number;
-          memory_used_bytes: number;
-          memory_total_bytes: number;
-          container_count: number;
+          ts_ms: number
+          cpu_percent: number
+          memory_percent: number
+          memory_used_bytes: number
+          memory_total_bytes: number
+          container_count: number
         }>)
       : rangeMs <= 30 * 24 * 60 * 60 * 1000
         ? (db
@@ -1750,12 +1755,12 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
                ORDER BY bucket_start_ms ASC`,
             )
             .all(workerId, sinceTsMs, untilTsMs) as Array<{
-            ts_ms: number;
-            cpu_percent: number;
-            memory_percent: number;
-            memory_used_bytes: number;
-            memory_total_bytes: number;
-            container_count: number;
+            ts_ms: number
+            cpu_percent: number
+            memory_percent: number
+            memory_used_bytes: number
+            memory_total_bytes: number
+            container_count: number
           }>)
         : (db
             .query(
@@ -1771,15 +1776,18 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
                ORDER BY bucket_start_ms ASC`,
             )
             .all(workerId, sinceTsMs, untilTsMs) as Array<{
-            ts_ms: number;
-            cpu_percent: number;
-            memory_percent: number;
-            memory_used_bytes: number;
-            memory_total_bytes: number;
-            container_count: number;
-          }>);
+            ts_ms: number
+            cpu_percent: number
+            memory_percent: number
+            memory_used_bytes: number
+            memory_total_bytes: number
+            container_count: number
+          }>)
 
-  const processSinceTsMs = Math.max(sinceTsMs, untilTsMs - config.rawRetentionMs);
+  const processSinceTsMs = Math.max(
+    sinceTsMs,
+    untilTsMs - config.rawRetentionMs,
+  )
   const processBucketMs =
     rangeMs <= 60 * 60 * 1000
       ? 10 * 1000
@@ -1789,7 +1797,7 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
           ? 5 * 60 * 1000
           : rangeMs <= 7 * 24 * 60 * 60 * 1000
             ? 15 * 60 * 1000
-            : 60 * 60 * 1000;
+            : 60 * 60 * 1000
 
   const processSamples = db
     .query(
@@ -1816,15 +1824,15 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
       processBucketMs,
       processBucketMs,
     ) as Array<{
-    ts_ms: number;
-    ranking: "cpu" | "memory";
-    rank: number;
-    pid: number;
-    comm: string;
-    state: string;
-    cpu_percent: number;
-    rss_bytes: number;
-  }>;
+    ts_ms: number
+    ranking: "cpu" | "memory"
+    rank: number
+    pid: number
+    comm: string
+    state: string
+    cpu_percent: number
+    rss_bytes: number
+  }>
 
   return {
     workerId,
@@ -1848,16 +1856,16 @@ function getWorkerTimeline(workerId: string, sinceTsMs: number, untilTsMs: numbe
       cpuPercent: sample.cpu_percent,
       rssBytes: sample.rss_bytes,
     })),
-  };
+  }
 }
 
 function closeStaleSession(
   workerId: string,
   nextSocket: Bun.ServerWebSocket<SocketData>,
 ): void {
-  const currentSocket = sessions.get(workerId);
+  const currentSocket = sessions.get(workerId)
   if (currentSocket && currentSocket !== nextSocket) {
-    currentSocket.close(1012, "replaced");
+    currentSocket.close(1012, "replaced")
   }
 }
 
@@ -1865,88 +1873,98 @@ const server = Bun.serve<SocketData>({
   hostname: config.hostname,
   port: config.port,
   async fetch(request, serverInstance) {
-    const url = new URL(request.url);
+    const url = new URL(request.url)
 
     if (url.pathname === "/workers/stream") {
       if (serverInstance.upgrade(request, { data: { authenticated: false } })) {
-        return undefined;
+        return undefined
       }
 
-      return new Response("WebSocket upgrade failed", { status: 400 });
+      return new Response("WebSocket upgrade failed", { status: 400 })
     }
 
     if (request.method === "GET" && url.pathname === "/health") {
-      const connectedWorkers = snapshotWorkers();
+      const connectedWorkers = snapshotWorkers()
       return Response.json({
         ok: true,
         connectedWorkers: connectedWorkers.filter(
           (worker) => worker.status === "connected",
         ).length,
-        staleWorkers: connectedWorkers.filter((worker) => worker.status === "stale")
-          .length,
+        staleWorkers: connectedWorkers.filter(
+          (worker) => worker.status === "stale",
+        ).length,
         connectedNodes: connectedWorkers.filter(
           (worker) => worker.status === "connected",
         ).length,
-        staleNodes: connectedWorkers.filter((worker) => worker.status === "stale")
-          .length,
-        zombieWorkers: connectedWorkers.filter((worker) => worker.status === "zombie")
-          .length,
-        zombieNodes: connectedWorkers.filter((worker) => worker.status === "zombie")
-          .length,
-      });
+        staleNodes: connectedWorkers.filter(
+          (worker) => worker.status === "stale",
+        ).length,
+        zombieWorkers: connectedWorkers.filter(
+          (worker) => worker.status === "zombie",
+        ).length,
+        zombieNodes: connectedWorkers.filter(
+          (worker) => worker.status === "zombie",
+        ).length,
+      })
     }
 
     if (request.method === "GET" && url.pathname === "/workers") {
-      return Response.json({ workers: snapshotWorkers() });
+      return Response.json({ workers: snapshotWorkers() })
     }
 
     if (request.method === "GET" && url.pathname === "/workers/timeline") {
-      const workerId = normalizeName(url.searchParams.get("workerId") ?? "");
+      const workerId = normalizeName(url.searchParams.get("workerId") ?? "")
       const sinceTsMsRaw = Number.parseInt(
         url.searchParams.get("sinceTsMs") ?? "",
         10,
-      );
+      )
       const untilTsMsRaw = Number.parseInt(
         url.searchParams.get("untilTsMs") ?? "",
         10,
-      );
+      )
       const rangeMinutesRaw = Number.parseInt(
         url.searchParams.get("rangeMinutes") ?? "30",
         10,
-      );
+      )
 
       if (!workerId) {
-        return jsonError(400, "workerId is required");
+        return jsonError(400, "workerId is required")
       }
 
       const hasAbsoluteRange =
         Number.isInteger(sinceTsMsRaw) &&
         Number.isInteger(untilTsMsRaw) &&
-        untilTsMsRaw > sinceTsMsRaw;
-      const untilTsMs = hasAbsoluteRange ? untilTsMsRaw : nowMs();
+        untilTsMsRaw > sinceTsMsRaw
+      const untilTsMs = hasAbsoluteRange ? untilTsMsRaw : nowMs()
       const sinceTsMs = hasAbsoluteRange
         ? Math.max(untilTsMs - 365 * 24 * 60 * 60 * 1000, sinceTsMsRaw)
         : untilTsMs -
           Math.min(
             365 * 24 * 60,
-            Math.max(1, Number.isInteger(rangeMinutesRaw) ? rangeMinutesRaw : 30),
+            Math.max(
+              1,
+              Number.isInteger(rangeMinutesRaw) ? rangeMinutesRaw : 30,
+            ),
           ) *
             60 *
-            1000;
+            1000
 
       return Response.json({
         ok: true,
         ...getWorkerTimeline(workerId, sinceTsMs, untilTsMs),
-      });
+      })
     }
 
     if (request.method === "GET" && url.pathname === "/workers/events") {
-      const limitValue = Number.parseInt(url.searchParams.get("limit") ?? "100", 10);
-      const workerId = normalizeName(url.searchParams.get("workerId") ?? "");
-      const beforeEventTsMsRaw = url.searchParams.get("beforeEventTsMs");
+      const limitValue = Number.parseInt(
+        url.searchParams.get("limit") ?? "100",
+        10,
+      )
+      const workerId = normalizeName(url.searchParams.get("workerId") ?? "")
+      const beforeEventTsMsRaw = url.searchParams.get("beforeEventTsMs")
       const beforeEventTsMs = beforeEventTsMsRaw
         ? Number.parseInt(beforeEventTsMsRaw, 10)
-        : undefined;
+        : undefined
       return Response.json({
         ok: true,
         events: getWorkerLifecycleEvents(
@@ -1954,7 +1972,7 @@ const server = Bun.serve<SocketData>({
           workerId || undefined,
           Number.isInteger(beforeEventTsMs) ? beforeEventTsMs : undefined,
         ),
-      });
+      })
     }
 
     if (request.method === "GET" && url.pathname === "/services") {
@@ -1962,39 +1980,41 @@ const server = Bun.serve<SocketData>({
         ok: true,
         rootNamespace: config.rootNamespace,
         services: listServices(),
-      });
+      })
     }
 
     if (
       request.method === "GET" &&
       url.pathname.startsWith("/services/resolve/")
     ) {
-      const pathParts = url.pathname.split("/").filter(Boolean);
+      const pathParts = url.pathname.split("/").filter(Boolean)
 
       if (pathParts.length === 3) {
-        const serviceName = normalizeName(decodeURIComponent(pathParts[2] ?? ""));
+        const serviceName = normalizeName(
+          decodeURIComponent(pathParts[2] ?? ""),
+        )
         const callerNamespace = normalizeName(
           url.searchParams.get("callerNamespace") ?? "",
-        );
+        )
         const fallbackNamespace = normalizeName(
           url.searchParams.get("fallbackNamespace") ?? config.rootNamespace,
-        );
+        )
 
         if (!callerNamespace || !serviceName) {
-          return jsonError(400, "callerNamespace and service name are required");
+          return jsonError(400, "callerNamespace and service name are required")
         }
 
         const result = resolveRelativeService(
           callerNamespace,
           serviceName,
           fallbackNamespace,
-        );
+        )
 
         if (result.instances.length === 0) {
-          return jsonError(404, "service not found");
+          return jsonError(404, "service not found")
         }
 
-        const endpoint = result.instances[0];
+        const endpoint = result.instances[0]
         return Response.json({
           ok: true,
           query: {
@@ -2010,23 +2030,25 @@ const server = Bun.serve<SocketData>({
             healthy: endpoint?.healthy ?? false,
           },
           instances: result.instances,
-        });
+        })
       }
 
       if (pathParts.length === 4) {
-        const namespace = normalizeName(decodeURIComponent(pathParts[2] ?? ""));
-        const serviceName = normalizeName(decodeURIComponent(pathParts[3] ?? ""));
+        const namespace = normalizeName(decodeURIComponent(pathParts[2] ?? ""))
+        const serviceName = normalizeName(
+          decodeURIComponent(pathParts[3] ?? ""),
+        )
 
         if (!namespace || !serviceName) {
-          return jsonError(400, "namespace and service name are required");
+          return jsonError(400, "namespace and service name are required")
         }
 
-        const instances = lookupServices(namespace, serviceName, true);
+        const instances = lookupServices(namespace, serviceName, true)
         if (instances.length === 0) {
-          return jsonError(404, "service not found");
+          return jsonError(404, "service not found")
         }
 
-        const endpoint = instances[0];
+        const endpoint = instances[0]
         return Response.json({
           ok: true,
           resolvedNamespace: namespace,
@@ -2037,21 +2059,21 @@ const server = Bun.serve<SocketData>({
             healthy: endpoint?.healthy ?? false,
           },
           instances,
-        });
+        })
       }
 
-      return jsonError(404, "invalid resolve path");
+      return jsonError(404, "invalid resolve path")
     }
 
     if (request.method === "POST" && url.pathname === "/ports/lease") {
-      const unauthorized = requireManagerToken(request);
+      const unauthorized = requireManagerToken(request)
       if (unauthorized) {
-        return unauthorized;
+        return unauthorized
       }
 
-      const body = await parseJsonBody<PortLeaseRequestBody>(request);
+      const body = await parseJsonBody<PortLeaseRequestBody>(request)
       if (!isPortLeaseRequestBody(body)) {
-        return jsonError(400, "invalid port lease request body");
+        return jsonError(400, "invalid port lease request body")
       }
 
       try {
@@ -2061,7 +2083,7 @@ const server = Bun.serve<SocketData>({
           normalizeName(body.serviceName),
           normalizeName(body.instanceId),
           body.requestedPort,
-        );
+        )
 
         return Response.json({
           ok: true,
@@ -2070,39 +2092,42 @@ const server = Bun.serve<SocketData>({
           serviceName: normalizeName(body.serviceName),
           instanceId: normalizeName(body.instanceId),
           hostPort,
-        });
+        })
       } catch (error) {
         return jsonError(
           409,
           error instanceof Error ? error.message : "port allocation failed",
-        );
+        )
       }
     }
 
     if (request.method === "POST" && url.pathname === "/ports/release") {
-      const unauthorized = requireManagerToken(request);
+      const unauthorized = requireManagerToken(request)
       if (unauthorized) {
-        return unauthorized;
+        return unauthorized
       }
 
-      const body = await parseJsonBody<PortReleaseBody>(request);
+      const body = await parseJsonBody<PortReleaseBody>(request)
       if (!isPortReleaseBody(body)) {
-        return jsonError(400, "invalid port release request body");
+        return jsonError(400, "invalid port release request body")
       }
 
-      deletePortLeaseByWorkerPort.run(normalizeName(body.workerId), body.hostPort);
-      return Response.json({ ok: true });
+      deletePortLeaseByWorkerPort.run(
+        normalizeName(body.workerId),
+        body.hostPort,
+      )
+      return Response.json({ ok: true })
     }
 
     if (request.method === "POST" && url.pathname === "/workers/events") {
-      const unauthorized = requireManagerToken(request);
+      const unauthorized = requireManagerToken(request)
       if (unauthorized) {
-        return unauthorized;
+        return unauthorized
       }
 
-      const body = await parseJsonBody<WorkerLifecycleEventBody>(request);
+      const body = await parseJsonBody<WorkerLifecycleEventBody>(request)
       if (!isWorkerLifecycleEventBody(body)) {
-        return jsonError(400, "invalid worker lifecycle event body");
+        return jsonError(400, "invalid worker lifecycle event body")
       }
 
       const event: WorkerLifecycleEventRecord = {
@@ -2113,30 +2138,30 @@ const server = Bun.serve<SocketData>({
         eventType: body.eventType,
         eventTsMs: body.eventTsMs ?? nowMs(),
         details: body.details ?? null,
-      };
+      }
 
-      recordWorkerLifecycleEvent(event);
-      return Response.json({ ok: true, event });
+      recordWorkerLifecycleEvent(event)
+      return Response.json({ ok: true, event })
     }
 
     if (request.method === "POST" && url.pathname === "/services/register") {
-      const unauthorized = requireManagerToken(request);
+      const unauthorized = requireManagerToken(request)
       if (unauthorized) {
-        return unauthorized;
+        return unauthorized
       }
 
-      const body = await parseJsonBody<ServiceRegistrationBody>(request);
+      const body = await parseJsonBody<ServiceRegistrationBody>(request)
       if (!isServiceRegistrationBody(body)) {
-        return jsonError(400, "invalid service registration body");
+        return jsonError(400, "invalid service registration body")
       }
 
-      const namespace = normalizeName(body.namespace);
-      const serviceName = normalizeName(body.serviceName);
-      const instanceId = normalizeName(body.instanceId);
-      const workerId = normalizeName(body.workerId);
-      const workerPrivateIp = normalizeName(body.workerPrivateIp);
-      const protocol = normalizeName(body.protocol ?? "http");
-      const updatedAtMs = nowMs();
+      const namespace = normalizeName(body.namespace)
+      const serviceName = normalizeName(body.serviceName)
+      const instanceId = normalizeName(body.instanceId)
+      const workerId = normalizeName(body.workerId)
+      const workerPrivateIp = normalizeName(body.workerPrivateIp)
+      const protocol = normalizeName(body.protocol ?? "http")
+      const updatedAtMs = nowMs()
 
       try {
         const hostPort = allocatePort(
@@ -2145,7 +2170,7 @@ const server = Bun.serve<SocketData>({
           serviceName,
           instanceId,
           body.hostPort,
-        );
+        )
 
         upsertServiceRecord.run(
           namespace,
@@ -2159,74 +2184,81 @@ const server = Bun.serve<SocketData>({
           body.healthy === false ? 0 : 1,
           updatedAtMs,
           updatedAtMs,
-        );
+        )
 
         return Response.json({
           ok: true,
           namespace,
           serviceName,
           instances: lookupServices(namespace, serviceName, false),
-        });
+        })
       } catch (error) {
         return jsonError(
           409,
-          error instanceof Error ? error.message : "service registration failed",
-        );
+          error instanceof Error
+            ? error.message
+            : "service registration failed",
+        )
       }
     }
 
     if (request.method === "POST" && url.pathname === "/services/release") {
-      const unauthorized = requireManagerToken(request);
+      const unauthorized = requireManagerToken(request)
       if (unauthorized) {
-        return unauthorized;
+        return unauthorized
       }
 
-      const body = await parseJsonBody<ServiceReleaseBody>(request);
+      const body = await parseJsonBody<ServiceReleaseBody>(request)
       if (!isServiceReleaseBody(body)) {
-        return jsonError(400, "invalid service release body");
+        return jsonError(400, "invalid service release body")
       }
 
-      const namespace = normalizeName(body.namespace);
-      const serviceName = normalizeName(body.serviceName);
-      const instanceId = normalizeName(body.instanceId);
+      const namespace = normalizeName(body.namespace)
+      const serviceName = normalizeName(body.serviceName)
+      const instanceId = normalizeName(body.instanceId)
       const existing = lookupServices(namespace, serviceName, false).find(
         (service) => service.instanceId === instanceId,
-      );
+      )
 
       if (existing) {
-        releasePortForService(existing.workerId, namespace, serviceName, instanceId);
+        releasePortForService(
+          existing.workerId,
+          namespace,
+          serviceName,
+          instanceId,
+        )
       }
-      deleteServiceRecord.run(namespace, serviceName, instanceId);
+      deleteServiceRecord.run(namespace, serviceName, instanceId)
 
-      return Response.json({ ok: true });
+      return Response.json({ ok: true })
     }
 
-    return new Response("Not found", { status: 404 });
+    return new Response("Not found", { status: 404 })
   },
   websocket: {
     message(ws, rawMessage) {
       try {
-        const message = parseMessage(rawMessage);
+        const message = parseMessage(rawMessage)
         if (!message) {
-          ws.close(1003, "invalid-payload");
-          return;
+          ws.close(1003, "invalid-payload")
+          return
         }
 
         if (message.type === "auth") {
           if (message.token !== config.sharedToken) {
-            ws.close(1008, "unauthorized");
-            return;
+            ws.close(1008, "unauthorized")
+            return
           }
 
-          closeStaleSession(message.workerId, ws);
-          ws.data.authenticated = true;
-          ws.data.workerId = message.workerId;
-          ws.data.instanceId = message.instanceId;
-          ws.data.privateIp = message.privateIp;
-          ws.data.nodeRole = message.nodeRole;
-          sessions.set(message.workerId, ws);
+          closeStaleSession(message.workerId, ws)
+          ws.data.authenticated = true
+          ws.data.workerId = message.workerId
+          ws.data.instanceId = message.instanceId
+          ws.data.privateIp = message.privateIp
+          ws.data.nodeRole = message.nodeRole
+          sessions.set(message.workerId, ws)
 
-          const currentTime = nowMs();
+          const currentTime = nowMs()
           liveWorkers.set(message.workerId, {
             workerId: message.workerId,
             instanceId: message.instanceId,
@@ -2236,7 +2268,7 @@ const server = Bun.serve<SocketData>({
             lastHeartbeatAt: currentTime,
             lastMetrics: null,
             lastContainers: [],
-          });
+          })
           recordWorkerLifecycleEvent({
             workerId: message.workerId,
             instanceId: message.instanceId,
@@ -2245,22 +2277,22 @@ const server = Bun.serve<SocketData>({
             eventType: "connected",
             eventTsMs: currentTime,
             details: null,
-          });
-          ws.send(JSON.stringify({ type: "auth_ok", ts: currentTime }));
-          return;
+          })
+          ws.send(JSON.stringify({ type: "auth_ok", ts: currentTime }))
+          return
         }
 
         if (!ws.data.authenticated || !ws.data.workerId) {
-          ws.close(1008, "authenticate-first");
-          return;
+          ws.close(1008, "authenticate-first")
+          return
         }
 
         if (message.workerId !== ws.data.workerId) {
-          ws.close(1008, "worker-mismatch");
-          return;
+          ws.close(1008, "worker-mismatch")
+          return
         }
 
-        const currentTime = nowMs();
+        const currentTime = nowMs()
         const workerState = liveWorkers.get(message.workerId) ?? {
           workerId: message.workerId,
           instanceId: message.instanceId,
@@ -2270,20 +2302,20 @@ const server = Bun.serve<SocketData>({
           lastHeartbeatAt: currentTime,
           lastMetrics: null,
           lastContainers: [],
-        };
+        }
 
-        workerState.instanceId = message.instanceId;
-        workerState.privateIp = message.privateIp;
-        workerState.nodeRole = message.nodeRole;
-        workerState.status = "connected";
-        workerState.lastHeartbeatAt = currentTime;
-        workerState.lastMetrics = message.worker;
-        workerState.lastContainers = message.containers;
-        liveWorkers.set(message.workerId, workerState);
+        workerState.instanceId = message.instanceId
+        workerState.privateIp = message.privateIp
+        workerState.nodeRole = message.nodeRole
+        workerState.status = "connected"
+        workerState.lastHeartbeatAt = currentTime
+        workerState.lastMetrics = message.worker
+        workerState.lastContainers = message.containers
+        liveWorkers.set(message.workerId, workerState)
 
         const latestWorkerLifecycleEvent = getLatestWorkerLifecycleEvent(
           message.workerId,
-        );
+        )
         if (latestWorkerLifecycleEvent?.eventType !== "running") {
           recordWorkerLifecycleEvent({
             workerId: message.workerId,
@@ -2295,7 +2327,7 @@ const server = Bun.serve<SocketData>({
             details: {
               containerCount: message.worker.containerCount,
             },
-          });
+          })
         }
 
         workerSampleBuffer.push({
@@ -2307,7 +2339,7 @@ const server = Bun.serve<SocketData>({
           memoryTotalBytes: message.worker.memoryTotalBytes,
           memoryPercent: message.worker.memoryPercent,
           containerCount: message.worker.containerCount,
-        });
+        })
 
         for (const container of message.containers) {
           containerSampleBuffer.push({
@@ -2320,11 +2352,14 @@ const server = Bun.serve<SocketData>({
             memoryUsedBytes: container.memoryUsedBytes,
             memoryLimitBytes: container.memoryLimitBytes,
             memoryPercent: container.memoryPercent,
-          });
+          })
         }
 
         if (message.processWindow) {
-          for (const [index, process] of message.processWindow.topCpu.entries()) {
+          for (const [
+            index,
+            process,
+          ] of message.processWindow.topCpu.entries()) {
             processSampleBuffer.push({
               workerId: message.workerId,
               instanceId: message.instanceId,
@@ -2336,10 +2371,13 @@ const server = Bun.serve<SocketData>({
               state: process.state,
               cpuPercent: process.cpuPercent,
               rssBytes: process.rssBytes,
-            });
+            })
           }
 
-          for (const [index, process] of message.processWindow.topMemory.entries()) {
+          for (const [
+            index,
+            process,
+          ] of message.processWindow.topMemory.entries()) {
             processSampleBuffer.push({
               workerId: message.workerId,
               instanceId: message.instanceId,
@@ -2351,28 +2389,28 @@ const server = Bun.serve<SocketData>({
               state: process.state,
               cpuPercent: process.cpuPercent,
               rssBytes: process.rssBytes,
-            });
+            })
           }
         }
       } catch (error) {
-        console.error("worker message handling failed", error);
-        ws.close(1011, "server-error");
+        console.error("worker message handling failed", error)
+        ws.close(1011, "server-error")
       }
     },
     close(ws) {
-      const workerId = ws.data.workerId;
+      const workerId = ws.data.workerId
       if (!workerId) {
-        return;
+        return
       }
 
-      const existingSocket = sessions.get(workerId);
+      const existingSocket = sessions.get(workerId)
       if (existingSocket === ws) {
-        sessions.delete(workerId);
+        sessions.delete(workerId)
       }
 
-      const liveWorker = liveWorkers.get(workerId);
+      const liveWorker = liveWorkers.get(workerId)
       if (liveWorker) {
-        liveWorker.status = "disconnected";
+        liveWorker.status = "disconnected"
         recordWorkerLifecycleEvent({
           workerId: liveWorker.workerId,
           instanceId: liveWorker.instanceId,
@@ -2381,33 +2419,36 @@ const server = Bun.serve<SocketData>({
           eventType: "disconnected",
           eventTsMs: nowMs(),
           details: null,
-        });
+        })
       }
     },
   },
-});
+})
 
 setInterval(() => {
-  flushSamples();
-  updateStaleWorkers();
-}, 1000);
+  flushSamples()
+  updateStaleWorkers()
+}, 1000)
 
 setInterval(() => {
-  refreshEc2InventoryWorkers();
-}, config.ec2InventoryRefreshMs);
+  refreshEc2InventoryWorkers()
+}, config.ec2InventoryRefreshMs)
 
 setInterval(() => {
-  flushSamples();
-  rollupWorkerRaw(60_000);
-  rollupContainerRaw(60_000);
-}, 60_000);
+  flushSamples()
+  rollupWorkerRaw(60_000)
+  rollupContainerRaw(60_000)
+}, 60_000)
 
-setInterval(() => {
-  flushSamples();
-  rollupFrom1mTo1h("worker_samples_1m");
-  rollupFrom1mTo1h("container_samples_1m");
-  pruneOldData();
-}, 60 * 60 * 1000);
+setInterval(
+  () => {
+    flushSamples()
+    rollupFrom1mTo1h("worker_samples_1m")
+    rollupFrom1mTo1h("container_samples_1m")
+    pruneOldData()
+  },
+  60 * 60 * 1000,
+)
 
 console.log(
   JSON.stringify({
@@ -2418,18 +2459,18 @@ console.log(
     rootNamespace: config.rootNamespace,
     servicePortRange: [config.portRangeStart, config.portRangeEnd],
   }),
-);
+)
 
-refreshEc2InventoryWorkers();
+refreshEc2InventoryWorkers()
 
 process.on("SIGINT", () => {
-  flushSamples();
-  server.stop(true);
-  process.exit(0);
-});
+  flushSamples()
+  server.stop(true)
+  process.exit(0)
+})
 
 process.on("SIGTERM", () => {
-  flushSamples();
-  server.stop(true);
-  process.exit(0);
-});
+  flushSamples()
+  server.stop(true)
+  process.exit(0)
+})

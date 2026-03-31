@@ -1,27 +1,27 @@
+import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
-import { observer, useSelector } from "@legendapp/state/react";
-import { useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
+import { observer, useSelector } from "@legendapp/state/react"
+import { useMemo, useState } from "react"
+import { createPortal } from "react-dom"
 
 type DocumentsToolPanelProps = {
-  store: AgentGraphStore;
+  store: AgentGraphStore
   actions: {
-    openBoard(path: string): Promise<void>;
-    saveBoardAs(path: string, label?: string): Promise<void>;
-    addBoardDocument(path: string): Promise<void>;
-    refreshBoards(): Promise<void>;
-  };
-};
+    openBoard(path: string): Promise<void>
+    saveBoardAs(path: string, label?: string): Promise<void>
+    addBoardDocument(path: string): Promise<void>
+    refreshBoards(): Promise<void>
+  }
+}
 
 function IconButton({
   title,
   onClick,
   children,
 }: {
-  title: string;
-  onClick(): void;
-  children: React.ReactNode;
+  title: string
+  onClick(): void
+  children: React.ReactNode
 }) {
   useRenderCounter("IconButton")
   return (
@@ -34,123 +34,178 @@ function IconButton({
     >
       {children}
     </button>
-  );
+  )
 }
 
 function RefreshIcon() {
   useRenderCounter("RefreshIcon")
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M21 12a9 9 0 1 1-2.64-6.36" />
       <path d="M21 3v6h-6" />
     </svg>
-  );
+  )
 }
 
 function FolderIcon() {
   useRenderCounter("FolderIcon")
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
     </svg>
-  );
+  )
 }
 
 function PlusIcon() {
   useRenderCounter("PlusIcon")
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M12 5v14" />
       <path d="M5 12h14" />
     </svg>
-  );
+  )
 }
 
 function SaveIcon() {
   useRenderCounter("SaveIcon")
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
       <path d="M17 21v-8H7v8" />
       <path d="M7 3v5h8" />
     </svg>
-  );
+  )
 }
 
 function CheckIcon() {
   useRenderCounter("CheckIcon")
   return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="m5 12 5 5L20 7" />
     </svg>
-  );
+  )
 }
 
 export const DocumentsToolPanel = observer(function DocumentsToolPanel({
   store,
   actions,
 }: DocumentsToolPanelProps) {
-  const workspace = useSelector(store.state$.workspace);
-  const boards = useSelector(store.state$.boards);
-  const documents = useSelector(store.state$.documents);
-  const [picker, setPicker] = useState<null | "boards" | "documents">(null);
-  const [query, setQuery] = useState("");
+  const workspace = useSelector(store.state$.workspace)
+  const boards = useSelector(store.state$.boards)
+  const documents = useSelector(store.state$.documents)
+  const [picker, setPicker] = useState<null | "boards" | "documents">(null)
+  const [query, setQuery] = useState("")
 
   const filteredBoards = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = query.trim().toLowerCase()
     if (!needle) {
-      return boards;
+      return boards
     }
     return boards.filter((board) =>
       `${board.label} ${board.path}`.toLowerCase().includes(needle),
-    );
-  }, [boards, query]);
+    )
+  }, [boards, query])
 
   const filteredDocuments = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const needle = query.trim().toLowerCase()
     if (!needle) {
-      return documents;
+      return documents
     }
     return documents.filter((document) =>
       `${document.label} ${document.path}`.toLowerCase().includes(needle),
-    );
-  }, [documents, query]);
+    )
+  }, [documents, query])
 
   function openPicker(kind: "boards" | "documents"): void {
-    setQuery("");
-    setPicker(kind);
+    setQuery("")
+    setPicker(kind)
   }
 
   function closePicker(): void {
-    setPicker(null);
-    setQuery("");
+    setPicker(null)
+    setQuery("")
   }
 
   async function handleSaveBoardAs() {
-    const currentPath = workspace?.board.path ?? "projects/new.board.json";
-    const nextPath = window.prompt("Save board as", currentPath);
+    const currentPath = workspace?.board.path ?? "projects/new.board.json"
+    const nextPath = window.prompt("Save board as", currentPath)
     if (!nextPath || nextPath.trim() === "") {
-      return;
+      return
     }
     const nextLabel = window.prompt(
       "Board label",
       workspace?.board.label ?? "Untitled Board",
-    );
-    await actions.saveBoardAs(nextPath.trim(), nextLabel?.trim() || undefined);
+    )
+    await actions.saveBoardAs(nextPath.trim(), nextLabel?.trim() || undefined)
   }
 
   const pickerModal =
     picker && typeof document !== "undefined"
       ? createPortal(
+          // biome-ignore lint/a11y/useSemanticElements: overlay container needs full-screen portal semantics while remaining keyboard accessible
           <div
             className="fixed inset-0 z-[120] flex items-center justify-center bg-stone-950/80 p-6 backdrop-blur-sm"
+            role="button"
+            tabIndex={0}
             onClick={closePicker}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault()
+                closePicker()
+              }
+            }}
           >
             <div
               className="flex max-h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-[1.75rem] border border-stone-700 bg-[linear-gradient(180deg,rgba(28,25,23,0.98),rgba(12,10,9,0.98))] shadow-[0_24px_100px_rgba(0,0,0,0.55)]"
               role="dialog"
               aria-modal="true"
               onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-4 border-b border-stone-800 px-5 py-4">
                 <div className="min-w-0">
@@ -163,7 +218,9 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                       : "Pick an Agentish document to include in the current board."}
                   </p>
                   <div className="mt-2 inline-flex rounded-full border border-stone-700 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-stone-400">
-                    {picker === "boards" ? `${boards.length} boards` : `${documents.length} documents`}
+                    {picker === "boards"
+                      ? `${boards.length} boards`
+                      : `${documents.length} documents`}
                   </div>
                 </div>
                 <button
@@ -179,7 +236,9 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder={picker === "boards" ? "Search boards" : "Search documents"}
+                  placeholder={
+                    picker === "boards" ? "Search boards" : "Search documents"
+                  }
                   className="w-full rounded-2xl border border-stone-700 bg-stone-900 px-4 py-3 text-sm text-stone-100 outline-none ring-0 placeholder:text-stone-500 focus:border-stone-500"
                 />
               </div>
@@ -187,15 +246,15 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
               <div className="min-h-0 flex-1 overflow-auto px-3 py-3">
                 {picker === "boards"
                   ? filteredBoards.map((board) => {
-                      const isCurrent = board.path === workspace?.board.path;
+                      const isCurrent = board.path === workspace?.board.path
                       return (
                         <button
                           key={board.path}
                           type="button"
                           disabled={isCurrent}
                           onClick={() => {
-                            void actions.openBoard(board.path);
-                            closePicker();
+                            void actions.openBoard(board.path)
+                            closePicker()
                           }}
                           className={`block w-full rounded-2xl border px-4 py-3 text-left transition ${
                             isCurrent
@@ -205,7 +264,9 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="truncate text-sm font-medium text-stone-100">{board.label}</div>
+                              <div className="truncate text-sm font-medium text-stone-100">
+                                {board.label}
+                              </div>
                               <div className="mt-1 break-all text-[11px] leading-5 text-stone-500">
                                 {board.path}
                               </div>
@@ -215,20 +276,22 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                             </div>
                           </div>
                         </button>
-                      );
+                      )
                     })
                   : filteredDocuments.map((document) => {
                       const alreadyIncluded = workspace?.documents.some(
-                        (current) => current.path === `/home/ec2-user/workspace/${document.path}`,
-                      );
+                        (current) =>
+                          current.path ===
+                          `/home/ec2-user/workspace/${document.path}`,
+                      )
                       return (
                         <button
                           key={document.path}
                           type="button"
                           disabled={alreadyIncluded}
                           onClick={() => {
-                            void actions.addBoardDocument(document.path);
-                            closePicker();
+                            void actions.addBoardDocument(document.path)
+                            closePicker()
                           }}
                           className={`block w-full rounded-2xl border px-4 py-3 text-left transition ${
                             alreadyIncluded
@@ -241,14 +304,18 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                               <div className="truncate text-sm font-medium text-stone-100">
                                 {document.label}
                               </div>
-                              <div className="mt-1 break-all text-[11px] leading-5 text-stone-500">{document.path}</div>
+                              <div className="mt-1 break-all text-[11px] leading-5 text-stone-500">
+                                {document.path}
+                              </div>
                             </div>
-                            <div className={`mt-0.5 shrink-0 ${alreadyIncluded ? "text-stone-500" : "text-stone-300"}`}>
+                            <div
+                              className={`mt-0.5 shrink-0 ${alreadyIncluded ? "text-stone-500" : "text-stone-300"}`}
+                            >
                               {alreadyIncluded ? <CheckIcon /> : <PlusIcon />}
                             </div>
                           </div>
                         </button>
-                      );
+                      )
                     })}
                 {picker === "boards" && filteredBoards.length === 0 ? (
                   <div className="rounded-2xl border border-stone-800 bg-stone-900 p-4 text-sm text-stone-400">
@@ -265,7 +332,7 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
           </div>,
           document.body,
         )
-      : null;
+      : null
 
   return (
     <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
@@ -275,20 +342,31 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
             Board
           </h2>
           {workspace ? (
-            <div className="mt-1 truncate text-[11px] text-stone-500">{workspace.board.label}</div>
+            <div className="mt-1 truncate text-[11px] text-stone-500">
+              {workspace.board.label}
+            </div>
           ) : null}
         </div>
         <div className="flex flex-wrap justify-end gap-1.5">
-          <IconButton title="Refresh boards" onClick={() => void actions.refreshBoards()}>
+          <IconButton
+            title="Refresh boards"
+            onClick={() => void actions.refreshBoards()}
+          >
             <RefreshIcon />
           </IconButton>
           <IconButton title="Open board" onClick={() => openPicker("boards")}>
             <FolderIcon />
           </IconButton>
-          <IconButton title="Add document" onClick={() => openPicker("documents")}>
+          <IconButton
+            title="Add document"
+            onClick={() => openPicker("documents")}
+          >
             <PlusIcon />
           </IconButton>
-          <IconButton title="Save board as" onClick={() => void handleSaveBoardAs()}>
+          <IconButton
+            title="Save board as"
+            onClick={() => void handleSaveBoardAs()}
+          >
             <SaveIcon />
           </IconButton>
         </div>
@@ -302,7 +380,9 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                 <div className="truncate text-sm font-medium text-stone-100">
                   {workspace.board.label}
                 </div>
-                <div className="mt-1 truncate text-[11px] text-stone-500">{workspace.board.path}</div>
+                <div className="mt-1 truncate text-[11px] text-stone-500">
+                  {workspace.board.path}
+                </div>
               </div>
               <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
             </div>
@@ -325,8 +405,12 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
                 key={document.id}
                 className="rounded-2xl border border-stone-800 bg-stone-950/70 p-2.5"
               >
-                <div className="text-sm font-medium text-stone-100">{document.label}</div>
-                <div className="mt-1 truncate text-[11px] text-stone-500">{document.path}</div>
+                <div className="text-sm font-medium text-stone-100">
+                  {document.label}
+                </div>
+                <div className="mt-1 truncate text-[11px] text-stone-500">
+                  {document.path}
+                </div>
               </div>
             ))
           ) : (
@@ -335,9 +419,8 @@ export const DocumentsToolPanel = observer(function DocumentsToolPanel({
             </div>
           )}
         </div>
-
       </div>
       {pickerModal}
     </section>
-  );
-});
+  )
+})

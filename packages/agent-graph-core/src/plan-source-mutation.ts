@@ -4,25 +4,25 @@ import type {
   PlannedMutation,
   SourceWorkspace,
   ValidationPayload,
-} from "./types.js";
+} from "./types.js"
 
 export type MutationPlanResult =
   | {
-      ok: true;
-      validation: ValidationPayload;
-      mutation: PlannedMutation;
+      ok: true
+      validation: ValidationPayload
+      mutation: PlannedMutation
     }
   | {
-      ok: false;
-      validation: ValidationPayload;
-      conflict: ConflictPayload;
-    };
+      ok: false
+      validation: ValidationPayload
+      conflict: ConflictPayload
+    }
 
 export function planSourceMutation(args: {
-  sourceWorkspace: SourceWorkspace;
-  intent: GraphIntent;
+  sourceWorkspace: SourceWorkspace
+  intent: GraphIntent
 }): MutationPlanResult {
-  const { sourceWorkspace, intent } = args;
+  const { sourceWorkspace, intent } = args
 
   if (
     intent.kind !== "edit-node-meaning" &&
@@ -33,14 +33,16 @@ export function planSourceMutation(args: {
       validation: {
         accepted: false,
         intentId: "workspace-only",
-        message: "Workspace operations do not require source mutation planning.",
+        message:
+          "Workspace operations do not require source mutation planning.",
       },
       conflict: {
         code: "unsupported",
         intentId: "workspace-only",
-        message: "Workspace operations are handled outside source mutation planning.",
+        message:
+          "Workspace operations are handled outside source mutation planning.",
       },
-    };
+    }
   }
 
   if (intent.expectedRevision !== sourceWorkspace.revision) {
@@ -56,11 +58,13 @@ export function planSourceMutation(args: {
         intentId: intent.intentId,
         message: "Source revision changed before the edit could be applied.",
       },
-    };
+    }
   }
 
   if (intent.kind === "edit-node-meaning") {
-    const node = sourceWorkspace.nodes.find((candidate) => candidate.id === intent.sourceNodeId);
+    const node = sourceWorkspace.nodes.find(
+      (candidate) => candidate.id === intent.sourceNodeId,
+    )
     if (!node) {
       return {
         ok: false,
@@ -74,7 +78,7 @@ export function planSourceMutation(args: {
           intentId: intent.intentId,
           message: "The selected node could not be resolved in source.",
         },
-      };
+      }
     }
 
     return {
@@ -89,13 +93,14 @@ export function planSourceMutation(args: {
         sourceNodeId: intent.sourceNodeId,
         label: intent.label,
       },
-    };
+    }
   }
 
   const duplicate = sourceWorkspace.edges.find(
     (edge) =>
-      edge.sourceId === intent.sourceNodeId && edge.targetId === intent.targetNodeId,
-  );
+      edge.sourceId === intent.sourceNodeId &&
+      edge.targetId === intent.targetNodeId,
+  )
   if (duplicate) {
     return {
       ok: false,
@@ -109,7 +114,7 @@ export function planSourceMutation(args: {
         intentId: intent.intentId,
         message: "A relationship between the selected nodes already exists.",
       },
-    };
+    }
   }
 
   return {
@@ -124,5 +129,5 @@ export function planSourceMutation(args: {
       sourceNodeId: intent.sourceNodeId,
       targetNodeId: intent.targetNodeId,
     },
-  };
+  }
 }

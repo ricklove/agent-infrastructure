@@ -1,183 +1,197 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { basename, join, resolve } from "node:path"
 
 export type ProcessStepBundle = {
-  id: string;
-  title: string | null;
-  steps: ProcessBlueprintStep[];
-};
+  id: string
+  title: string | null
+  steps: ProcessBlueprintStep[]
+}
 
 export type ProcessBlueprintDecisionOption = {
-  id: string;
-  title: string;
-  goto: string | null;
-  next: boolean;
-  block: boolean;
-  complete: boolean;
-  steps: ProcessBlueprintStep[];
-};
+  id: string
+  title: string
+  goto: string | null
+  next: boolean
+  block: boolean
+  complete: boolean
+  steps: ProcessBlueprintStep[]
+}
 
 export type ProcessBlueprintStep = {
-  id: string;
-  title: string;
-  kind: "task" | "wait" | "decision";
-  doneToken: string | null;
-  blockedToken: string | null;
-  steps: ProcessBlueprintStep[];
+  id: string
+  title: string
+  kind: "task" | "wait" | "decision"
+  doneToken: string | null
+  blockedToken: string | null
+  steps: ProcessBlueprintStep[]
   decision: {
-    prompt: string;
-    options: ProcessBlueprintDecisionOption[];
-  } | null;
-};
+    prompt: string
+    options: ProcessBlueprintDecisionOption[]
+  } | null
+}
 
 type BaseProcessBlueprint = {
-  id: string;
-  title: string;
-  catalogOrder: number;
-  expectation: string;
-  companionPath: string | null;
-};
+  id: string
+  title: string
+  catalogOrder: number
+  expectation: string
+  companionPath: string | null
+}
 
 export type ModeProcessBlueprint = BaseProcessBlueprint & {
-  kind: "mode";
-};
+  kind: "mode"
+}
 
 export type ProceduralProcessBlueprint = BaseProcessBlueprint & {
-  kind: "procedural";
-  idlePrompt: string;
-  completionMode: "exact_reply";
-  completionToken: string;
-  blockedToken: string;
-  stopConditions: string[];
-  steps: ProcessBlueprintStep[];
+  kind: "procedural"
+  idlePrompt: string
+  completionMode: "exact_reply"
+  completionToken: string
+  blockedToken: string
+  stopConditions: string[]
+  steps: ProcessBlueprintStep[]
   watchdog: {
-    enabled: boolean;
-    idleTimeoutSeconds: number;
-    maxNudgesPerIdleEpisode: number;
-  };
-};
+    enabled: boolean
+    idleTimeoutSeconds: number
+    maxNudgesPerIdleEpisode: number
+  }
+}
 
-export type ProcessBlueprint = ModeProcessBlueprint | ProceduralProcessBlueprint;
+export type ProcessBlueprint = ModeProcessBlueprint | ProceduralProcessBlueprint
 
 type RawProcessBlueprintDecisionOption = {
-  id?: unknown;
-  title?: unknown;
-  goto?: unknown;
-  next?: unknown;
-  block?: unknown;
-  complete?: unknown;
-  steps?: unknown;
-};
+  id?: unknown
+  title?: unknown
+  goto?: unknown
+  next?: unknown
+  block?: unknown
+  complete?: unknown
+  steps?: unknown
+}
 
 type RawProcessBlueprintStep = {
-  use?: unknown;
-  id?: unknown;
-  title?: unknown;
-  kind?: unknown;
-  doneToken?: unknown;
-  blockedToken?: unknown;
-  steps?: unknown;
+  use?: unknown
+  id?: unknown
+  title?: unknown
+  kind?: unknown
+  doneToken?: unknown
+  blockedToken?: unknown
+  steps?: unknown
   decision?: {
-    prompt?: unknown;
-    options?: unknown;
-  };
-};
+    prompt?: unknown
+    options?: unknown
+  }
+}
 
 type RawProcessStepBundle = {
-  id?: unknown;
-  title?: unknown;
-  steps?: unknown;
-};
+  id?: unknown
+  title?: unknown
+  steps?: unknown
+}
 
 type RawProcessBlueprint = {
-  id?: unknown;
-  title?: unknown;
-  catalogOrder?: unknown;
-  expectation?: unknown;
-  idlePrompt?: unknown;
-  completionMode?: unknown;
-  completionToken?: unknown;
-  blockedToken?: unknown;
-  stopConditions?: unknown;
-  steps?: unknown;
+  id?: unknown
+  title?: unknown
+  catalogOrder?: unknown
+  expectation?: unknown
+  idlePrompt?: unknown
+  completionMode?: unknown
+  completionToken?: unknown
+  blockedToken?: unknown
+  stopConditions?: unknown
+  steps?: unknown
   watchdog?: {
-    enabled?: unknown;
-    idleTimeoutSeconds?: unknown;
-    maxNudgesPerIdleEpisode?: unknown;
-  };
-};
+    enabled?: unknown
+    idleTimeoutSeconds?: unknown
+    maxNudgesPerIdleEpisode?: unknown
+  }
+}
 
 export type ProcessBlueprintCatalogLoadOptions = {
-  processBlueprintDirs?: string[];
-  processStepDirs?: string[];
-};
+  processBlueprintDirs?: string[]
+  processStepDirs?: string[]
+}
 
 function defaultBlueprintsDir() {
-  return resolve(import.meta.dir, "../../../blueprints/process-blueprints");
+  return resolve(import.meta.dir, "../../../blueprints/process-blueprints")
 }
 
 function defaultProcessStepsDir() {
-  return resolve(import.meta.dir, "../../../blueprints/process-steps");
+  return resolve(import.meta.dir, "../../../blueprints/process-steps")
 }
 
-function normalizeDirectoryList(dirs: string[] | undefined, fallbackDir: string) {
-  const resolved = (dirs ?? [fallbackDir]).map((value) => value.trim()).filter(Boolean);
+function normalizeDirectoryList(
+  dirs: string[] | undefined,
+  fallbackDir: string,
+) {
+  const resolved = (dirs ?? [fallbackDir])
+    .map((value) => value.trim())
+    .filter(Boolean)
   if (resolved.length === 0) {
-    resolved.push(fallbackDir);
+    resolved.push(fallbackDir)
   }
-  return [...new Set(resolved)];
+  return [...new Set(resolved)]
 }
 
 function normalizeProcessStepBundles(processStepDirs?: string[]) {
-  const stepsDirs = normalizeDirectoryList(processStepDirs, defaultProcessStepsDir());
-  const bundleMap = new Map<string, RawProcessStepBundle>();
+  const stepsDirs = normalizeDirectoryList(
+    processStepDirs,
+    defaultProcessStepsDir(),
+  )
+  const bundleMap = new Map<string, RawProcessStepBundle>()
 
   for (const stepsDir of stepsDirs) {
     if (!existsSync(stepsDir)) {
-      continue;
+      continue
     }
 
     for (const entry of readdirSync(stepsDir).sort()) {
       if (!entry.endsWith(".process-steps.json")) {
-        continue;
+        continue
       }
-      const path = join(stepsDir, entry);
-      const raw = JSON.parse(readFileSync(path, "utf8")) as RawProcessStepBundle;
-      const id = typeof raw.id === "string" ? raw.id.trim() : "";
+      const path = join(stepsDir, entry)
+      const raw = JSON.parse(readFileSync(path, "utf8")) as RawProcessStepBundle
+      const id = typeof raw.id === "string" ? raw.id.trim() : ""
       if (!id) {
-        throw new Error(`Invalid process step bundle: ${path}`);
+        throw new Error(`Invalid process step bundle: ${path}`)
       }
-      bundleMap.set(id, raw);
+      bundleMap.set(id, raw)
     }
   }
 
-  return bundleMap;
+  return bundleMap
 }
 
 function loadRawProcessBlueprints(processBlueprintDirs?: string[]) {
-  const blueprintDirs = normalizeDirectoryList(processBlueprintDirs, defaultBlueprintsDir());
-  const blueprintMap = new Map<string, { raw: RawProcessBlueprint; path: string }>();
+  const blueprintDirs = normalizeDirectoryList(
+    processBlueprintDirs,
+    defaultBlueprintsDir(),
+  )
+  const blueprintMap = new Map<
+    string,
+    { raw: RawProcessBlueprint; path: string }
+  >()
 
   for (const processBlueprintDir of blueprintDirs) {
     if (!existsSync(processBlueprintDir)) {
-      continue;
+      continue
     }
 
     for (const entry of readdirSync(processBlueprintDir).sort()) {
       if (!entry.endsWith(".process-blueprint.json")) {
-        continue;
+        continue
       }
-      const path = join(processBlueprintDir, entry);
-      const raw = JSON.parse(readFileSync(path, "utf8")) as RawProcessBlueprint;
-      const id = typeof raw.id === "string" ? raw.id.trim() : "";
+      const path = join(processBlueprintDir, entry)
+      const raw = JSON.parse(readFileSync(path, "utf8")) as RawProcessBlueprint
+      const id = typeof raw.id === "string" ? raw.id.trim() : ""
       if (!id) {
-        throw new Error(`Invalid process blueprint: ${path}`);
+        throw new Error(`Invalid process blueprint: ${path}`)
       }
-      blueprintMap.set(id, { raw, path });
+      blueprintMap.set(id, { raw, path })
     }
   }
 
-  return [...blueprintMap.values()];
+  return [...blueprintMap.values()]
 }
 
 function normalizeProcessBlueprintDecisionOptions(
@@ -186,28 +200,31 @@ function normalizeProcessBlueprintDecisionOptions(
   importStack: string[] = [],
 ): ProcessBlueprintDecisionOption[] {
   if (!Array.isArray(rawOptions)) {
-    return [];
+    return []
   }
 
   return rawOptions
     .map((entry) => {
-      const raw = entry as RawProcessBlueprintDecisionOption;
-      const id = typeof raw.id === "string" ? raw.id.trim() : "";
-      const title = typeof raw.title === "string" ? raw.title.trim() : "";
+      const raw = entry as RawProcessBlueprintDecisionOption
+      const id = typeof raw.id === "string" ? raw.id.trim() : ""
+      const title = typeof raw.title === "string" ? raw.title.trim() : ""
       if (!id || !title) {
-        return null;
+        return null
       }
       return {
         id,
         title,
-        goto: typeof raw.goto === "string" && raw.goto.trim() ? raw.goto.trim() : null,
+        goto:
+          typeof raw.goto === "string" && raw.goto.trim()
+            ? raw.goto.trim()
+            : null,
         next: raw.next === true,
         block: raw.block === true,
         complete: raw.complete === true,
         steps: normalizeProcessBlueprintSteps(raw.steps, bundles, importStack),
-      } satisfies ProcessBlueprintDecisionOption;
+      } satisfies ProcessBlueprintDecisionOption
     })
-    .filter((entry): entry is ProcessBlueprintDecisionOption => entry !== null);
+    .filter((entry): entry is ProcessBlueprintDecisionOption => entry !== null)
 }
 
 function normalizeProcessBlueprintSteps(
@@ -216,35 +233,42 @@ function normalizeProcessBlueprintSteps(
   importStack: string[] = [],
 ): ProcessBlueprintStep[] {
   if (!Array.isArray(rawSteps)) {
-    return [];
+    return []
   }
 
   return rawSteps
     .flatMap((entry) => {
-      const raw = entry as RawProcessBlueprintStep;
-      const use = typeof raw.use === "string" ? raw.use.trim() : "";
+      const raw = entry as RawProcessBlueprintStep
+      const use = typeof raw.use === "string" ? raw.use.trim() : ""
       if (use) {
-        const bundle = bundles.get(use);
+        const bundle = bundles.get(use)
         if (!bundle) {
-          throw new Error(`Unknown process step bundle: ${use}`);
+          throw new Error(`Unknown process step bundle: ${use}`)
         }
         if (importStack.includes(use)) {
-          throw new Error(`Circular process step bundle import: ${[...importStack, use].join(" -> ")}`);
+          throw new Error(
+            `Circular process step bundle import: ${[...importStack, use].join(" -> ")}`,
+          )
         }
-        return normalizeProcessBlueprintSteps(bundle.steps, bundles, [...importStack, use]);
+        return normalizeProcessBlueprintSteps(bundle.steps, bundles, [
+          ...importStack,
+          use,
+        ])
       }
 
-      const id = typeof raw.id === "string" ? raw.id.trim() : "";
-      const title = typeof raw.title === "string" ? raw.title.trim() : "";
+      const id = typeof raw.id === "string" ? raw.id.trim() : ""
+      const title = typeof raw.title === "string" ? raw.title.trim() : ""
       if (!id || !title) {
-        return [];
+        return []
       }
-      const kind = raw.kind === "wait" || raw.kind === "decision" ? raw.kind : "task";
+      const kind =
+        raw.kind === "wait" || raw.kind === "decision" ? raw.kind : "task"
       const decision =
         kind === "decision" && raw.decision && typeof raw.decision === "object"
           ? {
               prompt:
-                typeof raw.decision.prompt === "string" && raw.decision.prompt.trim()
+                typeof raw.decision.prompt === "string" &&
+                raw.decision.prompt.trim()
                   ? raw.decision.prompt.trim()
                   : title,
               options: normalizeProcessBlueprintDecisionOptions(
@@ -253,7 +277,7 @@ function normalizeProcessBlueprintSteps(
                 importStack,
               ),
             }
-          : null;
+          : null
       return [
         {
           id,
@@ -267,12 +291,16 @@ function normalizeProcessBlueprintSteps(
             typeof raw.blockedToken === "string" && raw.blockedToken.trim()
               ? raw.blockedToken.trim()
               : null,
-          steps: normalizeProcessBlueprintSteps(raw.steps, bundles, importStack),
+          steps: normalizeProcessBlueprintSteps(
+            raw.steps,
+            bundles,
+            importStack,
+          ),
           decision,
         } satisfies ProcessBlueprintStep,
-      ];
+      ]
     })
-    .filter((entry): entry is ProcessBlueprintStep => entry !== null);
+    .filter((entry): entry is ProcessBlueprintStep => entry !== null)
 }
 
 function hasProceduralFields(raw: RawProcessBlueprint) {
@@ -284,7 +312,7 @@ function hasProceduralFields(raw: RawProcessBlueprint) {
     raw.stopConditions !== undefined ||
     raw.steps !== undefined ||
     raw.watchdog !== undefined
-  );
+  )
 }
 
 function normalizeProcessBlueprint(
@@ -292,17 +320,20 @@ function normalizeProcessBlueprint(
   jsonPath: string,
   bundles: Map<string, RawProcessStepBundle>,
 ): ProcessBlueprint {
-  const id = typeof raw.id === "string" ? raw.id.trim() : "";
-  const title = typeof raw.title === "string" ? raw.title.trim() : "";
-  const catalogOrder = Number(raw.catalogOrder);
-  const expectation = typeof raw.expectation === "string" ? raw.expectation.trim() : "";
-  const basePath = jsonPath.replace(/\.process-blueprint\.json$/u, "");
-  const companionPath = `${basePath}.agentish.ts`;
+  const id = typeof raw.id === "string" ? raw.id.trim() : ""
+  const title = typeof raw.title === "string" ? raw.title.trim() : ""
+  const catalogOrder = Number(raw.catalogOrder)
+  const expectation =
+    typeof raw.expectation === "string" ? raw.expectation.trim() : ""
+  const basePath = jsonPath.replace(/\.process-blueprint\.json$/u, "")
+  const companionPath = `${basePath}.agentish.ts`
   const normalizedCatalogOrder =
-    Number.isFinite(catalogOrder) && catalogOrder >= 0 ? catalogOrder : Number.MAX_SAFE_INTEGER;
+    Number.isFinite(catalogOrder) && catalogOrder >= 0
+      ? catalogOrder
+      : Number.MAX_SAFE_INTEGER
 
   if (!id || !title || !expectation) {
-    throw new Error(`Invalid process blueprint: ${jsonPath}`);
+    throw new Error(`Invalid process blueprint: ${jsonPath}`)
   }
 
   if (!hasProceduralFields(raw)) {
@@ -313,14 +344,17 @@ function normalizeProcessBlueprint(
       catalogOrder: normalizedCatalogOrder,
       expectation,
       companionPath: existsSync(companionPath) ? companionPath : null,
-    };
+    }
   }
 
-  const idlePrompt = typeof raw.idlePrompt === "string" ? raw.idlePrompt.trim() : "";
+  const idlePrompt =
+    typeof raw.idlePrompt === "string" ? raw.idlePrompt.trim() : ""
   const completionToken =
-    typeof raw.completionToken === "string" ? raw.completionToken.trim() : "";
-  const blockedToken = typeof raw.blockedToken === "string" ? raw.blockedToken.trim() : "";
-  const completionMode = raw.completionMode === "exact_reply" ? "exact_reply" : null;
+    typeof raw.completionToken === "string" ? raw.completionToken.trim() : ""
+  const blockedToken =
+    typeof raw.blockedToken === "string" ? raw.blockedToken.trim() : ""
+  const completionMode =
+    raw.completionMode === "exact_reply" ? "exact_reply" : null
 
   if (
     !idlePrompt ||
@@ -330,13 +364,13 @@ function normalizeProcessBlueprint(
     raw.steps === undefined ||
     raw.watchdog === undefined
   ) {
-    throw new Error(`Invalid procedural process blueprint: ${jsonPath}`);
+    throw new Error(`Invalid procedural process blueprint: ${jsonPath}`)
   }
 
-  const steps = normalizeProcessBlueprintSteps(raw.steps, bundles);
-  const watchDogEnabled = raw.watchdog?.enabled !== false;
-  const idleTimeoutSeconds = Number(raw.watchdog?.idleTimeoutSeconds);
-  const maxNudgesPerIdleEpisode = Number(raw.watchdog?.maxNudgesPerIdleEpisode);
+  const steps = normalizeProcessBlueprintSteps(raw.steps, bundles)
+  const watchDogEnabled = raw.watchdog?.enabled !== false
+  const idleTimeoutSeconds = Number(raw.watchdog?.idleTimeoutSeconds)
+  const maxNudgesPerIdleEpisode = Number(raw.watchdog?.maxNudgesPerIdleEpisode)
 
   return {
     kind: "procedural",
@@ -357,40 +391,44 @@ function normalizeProcessBlueprint(
     watchdog: {
       enabled: watchDogEnabled,
       idleTimeoutSeconds:
-        Number.isFinite(idleTimeoutSeconds) && idleTimeoutSeconds > 0 ? idleTimeoutSeconds : 90,
+        Number.isFinite(idleTimeoutSeconds) && idleTimeoutSeconds > 0
+          ? idleTimeoutSeconds
+          : 90,
       maxNudgesPerIdleEpisode:
         Number.isFinite(maxNudgesPerIdleEpisode) && maxNudgesPerIdleEpisode >= 0
           ? maxNudgesPerIdleEpisode
           : 1,
     },
     companionPath: existsSync(companionPath) ? companionPath : null,
-  };
+  }
 }
 
 export function isProceduralProcessBlueprint(
   processBlueprint: ProcessBlueprint | null | undefined,
 ): processBlueprint is ProceduralProcessBlueprint {
-  return processBlueprint?.kind === "procedural";
+  return processBlueprint?.kind === "procedural"
 }
 
 export function loadProcessBlueprintCatalog(
   options: ProcessBlueprintCatalogLoadOptions = {},
 ): ProcessBlueprint[] {
-  const bundles = normalizeProcessStepBundles(options.processStepDirs);
+  const bundles = normalizeProcessStepBundles(options.processStepDirs)
 
   return loadRawProcessBlueprints(options.processBlueprintDirs)
     .map(({ raw, path }) => normalizeProcessBlueprint(raw, path, bundles))
     .sort((left, right) => {
       if (left.catalogOrder !== right.catalogOrder) {
-        return left.catalogOrder - right.catalogOrder;
+        return left.catalogOrder - right.catalogOrder
       }
-      return left.title.localeCompare(right.title);
-    });
+      return left.title.localeCompare(right.title)
+    })
 }
 
-export function processBlueprintLabel(processBlueprint: ProcessBlueprint | null | undefined) {
+export function processBlueprintLabel(
+  processBlueprint: ProcessBlueprint | null | undefined,
+) {
   if (!processBlueprint) {
-    return null;
+    return null
   }
-  return processBlueprint.title || basename(processBlueprint.id);
+  return processBlueprint.title || basename(processBlueprint.id)
 }

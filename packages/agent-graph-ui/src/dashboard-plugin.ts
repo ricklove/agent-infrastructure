@@ -1,4 +1,4 @@
-import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin";
+import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin"
 
 export const agentGraphDashboardPlugin: DashboardFeaturePlugin = {
   id: "graph",
@@ -27,4 +27,4 @@ export const agentGraphDashboardPlugin: DashboardFeaturePlugin = {
       logFileName: "agent-graph-server.log",
     },
   },
-};
+}

@@ -1,44 +1,50 @@
-import { useMemo, useState } from "react";
-import { observer, useSelector } from "@legendapp/state/react";
-import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
-import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
-import { NodeAvatar } from "./NodeAvatar";
-import { VisibilityIcon } from "./VisibilityIcon";
+import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store"
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
+import { observer, useSelector } from "@legendapp/state/react"
+import { useMemo, useState } from "react"
+import { NodeAvatar } from "./NodeAvatar"
+import { VisibilityIcon } from "./VisibilityIcon"
 
 type NodesToolPanelProps = {
-  store: AgentGraphStore;
+  store: AgentGraphStore
   actions: {
-    toggleLayerNode(layerId: string, sourceNodeId: string, include: boolean): void;
-    beginHidePreview(layerId: string, sourceNodeIds: string[]): void;
-    endHidePreview(): void;
-  };
-};
+    toggleLayerNode(
+      layerId: string,
+      sourceNodeId: string,
+      include: boolean,
+    ): void
+    beginHidePreview(layerId: string, sourceNodeIds: string[]): void
+    endHidePreview(): void
+  }
+}
 
 export const NodesToolPanel = observer(function NodesToolPanel({
   store,
   actions,
 }: NodesToolPanelProps) {
-  useRenderCounter("NodesToolPanel");
-  const [query, setQuery] = useState("");
-  const workspace = useSelector(store.state$.workspace);
-  const graph = useSelector(store.state$.graph);
-  const activeLayerId = useSelector(store.state$.activeLayerId);
+  useRenderCounter("NodesToolPanel")
+  const [query, setQuery] = useState("")
+  const workspace = useSelector(store.state$.workspace)
+  const graph = useSelector(store.state$.graph)
+  const activeLayerId = useSelector(store.state$.activeLayerId)
 
-  const activeLayer = graph?.layers.find((layer) => layer.id === activeLayerId) ?? null;
-  const activeNodeIds = new Set(activeLayer?.nodeIds ?? []);
+  const activeLayer =
+    graph?.layers.find((layer) => layer.id === activeLayerId) ?? null
+  const activeNodeIds = new Set(activeLayer?.nodeIds ?? [])
 
   const filteredNodes = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const nodes = workspace?.nodes ?? [];
+    const normalizedQuery = query.trim().toLowerCase()
+    const nodes = workspace?.nodes ?? []
     if (!normalizedQuery) {
-      return nodes;
+      return nodes
     }
 
     return nodes.filter((node) => {
-      const haystack = `${node.label} ${node.kind} ${node.summary}`.toLowerCase();
-      return haystack.includes(normalizedQuery);
-    });
-  }, [query, workspace?.nodes]);
+      const haystack =
+        `${node.label} ${node.kind} ${node.summary}`.toLowerCase()
+      return haystack.includes(normalizedQuery)
+    })
+  }, [query, workspace?.nodes])
 
   return (
     <section className="flex h-full min-h-0 flex-col rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
@@ -63,7 +69,7 @@ export const NodesToolPanel = observer(function NodesToolPanel({
 
       <div className="mt-3 max-h-[40vh] space-y-2 overflow-auto pr-1">
         {filteredNodes.map((node) => {
-          const isVisible = activeNodeIds.has(node.id);
+          const isVisible = activeNodeIds.has(node.id)
           return (
             <div
               key={node.id}
@@ -75,25 +81,29 @@ export const NodesToolPanel = observer(function NodesToolPanel({
                   disabled={!activeLayer}
                   onClick={() => {
                     if (!activeLayer) {
-                      return;
+                      return
                     }
-                    actions.toggleLayerNode(activeLayer.id, node.id, !isVisible);
+                    actions.toggleLayerNode(activeLayer.id, node.id, !isVisible)
                   }}
                   className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition-colors ${
                     isVisible
                       ? "border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15"
                       : "border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15"
                   } disabled:border-stone-800 disabled:bg-stone-900/60 disabled:text-stone-600`}
-                  title={isVisible ? "Hide from active layer" : "Show in active layer"}
+                  title={
+                    isVisible
+                      ? "Hide from active layer"
+                      : "Show in active layer"
+                  }
                   onMouseEnter={() => {
                     if (activeLayer && isVisible) {
-                      actions.beginHidePreview(activeLayer.id, [node.id]);
+                      actions.beginHidePreview(activeLayer.id, [node.id])
                     }
                   }}
                   onMouseLeave={actions.endHidePreview}
                   onFocus={() => {
                     if (activeLayer && isVisible) {
-                      actions.beginHidePreview(activeLayer.id, [node.id]);
+                      actions.beginHidePreview(activeLayer.id, [node.id])
                     }
                   }}
                   onBlur={actions.endHidePreview}
@@ -115,9 +125,11 @@ export const NodesToolPanel = observer(function NodesToolPanel({
                   </div>
                 </div>
               </div>
-              <p className="mt-2 text-xs leading-5 text-stone-400">{node.summary}</p>
+              <p className="mt-2 text-xs leading-5 text-stone-400">
+                {node.summary}
+              </p>
             </div>
-          );
+          )
         })}
 
         {filteredNodes.length === 0 ? (
@@ -127,5 +139,5 @@ export const NodesToolPanel = observer(function NodesToolPanel({
         ) : null}
       </div>
     </section>
-  );
-});
+  )
+})

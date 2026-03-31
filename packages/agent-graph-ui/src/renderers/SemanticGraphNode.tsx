@@ -1,9 +1,9 @@
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
-import { memo } from "react";
-import { Handle, NodeToolbar, Position, type NodeProps } from "reactflow";
-import { NodeAvatar } from "../components/NodeAvatar";
-import { VisibilityIcon } from "../components/VisibilityIcon";
-import { nodeTypeColors } from "../components/graphColors";
+import { memo } from "react"
+import { Handle, type NodeProps, NodeToolbar, Position } from "reactflow"
+import { nodeTypeColors } from "../components/graphColors"
+import { NodeAvatar } from "../components/NodeAvatar"
+import { VisibilityIcon } from "../components/VisibilityIcon"
 
 function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   useRenderCounter("CopyIcon")
@@ -21,24 +21,24 @@ function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
       <rect x="9" y="9" width="11" height="11" rx="2" />
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
     </svg>
-  );
+  )
 }
 
 function humanizeKind(kind: string): string {
-  return kind.replace(/[-_]+/g, " ");
+  return kind.replace(/[-_]+/g, " ")
 }
 
 function nodeTypeTheme(sourceKind?: string): {
-  borderColor: string;
-  dotColor: string;
-  bandColor: string;
-  bandGlow: string;
-  chipBackground: string;
-  chipBorder: string;
-  chipText: string;
-  label: string | null;
+  borderColor: string
+  dotColor: string
+  bandColor: string
+  bandGlow: string
+  chipBackground: string
+  chipBorder: string
+  chipText: string
+  label: string | null
 } {
-  const normalized = sourceKind?.trim().toLowerCase() ?? "";
+  const normalized = sourceKind?.trim().toLowerCase() ?? ""
 
   if (!normalized) {
     return {
@@ -50,47 +50,47 @@ function nodeTypeTheme(sourceKind?: string): {
       chipBorder: "hsla(32, 10%, 42%, 0.48)",
       chipText: "hsl(32, 10%, 78%)",
       label: null,
-    };
+    }
   }
 
   return {
     ...nodeTypeColors(normalized),
     label: humanizeKind(normalized),
-  };
+  }
 }
 
 export const SemanticGraphNode = memo(function SemanticGraphNode({
   data,
   selected,
 }: NodeProps<{
-  label: string;
-  sourceId: string;
-  sourcePath?: string;
-  kind?: string;
-  sourceKind?: string;
-  summary?: string;
-  isActiveLayer?: boolean;
-  isPinned?: boolean;
-  onHide?: () => void;
-  onTogglePin?: () => void;
-  showSelectionToolbar?: boolean;
-  selectionToolbarNodeIds?: string[];
-  selectionHiddenCount?: number;
-  onExpandSelectionHidden?: () => void;
-  onHideSelection?: () => void;
-  onCopySelectionReferences?: () => void;
-  onPreviewHide?: () => void;
-  onClearHidePreview?: () => void;
-  onPreviewHideSelection?: () => void;
+  label: string
+  sourceId: string
+  sourcePath?: string
+  kind?: string
+  sourceKind?: string
+  summary?: string
+  isActiveLayer?: boolean
+  isPinned?: boolean
+  onHide?: () => void
+  onTogglePin?: () => void
+  showSelectionToolbar?: boolean
+  selectionToolbarNodeIds?: string[]
+  selectionHiddenCount?: number
+  onExpandSelectionHidden?: () => void
+  onHideSelection?: () => void
+  onCopySelectionReferences?: () => void
+  onPreviewHide?: () => void
+  onClearHidePreview?: () => void
+  onPreviewHideSelection?: () => void
 }>) {
-  const selectionCount = data.selectionToolbarNodeIds?.length ?? 0;
-  const hiddenCount = data.selectionHiddenCount ?? 0;
-  const theme = nodeTypeTheme(data.sourceKind);
+  const selectionCount = data.selectionToolbarNodeIds?.length ?? 0
+  const hiddenCount = data.selectionHiddenCount ?? 0
+  const theme = nodeTypeTheme(data.sourceKind)
   const typeChipStyle = {
     backgroundColor: theme.chipBackground,
     borderColor: theme.chipBorder,
     color: theme.chipText,
-  };
+  }
 
   return (
     <div
@@ -128,8 +128,8 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
             <button
               type="button"
               onClick={(event) => {
-                event.stopPropagation();
-                data.onExpandSelectionHidden?.();
+                event.stopPropagation()
+                data.onExpandSelectionHidden?.()
               }}
               className="inline-flex min-w-[2.75rem] items-center justify-center gap-1.5 rounded-full border border-emerald-500/40 px-2.5 py-1.5 font-medium text-emerald-200 hover:bg-emerald-500/10"
               title={`Expand ${hiddenCount} hidden node${hiddenCount === 1 ? "" : "s"}`}
@@ -140,8 +140,8 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
             <button
               type="button"
               onClick={(event) => {
-                event.stopPropagation();
-                data.onHideSelection?.();
+                event.stopPropagation()
+                data.onHideSelection?.()
               }}
               className="inline-flex min-w-[2.75rem] items-center justify-center gap-1.5 rounded-full border border-amber-500/40 px-2.5 py-1.5 font-medium text-amber-200 hover:bg-amber-500/10"
               onMouseEnter={() => data.onPreviewHideSelection?.()}
@@ -156,8 +156,8 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
             <button
               type="button"
               onClick={(event) => {
-                event.stopPropagation();
-                data.onCopySelectionReferences?.();
+                event.stopPropagation()
+                data.onCopySelectionReferences?.()
               }}
               className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-stone-600/90 text-stone-200 hover:bg-stone-800/80"
               title={`Copy references for ${selectionCount} selected node${selectionCount === 1 ? "" : "s"}`}
@@ -176,8 +176,8 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
         <button
           type="button"
           onClick={(event) => {
-            event.stopPropagation();
-            data.onHide?.();
+            event.stopPropagation()
+            data.onHide?.()
           }}
           className="absolute -left-2.5 -top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full border border-amber-500/50 bg-amber-950/90 text-amber-200 opacity-0 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-opacity hover:bg-amber-900 group-hover:opacity-100"
           title="Hide from active layer"
@@ -193,8 +193,8 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
         <button
           type="button"
           onClick={(event) => {
-            event.stopPropagation();
-            data.onTogglePin?.();
+            event.stopPropagation()
+            data.onTogglePin?.()
           }}
           className={`absolute -right-2.5 -top-2.5 inline-flex h-6 w-6 items-center justify-center rounded-full border shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition-opacity ${
             data.isPinned
@@ -262,5 +262,5 @@ export const SemanticGraphNode = memo(function SemanticGraphNode({
         className="!h-2 !w-2 !border-stone-500 !bg-stone-500 !opacity-0"
       />
     </div>
-  );
-});
+  )
+})

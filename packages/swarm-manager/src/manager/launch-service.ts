@@ -1,103 +1,106 @@
 type LaunchConfig = {
-  managerUrl: string;
-  token: string;
-  dockerHost?: string;
-  workerId: string;
-  workerPrivateIp: string;
-  namespace: string;
-  serviceName: string;
-  instanceId: string;
-  image: string;
-  containerPort: number;
-  protocol: string;
-  fallbackNamespace: string;
-  containerName: string;
-  envPairs: string[];
-};
+  managerUrl: string
+  token: string
+  dockerHost?: string
+  workerId: string
+  workerPrivateIp: string
+  namespace: string
+  serviceName: string
+  instanceId: string
+  image: string
+  containerPort: number
+  protocol: string
+  fallbackNamespace: string
+  containerName: string
+  envPairs: string[]
+}
 
 type WorkerLifecycleEventType =
   | "container_start_requested"
-  | "container_started";
+  | "container_started"
 
 type PortLeaseResponse = {
-  ok: true;
-  workerId: string;
-  namespace: string;
-  serviceName: string;
-  instanceId: string;
-  hostPort: number;
-};
+  ok: true
+  workerId: string
+  namespace: string
+  serviceName: string
+  instanceId: string
+  hostPort: number
+}
 
 type ServiceRegisterResponse = {
-  ok: true;
-  namespace: string;
-  serviceName: string;
+  ok: true
+  namespace: string
+  serviceName: string
   instances: Array<{
-    namespace: string;
-    serviceName: string;
-    instanceId: string;
-    workerId: string;
-    workerPrivateIp: string;
-    hostPort: number;
-    containerPort: number;
-    protocol: string;
-    healthy: boolean;
-    updatedAtMs: number;
-  }>;
-};
+    namespace: string
+    serviceName: string
+    instanceId: string
+    workerId: string
+    workerPrivateIp: string
+    hostPort: number
+    containerPort: number
+    protocol: string
+    healthy: boolean
+    updatedAtMs: number
+  }>
+}
 
 function parseArgs(argv: string[]): Map<string, string[]> {
-  const args = new Map<string, string[]>();
+  const args = new Map<string, string[]>()
 
   for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
+    const token = argv[index]
     if (!token?.startsWith("--")) {
-      continue;
+      continue
     }
 
-    const key = token.slice(2);
-    const next = argv[index + 1];
+    const key = token.slice(2)
+    const next = argv[index + 1]
     if (!next || next.startsWith("--")) {
-      args.set(key, [...(args.get(key) ?? []), "true"]);
-      continue;
+      args.set(key, [...(args.get(key) ?? []), "true"])
+      continue
     }
 
-    args.set(key, [...(args.get(key) ?? []), next]);
-    index += 1;
+    args.set(key, [...(args.get(key) ?? []), next])
+    index += 1
   }
 
-  return args;
+  return args
 }
 
 function requireOne(args: Map<string, string[]>, key: string): string {
-  const value = args.get(key)?.[0]?.trim();
+  const value = args.get(key)?.[0]?.trim()
   if (!value) {
-    throw new Error(`missing required --${key}`);
+    throw new Error(`missing required --${key}`)
   }
 
-  return value;
+  return value
 }
 
-function optionalOne(args: Map<string, string[]>, key: string): string | undefined {
-  const value = args.get(key)?.[0]?.trim();
-  return value && value.length > 0 ? value : undefined;
+function optionalOne(
+  args: Map<string, string[]>,
+  key: string,
+): string | undefined {
+  const value = args.get(key)?.[0]?.trim()
+  return value && value.length > 0 ? value : undefined
 }
 
 function parseInteger(value: string, key: string): number {
-  const parsed = Number.parseInt(value, 10);
+  const parsed = Number.parseInt(value, 10)
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`invalid integer for --${key}`);
+    throw new Error(`invalid integer for --${key}`)
   }
 
-  return parsed;
+  return parsed
 }
 
 function buildConfig(argv: string[]): LaunchConfig {
-  const args = parseArgs(argv);
-  const namespace = requireOne(args, "namespace");
-  const serviceName = requireOne(args, "service-name");
+  const args = parseArgs(argv)
+  const namespace = requireOne(args, "namespace")
+  const serviceName = requireOne(args, "service-name")
   const instanceId =
-    optionalOne(args, "instance-id") ?? `${serviceName}-${Date.now()}`;
+    optionalOne(args, "instance-id") ?? `${serviceName}-${Date.now()}`
 
   return {
     managerUrl: requireOne(args, "manager-url"),
@@ -109,14 +112,20 @@ function buildConfig(argv: string[]): LaunchConfig {
     serviceName,
     instanceId,
     image: requireOne(args, "image"),
-    containerPort: parseInteger(requireOne(args, "container-port"), "container-port"),
+    containerPort: parseInteger(
+      requireOne(args, "container-port"),
+      "container-port",
+    ),
     protocol: optionalOne(args, "protocol") ?? "http",
     fallbackNamespace: optionalOne(args, "fallback-namespace") ?? "root",
     containerName:
       optionalOne(args, "container-name") ??
-      `${namespace}-${serviceName}-${instanceId}`.replace(/[^a-zA-Z0-9_.-]/g, "-"),
+      `${namespace}-${serviceName}-${instanceId}`.replace(
+        /[^a-zA-Z0-9_.-]/g,
+        "-",
+      ),
     envPairs: args.get("env") ?? [],
-  };
+  }
 }
 
 async function postJson<T>(
@@ -131,9 +140,9 @@ async function postJson<T>(
       "x-swarm-token": token,
     },
     body: JSON.stringify(body),
-  });
+  })
 
-  const payload = await response.json();
+  const payload = await response.json()
   if (!response.ok) {
     const message =
       typeof payload === "object" &&
@@ -141,11 +150,11 @@ async function postJson<T>(
       "error" in payload &&
       typeof payload.error === "string"
         ? payload.error
-        : `request failed with status ${response.status}`;
-    throw new Error(message);
+        : `request failed with status ${response.status}`
+    throw new Error(message)
   }
 
-  return payload as T;
+  return payload as T
 }
 
 async function postWorkerLifecycleEvent(
@@ -153,25 +162,21 @@ async function postWorkerLifecycleEvent(
   eventType: WorkerLifecycleEventType,
   details: Record<string, unknown>,
 ): Promise<void> {
-  await postJson(
-    `${config.managerUrl}/workers/events`,
-    config.token,
-    {
-      workerId: config.workerId,
-      instanceId: config.workerId,
-      privateIp: config.workerPrivateIp,
-      nodeRole: "worker",
-      eventType,
-      details: {
-        namespace: config.namespace,
-        serviceName: config.serviceName,
-        instanceId: config.instanceId,
-        containerName: config.containerName,
-        image: config.image,
-        ...details,
-      },
+  await postJson(`${config.managerUrl}/workers/events`, config.token, {
+    workerId: config.workerId,
+    instanceId: config.workerId,
+    privateIp: config.workerPrivateIp,
+    nodeRole: "worker",
+    eventType,
+    details: {
+      namespace: config.namespace,
+      serviceName: config.serviceName,
+      instanceId: config.instanceId,
+      containerName: config.containerName,
+      image: config.image,
+      ...details,
     },
-  );
+  })
 }
 
 function runDockerCommand(config: LaunchConfig, hostPort: number): string {
@@ -185,11 +190,11 @@ function runDockerCommand(config: LaunchConfig, hostPort: number): string {
     `SWARM_WORKER_PRIVATE_IP=${config.workerPrivateIp}`,
     `SWARM_FALLBACK_NAMESPACE=${config.fallbackNamespace}`,
     ...config.envPairs,
-  ];
+  ]
 
-  const command = ["docker"];
+  const command = ["docker"]
   if (config.dockerHost) {
-    command.push("--host", config.dockerHost);
+    command.push("--host", config.dockerHost)
   }
 
   command.push(
@@ -201,42 +206,42 @@ function runDockerCommand(config: LaunchConfig, hostPort: number): string {
     config.containerName,
     "-p",
     `${hostPort}:${config.containerPort}`,
-  );
+  )
 
   for (const pair of envPairs) {
-    command.push("-e", pair);
+    command.push("-e", pair)
   }
 
-  command.push(config.image);
+  command.push(config.image)
 
   const result = Bun.spawnSync(command, {
     stdout: "pipe",
     stderr: "pipe",
-  });
+  })
 
   if (result.exitCode !== 0) {
-    const stderr = result.stderr.toString("utf8").trim();
-    throw new Error(stderr || "docker run failed");
+    const stderr = result.stderr.toString("utf8").trim()
+    throw new Error(stderr || "docker run failed")
   }
 
-  return result.stdout.toString("utf8").trim();
+  return result.stdout.toString("utf8").trim()
 }
 
 function removeContainer(config: LaunchConfig): void {
-  const command = ["docker"];
+  const command = ["docker"]
   if (config.dockerHost) {
-    command.push("--host", config.dockerHost);
+    command.push("--host", config.dockerHost)
   }
 
-  command.push("rm", "-f", config.containerName);
+  command.push("rm", "-f", config.containerName)
   Bun.spawnSync(command, {
     stdout: "ignore",
     stderr: "ignore",
-  });
+  })
 }
 
 async function main(): Promise<void> {
-  const config = buildConfig(process.argv.slice(2));
+  const config = buildConfig(process.argv.slice(2))
 
   const lease = await postJson<PortLeaseResponse>(
     `${config.managerUrl}/ports/lease`,
@@ -247,23 +252,23 @@ async function main(): Promise<void> {
       serviceName: config.serviceName,
       instanceId: config.instanceId,
     },
-  );
+  )
 
-  let containerId = "";
+  let containerId = ""
 
   try {
     await postWorkerLifecycleEvent(config, "container_start_requested", {
       containerPort: config.containerPort,
       protocol: config.protocol,
       hostPort: lease.hostPort,
-    });
-    containerId = runDockerCommand(config, lease.hostPort);
+    })
+    containerId = runDockerCommand(config, lease.hostPort)
     await postWorkerLifecycleEvent(config, "container_started", {
       containerId,
       containerPort: config.containerPort,
       protocol: config.protocol,
       hostPort: lease.hostPort,
-    });
+    })
 
     const registration = await postJson<ServiceRegisterResponse>(
       `${config.managerUrl}/services/register`,
@@ -279,7 +284,7 @@ async function main(): Promise<void> {
         protocol: config.protocol,
         healthy: true,
       },
-    );
+    )
 
     console.log(
       JSON.stringify({
@@ -297,22 +302,18 @@ async function main(): Promise<void> {
         protocol: config.protocol,
         instances: registration.instances,
       }),
-    );
+    )
   } catch (error) {
     if (containerId) {
-      removeContainer(config);
+      removeContainer(config)
     }
 
-    await postJson(
-      `${config.managerUrl}/ports/release`,
-      config.token,
-      {
-        workerId: config.workerId,
-        hostPort: lease.hostPort,
-      },
-    ).catch(() => undefined);
+    await postJson(`${config.managerUrl}/ports/release`, config.token, {
+      workerId: config.workerId,
+      hostPort: lease.hostPort,
+    }).catch(() => undefined)
 
-    throw error;
+    throw error
   }
 }
 
@@ -322,6 +323,6 @@ main().catch((error) => {
       ok: false,
       error: error instanceof Error ? error.message : "launch failed",
     }),
-  );
-  process.exit(1);
-});
+  )
+  process.exit(1)
+})

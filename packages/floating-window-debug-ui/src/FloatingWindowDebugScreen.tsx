@@ -75,7 +75,11 @@ type MeasurementRecord = {
   overflowY: boolean
 }
 
-const componentOptions: Array<{ id: DebugComponentId; label: string; description: string }> = [
+const componentOptions: Array<{
+  id: DebugComponentId
+  label: string
+  description: string
+}> = [
   {
     id: "floating-window",
     label: "Floating Window View",
@@ -88,47 +92,100 @@ const fixtureOptions: FixtureOption[] = [
   {
     id: "fixed-block",
     label: "Fixed Size Block",
-    description: "Centered fixed-size block for shell-only baseline width and height checks.",
+    description:
+      "Centered fixed-size block for shell-only baseline width and height checks.",
   },
   {
     id: "full-width-scroll",
     label: "Full Width Scroll",
-    description: "A full-width column with explicit vertical overflow and repeated rows.",
+    description:
+      "A full-width column with explicit vertical overflow and repeated rows.",
   },
   {
     id: "long-text",
     label: "Long Wrapped Text",
-    description: "Paragraph-heavy content for wrap behavior in narrow scaled windows.",
+    description:
+      "Paragraph-heavy content for wrap behavior in narrow scaled windows.",
   },
   {
     id: "unbreakable-text",
     label: "Unbreakable Text",
-    description: "Long tokens that force horizontal overflow pressure without real product UI.",
+    description:
+      "Long tokens that force horizontal overflow pressure without real product UI.",
   },
   {
     id: "nested-flex",
     label: "Nested Flex",
-    description: "A min-h-0 and min-w-0 fixture with nested scroll regions and side rails.",
+    description:
+      "A min-h-0 and min-w-0 fixture with nested scroll regions and side rails.",
   },
   {
     id: "form-controls",
     label: "Form Controls",
-    description: "Inputs, textarea, toggles, and button rows under constrained widths.",
+    description:
+      "Inputs, textarea, toggles, and button rows under constrained widths.",
   },
   {
     id: "ticket-view",
     label: "Ticket View",
-    description: "Local TicketView fixture to compare real product content against shell-only cases.",
+    description:
+      "Local TicketView fixture to compare real product content against shell-only cases.",
   },
 ]
 
 const presetOptions: PresetOption[] = [
-  { id: "baseline", label: "520 x 420 @ 100%", width: 520, height: 420, scale: 1 },
-  { id: "narrow-50", label: "300 x 220 @ 50%", width: 300, height: 220, scale: 0.5, x: 8, y: 8 },
-  { id: "narrow-30", label: "200 x 220 @ 30%", width: 200, height: 220, scale: 0.3, x: 8, y: 8 },
-  { id: "mobile-fit", label: "188 x 240 @ 35%", width: 188, height: 240, scale: 0.35, x: 8, y: 8 },
-  { id: "tall-scroll", label: "280 x 440 @ 65%", width: 280, height: 440, scale: 0.65, x: 36, y: 24 },
-  { id: "ticket-small", label: "260 x 280 @ 40%", width: 260, height: 280, scale: 0.4, x: 24, y: 24 },
+  {
+    id: "baseline",
+    label: "520 x 420 @ 100%",
+    width: 520,
+    height: 420,
+    scale: 1,
+  },
+  {
+    id: "narrow-50",
+    label: "300 x 220 @ 50%",
+    width: 300,
+    height: 220,
+    scale: 0.5,
+    x: 8,
+    y: 8,
+  },
+  {
+    id: "narrow-30",
+    label: "200 x 220 @ 30%",
+    width: 200,
+    height: 220,
+    scale: 0.3,
+    x: 8,
+    y: 8,
+  },
+  {
+    id: "mobile-fit",
+    label: "188 x 240 @ 35%",
+    width: 188,
+    height: 240,
+    scale: 0.35,
+    x: 8,
+    y: 8,
+  },
+  {
+    id: "tall-scroll",
+    label: "280 x 440 @ 65%",
+    width: 280,
+    height: 440,
+    scale: 0.65,
+    x: 36,
+    y: 24,
+  },
+  {
+    id: "ticket-small",
+    label: "260 x 280 @ 40%",
+    width: 260,
+    height: 280,
+    scale: 0.4,
+    x: 24,
+    y: 24,
+  },
 ]
 
 const mockTicket: AgentTicket = {
@@ -258,7 +315,10 @@ const longParagraph =
   "Floating windows should keep inner content width constrained to the viewport after scale is applied, while still letting the operator inspect realistic wrapping, scrolling, and nested layout pressure without mixing shell bugs with unrelated product semantics."
 
 function fixtureLabel(fixtureId: FixtureId) {
-  return fixtureOptions.find((fixture) => fixture.id === fixtureId)?.label ?? fixtureId
+  return (
+    fixtureOptions.find((fixture) => fixture.id === fixtureId)?.label ??
+    fixtureId
+  )
 }
 
 function readNumericInput(value: string, fallback: number) {
@@ -275,7 +335,10 @@ function readOptionalNumericInput(value: string) {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-function draftFromPreset(preset: PresetOption, fixtureId: FixtureId): DraftState {
+function draftFromPreset(
+  preset: PresetOption,
+  fixtureId: FixtureId,
+): DraftState {
   return {
     title: `${fixtureLabel(fixtureId)} specimen`,
     fixtureId,
@@ -287,7 +350,10 @@ function draftFromPreset(preset: PresetOption, fixtureId: FixtureId): DraftState
   }
 }
 
-function specimenFromDraft(windowId: string, draft: DraftState): SpecimenRecord {
+function specimenFromDraft(
+  windowId: string,
+  draft: DraftState,
+): SpecimenRecord {
   return {
     windowId,
     title: draft.title.trim() || `${fixtureLabel(draft.fixtureId)} specimen`,
@@ -327,7 +393,10 @@ function DebugLabIcon(props: { className?: string }) {
   )
 }
 
-function FixtureFrame(props: { windowId: string; children: JSX.Element | JSX.Element[] }) {
+function FixtureFrame(props: {
+  windowId: string
+  children: JSX.Element | JSX.Element[]
+}) {
   return (
     <div
       data-floating-window-fixture-root={props.windowId}
@@ -360,12 +429,17 @@ function FullWidthScrollFixture(props: { windowId: string }) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
         <div className="space-y-2">
-          {Array.from({ length: 18 }, (_, index) => (
+          {Array.from({ length: 18 }, (_, index) => ({
+            id: `row-${index + 1}`,
+            label: `Row ${index + 1}`,
+          })).map((row) => (
             <div
-              key={index}
+              key={row.id}
               className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-sm text-slate-200"
             >
-              Row {index + 1}: full-width scroll content that should remain constrained to the scaled viewport and take over vertical scrolling cleanly.
+              {row.label}: full-width scroll content that should remain
+              constrained to the scaled viewport and take over vertical
+              scrolling cleanly.
             </div>
           ))}
         </div>
@@ -383,8 +457,11 @@ function LongTextFixture(props: { windowId: string }) {
           Wrapped text specimen
         </div>
         <div className="space-y-4">
-          {Array.from({ length: 7 }, (_, index) => (
-            <p key={index}>{longParagraph}</p>
+          {Array.from(
+            { length: 7 },
+            (_, index) => `paragraph-${index + 1}`,
+          ).map((paragraphId) => (
+            <p key={paragraphId}>{longParagraph}</p>
           ))}
         </div>
       </div>
@@ -426,7 +503,9 @@ function NestedFlexFixture(props: { windowId: string }) {
         </div>
         <div className="flex min-h-0 flex-1 min-w-0">
           <div className="w-28 shrink-0 border-r border-white/10 bg-slate-950/60 px-3 py-3 text-xs text-slate-400">
-            <div className="mb-2 uppercase tracking-[0.16em] text-cyan-100/75">rail</div>
+            <div className="mb-2 uppercase tracking-[0.16em] text-cyan-100/75">
+              rail
+            </div>
             <div className="space-y-2">
               <div>alpha</div>
               <div>beta</div>
@@ -436,13 +515,20 @@ function NestedFlexFixture(props: { windowId: string }) {
           </div>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="border-b border-white/10 px-4 py-3 text-sm text-slate-200">
-              Main pane should flex and scroll without rail width breaking the viewport.
+              Main pane should flex and scroll without rail width breaking the
+              viewport.
             </div>
             <div className="min-h-0 min-w-0 flex-1 overflow-auto px-4 py-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                {Array.from({ length: 10 }, (_, index) => (
-                  <div key={index} className="rounded-2xl border border-white/8 bg-white/[0.03] p-3 text-sm text-slate-200">
-                    Flex card {index + 1}
+                {Array.from({ length: 10 }, (_, index) => ({
+                  id: `card-${index + 1}`,
+                  label: `Flex card ${index + 1}`,
+                })).map((card) => (
+                  <div
+                    key={card.id}
+                    className="rounded-2xl border border-white/8 bg-white/[0.03] p-3 text-sm text-slate-200"
+                  >
+                    {card.label}
                   </div>
                 ))}
               </div>
@@ -464,28 +550,54 @@ function FormControlsFixture(props: { windowId: string }) {
         </div>
         <div className="space-y-4">
           <label className="block space-y-2">
-            <span className="text-xs uppercase tracking-[0.16em] text-slate-400">Title</span>
-            <input className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none" defaultValue="Floating window lab" />
+            <span className="text-xs uppercase tracking-[0.16em] text-slate-400">
+              Title
+            </span>
+            <input
+              className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none"
+              defaultValue="Floating window lab"
+            />
           </label>
           <label className="block space-y-2">
-            <span className="text-xs uppercase tracking-[0.16em] text-slate-400">Notes</span>
-            <textarea className="min-h-[140px] w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none" defaultValue={longParagraph} />
+            <span className="text-xs uppercase tracking-[0.16em] text-slate-400">
+              Notes
+            </span>
+            <textarea
+              className="min-h-[140px] w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none"
+              defaultValue={longParagraph}
+            />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block space-y-2 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-              <span className="text-xs uppercase tracking-[0.16em] text-slate-400">Width</span>
-              <input className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none" defaultValue="300" />
+              <span className="text-xs uppercase tracking-[0.16em] text-slate-400">
+                Width
+              </span>
+              <input
+                className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none"
+                defaultValue="300"
+              />
             </label>
             <label className="block space-y-2 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-              <span className="text-xs uppercase tracking-[0.16em] text-slate-400">Scale</span>
-              <input className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none" defaultValue="0.5" />
+              <span className="text-xs uppercase tracking-[0.16em] text-slate-400">
+                Scale
+              </span>
+              <input
+                className="w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none"
+                defaultValue="0.5"
+              />
             </label>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-cyan-100">
+            <button
+              type="button"
+              className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-cyan-100"
+            >
               Apply preset
             </button>
-            <button type="button" className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-slate-200">
+            <button
+              type="button"
+              className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-slate-200"
+            >
               Duplicate
             </button>
           </div>
@@ -507,7 +619,10 @@ function TicketViewFixture(props: { windowId: string }) {
   )
 }
 
-function FloatingWindowFixtureBody(props: { windowId: string; fixtureId: FixtureId }) {
+function FloatingWindowFixtureBody(props: {
+  windowId: string
+  fixtureId: FixtureId
+}) {
   useRenderCounter("FloatingWindowDebugScreen.FloatingWindowFixtureBody")
   if (props.fixtureId === "fixed-block") {
     return <FixedBlockFixture windowId={props.windowId} />
@@ -531,26 +646,49 @@ function FloatingWindowFixtureBody(props: { windowId: string; fixtureId: Fixture
 }
 
 function readMeasurement(windowId: string): MeasurementRecord | null {
-  const outer = document.querySelector(`[data-dashboard-window-id="${windowId}"]`)
-  const viewport = document.querySelector(`[data-dashboard-window-viewport="${windowId}"]`)
-  const layoutRoot = document.querySelector(`[data-dashboard-window-scaled-layout="${windowId}"]`)
-  const contentRoot = document.querySelector(`[data-floating-window-fixture-root="${windowId}"]`)
-  const requestedScale = Number.parseFloat(outer?.getAttribute("data-dashboard-window-requested-scale") ?? "0")
-  const effectiveScale = Number.parseFloat(outer?.getAttribute("data-dashboard-window-effective-scale") ?? "0")
-  if (!(outer instanceof HTMLElement) || !(viewport instanceof HTMLElement) || !(layoutRoot instanceof HTMLElement) || !(contentRoot instanceof HTMLElement)) {
+  const outer = document.querySelector(
+    `[data-dashboard-window-id="${windowId}"]`,
+  )
+  const viewport = document.querySelector(
+    `[data-dashboard-window-viewport="${windowId}"]`,
+  )
+  const layoutRoot = document.querySelector(
+    `[data-dashboard-window-scaled-layout="${windowId}"]`,
+  )
+  const contentRoot = document.querySelector(
+    `[data-floating-window-fixture-root="${windowId}"]`,
+  )
+  const requestedScale = Number.parseFloat(
+    outer?.getAttribute("data-dashboard-window-requested-scale") ?? "0",
+  )
+  const effectiveScale = Number.parseFloat(
+    outer?.getAttribute("data-dashboard-window-effective-scale") ?? "0",
+  )
+  if (
+    !(outer instanceof HTMLElement) ||
+    !(viewport instanceof HTMLElement) ||
+    !(layoutRoot instanceof HTMLElement) ||
+    !(contentRoot instanceof HTMLElement)
+  ) {
     return null
   }
 
   const viewportRect = viewport.getBoundingClientRect()
   const layoutRect = layoutRoot.getBoundingClientRect()
   const contentRect = contentRoot.getBoundingClientRect()
-  const scaleX = contentRoot.clientWidth > 0 ? contentRect.width / contentRoot.clientWidth : 1
+  const scaleX =
+    contentRoot.clientWidth > 0
+      ? contentRect.width / contentRoot.clientWidth
+      : 1
   const scrollWidth = Math.max(
     Math.round(contentRect.width),
     Math.round(contentRoot.scrollWidth * scaleX),
     Math.round(viewport.scrollWidth),
   )
-  const scrollHeight = Math.max(Math.round(layoutRect.height), Math.round(viewport.scrollHeight))
+  const scrollHeight = Math.max(
+    Math.round(layoutRect.height),
+    Math.round(viewport.scrollHeight),
+  )
 
   return {
     present: true,
@@ -571,7 +709,8 @@ function readMeasurement(windowId: string): MeasurementRecord | null {
 
 export function FloatingWindowDebugScreen() {
   useRenderCounter("FloatingWindowDebugScreen")
-  const { openWindow, updateWindow, closeWindow, focusWindow } = useDashboardWindowLayer()
+  const { openWindow, updateWindow, closeWindow, focusWindow } =
+    useDashboardWindowLayer()
   const nextWindowIdRef = useRef(1)
   const [selectedComponentId] = useState<DebugComponentId>("floating-window")
   const [draft, setDraft] = useState<DraftState>(() =>
@@ -579,7 +718,9 @@ export function FloatingWindowDebugScreen() {
   )
   const [specimens, setSpecimens] = useState<SpecimenRecord[]>([])
   const [selectedWindowId, setSelectedWindowId] = useState<string | null>(null)
-  const [measurements, setMeasurements] = useState<Record<string, MeasurementRecord>>({})
+  const [measurements, setMeasurements] = useState<
+    Record<string, MeasurementRecord>
+  >({})
 
   useEffect(() => {
     function handleClosedWindow(event: Event) {
@@ -588,26 +729,43 @@ export function FloatingWindowDebugScreen() {
       if (!closedWindowId) {
         return
       }
-      setSpecimens((current) => current.filter((specimen) => specimen.windowId !== closedWindowId))
+      setSpecimens((current) =>
+        current.filter((specimen) => specimen.windowId !== closedWindowId),
+      )
       setMeasurements((current) => {
         const nextMeasurements = { ...current }
         delete nextMeasurements[closedWindowId]
         return nextMeasurements
       })
-      setSelectedWindowId((current) => (current === closedWindowId ? null : current))
+      setSelectedWindowId((current) =>
+        current === closedWindowId ? null : current,
+      )
     }
 
-    window.addEventListener("dashboard-window-closed", handleClosedWindow as EventListener)
+    window.addEventListener(
+      "dashboard-window-closed",
+      handleClosedWindow as EventListener,
+    )
     return () => {
-      window.removeEventListener("dashboard-window-closed", handleClosedWindow as EventListener)
+      window.removeEventListener(
+        "dashboard-window-closed",
+        handleClosedWindow as EventListener,
+      )
     }
   }, [])
 
   useEffect(() => {
     const statusItems = [
       { label: "Fixture", value: fixtureLabel(draft.fixtureId) },
-      { label: "Windows", value: String(specimens.length), tone: specimens.length > 0 ? "good" : "neutral" },
-      { label: "Scale", value: `${Math.round(readNumericInput(draft.scale, 1) * 100)}%` },
+      {
+        label: "Windows",
+        value: String(specimens.length),
+        tone: specimens.length > 0 ? "good" : "neutral",
+      },
+      {
+        label: "Scale",
+        value: `${Math.round(readNumericInput(draft.scale, 1) * 100)}%`,
+      },
     ]
     window.dispatchEvent(
       new CustomEvent("dashboard-feature-status", {
@@ -692,9 +850,16 @@ export function FloatingWindowDebugScreen() {
   }
 
   function openCurrentFixtureComparison() {
-    const comparisonPresetIds: PresetId[] = ["baseline", "narrow-50", "narrow-30", "ticket-small"]
+    const comparisonPresetIds: PresetId[] = [
+      "baseline",
+      "narrow-50",
+      "narrow-30",
+      "ticket-small",
+    ]
     for (const presetId of comparisonPresetIds) {
-      const preset = presetOptions.find((candidate) => candidate.id === presetId)
+      const preset = presetOptions.find(
+        (candidate) => candidate.id === presetId,
+      )
       if (!preset) {
         continue
       }
@@ -706,7 +871,9 @@ export function FloatingWindowDebugScreen() {
   }
 
   function openFixtureMatrix() {
-    const preset = presetOptions.find((candidate) => candidate.id === "narrow-30") ?? presetOptions[0]
+    const preset =
+      presetOptions.find((candidate) => candidate.id === "narrow-30") ??
+      presetOptions[0]
     for (const fixture of fixtureOptions) {
       openSpecimen({
         ...draftFromPreset(preset, fixture.id),
@@ -737,21 +904,35 @@ export function FloatingWindowDebugScreen() {
                 Shared floating-window shell verification
               </h1>
               <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">
-                Use shell-only fixtures, real TicketView content, and narrow-scale presets to prove whether a bug belongs to the window host or the content inside it.
+                Use shell-only fixtures, real TicketView content, and
+                narrow-scale presets to prove whether a bug belongs to the
+                window host or the content inside it.
               </p>
             </div>
             <div className="grid gap-2 text-xs text-slate-300 sm:grid-cols-3">
               <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Current fixture</div>
-                <div className="mt-1 text-sm text-white">{fixtureLabel(draft.fixtureId)}</div>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                  Current fixture
+                </div>
+                <div className="mt-1 text-sm text-white">
+                  {fixtureLabel(draft.fixtureId)}
+                </div>
               </div>
               <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Requested geometry</div>
-                <div className="mt-1 text-sm text-white">{draft.width} x {draft.height}</div>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                  Requested geometry
+                </div>
+                <div className="mt-1 text-sm text-white">
+                  {draft.width} x {draft.height}
+                </div>
               </div>
               <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3">
-                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Requested scale</div>
-                <div className="mt-1 text-sm text-white">{Math.round(readNumericInput(draft.scale, 1) * 100)}%</div>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                  Requested scale
+                </div>
+                <div className="mt-1 text-sm text-white">
+                  {Math.round(readNumericInput(draft.scale, 1) * 100)}%
+                </div>
               </div>
             </div>
           </div>
@@ -759,7 +940,9 @@ export function FloatingWindowDebugScreen() {
 
         <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_420px]">
           <section className="rounded-[1.25rem] border border-white/8 bg-slate-950/65 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.28)]">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Components</div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">
+              Components
+            </div>
             <div className="mt-3 space-y-3">
               {componentOptions.map((component) => (
                 <button
@@ -778,7 +961,9 @@ export function FloatingWindowDebugScreen() {
                 </button>
               ))}
             </div>
-            <div className="mt-6 text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Fixtures</div>
+            <div className="mt-6 text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">
+              Fixtures
+            </div>
             <div className="mt-3 space-y-2">
               {fixtureOptions.map((fixture) => (
                 <button
@@ -810,68 +995,100 @@ export function FloatingWindowDebugScreen() {
           <section className="rounded-[1.25rem] border border-white/8 bg-slate-950/65 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.28)]">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Specimen controls</div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">
+                  Specimen controls
+                </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <label className="block space-y-2">
-                    <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Title</span>
+                    <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                      Title
+                    </span>
                     <input
                       value={draft.title}
                       onChange={(event) =>
-                        setDraft((current) => ({ ...current, title: event.target.value }))
+                        setDraft((current) => ({
+                          ...current,
+                          title: event.target.value,
+                        }))
                       }
                       className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
                     />
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <label className="block space-y-2">
-                      <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Width</span>
+                      <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                        Width
+                      </span>
                       <input
                         value={draft.width}
                         onChange={(event) =>
-                          setDraft((current) => ({ ...current, width: event.target.value }))
+                          setDraft((current) => ({
+                            ...current,
+                            width: event.target.value,
+                          }))
                         }
                         className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
                       />
                     </label>
                     <label className="block space-y-2">
-                      <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Height</span>
+                      <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                        Height
+                      </span>
                       <input
                         value={draft.height}
                         onChange={(event) =>
-                          setDraft((current) => ({ ...current, height: event.target.value }))
+                          setDraft((current) => ({
+                            ...current,
+                            height: event.target.value,
+                          }))
                         }
                         className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
                       />
                     </label>
                   </div>
                   <label className="block space-y-2">
-                    <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Scale</span>
+                    <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                      Scale
+                    </span>
                     <input
                       value={draft.scale}
                       onChange={(event) =>
-                        setDraft((current) => ({ ...current, scale: event.target.value }))
+                        setDraft((current) => ({
+                          ...current,
+                          scale: event.target.value,
+                        }))
                       }
                       className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none"
                     />
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <label className="block space-y-2">
-                      <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">X</span>
+                      <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                        X
+                      </span>
                       <input
                         value={draft.x}
                         onChange={(event) =>
-                          setDraft((current) => ({ ...current, x: event.target.value }))
+                          setDraft((current) => ({
+                            ...current,
+                            x: event.target.value,
+                          }))
                         }
                         placeholder="auto"
                         className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600"
                       />
                     </label>
                     <label className="block space-y-2">
-                      <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Y</span>
+                      <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                        Y
+                      </span>
                       <input
                         value={draft.y}
                         onChange={(event) =>
-                          setDraft((current) => ({ ...current, y: event.target.value }))
+                          setDraft((current) => ({
+                            ...current,
+                            y: event.target.value,
+                          }))
                         }
                         placeholder="auto"
                         className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-600"
@@ -934,17 +1151,23 @@ export function FloatingWindowDebugScreen() {
               </div>
 
               <div className="rounded-[1.15rem] border border-white/8 bg-white/[0.03] p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Presets</div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">
+                  Presets
+                </div>
                 <div className="mt-3 space-y-2">
                   {presetOptions.map((preset) => (
                     <button
                       key={preset.id}
                       type="button"
                       data-debug-preset={preset.id}
-                      onClick={() => setDraft(draftFromPreset(preset, draft.fixtureId))}
+                      onClick={() =>
+                        setDraft(draftFromPreset(preset, draft.fixtureId))
+                      }
                       className="w-full rounded-2xl border border-white/8 bg-slate-950/70 px-3 py-3 text-left transition hover:bg-slate-950"
                     >
-                      <div className="text-sm font-medium text-slate-100">{preset.label}</div>
+                      <div className="text-sm font-medium text-slate-100">
+                        {preset.label}
+                      </div>
                       <div className="mt-1 text-xs text-slate-400">
                         {preset.x === undefined && preset.y === undefined
                           ? "auto placement"
@@ -954,7 +1177,9 @@ export function FloatingWindowDebugScreen() {
                   ))}
                 </div>
                 <div className="mt-4 rounded-2xl border border-amber-200/12 bg-amber-300/10 px-3 py-3 text-xs leading-6 text-amber-100/90">
-                  Start with shell-only fixtures at 300 x 220 @ 50 percent and 200 x 220 @ 30 percent, then compare the same geometry with TicketView.
+                  Start with shell-only fixtures at 300 x 220 @ 50 percent and
+                  200 x 220 @ 30 percent, then compare the same geometry with
+                  TicketView.
                 </div>
               </div>
             </div>
@@ -963,8 +1188,13 @@ export function FloatingWindowDebugScreen() {
           <section className="rounded-[1.25rem] border border-white/8 bg-slate-950/65 p-4 shadow-[0_20px_70px_rgba(0,0,0,0.28)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Active specimens</div>
-                <div className="mt-1 text-sm text-slate-300">Visible measurements come from the live DOM, not hard-coded assumptions.</div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">
+                  Active specimens
+                </div>
+                <div className="mt-1 text-sm text-slate-300">
+                  Visible measurements come from the live DOM, not hard-coded
+                  assumptions.
+                </div>
               </div>
               <button
                 type="button"
@@ -1003,46 +1233,91 @@ export function FloatingWindowDebugScreen() {
                             }}
                             className="text-left"
                           >
-                            <div className="truncate text-sm font-medium text-white">{specimen.title}</div>
+                            <div className="truncate text-sm font-medium text-white">
+                              {specimen.title}
+                            </div>
                             <div className="mt-1 text-xs text-slate-400">
-                              {fixtureLabel(specimen.fixtureId)} | requested {specimen.width} x {specimen.height} @ {Math.round(specimen.scale * 100)}%
+                              {fixtureLabel(specimen.fixtureId)} | requested{" "}
+                              {specimen.width} x {specimen.height} @{" "}
+                              {Math.round(specimen.scale * 100)}%
                             </div>
                           </button>
                         </div>
                         <div className="shrink-0 text-right text-[11px] text-slate-500">
-                          {specimen.windowId.replace("floating-window-debug-", "#")}
+                          {specimen.windowId.replace(
+                            "floating-window-debug-",
+                            "#",
+                          )}
                         </div>
                       </div>
                       {measurement ? (
                         <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
                           <div className="rounded-2xl border border-white/8 bg-slate-950/60 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Window</div>
-                            <div className="mt-1 text-slate-100">{measurement.outerWidth} x {measurement.outerHeight}</div>
-                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">Viewport</div>
-                            <div className="mt-1 text-slate-100">{measurement.viewportWidth} x {measurement.viewportHeight}</div>
-                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">Scale</div>
-                            <div className="mt-1 text-slate-100">Requested {Math.round(measurement.requestedScale * 100)}% / Effective {Math.round(measurement.effectiveScale * 100)}%</div>
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                              Window
+                            </div>
+                            <div className="mt-1 text-slate-100">
+                              {measurement.outerWidth} x{" "}
+                              {measurement.outerHeight}
+                            </div>
+                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                              Viewport
+                            </div>
+                            <div className="mt-1 text-slate-100">
+                              {measurement.viewportWidth} x{" "}
+                              {measurement.viewportHeight}
+                            </div>
+                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                              Scale
+                            </div>
+                            <div className="mt-1 text-slate-100">
+                              Requested{" "}
+                              {Math.round(measurement.requestedScale * 100)}% /
+                              Effective{" "}
+                              {Math.round(measurement.effectiveScale * 100)}%
+                            </div>
                           </div>
                           <div className="rounded-2xl border border-white/8 bg-slate-950/60 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Content</div>
-                            <div className="mt-1 text-slate-100">{measurement.contentWidth} x {measurement.contentHeight}</div>
-                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">Scroll</div>
-                            <div className="mt-1 text-slate-100">{measurement.scrollWidth} x {measurement.scrollHeight}</div>
+                            <div className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                              Content
+                            </div>
+                            <div className="mt-1 text-slate-100">
+                              {measurement.contentWidth} x{" "}
+                              {measurement.contentHeight}
+                            </div>
+                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                              Scroll
+                            </div>
+                            <div className="mt-1 text-slate-100">
+                              {measurement.scrollWidth} x{" "}
+                              {measurement.scrollHeight}
+                            </div>
                           </div>
                           <div className="rounded-2xl border border-white/8 bg-slate-950/60 px-3 py-3 sm:col-span-2">
                             <div className="flex flex-wrap gap-3 text-[11px]">
-                              <span className={classForMeasurementFlag(!measurement.overflowX)}>
-                                Horizontal overflow: {measurement.overflowX ? "yes" : "no"}
+                              <span
+                                className={classForMeasurementFlag(
+                                  !measurement.overflowX,
+                                )}
+                              >
+                                Horizontal overflow:{" "}
+                                {measurement.overflowX ? "yes" : "no"}
                               </span>
-                              <span className={classForMeasurementFlag(!measurement.overflowY)}>
-                                Vertical overflow: {measurement.overflowY ? "yes" : "no"}
+                              <span
+                                className={classForMeasurementFlag(
+                                  !measurement.overflowY,
+                                )}
+                              >
+                                Vertical overflow:{" "}
+                                {measurement.overflowY ? "yes" : "no"}
                               </span>
                             </div>
                           </div>
                         </div>
                       ) : (
                         <div className="mt-3 rounded-2xl border border-dashed border-white/10 px-3 py-3 text-xs text-slate-500">
-                          Measurement pending. Focus the window or wait for the DOM probe to refresh.
+                          Measurement pending. Focus the window or wait for the
+                          DOM probe to refresh.
                         </div>
                       )}
                     </div>

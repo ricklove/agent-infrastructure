@@ -8,8 +8,8 @@
   "scripts": {
     "build": "bun ./scripts/tsgo-project-build.ts",
     "check": "bun ./scripts/tsgo-project-build.ts",
-    "lint": "biome check apps/dashboard-app packages/dashboard-ui packages/ui-design-canvas-ui packages/floating-window-debug-ui packages/agent-swarm-ui packages/agent-chat-ui",
-    "format": "biome format --write apps/dashboard-app packages/dashboard-ui packages/ui-design-canvas-ui packages/floating-window-debug-ui packages/agent-swarm-ui packages/agent-chat-ui",
+    "lint": "./node_modules/.bin/biome check apps packages",
+    "format": "./node_modules/.bin/biome format --write apps packages",
     "connect-vscode": "bash ./tools/connect-vscode.sh --profile agent-team-admin",
     "connect-ssh": "bash ./tools/connect-ssh.sh --profile agent-team-admin",
     "agent:connect-worker-ec2-ssh": "bun run --filter @agent-infrastructure/swarm-manager run:connect-worker-ec2-ssh",

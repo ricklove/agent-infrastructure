@@ -83,7 +83,10 @@ function ticketStepKindLabel(step: AgentTicketStep) {
   return ""
 }
 
-function renderChecklistItems(steps: AgentTicketStep[], depth = 0): ReactNode[] {
+function renderChecklistItems(
+  steps: AgentTicketStep[],
+  depth = 0,
+): ReactNode[] {
   return steps.flatMap((step) => {
     const row = (
       <div
@@ -124,7 +127,9 @@ export function TicketView(props: {
   error?: string | null
 }) {
   if (props.loading) {
-    return <div className="px-3 py-2 text-xs text-slate-400">Loading ticket...</div>
+    return (
+      <div className="px-3 py-2 text-xs text-slate-400">Loading ticket...</div>
+    )
   }
 
   if (props.error) {

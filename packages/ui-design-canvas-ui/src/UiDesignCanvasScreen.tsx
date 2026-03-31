@@ -1,203 +1,216 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import ReactFlow, {
-  Background,
-  Controls,
-  MiniMap,
   addEdge,
-  useEdgesState,
-  useNodesState,
+  Background,
   type Connection,
+  Controls,
   type Edge,
+  MiniMap,
   type Node,
   type NodeProps,
   type ReactFlowInstance,
+  useEdgesState,
+  useNodesState,
   type Viewport,
-} from "reactflow";
-import "reactflow/dist/style.css";
+} from "reactflow"
+import "reactflow/dist/style.css"
 
-type PromptLifecycle = "pending" | "commented" | "generated" | "failed";
-type VariantStatus = "idea" | "refined" | "candidate";
-type CanvasMode = "navigate" | "draw";
-type AgentAction = "comment" | "generate_variant";
-type ProviderKind = "codex-app-server" | "openrouter" | "claude-agent-sdk" | "gemini";
-type SessionRole = "user" | "assistant" | "system";
+type PromptLifecycle = "pending" | "commented" | "generated" | "failed"
+type VariantStatus = "idea" | "refined" | "candidate"
+type CanvasMode = "navigate" | "draw"
+type AgentAction = "comment" | "generate_variant"
+type ProviderKind =
+  | "codex-app-server"
+  | "openrouter"
+  | "claude-agent-sdk"
+  | "gemini"
+type SessionRole = "user" | "assistant" | "system"
 
 type SessionActivity = {
-  status: "idle" | "queued" | "running" | "interrupted" | "error";
-  startedAtMs: number | null;
-  threadId: string | null;
-  turnId: string | null;
-  backgroundProcessCount: number;
-  waitingFlags: string[];
-  lastError: string | null;
-  currentMessageId: string | null;
-  canInterrupt: boolean;
-};
+  status: "idle" | "queued" | "running" | "interrupted" | "error"
+  startedAtMs: number | null
+  threadId: string | null
+  turnId: string | null
+  backgroundProcessCount: number
+  waitingFlags: string[]
+  lastError: string | null
+  currentMessageId: string | null
+  canInterrupt: boolean
+}
 
 type SessionSummary = {
-  id: string;
-  title: string;
-  archived: boolean;
-  providerKind: ProviderKind;
-  modelRef: string;
-  cwd: string;
-  authProfile: string | null;
-  imageModelRef: string | null;
-  createdAtMs: number;
-  updatedAtMs: number;
-  preview: string | null;
-  messageCount: number;
-  activity: SessionActivity;
-  queuedMessageCount: number;
-};
+  id: string
+  title: string
+  archived: boolean
+  providerKind: ProviderKind
+  modelRef: string
+  cwd: string
+  authProfile: string | null
+  imageModelRef: string | null
+  createdAtMs: number
+  updatedAtMs: number
+  preview: string | null
+  messageCount: number
+  activity: SessionActivity
+  queuedMessageCount: number
+}
 
 type SessionMessage = {
-  id: string;
-  sessionId: string;
-  role: SessionRole;
-  kind: "chat" | "directoryInstruction" | "watchdogPrompt" | "thought" | "streamCheckpoint" | "activity";
-  replyToMessageId: string | null;
-  providerSeenAtMs: number | null;
-  content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
-  createdAtMs: number;
-};
+  id: string
+  sessionId: string
+  role: SessionRole
+  kind:
+    | "chat"
+    | "directoryInstruction"
+    | "watchdogPrompt"
+    | "thought"
+    | "streamCheckpoint"
+    | "activity"
+  replyToMessageId: string | null
+  providerSeenAtMs: number | null
+  content: Array<
+    { type: "text"; text: string } | { type: "image"; url: string }
+  >
+  createdAtMs: number
+}
 
 type SessionSnapshotResponse = {
-  ok: boolean;
-  session: SessionSummary;
-  messages: SessionMessage[];
-  queuedMessages: SessionMessage[];
-  activity: SessionActivity;
-};
+  ok: boolean
+  session: SessionSummary
+  messages: SessionMessage[]
+  queuedMessages: SessionMessage[]
+  activity: SessionActivity
+}
 
 type SessionSnapshotEvent = {
-  type: "session.snapshot";
-  session: SessionSummary;
-  messages: SessionMessage[];
-  queuedMessages: SessionMessage[];
-  activity: SessionActivity;
-};
+  type: "session.snapshot"
+  session: SessionSummary
+  messages: SessionMessage[]
+  queuedMessages: SessionMessage[]
+  activity: SessionActivity
+}
 
 type SessionUpdatedEvent = {
-  type: "session.updated";
-  session: SessionSummary | null;
-  messages: SessionMessage[];
-  queuedMessages: SessionMessage[];
-  activity: SessionActivity;
-};
+  type: "session.updated"
+  session: SessionSummary | null
+  messages: SessionMessage[]
+  queuedMessages: SessionMessage[]
+  activity: SessionActivity
+}
 
 type RunStartedEvent = {
-  type: "run.started";
-  sessionId: string;
-  providerKind: ProviderKind;
-  messages: SessionMessage[];
-  queuedMessages: SessionMessage[];
-  activity: SessionActivity;
-};
+  type: "run.started"
+  sessionId: string
+  providerKind: ProviderKind
+  messages: SessionMessage[]
+  queuedMessages: SessionMessage[]
+  activity: SessionActivity
+}
 
 type RunDeltaEvent = {
-  type: "run.delta";
-  sessionId: string;
-  threadId: string;
-  turnId: string;
-  itemId: string;
-  delta: string;
-};
+  type: "run.delta"
+  sessionId: string
+  threadId: string
+  turnId: string
+  itemId: string
+  delta: string
+}
 
 type RunCompletedEvent = {
-  type: "run.completed";
-  sessionId: string;
-  activity: SessionActivity;
-};
+  type: "run.completed"
+  sessionId: string
+  activity: SessionActivity
+}
 
 type RunFailedEvent = {
-  type: "run.failed";
-  sessionId: string;
-  error: string;
-  activity: SessionActivity;
-};
+  type: "run.failed"
+  sessionId: string
+  error: string
+  activity: SessionActivity
+}
 
 type RunInterruptedEvent = {
-  type: "run.interrupted";
-  sessionId: string;
-  activity: SessionActivity;
-};
+  type: "run.interrupted"
+  sessionId: string
+  activity: SessionActivity
+}
 
 type RunActivityEvent = {
-  type: "run.activity";
-  sessionId: string;
-  activity: SessionActivity;
-  queuedMessages: SessionMessage[];
-};
+  type: "run.activity"
+  sessionId: string
+  activity: SessionActivity
+  queuedMessages: SessionMessage[]
+}
 
 type ChatSessionState = {
-  session: SessionSummary | null;
-  messages: SessionMessage[];
-  queuedMessages: SessionMessage[];
-  activity: SessionActivity;
-  streamingAssistantText: string;
-  wsStatus: "idle" | "connecting" | "ready" | "error";
-  error: string;
-};
+  session: SessionSummary | null
+  messages: SessionMessage[]
+  queuedMessages: SessionMessage[]
+  activity: SessionActivity
+  streamingAssistantText: string
+  wsStatus: "idle" | "connecting" | "ready" | "error"
+  error: string
+}
 
 type DraftPromptNodeData = {
-  kind: "draft";
-  text: string;
-  sessionId: string | null;
-  sessionStatus: "provisioning" | "ready" | "failed";
-  onDragBy(deltaX: number, deltaY: number): void;
-  onChange(nextText: string): void;
-  onSubmit(): void;
-  onCancel(): void;
-};
+  kind: "draft"
+  text: string
+  sessionId: string | null
+  sessionStatus: "provisioning" | "ready" | "failed"
+  onDragBy(deltaX: number, deltaY: number): void
+  onChange(nextText: string): void
+  onSubmit(): void
+  onCancel(): void
+}
 
 type PromptNodeData = {
-  kind: "prompt";
-  text: string;
-  state: PromptLifecycle;
-  sessionId: string | null;
-  projectedMessageId: string | null;
-};
+  kind: "prompt"
+  text: string
+  state: PromptLifecycle
+  sessionId: string | null
+  projectedMessageId: string | null
+}
 
 type CommentNodeData = {
-  kind: "comment";
-  title: string;
-  body: string;
-  sessionId: string | null;
-  sourceMessageId: string;
-};
+  kind: "comment"
+  title: string
+  body: string
+  sessionId: string | null
+  sourceMessageId: string
+}
 
 type VariantNodeData = {
-  kind: "variant";
-  title: string;
-  summary: string;
-  status: VariantStatus;
-  promptText: string;
-  sessionId: string | null;
-  sourceMessageId: string | null;
-};
+  kind: "variant"
+  title: string
+  summary: string
+  status: VariantStatus
+  promptText: string
+  sessionId: string | null
+  sourceMessageId: string | null
+}
 
 type CanvasNodeData =
   | DraftPromptNodeData
   | PromptNodeData
   | CommentNodeData
-  | VariantNodeData;
+  | VariantNodeData
 
 type Stroke = {
-  id: string;
-  points: Array<{ x: number; y: number }>;
-};
+  id: string
+  points: Array<{ x: number; y: number }>
+}
 
-type FloatingPanelId = "controls" | "chat" | "selection";
-type PanelPosition = { x: number; y: number };
-type PanelPositions = Record<FloatingPanelId, PanelPosition>;
+type FloatingPanelId = "controls" | "chat" | "selection"
+type PanelPosition = { x: number; y: number }
+type PanelPositions = Record<FloatingPanelId, PanelPosition>
 
-const sessionStorageKey = "agent-infrastructure.dashboard.session";
-const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1.";
-const defaultSessionDirectory = "/home/ec2-user/workspace/projects-worktrees/agent-infrastructure/feature-ui-design-canvas";
-const defaultSessionProcessBlueprintId = "discuss";
-const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const;
-const websocketWarningDelayMs = 5_000;
+const sessionStorageKey = "agent-infrastructure.dashboard.session"
+const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
+const defaultSessionDirectory =
+  "/home/ec2-user/workspace/projects-worktrees/agent-infrastructure/feature-ui-design-canvas"
+const defaultSessionProcessBlueprintId = "discuss"
+const websocketRetryBackoffMs = [500, 1_000, 2_000, 4_000, 8_000] as const
+const websocketWarningDelayMs = 5_000
 
 const emptyActivity: SessionActivity = {
   status: "idle",
@@ -209,13 +222,13 @@ const emptyActivity: SessionActivity = {
   lastError: null,
   currentMessageId: null,
   canInterrupt: false,
-};
+}
 
 const initialPanelPositions: PanelPositions = {
   controls: { x: 20, y: 20 },
   chat: { x: 380, y: 20 },
   selection: { x: 380, y: 420 },
-};
+}
 
 const initialNodes: Node<CanvasNodeData>[] = [
   {
@@ -246,7 +259,7 @@ const initialNodes: Node<CanvasNodeData>[] = [
       sourceMessageId: null,
     },
   },
-];
+]
 
 const initialEdges: Edge[] = [
   {
@@ -257,77 +270,77 @@ const initialEdges: Edge[] = [
     animated: false,
     style: { stroke: "rgba(245, 158, 11, 0.35)", strokeWidth: 1.5 },
   },
-];
+]
 
 function readStoredSessionToken(): string {
   if (typeof window === "undefined") {
-    return "";
+    return ""
   }
-  return window.sessionStorage.getItem(sessionStorageKey) ?? "";
+  return window.sessionStorage.getItem(sessionStorageKey) ?? ""
 }
 
 function authorizationHeaderValue(): string {
-  const sessionToken = readStoredSessionToken().trim();
-  return sessionToken ? `Bearer ${sessionToken}` : "";
+  const sessionToken = readStoredSessionToken().trim()
+  return sessionToken ? `Bearer ${sessionToken}` : ""
 }
 
 function dashboardSessionWebSocketProtocols(): string[] {
-  const sessionToken = readStoredSessionToken().trim();
+  const sessionToken = readStoredSessionToken().trim()
   if (!sessionToken) {
-    return [];
+    return []
   }
-  return [`${dashboardSessionWebSocketProtocolPrefix}${sessionToken}`];
+  return [`${dashboardSessionWebSocketProtocolPrefix}${sessionToken}`]
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const headers = new Headers(init?.headers);
-  const authorization = authorizationHeaderValue();
+  const headers = new Headers(init?.headers)
+  const authorization = authorizationHeaderValue()
   if (authorization) {
-    headers.set("Authorization", authorization);
+    headers.set("Authorization", authorization)
   }
-  return fetch(path, { ...init, headers });
+  return fetch(path, { ...init, headers })
 }
 
 function timestampLabel(dateMs: number): string {
   return new Date(dateMs).toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit",
-  });
+  })
 }
 
 function dashedPath(points: Array<{ x: number; y: number }>): string {
   if (points.length === 0) {
-    return "";
+    return ""
   }
-  const [first, ...rest] = points;
-  return `M ${first.x} ${first.y} ${rest.map((point) => `L ${point.x} ${point.y}`).join(" ")}`;
+  const [first, ...rest] = points
+  return `M ${first.x} ${first.y} ${rest.map((point) => `L ${point.x} ${point.y}`).join(" ")}`
 }
 
 function promptStateClasses(state: PromptLifecycle): string {
   if (state === "pending") {
-    return "border-amber-400/60 bg-amber-500/10 text-amber-50";
+    return "border-amber-400/60 bg-amber-500/10 text-amber-50"
   }
   if (state === "commented") {
-    return "border-sky-400/55 bg-sky-500/10 text-sky-50";
+    return "border-sky-400/55 bg-sky-500/10 text-sky-50"
   }
   if (state === "generated") {
-    return "border-emerald-400/55 bg-emerald-500/10 text-emerald-50";
+    return "border-emerald-400/55 bg-emerald-500/10 text-emerald-50"
   }
-  return "border-rose-400/60 bg-rose-500/10 text-rose-50";
+  return "border-rose-400/60 bg-rose-500/10 text-rose-50"
 }
 
 function variantStatusClasses(status: VariantStatus): string {
   if (status === "candidate") {
-    return "border-emerald-400/45 bg-emerald-400/12 text-emerald-100";
+    return "border-emerald-400/45 bg-emerald-400/12 text-emerald-100"
   }
   if (status === "refined") {
-    return "border-sky-400/45 bg-sky-400/12 text-sky-100";
+    return "border-sky-400/45 bg-sky-400/12 text-sky-100"
   }
-  return "border-amber-300/45 bg-amber-300/12 text-amber-100";
+  return "border-amber-300/45 bg-amber-300/12 text-amber-100"
 }
 
 function classifyPrompt(text: string): AgentAction {
-  const normalized = text.trim().toLowerCase();
+  const normalized = text.trim().toLowerCase()
   const generationSignals = [
     "create",
     "make",
@@ -341,47 +354,52 @@ function classifyPrompt(text: string): AgentAction {
     "dashboard",
     "variant",
     "layout",
-  ];
+  ]
   return generationSignals.some((token) => normalized.includes(token))
     ? "generate_variant"
-    : "comment";
+    : "comment"
 }
 
 function summarizeVariantTitle(text: string): string {
-  const normalized = text.trim().replace(/\s+/g, " ");
-  const clipped = normalized.length > 42 ? `${normalized.slice(0, 39)}...` : normalized;
-  return clipped || "New design variant";
+  const normalized = text.trim().replace(/\s+/g, " ")
+  const clipped =
+    normalized.length > 42 ? `${normalized.slice(0, 39)}...` : normalized
+  return clipped || "New design variant"
 }
 
-function extractMessageText(message: SessionMessage | null | undefined): string {
+function extractMessageText(
+  message: SessionMessage | null | undefined,
+): string {
   if (!message) {
-    return "";
+    return ""
   }
   return message.content
     .map((block) => (block.type === "text" ? block.text : "[image]"))
     .join("\n")
-    .trim();
+    .trim()
 }
 
 function summarizeAssistantResponse(text: string): string {
-  const normalized = text.replace(/\s+/g, " ").trim();
+  const normalized = text.replace(/\s+/g, " ").trim()
   if (normalized.length <= 180) {
-    return normalized;
+    return normalized
   }
-  return `${normalized.slice(0, 177)}...`;
+  return `${normalized.slice(0, 177)}...`
 }
 
-function nodeSessionId(node: Node<CanvasNodeData> | null | undefined): string | null {
+function nodeSessionId(
+  node: Node<CanvasNodeData> | null | undefined,
+): string | null {
   if (!node) {
-    return null;
+    return null
   }
   if (node.data.kind === "draft" || node.data.kind === "prompt") {
-    return node.data.sessionId;
+    return node.data.sessionId
   }
   if (node.data.kind === "comment" || node.data.kind === "variant") {
-    return node.data.sessionId;
+    return node.data.sessionId
   }
-  return null;
+  return null
 }
 
 function defaultChatSessionState(): ChatSessionState {
@@ -393,62 +411,62 @@ function defaultChatSessionState(): ChatSessionState {
     streamingAssistantText: "",
     wsStatus: "idle",
     error: "",
-  };
+  }
 }
 
 function DesignNode({ data, selected }: NodeProps<CanvasNodeData>) {
   if (data.kind === "draft") {
-    return <DraftPromptCard data={data} selected={selected} />;
+    return <DraftPromptCard data={data} selected={selected} />
   }
   if (data.kind === "prompt") {
-    return <PromptCard data={data} selected={selected} />;
+    return <PromptCard data={data} selected={selected} />
   }
   if (data.kind === "comment") {
-    return <CommentCard data={data} selected={selected} />;
+    return <CommentCard data={data} selected={selected} />
   }
-  return <VariantCard data={data} selected={selected} />;
+  return <VariantCard data={data} selected={selected} />
 }
 
 function DraftPromptCard({
   data,
   selected,
 }: {
-  data: DraftPromptNodeData;
-  selected: boolean;
+  data: DraftPromptNodeData
+  selected: boolean
 }) {
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const dragStateRef = useRef<{ x: number; y: number } | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const dragStateRef = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
+    inputRef.current?.focus()
+    inputRef.current?.select()
+  }, [])
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
-      const dragState = dragStateRef.current;
+      const dragState = dragStateRef.current
       if (!dragState) {
-        return;
+        return
       }
-      const deltaX = event.clientX - dragState.x;
-      const deltaY = event.clientY - dragState.y;
+      const deltaX = event.clientX - dragState.x
+      const deltaY = event.clientY - dragState.y
       if (deltaX !== 0 || deltaY !== 0) {
-        data.onDragBy(deltaX, deltaY);
-        dragStateRef.current = { x: event.clientX, y: event.clientY };
+        data.onDragBy(deltaX, deltaY)
+        dragStateRef.current = { x: event.clientX, y: event.clientY }
       }
     }
 
     function handlePointerUp() {
-      dragStateRef.current = null;
+      dragStateRef.current = null
     }
 
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointermove", handlePointerMove)
+    window.addEventListener("pointerup", handlePointerUp)
     return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-  }, [data]);
+      window.removeEventListener("pointermove", handlePointerMove)
+      window.removeEventListener("pointerup", handlePointerUp)
+    }
+  }, [data])
 
   return (
     <div
@@ -459,7 +477,7 @@ function DraftPromptCard({
       <div
         className="nodrag mb-3 flex cursor-grab items-center justify-between active:cursor-grabbing"
         onPointerDown={(event) => {
-          dragStateRef.current = { x: event.clientX, y: event.clientY };
+          dragStateRef.current = { x: event.clientX, y: event.clientY }
         }}
       >
         <span className="rounded-full border border-amber-300/35 bg-amber-300/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-100">
@@ -479,19 +497,23 @@ function DraftPromptCard({
         onChange={(event) => data.onChange(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            data.onSubmit();
+            event.preventDefault()
+            data.onSubmit()
           }
           if (event.key === "Escape") {
-            event.preventDefault();
-            data.onCancel();
+            event.preventDefault()
+            data.onCancel()
           }
         }}
         className="nodrag h-28 w-full resize-none rounded-[20px] border border-stone-700/80 bg-stone-900/85 px-4 py-3 text-sm leading-6 text-stone-100 outline-none placeholder:text-stone-500"
         placeholder="Describe a direction, sketch note, or ask the agent what to change."
       />
       <div className="mt-3 flex items-center justify-between text-xs text-stone-400">
-        <span>{data.sessionStatus === "ready" ? "Shift+Enter for newline" : "Preparing session"}</span>
+        <span>
+          {data.sessionStatus === "ready"
+            ? "Shift+Enter for newline"
+            : "Preparing session"}
+        </span>
         <button
           type="button"
           onClick={data.onSubmit}
@@ -501,15 +523,15 @@ function DraftPromptCard({
         </button>
       </div>
     </div>
-  );
+  )
 }
 
 function PromptCard({
   data,
   selected,
 }: {
-  data: PromptNodeData;
-  selected: boolean;
+  data: PromptNodeData
+  selected: boolean
 }) {
   return (
     <div
@@ -527,15 +549,15 @@ function PromptCard({
       </div>
       <p className="text-sm leading-6">{data.text}</p>
     </div>
-  );
+  )
 }
 
 function CommentCard({
   data,
   selected,
 }: {
-  data: CommentNodeData;
-  selected: boolean;
+  data: CommentNodeData
+  selected: boolean
 }) {
   return (
     <div
@@ -554,15 +576,15 @@ function CommentCard({
       <h3 className="text-sm font-semibold text-white">{data.title}</h3>
       <p className="mt-2 text-sm leading-6 text-sky-50/88">{data.body}</p>
     </div>
-  );
+  )
 }
 
 function VariantCard({
   data,
   selected,
 }: {
-  data: VariantNodeData;
-  selected: boolean;
+  data: VariantNodeData
+  selected: boolean
 }) {
   return (
     <div
@@ -574,15 +596,21 @@ function VariantCard({
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.18),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.14),transparent_42%)]" />
         <div className="relative">
           <div className="flex items-center justify-between gap-3">
-            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] ${variantStatusClasses(data.status)}`}>
+            <span
+              className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] ${variantStatusClasses(data.status)}`}
+            >
               {data.status}
             </span>
             <span className="text-[10px] uppercase tracking-[0.24em] text-stone-500">
               Variant
             </span>
           </div>
-          <h3 className="mt-4 text-base font-semibold text-white">{data.title}</h3>
-          <p className="mt-2 text-sm leading-6 text-stone-300">{data.summary}</p>
+          <h3 className="mt-4 text-base font-semibold text-white">
+            {data.title}
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-stone-300">
+            {data.summary}
+          </p>
         </div>
       </div>
       <div className="px-5 py-4">
@@ -613,7 +641,7 @@ function VariantCard({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function FloatingPanel({
@@ -625,39 +653,44 @@ function FloatingPanel({
   widthClass,
   children,
 }: {
-  panelId: FloatingPanelId;
-  title: string;
-  subtitle?: string;
-  position: PanelPosition;
-  onMove(panelId: FloatingPanelId, nextPosition: PanelPosition): void;
-  widthClass?: string;
-  children: ReactNode;
+  panelId: FloatingPanelId
+  title: string
+  subtitle?: string
+  position: PanelPosition
+  onMove(panelId: FloatingPanelId, nextPosition: PanelPosition): void
+  widthClass?: string
+  children: ReactNode
 }) {
-  const dragStateRef = useRef<{ originX: number; originY: number; startX: number; startY: number } | null>(null);
+  const dragStateRef = useRef<{
+    originX: number
+    originY: number
+    startX: number
+    startY: number
+  } | null>(null)
 
   useEffect(() => {
     function handlePointerMove(event: PointerEvent) {
-      const dragState = dragStateRef.current;
+      const dragState = dragStateRef.current
       if (!dragState) {
-        return;
+        return
       }
       onMove(panelId, {
         x: Math.max(12, dragState.originX + (event.clientX - dragState.startX)),
         y: Math.max(12, dragState.originY + (event.clientY - dragState.startY)),
-      });
+      })
     }
 
     function handlePointerUp() {
-      dragStateRef.current = null;
+      dragStateRef.current = null
     }
 
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointermove", handlePointerMove)
+    window.addEventListener("pointerup", handlePointerUp)
     return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    };
-  }, [onMove, panelId]);
+      window.removeEventListener("pointermove", handlePointerMove)
+      window.removeEventListener("pointerup", handlePointerUp)
+    }
+  }, [onMove, panelId])
 
   return (
     <section
@@ -672,7 +705,7 @@ function FloatingPanel({
             originY: position.y,
             startX: event.clientX,
             startY: event.clientY,
-          };
+          }
         }}
       >
         <div>
@@ -686,15 +719,15 @@ function FloatingPanel({
       </header>
       <div className="p-4">{children}</div>
     </section>
-  );
+  )
 }
 
 export type UiDesignCanvasScreenProps = {
-  apiRootUrl: string;
-  wsRootUrl: string;
-  defaultSessionDirectory?: string;
-  defaultProcessBlueprintId?: string;
-};
+  apiRootUrl: string
+  wsRootUrl: string
+  defaultSessionDirectory?: string
+  defaultProcessBlueprintId?: string
+}
 
 export function UiDesignCanvasScreen({
   apiRootUrl,
@@ -702,62 +735,76 @@ export function UiDesignCanvasScreen({
   defaultSessionDirectory: sessionDirectory = defaultSessionDirectory,
   defaultProcessBlueprintId = defaultSessionProcessBlueprintId,
 }: UiDesignCanvasScreenProps) {
-  const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData, Edge> | null>(null);
-  const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
-  const strokeCounterRef = useRef(0);
-  const nodeCounterRef = useRef(2);
-  const edgeCounterRef = useRef(1);
-  const createSessionPromiseRef = useRef(new Map<string, Promise<string>>());
-  const pollingSessionIdsRef = useRef(new Set<string>());
-  const nodesRef = useRef<Node<CanvasNodeData>[]>(initialNodes);
-  const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNodeData>(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [mode, setMode] = useState<CanvasMode>("navigate");
-  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [activeStroke, setActiveStroke] = useState<Stroke | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [lastSessionId, setLastSessionId] = useState<string | null>(null);
-  const [panelPositions, setPanelPositions] = useState<PanelPositions>(initialPanelPositions);
-  const [chatDraft, setChatDraft] = useState("");
-  const [chatSessions, setChatSessions] = useState<Record<string, ChatSessionState>>({});
-  const [globalError, setGlobalError] = useState("");
+  const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData, Edge> | null>(
+    null,
+  )
+  const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 })
+  const strokeCounterRef = useRef(0)
+  const nodeCounterRef = useRef(2)
+  const edgeCounterRef = useRef(1)
+  const createSessionPromiseRef = useRef(new Map<string, Promise<string>>())
+  const pollingSessionIdsRef = useRef(new Set<string>())
+  const nodesRef = useRef<Node<CanvasNodeData>[]>(initialNodes)
+  const [nodes, setNodes, onNodesChange] =
+    useNodesState<CanvasNodeData>(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+  const [mode, setMode] = useState<CanvasMode>("navigate")
+  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 })
+  const [strokes, setStrokes] = useState<Stroke[]>([])
+  const [activeStroke, setActiveStroke] = useState<Stroke | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [lastSessionId, setLastSessionId] = useState<string | null>(null)
+  const [panelPositions, setPanelPositions] = useState<PanelPositions>(
+    initialPanelPositions,
+  )
+  const [chatDraft, setChatDraft] = useState("")
+  const [chatSessions, setChatSessions] = useState<
+    Record<string, ChatSessionState>
+  >({})
+  const [globalError, setGlobalError] = useState("")
 
   useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
+    nodesRef.current = nodes
+  }, [nodes])
 
-  const hasMarkup = strokes.length > 0;
+  const hasMarkup = strokes.length > 0
 
   const nodeTypes = useMemo(
     () => ({
       designNode: DesignNode,
     }),
     [],
-  );
+  )
 
   function nextNodeId(prefix: string): string {
-    nodeCounterRef.current += 1;
-    return `${prefix}-${nodeCounterRef.current}`;
+    nodeCounterRef.current += 1
+    return `${prefix}-${nodeCounterRef.current}`
   }
 
   function nextEdgeId(): string {
-    edgeCounterRef.current += 1;
-    return `edge-${edgeCounterRef.current}`;
+    edgeCounterRef.current += 1
+    return `edge-${edgeCounterRef.current}`
   }
 
-  function updatePanelPosition(panelId: FloatingPanelId, nextPosition: PanelPosition) {
-    setPanelPositions((current) => ({ ...current, [panelId]: nextPosition }));
+  function updatePanelPosition(
+    panelId: FloatingPanelId,
+    nextPosition: PanelPosition,
+  ) {
+    setPanelPositions((current) => ({ ...current, [panelId]: nextPosition }))
   }
 
   function updateNodeData(nodeId: string, nextData: CanvasNodeData) {
     setNodes((currentNodes) =>
-      currentNodes.map((node) => (node.id === nodeId ? { ...node, data: nextData } : node)),
-    );
+      currentNodes.map((node) =>
+        node.id === nodeId ? { ...node, data: nextData } : node,
+      ),
+    )
   }
 
   function removeNode(nodeId: string) {
-    setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
+    setNodes((currentNodes) =>
+      currentNodes.filter((node) => node.id !== nodeId),
+    )
   }
 
   function updatePromptNode(
@@ -770,7 +817,7 @@ export function UiDesignCanvasScreen({
           ? { ...node, data: updater(node.data) }
           : node,
       ),
-    );
+    )
   }
 
   function upsertChatSession(
@@ -780,7 +827,7 @@ export function UiDesignCanvasScreen({
     setChatSessions((current) => ({
       ...current,
       [sessionId]: updater(current[sessionId] ?? defaultChatSessionState()),
-    }));
+    }))
   }
 
   function setSessionSnapshot(snapshot: SessionSnapshotResponse) {
@@ -790,14 +837,14 @@ export function UiDesignCanvasScreen({
       messages: snapshot.messages,
       queuedMessages: snapshot.queuedMessages,
       activity: snapshot.activity,
-    }));
+    }))
   }
 
   function activeSessionId(): string | null {
     const selectedNode = selectedNodeId
-      ? nodesRef.current.find((node) => node.id === selectedNodeId) ?? null
-      : null;
-    return nodeSessionId(selectedNode) ?? lastSessionId;
+      ? (nodesRef.current.find((node) => node.id === selectedNodeId) ?? null)
+      : null
+    return nodeSessionId(selectedNode) ?? lastSessionId
   }
 
   async function createAgentChatSession(title: string | null) {
@@ -815,20 +862,25 @@ export function UiDesignCanvasScreen({
         imageModelRef: null,
         processBlueprintId: defaultProcessBlueprintId,
       }),
-    });
-    const payload = (await response.json()) as SessionSnapshotResponse & { error?: string };
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error ?? "Agent chat session creation failed.");
+    })
+    const payload = (await response.json()) as SessionSnapshotResponse & {
+      error?: string
     }
-    setSessionSnapshot(payload);
-    setLastSessionId(payload.session.id);
-    return payload.session.id;
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error ?? "Agent chat session creation failed.")
+    }
+    setSessionSnapshot(payload)
+    setLastSessionId(payload.session.id)
+    return payload.session.id
   }
 
-  async function ensureChatSessionForNode(nodeId: string, title: string | null) {
-    const existingPromise = createSessionPromiseRef.current.get(nodeId);
+  async function ensureChatSessionForNode(
+    nodeId: string,
+    title: string | null,
+  ) {
+    const existingPromise = createSessionPromiseRef.current.get(nodeId)
     if (existingPromise) {
-      return existingPromise;
+      return existingPromise
     }
 
     const nextPromise = createAgentChatSession(title)
@@ -836,27 +888,31 @@ export function UiDesignCanvasScreen({
         setNodes((currentNodes) =>
           currentNodes.map((node) => {
             if (node.id !== nodeId) {
-              return node;
+              return node
             }
             if (node.data.kind === "draft") {
               return {
                 ...node,
                 data: { ...node.data, sessionId, sessionStatus: "ready" },
-              };
+              }
             }
             if (node.data.kind === "prompt") {
               return {
                 ...node,
                 data: { ...node.data, sessionId },
-              };
+              }
             }
-            return node;
+            return node
           }),
-        );
-        return sessionId;
+        )
+        return sessionId
       })
       .catch((error: unknown) => {
-        setGlobalError(error instanceof Error ? error.message : "Agent chat session creation failed.");
+        setGlobalError(
+          error instanceof Error
+            ? error.message
+            : "Agent chat session creation failed.",
+        )
         setNodes((currentNodes) =>
           currentNodes.map((node) =>
             node.id === nodeId && node.data.kind === "draft"
@@ -866,37 +922,40 @@ export function UiDesignCanvasScreen({
                 }
               : node,
           ),
-        );
-        throw error;
+        )
+        throw error
       })
       .finally(() => {
-        createSessionPromiseRef.current.delete(nodeId);
-      });
+        createSessionPromiseRef.current.delete(nodeId)
+      })
 
-    createSessionPromiseRef.current.set(nodeId, nextPromise);
-    return nextPromise;
+    createSessionPromiseRef.current.set(nodeId, nextPromise)
+    return nextPromise
   }
 
   async function sendChatMessage(sessionId: string, text: string) {
-    const response = await apiFetch(`${apiRootUrl}/sessions/${sessionId}/messages`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
+    const response = await apiFetch(
+      `${apiRootUrl}/sessions/${sessionId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          content: [
+            {
+              type: "text",
+              text,
+            },
+          ],
+          replyToMessageId: null,
+        }),
       },
-      body: JSON.stringify({
-        text,
-        content: [
-          {
-            type: "text",
-            text,
-          },
-        ],
-        replyToMessageId: null,
-      }),
-    });
-    const payload = (await response.json()) as { error?: string };
+    )
+    const payload = (await response.json()) as { error?: string }
     if (!response.ok) {
-      throw new Error(payload.error ?? "Message send failed.");
+      throw new Error(payload.error ?? "Message send failed.")
     }
   }
 
@@ -909,18 +968,18 @@ export function UiDesignCanvasScreen({
       body: JSON.stringify({ title }),
     }).catch(() => {
       // Best-effort only.
-    });
+    })
   }
 
   function createDraftPrompt(position: { x: number; y: number }) {
-    const draftId = nextNodeId("draft");
+    const draftId = nextNodeId("draft")
     const draftData: DraftPromptNodeData = {
       kind: "draft",
       text: "",
       sessionId: null,
       sessionStatus: "provisioning",
       onDragBy(deltaX, deltaY) {
-        const zoom = viewportRef.current.zoom || 1;
+        const zoom = viewportRef.current.zoom || 1
         setNodes((currentNodes) =>
           currentNodes.map((node) =>
             node.id === draftId
@@ -933,18 +992,18 @@ export function UiDesignCanvasScreen({
                 }
               : node,
           ),
-        );
+        )
       },
       onChange(nextText) {
-        updateNodeData(draftId, { ...draftData, text: nextText });
+        updateNodeData(draftId, { ...draftData, text: nextText })
       },
       onSubmit() {
-        void submitDraftPrompt(draftId);
+        void submitDraftPrompt(draftId)
       },
       onCancel() {
-        removeNode(draftId);
+        removeNode(draftId)
       },
-    };
+    }
 
     setNodes((currentNodes) => [
       ...currentNodes,
@@ -954,43 +1013,55 @@ export function UiDesignCanvasScreen({
         position,
         data: draftData,
       },
-    ]);
-    setSelectedNodeId(draftId);
-    void ensureChatSessionForNode(draftId, "Canvas prompt");
+    ])
+    setSelectedNodeId(draftId)
+    void ensureChatSessionForNode(draftId, "Canvas prompt")
   }
 
   async function fetchSessionSnapshot(sessionId: string) {
-    const response = await apiFetch(`${apiRootUrl}/sessions/${sessionId}`);
-    const payload = (await response.json()) as SessionSnapshotResponse & { error?: string };
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error ?? "Session load failed.");
+    const response = await apiFetch(`${apiRootUrl}/sessions/${sessionId}`)
+    const payload = (await response.json()) as SessionSnapshotResponse & {
+      error?: string
     }
-    setSessionSnapshot(payload);
-    return payload;
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error ?? "Session load failed.")
+    }
+    setSessionSnapshot(payload)
+    return payload
   }
 
-  function projectAssistantReply(promptId: string, snapshot: SessionSnapshotResponse) {
-    const promptNode = nodesRef.current.find((node) => node.id === promptId);
+  function projectAssistantReply(
+    promptId: string,
+    snapshot: SessionSnapshotResponse,
+  ) {
+    const promptNode = nodesRef.current.find((node) => node.id === promptId)
     if (!promptNode || promptNode.data.kind !== "prompt") {
-      return;
+      return
     }
 
     const assistantMessage =
       [...snapshot.messages]
         .reverse()
-        .find((message) => message.role === "assistant" && message.kind === "chat") ?? null;
+        .find(
+          (message) => message.role === "assistant" && message.kind === "chat",
+        ) ?? null
 
-    if (!assistantMessage || promptNode.data.projectedMessageId === assistantMessage.id) {
-      return;
+    if (
+      !assistantMessage ||
+      promptNode.data.projectedMessageId === assistantMessage.id
+    ) {
+      return
     }
 
-    const assistantText = summarizeAssistantResponse(extractMessageText(assistantMessage));
-    const promptText = promptNode.data.text;
-    const action = classifyPrompt(promptText);
-    const promptPosition = promptNode.position;
+    const assistantText = summarizeAssistantResponse(
+      extractMessageText(assistantMessage),
+    )
+    const promptText = promptNode.data.text
+    const action = classifyPrompt(promptText)
+    const promptPosition = promptNode.position
 
     if (action === "comment") {
-      const commentId = nextNodeId("comment");
+      const commentId = nextNodeId("comment")
       setNodes((currentNodes) => [
         ...currentNodes,
         {
@@ -1005,7 +1076,7 @@ export function UiDesignCanvasScreen({
             sourceMessageId: assistantMessage.id,
           },
         },
-      ]);
+      ])
       setEdges((currentEdges) => [
         ...currentEdges,
         {
@@ -1016,16 +1087,16 @@ export function UiDesignCanvasScreen({
           animated: true,
           style: { stroke: "rgba(125, 211, 252, 0.45)", strokeWidth: 1.6 },
         },
-      ]);
+      ])
       updatePromptNode(promptId, (currentData) => ({
         ...currentData,
         state: "commented",
         projectedMessageId: assistantMessage.id,
-      }));
-      return;
+      }))
+      return
     }
 
-    const variantId = nextNodeId("variant");
+    const variantId = nextNodeId("variant")
     setNodes((currentNodes) => [
       ...currentNodes,
       {
@@ -1042,7 +1113,7 @@ export function UiDesignCanvasScreen({
           sourceMessageId: assistantMessage.id,
         },
       },
-    ]);
+    ])
     setEdges((currentEdges) => [
       ...currentEdges,
       {
@@ -1053,31 +1124,32 @@ export function UiDesignCanvasScreen({
         animated: true,
         style: { stroke: "rgba(74, 222, 128, 0.45)", strokeWidth: 1.6 },
       },
-    ]);
+    ])
     updatePromptNode(promptId, (currentData) => ({
       ...currentData,
       state: "generated",
       projectedMessageId: assistantMessage.id,
-    }));
+    }))
   }
 
   async function submitDraftPrompt(draftId: string) {
-    const draftNode = nodesRef.current.find((node) => node.id === draftId);
+    const draftNode = nodesRef.current.find((node) => node.id === draftId)
     if (!draftNode || draftNode.data.kind !== "draft") {
-      return;
+      return
     }
 
-    const text = draftNode.data.text.trim();
+    const text = draftNode.data.text.trim()
     if (!text) {
-      removeNode(draftId);
-      return;
+      removeNode(draftId)
+      return
     }
 
-    const promptId = nextNodeId("prompt");
+    const promptId = nextNodeId("prompt")
 
     try {
       const sessionId =
-        draftNode.data.sessionId ?? (await ensureChatSessionForNode(draftId, summarizeVariantTitle(text)));
+        draftNode.data.sessionId ??
+        (await ensureChatSessionForNode(draftId, summarizeVariantTitle(text)))
 
       setNodes((currentNodes) =>
         currentNodes.map((node) =>
@@ -1095,14 +1167,16 @@ export function UiDesignCanvasScreen({
               }
             : node,
         ),
-      );
-      setSelectedNodeId(promptId);
-      setLastSessionId(sessionId);
-      await renameChatSession(sessionId, summarizeVariantTitle(text));
-      await sendChatMessage(sessionId, text);
-      void fetchSessionSnapshot(sessionId);
+      )
+      setSelectedNodeId(promptId)
+      setLastSessionId(sessionId)
+      await renameChatSession(sessionId, summarizeVariantTitle(text))
+      await sendChatMessage(sessionId, text)
+      void fetchSessionSnapshot(sessionId)
     } catch (error) {
-      setGlobalError(error instanceof Error ? error.message : "Prompt submission failed.");
+      setGlobalError(
+        error instanceof Error ? error.message : "Prompt submission failed.",
+      )
       setNodes((currentNodes) =>
         currentNodes.map((node) =>
           node.id === draftId
@@ -1119,37 +1193,37 @@ export function UiDesignCanvasScreen({
               }
             : node,
         ),
-      );
-      setSelectedNodeId(promptId);
+      )
+      setSelectedNodeId(promptId)
     }
   }
 
   function handlePaneDoubleClick(event: React.MouseEvent<Element, MouseEvent>) {
     if (mode === "draw") {
-      return;
+      return
     }
     if (event.detail < 2) {
-      return;
+      return
     }
-    const target = event.target as HTMLElement | null;
+    const target = event.target as HTMLElement | null
     if (!target) {
-      return;
+      return
     }
     if (
       target.closest(".react-flow__node") ||
       target.closest(".react-flow__controls") ||
       target.closest(".react-flow__minimap")
     ) {
-      return;
+      return
     }
     const position = reactFlowRef.current?.screenToFlowPosition({
       x: event.clientX,
       y: event.clientY,
-    });
+    })
     if (!position) {
-      return;
+      return
     }
-    createDraftPrompt(position);
+    createDraftPrompt(position)
   }
 
   function handleConnect(connection: Connection) {
@@ -1163,38 +1237,40 @@ export function UiDesignCanvasScreen({
         },
         currentEdges,
       ),
-    );
+    )
   }
 
   function coordinateFromEvent(event: React.PointerEvent<SVGSVGElement>) {
-    return reactFlowRef.current?.screenToFlowPosition({
-      x: event.clientX,
-      y: event.clientY,
-    }) ?? null;
+    return (
+      reactFlowRef.current?.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      }) ?? null
+    )
   }
 
   function beginStroke(event: React.PointerEvent<SVGSVGElement>) {
     if (mode !== "draw") {
-      return;
+      return
     }
-    const point = coordinateFromEvent(event);
+    const point = coordinateFromEvent(event)
     if (!point) {
-      return;
+      return
     }
-    strokeCounterRef.current += 1;
+    strokeCounterRef.current += 1
     setActiveStroke({
       id: `stroke-${strokeCounterRef.current}`,
       points: [point],
-    });
+    })
   }
 
   function appendStroke(event: React.PointerEvent<SVGSVGElement>) {
     if (mode !== "draw" || !activeStroke) {
-      return;
+      return
     }
-    const point = coordinateFromEvent(event);
+    const point = coordinateFromEvent(event)
     if (!point) {
-      return;
+      return
     }
     setActiveStroke((currentStroke) =>
       currentStroke
@@ -1203,147 +1279,178 @@ export function UiDesignCanvasScreen({
             points: [...currentStroke.points, point],
           }
         : currentStroke,
-    );
+    )
   }
 
   function endStroke() {
     if (mode !== "draw" || !activeStroke) {
-      return;
+      return
     }
-    setStrokes((current) => [...current, activeStroke]);
-    setActiveStroke(null);
+    setStrokes((current) => [...current, activeStroke])
+    setActiveStroke(null)
   }
 
   function clearMarkup() {
-    setStrokes([]);
-    setActiveStroke(null);
+    setStrokes([])
+    setActiveStroke(null)
   }
 
   async function sendMarkupReview() {
-    const sessionId = activeSessionId();
+    const sessionId = activeSessionId()
     if (!sessionId || !hasMarkup) {
-      return;
+      return
     }
-    const summary = "Use the visible canvas markup to refine the active UI direction and respond to the highlighted areas.";
+    const summary =
+      "Use the visible canvas markup to refine the active UI direction and respond to the highlighted areas."
     try {
-      await sendChatMessage(sessionId, summary);
-      setChatDraft("");
-      await fetchSessionSnapshot(sessionId);
+      await sendChatMessage(sessionId, summary)
+      setChatDraft("")
+      await fetchSessionSnapshot(sessionId)
     } catch (error) {
-      setGlobalError(error instanceof Error ? error.message : "Markup send failed.");
+      setGlobalError(
+        error instanceof Error ? error.message : "Markup send failed.",
+      )
     }
   }
 
   async function submitChatDraft() {
-    const sessionId = activeSessionId();
-    const text = chatDraft.trim();
+    const sessionId = activeSessionId()
+    const text = chatDraft.trim()
     if (!sessionId || !text) {
-      return;
+      return
     }
     try {
-      await sendChatMessage(sessionId, text);
-      setChatDraft("");
-      await fetchSessionSnapshot(sessionId);
+      await sendChatMessage(sessionId, text)
+      setChatDraft("")
+      await fetchSessionSnapshot(sessionId)
     } catch (error) {
-      setGlobalError(error instanceof Error ? error.message : "Message send failed.");
+      setGlobalError(
+        error instanceof Error ? error.message : "Message send failed.",
+      )
     }
   }
 
   useEffect(() => {
     const pendingPrompts = nodes.filter(
       (node): node is Node<PromptNodeData> =>
-        node.data.kind === "prompt" && node.data.state === "pending" && Boolean(node.data.sessionId),
-    );
+        node.data.kind === "prompt" &&
+        node.data.state === "pending" &&
+        Boolean(node.data.sessionId),
+    )
 
     if (pendingPrompts.length === 0) {
-      return;
+      return
     }
 
     const intervalHandle = window.setInterval(() => {
       pendingPrompts.forEach((node) => {
-        const sessionId = node.data.sessionId;
+        const sessionId = node.data.sessionId
         if (!sessionId || pollingSessionIdsRef.current.has(sessionId)) {
-          return;
+          return
         }
-        pollingSessionIdsRef.current.add(sessionId);
+        pollingSessionIdsRef.current.add(sessionId)
         void fetchSessionSnapshot(sessionId)
           .then((snapshot) => {
-            projectAssistantReply(node.id, snapshot);
+            projectAssistantReply(node.id, snapshot)
           })
           .catch((error) => {
-            setGlobalError(error instanceof Error ? error.message : "Session polling failed.");
+            setGlobalError(
+              error instanceof Error
+                ? error.message
+                : "Session polling failed.",
+            )
           })
           .finally(() => {
-            pollingSessionIdsRef.current.delete(sessionId);
-          });
-      });
-    }, 1500);
+            pollingSessionIdsRef.current.delete(sessionId)
+          })
+      })
+    }, 1500)
 
     return () => {
-      window.clearInterval(intervalHandle);
-    };
-  }, [nodes]);
+      window.clearInterval(intervalHandle)
+    }
+  }, [
+    nodes,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: helper is intentionally recreated around ref-backed session state
+    fetchSessionSnapshot,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: helper is intentionally recreated around ref-backed session state
+    projectAssistantReply,
+  ])
 
   useEffect(() => {
-    const sessionId = activeSessionId();
+    const sessionId = activeSessionId()
     if (!sessionId) {
-      return;
+      return
     }
 
-    const socketUrl = new URL(wsRootUrl);
-    socketUrl.searchParams.set("sessionId", sessionId);
-    const protocols = dashboardSessionWebSocketProtocols();
-    let socket: WebSocket | null = null;
-    let disposed = false;
-    let reconnectAttempt = 0;
-    let reconnectTimer: number | null = null;
-    let warningTimer: number | null = null;
+    const socketUrl = new URL(wsRootUrl)
+    socketUrl.searchParams.set("sessionId", sessionId)
+    const protocols = dashboardSessionWebSocketProtocols()
+    let socket: WebSocket | null = null
+    let disposed = false
+    let reconnectAttempt = 0
+    let reconnectTimer: number | null = null
+    let warningTimer: number | null = null
 
-    const updateSession = (updater: (current: ChatSessionState) => ChatSessionState) => {
-      upsertChatSession(sessionId, updater);
-    };
+    const updateSession = (
+      updater: (current: ChatSessionState) => ChatSessionState,
+    ) => {
+      upsertChatSession(sessionId, updater)
+    }
 
     const clearReconnectTimer = () => {
       if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-        reconnectTimer = null;
+        window.clearTimeout(reconnectTimer)
+        reconnectTimer = null
       }
-    };
+    }
 
     const clearWarningTimer = () => {
       if (warningTimer !== null) {
-        window.clearTimeout(warningTimer);
-        warningTimer = null;
+        window.clearTimeout(warningTimer)
+        warningTimer = null
       }
-    };
+    }
 
     const scheduleDisconnectWarning = () => {
       if (warningTimer !== null) {
-        return;
+        return
       }
       warningTimer = window.setTimeout(() => {
-        warningTimer = null;
-        updateSession((current) => ({ ...current, wsStatus: "error", error: "Agent Chat WebSocket disconnected. Retrying…" }));
-      }, websocketWarningDelayMs);
-    };
+        warningTimer = null
+        updateSession((current) => ({
+          ...current,
+          wsStatus: "error",
+          error: "Agent Chat WebSocket disconnected. Retrying…",
+        }))
+      }, websocketWarningDelayMs)
+    }
 
     const connect = () => {
       if (disposed) {
-        return;
+        return
       }
 
-      updateSession((current) => ({ ...current, wsStatus: "connecting", error: "" }));
+      updateSession((current) => ({
+        ...current,
+        wsStatus: "connecting",
+        error: "",
+      }))
       socket =
         protocols.length > 0
           ? new WebSocket(socketUrl.toString(), protocols)
-          : new WebSocket(socketUrl.toString());
+          : new WebSocket(socketUrl.toString())
 
       socket.addEventListener("open", () => {
-        reconnectAttempt = 0;
-        clearReconnectTimer();
-        clearWarningTimer();
-        updateSession((current) => ({ ...current, wsStatus: "ready", error: "" }));
-      });
+        reconnectAttempt = 0
+        clearReconnectTimer()
+        clearWarningTimer()
+        updateSession((current) => ({
+          ...current,
+          wsStatus: "ready",
+          error: "",
+        }))
+      })
 
       socket.addEventListener("message", (event) => {
         const payload = JSON.parse(String(event.data)) as
@@ -1354,7 +1461,7 @@ export function UiDesignCanvasScreen({
           | RunCompletedEvent
           | RunFailedEvent
           | RunInterruptedEvent
-          | RunActivityEvent;
+          | RunActivityEvent
 
         if (payload.type === "session.snapshot") {
           updateSession((current) => ({
@@ -1364,15 +1471,18 @@ export function UiDesignCanvasScreen({
             queuedMessages: payload.queuedMessages,
             activity: payload.activity,
             streamingAssistantText: "",
-          }));
-          projectAssistantReply(sessionId === activeSessionId() ? selectedNodeId ?? "" : "", {
-            ok: true,
-            session: payload.session,
-            messages: payload.messages,
-            queuedMessages: payload.queuedMessages,
-            activity: payload.activity,
-          });
-          return;
+          }))
+          projectAssistantReply(
+            sessionId === activeSessionId() ? (selectedNodeId ?? "") : "",
+            {
+              ok: true,
+              session: payload.session,
+              messages: payload.messages,
+              queuedMessages: payload.queuedMessages,
+              activity: payload.activity,
+            },
+          )
+          return
         }
 
         if (payload.type === "session.updated") {
@@ -1382,11 +1492,13 @@ export function UiDesignCanvasScreen({
             messages: payload.messages,
             queuedMessages: payload.queuedMessages,
             activity: payload.activity,
-            streamingAssistantText: payload.messages.some((message) => message.role === "assistant")
+            streamingAssistantText: payload.messages.some(
+              (message) => message.role === "assistant",
+            )
               ? ""
               : current.streamingAssistantText,
-          }));
-          return;
+          }))
+          return
         }
 
         if (payload.type === "run.started") {
@@ -1396,8 +1508,8 @@ export function UiDesignCanvasScreen({
             queuedMessages: payload.queuedMessages,
             activity: payload.activity,
             streamingAssistantText: "",
-          }));
-          return;
+          }))
+          return
         }
 
         if (payload.type === "run.activity") {
@@ -1405,26 +1517,33 @@ export function UiDesignCanvasScreen({
             ...current,
             activity: payload.activity,
             queuedMessages: payload.queuedMessages,
-          }));
-          return;
+          }))
+          return
         }
 
         if (payload.type === "run.delta") {
           updateSession((current) => ({
             ...current,
             activity: { ...current.activity, status: "running" },
-            streamingAssistantText: current.streamingAssistantText + payload.delta,
-          }));
-          return;
+            streamingAssistantText:
+              current.streamingAssistantText + payload.delta,
+          }))
+          return
         }
 
-        if (payload.type === "run.completed" || payload.type === "run.interrupted") {
+        if (
+          payload.type === "run.completed" ||
+          payload.type === "run.interrupted"
+        ) {
           updateSession((current) => ({
             ...current,
             activity: payload.activity,
-            streamingAssistantText: payload.type === "run.interrupted" ? "" : current.streamingAssistantText,
-          }));
-          return;
+            streamingAssistantText:
+              payload.type === "run.interrupted"
+                ? ""
+                : current.streamingAssistantText,
+          }))
+          return
         }
 
         if (payload.type === "run.failed") {
@@ -1433,46 +1552,67 @@ export function UiDesignCanvasScreen({
             activity: payload.activity,
             error: payload.error,
             streamingAssistantText: "",
-          }));
+          }))
         }
-      });
+      })
 
       socket.addEventListener("error", () => {
-        scheduleDisconnectWarning();
-      });
+        scheduleDisconnectWarning()
+      })
 
       socket.addEventListener("close", () => {
         if (disposed) {
-          return;
+          return
         }
-        scheduleDisconnectWarning();
+        scheduleDisconnectWarning()
         const delayMs =
-          websocketRetryBackoffMs[Math.min(reconnectAttempt, websocketRetryBackoffMs.length - 1)];
-        reconnectAttempt += 1;
-        reconnectTimer = window.setTimeout(connect, delayMs);
-      });
-    };
+          websocketRetryBackoffMs[
+            Math.min(reconnectAttempt, websocketRetryBackoffMs.length - 1)
+          ]
+        reconnectAttempt += 1
+        reconnectTimer = window.setTimeout(connect, delayMs)
+      })
+    }
 
-    connect();
+    connect()
 
     return () => {
-      disposed = true;
-      clearReconnectTimer();
-      clearWarningTimer();
-      socket?.close();
-    };
-  }, [selectedNodeId, wsRootUrl]);
+      disposed = true
+      clearReconnectTimer()
+      clearWarningTimer()
+      socket?.close()
+    }
+  }, [
+    selectedNodeId,
+    wsRootUrl,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: helper is intentionally recreated around ref-backed session state
+    activeSessionId,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: helper is intentionally recreated around ref-backed session state
+    projectAssistantReply,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: helper is intentionally recreated around ref-backed session state
+    upsertChatSession,
+  ])
 
   const selectedNode = selectedNodeId
-    ? nodes.find((node) => node.id === selectedNodeId) ?? null
-    : null;
-  const linkedSessionId = activeSessionId();
-  const linkedSession = linkedSessionId ? chatSessions[linkedSessionId] ?? defaultChatSessionState() : null;
-  const transcriptMessages = linkedSession?.messages.filter((message) => message.kind !== "streamCheckpoint") ?? [];
+    ? (nodes.find((node) => node.id === selectedNodeId) ?? null)
+    : null
+  const linkedSessionId = activeSessionId()
+  const linkedSession = linkedSessionId
+    ? (chatSessions[linkedSessionId] ?? defaultChatSessionState())
+    : null
+  const transcriptMessages =
+    linkedSession?.messages.filter(
+      (message) => message.kind !== "streamCheckpoint",
+    ) ?? []
 
   return (
     <div className="relative h-full min-h-0 w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.12),transparent_24%),radial-gradient(circle_at_bottom_right,rgba(56,189,248,0.12),transparent_28%),linear-gradient(180deg,#0e1116,#040506)] text-stone-100">
-      <div className="absolute inset-0" onDoubleClick={handlePaneDoubleClick}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: canvas surface uses double-click for prompt creation while remaining non-focusable */}
+      <div
+        className="absolute inset-0"
+        role="presentation"
+        onDoubleClick={handlePaneDoubleClick}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -1480,14 +1620,15 @@ export function UiDesignCanvasScreen({
           onEdgesChange={onEdgesChange}
           onConnect={handleConnect}
           onSelectionChange={({ nodes: selectedNodes }) => {
-            const nextSelectedId = selectedNodes[0]?.id ?? null;
-            setSelectedNodeId(nextSelectedId);
+            const nextSelectedId = selectedNodes[0]?.id ?? null
+            setSelectedNodeId(nextSelectedId)
             const nextSelectedNode = nextSelectedId
-              ? nodesRef.current.find((node) => node.id === nextSelectedId) ?? null
-              : null;
-            const nextSessionId = nodeSessionId(nextSelectedNode);
+              ? (nodesRef.current.find((node) => node.id === nextSelectedId) ??
+                null)
+              : null
+            const nextSessionId = nodeSessionId(nextSelectedNode)
             if (nextSessionId) {
-              setLastSessionId(nextSessionId);
+              setLastSessionId(nextSessionId)
             }
           }}
           nodeTypes={nodeTypes}
@@ -1496,14 +1637,14 @@ export function UiDesignCanvasScreen({
           maxZoom={1.6}
           zoomOnDoubleClick={false}
           onInit={(instance) => {
-            reactFlowRef.current = instance;
-            const nextViewport = instance.getViewport();
-            viewportRef.current = nextViewport;
-            setViewport(nextViewport);
+            reactFlowRef.current = instance
+            const nextViewport = instance.getViewport()
+            viewportRef.current = nextViewport
+            setViewport(nextViewport)
           }}
           onMove={(_, nextViewport) => {
-            viewportRef.current = nextViewport;
-            setViewport(nextViewport);
+            viewportRef.current = nextViewport
+            setViewport(nextViewport)
           }}
           className="h-full w-full bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.08),transparent_18%),linear-gradient(180deg,rgba(24,24,27,0.98),rgba(10,10,10,1))]"
           proOptions={{ hideAttribution: true }}
@@ -1520,13 +1661,17 @@ export function UiDesignCanvasScreen({
           <Controls className="!bg-stone-950/95 !border !border-stone-700/70 !shadow-none" />
         </ReactFlow>
         <svg
+          aria-label="Canvas markup overlay"
           className={`absolute inset-0 z-20 h-full w-full ${mode === "draw" ? "cursor-crosshair pointer-events-auto" : "pointer-events-none"}`}
           onPointerDown={beginStroke}
           onPointerMove={appendStroke}
           onPointerUp={endStroke}
           onPointerLeave={endStroke}
         >
-          <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
+          <title>Canvas markup overlay</title>
+          <g
+            transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}
+          >
             {strokes.map((stroke) => (
               <path
                 key={stroke.id}
@@ -1551,7 +1696,6 @@ export function UiDesignCanvasScreen({
           </g>
         </svg>
       </div>
-
       <FloatingPanel
         panelId="controls"
         title="Canvas controls"
@@ -1604,7 +1748,6 @@ export function UiDesignCanvasScreen({
           </div>
         </div>
       </FloatingPanel>
-
       <FloatingPanel
         panelId="chat"
         title="Background conversation"
@@ -1616,14 +1759,17 @@ export function UiDesignCanvasScreen({
         {linkedSessionId ? (
           <>
             <div className="mb-3 flex items-center justify-between rounded-[20px] border border-stone-800/80 bg-stone-900/80 px-3 py-2 text-xs text-stone-400">
-              <span className="truncate">{linkedSession?.session?.title ?? "Canvas session"}</span>
+              <span className="truncate">
+                {linkedSession?.session?.title ?? "Canvas session"}
+              </span>
               <span className="uppercase tracking-[0.2em] text-stone-500">
-                {linkedSession?.wsStatus ?? "idle"} / {linkedSession?.activity.status ?? "idle"}
+                {linkedSession?.wsStatus ?? "idle"} /{" "}
+                {linkedSession?.activity.status ?? "idle"}
               </span>
             </div>
             <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
               {transcriptMessages.map((message) => {
-                const text = extractMessageText(message);
+                const text = extractMessageText(message)
                 return (
                   <div
                     key={message.id}
@@ -1641,14 +1787,16 @@ export function UiDesignCanvasScreen({
                     </div>
                     <p className="whitespace-pre-wrap">{text || "[empty]"}</p>
                   </div>
-                );
+                )
               })}
               {linkedSession?.streamingAssistantText ? (
                 <div className="rounded-[24px] border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm leading-6 text-sky-50">
                   <div className="mb-2 text-[10px] uppercase tracking-[0.22em] opacity-70">
                     assistant streaming
                   </div>
-                  <p className="whitespace-pre-wrap">{linkedSession.streamingAssistantText}</p>
+                  <p className="whitespace-pre-wrap">
+                    {linkedSession.streamingAssistantText}
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -1658,8 +1806,8 @@ export function UiDesignCanvasScreen({
                 onChange={(event) => setChatDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void submitChatDraft();
+                    event.preventDefault()
+                    void submitChatDraft()
                   }
                 }}
                 className="h-24 w-full resize-none rounded-[20px] border border-stone-800/90 bg-stone-900/90 px-4 py-3 text-sm leading-6 text-stone-100 outline-none placeholder:text-stone-500"
@@ -1680,11 +1828,12 @@ export function UiDesignCanvasScreen({
           </>
         ) : (
           <p className="text-sm leading-6 text-stone-400">
-            Double-click the canvas to create a prompt node. A real Agent Chat session is created immediately and this panel follows the selected canvas thread.
+            Double-click the canvas to create a prompt node. A real Agent Chat
+            session is created immediately and this panel follows the selected
+            canvas thread.
           </p>
         )}
       </FloatingPanel>
-
       <FloatingPanel
         panelId="selection"
         title="Selection"
@@ -1708,10 +1857,11 @@ export function UiDesignCanvasScreen({
           </div>
         ) : (
           <p className="text-sm leading-6 text-stone-400">
-            Select a node to inspect its linked chat session and current summary.
+            Select a node to inspect its linked chat session and current
+            summary.
           </p>
         )}
       </FloatingPanel>
     </div>
-  );
+  )
 }

@@ -3,12 +3,7 @@
   "compilerOptions": {
     "composite": true,
     "rootDir": "src",
-    "types": [
-      "node",
-      "aws-lambda"
-    ]
+    "types": ["node", "aws-lambda"]
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

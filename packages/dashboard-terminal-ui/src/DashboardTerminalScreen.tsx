@@ -1,47 +1,53 @@
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-} from "react";
+} from "react"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type DashboardTerminalScreenProps = {
-  apiRootUrl: string;
-  wsRootUrl: string;
-  appVersion?: string;
-};
+  apiRootUrl: string
+  wsRootUrl: string
+  appVersion?: string
+}
 
-const sessionStorageKey = "agent-infrastructure.dashboard.session";
-const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1.";
+const sessionStorageKey = "agent-infrastructure.dashboard.session"
+const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ESC-handling patterns require control characters
+const oscSequencePattern = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ESC-handling patterns require control characters
+const csiSequencePattern = /\u001b\[[0-9;?]*[ -/]*[@-~]/g
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ESC-handling patterns require control characters
+const twoByteEscapePattern = /\u001b[@-_]/g
 
 type SessionSummary = {
-  id: string;
-  cwd: string;
-  shell: string;
-  cols: number;
-  rows: number;
-  createdAtMs: number;
-  lastActivityMs: number;
-  closed: boolean;
-  attached: boolean;
-};
+  id: string
+  cwd: string
+  shell: string
+  cols: number
+  rows: number
+  createdAtMs: number
+  lastActivityMs: number
+  closed: boolean
+  attached: boolean
+}
 
 type ProfilesResponse = {
-  profiles: { id: string; label: string; shell: string }[];
-  defaultCwd: string;
-  allowedRoots: string[];
-};
+  profiles: { id: string; label: string; shell: string }[]
+  defaultCwd: string
+  allowedRoots: string[]
+}
 
 type ApiErrorResponse = {
-  ok?: boolean;
-  error?: string;
-};
+  ok?: boolean
+  error?: string
+}
 
 type WsMessageOut =
   | { type: "output"; data: string }
@@ -49,32 +55,32 @@ type WsMessageOut =
   | { type: "attached"; sessionId: string; cols: number; rows: number }
   | { type: "session_closed"; sessionId: string; exitCode?: number }
   | { type: "error"; message: string }
-  | { type: "heartbeat_ack" };
+  | { type: "heartbeat_ack" }
 
 function readStoredSessionToken(): string {
   if (typeof window === "undefined") {
-    return "";
+    return ""
   }
 
-  return window.sessionStorage.getItem(sessionStorageKey) ?? "";
+  return window.sessionStorage.getItem(sessionStorageKey) ?? ""
 }
 
 function applyDashboardSessionHeaders(headers?: HeadersInit): Headers {
-  const nextHeaders = new Headers(headers);
-  const sessionToken = readStoredSessionToken().trim();
+  const nextHeaders = new Headers(headers)
+  const sessionToken = readStoredSessionToken().trim()
   if (sessionToken) {
-    nextHeaders.set("Authorization", `Bearer ${sessionToken}`);
+    nextHeaders.set("Authorization", `Bearer ${sessionToken}`)
   }
-  return nextHeaders;
+  return nextHeaders
 }
 
 function dashboardSessionWebSocketProtocols(): string[] {
-  const sessionToken = readStoredSessionToken().trim();
+  const sessionToken = readStoredSessionToken().trim()
   if (!sessionToken) {
-    return [];
+    return []
   }
 
-  return [`${dashboardSessionWebSocketProtocolPrefix}${sessionToken}`];
+  return [`${dashboardSessionWebSocketProtocolPrefix}${sessionToken}`]
 }
 
 // ---------------------------------------------------------------------------
@@ -87,70 +93,78 @@ function dashboardSessionWebSocketProtocols(): string[] {
  * requires bundler configuration — this gets the interactive PTY working first.
  */
 function useTerminalRenderer() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const preRef = useRef<HTMLPreElement>(null);
-  const cursorRef = useRef<HTMLSpanElement>(null);
-  const contentRef = useRef("");
+  const containerRef = useRef<HTMLDivElement>(null)
+  const preRef = useRef<HTMLPreElement>(null)
+  const cursorRef = useRef<HTMLSpanElement>(null)
+  const contentRef = useRef("")
 
   const stripEscapes = useCallback((text: string) => {
-    return text
-      // Strip OSC sequences (title sets, etc.)
-      .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
-      // Strip CSI sequences (colors, cursor movement, etc.)
-      .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "")
-      // Strip remaining two-byte escape sequences
-      .replace(/\u001b[@-_]/g, "")
-      // Strip carriage returns that aren't part of \r\n (overwrite-style output)
-      .replace(/\r(?!\n)/g, "");
-  }, []);
+    return (
+      text
+        // Strip OSC sequences (title sets, etc.)
+        .replace(oscSequencePattern, "")
+        // Strip CSI sequences (colors, cursor movement, etc.)
+        .replace(csiSequencePattern, "")
+        // Strip remaining two-byte escape sequences
+        .replace(twoByteEscapePattern, "")
+        // Strip carriage returns that aren't part of \r\n (overwrite-style output)
+        .replace(/\r(?!\n)/g, "")
+    )
+  }, [])
 
   // Process backspace (\b = \x08) by removing the preceding character.
   // PTY sends \b \b (back, space, back) to erase visually — we interpret
   // each \b as "delete last visible char" in our simple text buffer.
   const processBackspaces = useCallback((buf: string): string => {
-    const out: string[] = [];
+    const out: string[] = []
     for (let i = 0; i < buf.length; i++) {
       if (buf[i] === "\x08") {
-        out.pop();
+        out.pop()
       } else {
-        out.push(buf[i]);
+        out.push(buf[i])
       }
     }
-    return out.join("");
-  }, []);
+    return out.join("")
+  }, [])
 
   const scrollToBottom = useCallback(() => {
     if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
-  }, []);
+  }, [])
 
   const render = useCallback(() => {
     if (preRef.current) {
-      preRef.current.textContent = contentRef.current;
-      scrollToBottom();
+      preRef.current.textContent = contentRef.current
+      scrollToBottom()
     }
-  }, [scrollToBottom]);
+  }, [scrollToBottom])
 
-  const append = useCallback((text: string) => {
-    const cleaned = stripEscapes(text);
-    contentRef.current = processBackspaces(contentRef.current + cleaned);
-    render();
-  }, [stripEscapes, processBackspaces, render]);
+  const append = useCallback(
+    (text: string) => {
+      const cleaned = stripEscapes(text)
+      contentRef.current = processBackspaces(contentRef.current + cleaned)
+      render()
+    },
+    [stripEscapes, processBackspaces, render],
+  )
 
-  const reset = useCallback((text: string) => {
-    contentRef.current = processBackspaces(stripEscapes(text));
-    render();
-  }, [stripEscapes, processBackspaces, render]);
+  const reset = useCallback(
+    (text: string) => {
+      contentRef.current = processBackspaces(stripEscapes(text))
+      render()
+    },
+    [stripEscapes, processBackspaces, render],
+  )
 
-  return { containerRef, preRef, cursorRef, append, reset };
+  return { containerRef, preRef, cursorRef, append, reset }
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(path, {
     ...init,
     headers: applyDashboardSessionHeaders(init?.headers),
-  });
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -163,19 +177,20 @@ export function DashboardTerminalScreen({
   appVersion,
 }: DashboardTerminalScreenProps) {
   useRenderCounter("DashboardTerminalScreen")
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [profiles, setProfiles] = useState<ProfilesResponse | null>(null);
-  const [connected, setConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [ctrlCPrimed, setCtrlCPrimed] = useState(false);
-  const ctrlCTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [profiles, setProfiles] = useState<ProfilesResponse | null>(null)
+  const [connected, setConnected] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [ctrlCPrimed, setCtrlCPrimed] = useState(false)
+  const ctrlCTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const { containerRef, preRef, cursorRef, append, reset } = useTerminalRenderer();
+  const { containerRef, preRef, cursorRef, append, reset } =
+    useTerminalRenderer()
 
   // -----------------------------------------------------------------------
   // API helpers
@@ -183,47 +198,58 @@ export function DashboardTerminalScreen({
 
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await apiFetch(`${apiRootUrl}/sessions`);
-      const data = (await res.json()) as { sessions?: SessionSummary[] } & ApiErrorResponse;
+      const res = await apiFetch(`${apiRootUrl}/sessions`)
+      const data = (await res.json()) as {
+        sessions?: SessionSummary[]
+      } & ApiErrorResponse
       if (!res.ok) {
-        setSessions([]);
-        setError(data.error ?? "Terminal access requires a valid dashboard session.");
-        return;
+        setSessions([])
+        setError(
+          data.error ?? "Terminal access requires a valid dashboard session.",
+        )
+        return
       }
-      setSessions(Array.isArray(data.sessions) ? data.sessions : []);
+      setSessions(Array.isArray(data.sessions) ? data.sessions : [])
     } catch {
-      setSessions([]);
+      setSessions([])
     }
-  }, [apiRootUrl]);
+  }, [apiRootUrl])
 
   const fetchProfiles = useCallback(async () => {
     try {
-      const res = await apiFetch(`${apiRootUrl}/profiles`);
-      const data = (await res.json()) as Partial<ProfilesResponse> & ApiErrorResponse;
+      const res = await apiFetch(`${apiRootUrl}/profiles`)
+      const data = (await res.json()) as Partial<ProfilesResponse> &
+        ApiErrorResponse
       if (!res.ok) {
-        setProfiles(null);
-        setError(data.error ?? "Terminal access requires a valid dashboard session.");
-        return;
+        setProfiles(null)
+        setError(
+          data.error ?? "Terminal access requires a valid dashboard session.",
+        )
+        return
       }
-      if (Array.isArray(data.profiles) && typeof data.defaultCwd === "string" && Array.isArray(data.allowedRoots)) {
+      if (
+        Array.isArray(data.profiles) &&
+        typeof data.defaultCwd === "string" &&
+        Array.isArray(data.allowedRoots)
+      ) {
         setProfiles({
           profiles: data.profiles,
           defaultCwd: data.defaultCwd,
           allowedRoots: data.allowedRoots,
-        });
+        })
       } else {
-        setProfiles(null);
+        setProfiles(null)
       }
     } catch {
-      setProfiles(null);
+      setProfiles(null)
     }
-  }, [apiRootUrl]);
+  }, [apiRootUrl])
 
   // Load sessions and profiles on mount
   useEffect(() => {
-    fetchSessions();
-    fetchProfiles();
-  }, [fetchSessions, fetchProfiles]);
+    fetchSessions()
+    fetchProfiles()
+  }, [fetchSessions, fetchProfiles])
 
   // -----------------------------------------------------------------------
   // WebSocket connection
@@ -233,208 +259,219 @@ export function DashboardTerminalScreen({
     (sessionId: string) => {
       // Clean up existing connection
       if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+        wsRef.current.close()
+        wsRef.current = null
       }
       if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
+        clearInterval(heartbeatRef.current)
+        heartbeatRef.current = null
       }
 
-      setConnected(false);
-      setError(null);
-      reset("");
+      setConnected(false)
+      setError(null)
+      reset("")
 
-      const wsUrl = wsRootUrl;
-      const protocols = dashboardSessionWebSocketProtocols();
+      const wsUrl = wsRootUrl
+      const protocols = dashboardSessionWebSocketProtocols()
       const ws =
-        protocols.length > 0 ? new WebSocket(wsUrl, protocols) : new WebSocket(wsUrl);
-      wsRef.current = ws;
+        protocols.length > 0
+          ? new WebSocket(wsUrl, protocols)
+          : new WebSocket(wsUrl)
+      wsRef.current = ws
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "attach", sessionId }));
+        ws.send(JSON.stringify({ type: "attach", sessionId }))
         // Start heartbeat
         heartbeatRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "heartbeat" }));
+            ws.send(JSON.stringify({ type: "heartbeat" }))
           }
-        }, 25_000);
-      };
+        }, 25_000)
+      }
 
       ws.onmessage = (event) => {
-        let msg: WsMessageOut;
+        let msg: WsMessageOut
         try {
-          msg = JSON.parse(event.data as string) as WsMessageOut;
+          msg = JSON.parse(event.data as string) as WsMessageOut
         } catch {
-          return;
+          return
         }
 
         switch (msg.type) {
           case "snapshot":
-            reset(msg.data);
-            break;
+            reset(msg.data)
+            break
           case "attached":
-            setConnected(true);
-            setActiveSessionId(msg.sessionId);
+            setConnected(true)
+            setActiveSessionId(msg.sessionId)
             // Focus input
-            setTimeout(() => inputRef.current?.focus(), 50);
-            break;
+            setTimeout(() => inputRef.current?.focus(), 50)
+            break
           case "output":
-            append(msg.data);
-            break;
+            append(msg.data)
+            break
           case "session_closed":
-            setConnected(false);
-            setError("Session closed");
-            fetchSessions();
-            break;
+            setConnected(false)
+            setError("Session closed")
+            fetchSessions()
+            break
           case "error":
-            setError(msg.message);
-            break;
+            setError(msg.message)
+            break
           case "heartbeat_ack":
-            break;
+            break
         }
-      };
+      }
 
       ws.onclose = () => {
-        setConnected(false);
+        setConnected(false)
         if (heartbeatRef.current) {
-          clearInterval(heartbeatRef.current);
-          heartbeatRef.current = null;
+          clearInterval(heartbeatRef.current)
+          heartbeatRef.current = null
         }
-      };
+      }
 
       ws.onerror = () => {
-        setError("WebSocket connection error");
-      };
+        setError("WebSocket connection error")
+      }
     },
     [wsRootUrl, append, reset, fetchSessions],
-  );
+  )
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      wsRef.current?.close();
-      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
-    };
-  }, []);
+      wsRef.current?.close()
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current)
+    }
+  }, [])
 
   // -----------------------------------------------------------------------
   // Session actions
   // -----------------------------------------------------------------------
 
   const createSession = useCallback(async () => {
-    setCreating(true);
-    setError(null);
+    setCreating(true)
+    setError(null)
     try {
       const res = await apiFetch(`${apiRootUrl}/sessions`, {
         method: "POST",
-        headers: applyDashboardSessionHeaders({ "Content-Type": "application/json" }),
+        headers: applyDashboardSessionHeaders({
+          "Content-Type": "application/json",
+        }),
         body: JSON.stringify({
           cwd: profiles?.defaultCwd || "/home/ec2-user/workspace",
         }),
-      });
-      const data = (await res.json()) as { session?: SessionSummary; error?: string };
+      })
+      const data = (await res.json()) as {
+        session?: SessionSummary
+        error?: string
+      }
       if (!res.ok) {
-        setError(data.error ?? "Failed to create session");
-        return;
+        setError(data.error ?? "Failed to create session")
+        return
       }
       if (data.error) {
-        setError(data.error);
-        return;
+        setError(data.error)
+        return
       }
       if (data.session) {
-        await fetchSessions();
-        connectWs(data.session.id);
+        await fetchSessions()
+        connectWs(data.session.id)
       }
     } catch (e) {
-      setError(`Failed to create session: ${e instanceof Error ? e.message : String(e)}`);
+      setError(
+        `Failed to create session: ${e instanceof Error ? e.message : String(e)}`,
+      )
     } finally {
-      setCreating(false);
+      setCreating(false)
     }
-  }, [apiRootUrl, profiles, fetchSessions, connectWs]);
+  }, [apiRootUrl, profiles, fetchSessions, connectWs])
 
   const closeSession = useCallback(
     async (sessionId: string) => {
       try {
-        await apiFetch(`${apiRootUrl}/sessions/${sessionId}/close`, { method: "POST" });
+        await apiFetch(`${apiRootUrl}/sessions/${sessionId}/close`, {
+          method: "POST",
+        })
         if (activeSessionId === sessionId) {
-          wsRef.current?.close();
-          setActiveSessionId(null);
-          setConnected(false);
-          reset("");
+          wsRef.current?.close()
+          setActiveSessionId(null)
+          setConnected(false)
+          reset("")
         }
-        fetchSessions();
+        fetchSessions()
       } catch {}
     },
     [apiRootUrl, activeSessionId, fetchSessions, reset],
-  );
+  )
 
   // -----------------------------------------------------------------------
   // Keyboard handling — Copy-first Ctrl+C, Ctrl+V paste
   // -----------------------------------------------------------------------
 
   // Track what the textarea contained before mobile input so we can diff
-  const lastTextareaValue = useRef("");
+  const lastTextareaValue = useRef("")
 
   const sendInput = useCallback((data: string) => {
-    const ws = wsRef.current;
+    const ws = wsRef.current
     if (ws && ws.readyState === WebSocket.OPEN && data) {
-      ws.send(JSON.stringify({ type: "input", data }));
+      ws.send(JSON.stringify({ type: "input", data }))
     }
-  }, []);
+  }, [])
 
   // Desktop keyboard handler — fires reliably on desktop, partially on mobile
   const handleKeyDown = useCallback(
     (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const ws = wsRef.current
+      if (!ws || ws.readyState !== WebSocket.OPEN) return
 
       // Ctrl+C — copy-first
       if (e.ctrlKey && e.key === "c") {
-        e.preventDefault();
+        e.preventDefault()
         if (ctrlCPrimed) {
-          ws.send(JSON.stringify({ type: "input", data: "\x03" }));
-          setCtrlCPrimed(false);
+          ws.send(JSON.stringify({ type: "input", data: "\x03" }))
+          setCtrlCPrimed(false)
           if (ctrlCTimerRef.current) {
-            clearTimeout(ctrlCTimerRef.current);
-            ctrlCTimerRef.current = null;
+            clearTimeout(ctrlCTimerRef.current)
+            ctrlCTimerRef.current = null
           }
         } else {
-          const selection = window.getSelection()?.toString();
+          const selection = window.getSelection()?.toString()
           if (selection) {
-            navigator.clipboard.writeText(selection).catch(() => {});
+            navigator.clipboard.writeText(selection).catch(() => {})
           }
-          setCtrlCPrimed(true);
+          setCtrlCPrimed(true)
           ctrlCTimerRef.current = setTimeout(() => {
-            setCtrlCPrimed(false);
-            ctrlCTimerRef.current = null;
-          }, 2000);
+            setCtrlCPrimed(false)
+            ctrlCTimerRef.current = null
+          }, 2000)
         }
-        return;
+        return
       }
 
       // Ctrl+V — paste into terminal
       if (e.ctrlKey && e.key === "v") {
-        e.preventDefault();
+        e.preventDefault()
         navigator.clipboard
           .readText()
           .then((text) => {
-            if (text) sendInput(text);
+            if (text) sendInput(text)
           })
-          .catch(() => {});
-        return;
+          .catch(() => {})
+        return
       }
 
       // Skip if key is Unidentified (mobile) — let beforeinput/input handle it
       if (e.key === "Unidentified" || e.key === "Process") {
-        return;
+        return
       }
 
       // Regular printable keys — send directly
       if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
-        e.preventDefault();
-        sendInput(e.key);
-        return;
+        e.preventDefault()
+        sendInput(e.key)
+        return
       }
 
       // Special keys
@@ -452,83 +489,86 @@ export function DashboardTerminalScreen({
         Delete: "\x1b[3~",
         PageUp: "\x1b[5~",
         PageDown: "\x1b[6~",
-      };
+      }
 
       if (keyMap[e.key]) {
-        e.preventDefault();
-        sendInput(keyMap[e.key]);
-        return;
+        e.preventDefault()
+        sendInput(keyMap[e.key])
+        return
       }
 
       // Ctrl+key combos (a-z)
       if (e.ctrlKey && e.key.length === 1 && e.key >= "a" && e.key <= "z") {
-        e.preventDefault();
-        const code = e.key.charCodeAt(0) - 96;
-        sendInput(String.fromCharCode(code));
-        return;
+        e.preventDefault()
+        const code = e.key.charCodeAt(0) - 96
+        sendInput(String.fromCharCode(code))
+        return
       }
     },
     [ctrlCPrimed, sendInput],
-  );
+  )
 
   // Mobile beforeinput handler — catches Enter, Go/Check/Done, and Backspace
   const handleBeforeInput = useCallback(
     (e: Event) => {
-      const inputEvent = e as InputEvent;
-      if (inputEvent.inputType === "insertLineBreak" || inputEvent.inputType === "insertParagraph") {
-        e.preventDefault();
-        sendInput("\r");
-        return;
+      const inputEvent = e as InputEvent
+      if (
+        inputEvent.inputType === "insertLineBreak" ||
+        inputEvent.inputType === "insertParagraph"
+      ) {
+        e.preventDefault()
+        sendInput("\r")
+        return
       }
       // Mobile "Go" / "Check" / "Done" button sends insertText with "\n"
       if (inputEvent.inputType === "insertText" && inputEvent.data === "\n") {
-        e.preventDefault();
-        sendInput("\r");
-        return;
+        e.preventDefault()
+        sendInput("\r")
+        return
       }
       if (inputEvent.inputType === "deleteContentBackward") {
-        e.preventDefault();
-        sendInput("\x7f");
-        return;
+        e.preventDefault()
+        sendInput("\x7f")
+        return
       }
       if (inputEvent.inputType === "deleteContentForward") {
-        e.preventDefault();
-        sendInput("\x1b[3~");
-        return;
+        e.preventDefault()
+        sendInput("\x1b[3~")
+        return
       }
     },
     [sendInput],
-  );
+  )
 
   // Mobile input handler — catches text that the mobile keyboard inserts
   // This fires after the textarea value has changed, so we diff to find new text
   const handleInput = useCallback(() => {
-    const textarea = inputRef.current;
-    if (!textarea) return;
-    const current = textarea.value;
-    const prev = lastTextareaValue.current;
+    const textarea = inputRef.current
+    if (!textarea) return
+    const current = textarea.value
+    const prev = lastTextareaValue.current
 
     if (current.length > prev.length) {
       // New text was inserted
-      const inserted = current.slice(prev.length);
-      sendInput(inserted);
+      const inserted = current.slice(prev.length)
+      sendInput(inserted)
     }
     // Always reset the textarea to empty to prevent accumulation
-    textarea.value = "";
-    lastTextareaValue.current = "";
-  }, [sendInput]);
+    textarea.value = ""
+    lastTextareaValue.current = ""
+  }, [sendInput])
 
   // Attach beforeinput and input listeners (React doesn't support onBeforeInput well)
   useEffect(() => {
-    const textarea = inputRef.current;
-    if (!textarea) return;
-    textarea.addEventListener("beforeinput", handleBeforeInput);
-    textarea.addEventListener("input", handleInput);
+    const textarea = inputRef.current
+    if (!textarea) return
+    textarea.addEventListener("beforeinput", handleBeforeInput)
+    textarea.addEventListener("input", handleInput)
     return () => {
-      textarea.removeEventListener("beforeinput", handleBeforeInput);
-      textarea.removeEventListener("input", handleInput);
-    };
-  }, [handleBeforeInput, handleInput]);
+      textarea.removeEventListener("beforeinput", handleBeforeInput)
+      textarea.removeEventListener("input", handleInput)
+    }
+  }, [handleBeforeInput, handleInput])
 
   // -----------------------------------------------------------------------
   // Render
@@ -559,8 +599,11 @@ export function DashboardTerminalScreen({
         }}
       >
         {sessions.map((s) => (
+          // biome-ignore lint/a11y/useSemanticElements: session row needs full-row interactive behavior with nested close control
           <div
             key={s.id}
+            role="button"
+            tabIndex={0}
             style={{
               display: "flex",
               alignItems: "center",
@@ -577,14 +620,21 @@ export function DashboardTerminalScreen({
                   : "1px solid transparent",
             }}
             onClick={() => connectWs(s.id)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault()
+                connectWs(s.id)
+              }
+            }}
           >
             <span style={{ fontFamily: "monospace" }}>
               {s.cwd.split("/").pop() || "~"}
             </span>
             <button
+              type="button"
               onClick={(e) => {
-                e.stopPropagation();
-                closeSession(s.id);
+                e.stopPropagation()
+                closeSession(s.id)
               }}
               style={{
                 background: "none",
@@ -602,6 +652,7 @@ export function DashboardTerminalScreen({
           </div>
         ))}
         <button
+          type="button"
           onClick={createSession}
           disabled={creating}
           style={{
@@ -617,7 +668,6 @@ export function DashboardTerminalScreen({
           {creating ? "..." : "+ New"}
         </button>
       </div>
-
       {/* Ctrl+C hint toast */}
       {ctrlCPrimed && (
         <div
@@ -634,7 +684,6 @@ export function DashboardTerminalScreen({
           Press Ctrl+C again to send Ctrl+C to the terminal
         </div>
       )}
-
       {/* Error banner */}
       {error && (
         <div
@@ -651,7 +700,6 @@ export function DashboardTerminalScreen({
           {error}
         </div>
       )}
-
       {/* Terminal viewport */}
       <div
         style={{
@@ -659,7 +707,14 @@ export function DashboardTerminalScreen({
           position: "relative",
           overflow: "hidden",
         }}
+        role="application"
         onClick={() => inputRef.current?.focus()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault()
+            inputRef.current?.focus()
+          }
+        }}
       >
         {activeSessionId && connected ? (
           <>
@@ -677,7 +732,8 @@ export function DashboardTerminalScreen({
                 style={{
                   margin: 0,
                   padding: 0,
-                  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace",
+                  fontFamily:
+                    "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace",
                   fontSize: "13px",
                   lineHeight: "1.4",
                   whiteSpace: "pre-wrap",
@@ -725,7 +781,6 @@ export function DashboardTerminalScreen({
                 backgroundColor: "transparent",
                 color: "transparent",
               }}
-              autoFocus
               aria-label="Terminal input"
             />
           </>
@@ -747,6 +802,7 @@ export function DashboardTerminalScreen({
                 : "Select a terminal session or create a new one."}
             </div>
             <button
+              type="button"
               onClick={createSession}
               disabled={creating}
               style={{
@@ -765,7 +821,6 @@ export function DashboardTerminalScreen({
           </div>
         )}
       </div>
-
       {/* Status bar */}
       <div
         style={{
@@ -786,11 +841,12 @@ export function DashboardTerminalScreen({
           ) : (
             <span>Disconnected</span>
           )}
-          {activeSessionId && sessions.find((s) => s.id === activeSessionId) && (
-            <span style={{ marginLeft: "12px" }}>
-              cwd: {sessions.find((s) => s.id === activeSessionId)?.cwd}
-            </span>
-          )}
+          {activeSessionId &&
+            sessions.find((s) => s.id === activeSessionId) && (
+              <span style={{ marginLeft: "12px" }}>
+                cwd: {sessions.find((s) => s.id === activeSessionId)?.cwd}
+              </span>
+            )}
         </span>
         <span>
           {sessions.length} session{sessions.length !== 1 ? "s" : ""}
@@ -798,5 +854,5 @@ export function DashboardTerminalScreen({
         </span>
       </div>
     </div>
-  );
+  )
 }

@@ -1,4 +1,4 @@
-import { createPrivateKey, createSign, randomUUID } from "node:crypto";
+import { createPrivateKey, createSign, randomUUID } from "node:crypto"
 import {
   appendFileSync,
   existsSync,
@@ -7,55 +7,64 @@ import {
   readFileSync,
   statSync,
   writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+} from "node:fs"
+import { dirname, join, resolve } from "node:path"
 import {
+  type InstallationRecord,
   installationDir,
   installationEnvPath,
   installationPemPath,
-  readRegistry,
-  type InstallationRecord,
   type ProjectRecord,
   type ProjectsRegistry,
   persistInstallationEnv,
+  readRegistry,
   writeRegistry,
-} from "./registry.js";
+} from "./registry.js"
 
-const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state";
-const workspaceRoot = process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace";
+const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
+const workspaceRoot =
+  process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace"
 const appDataDir =
-  process.env.AGENT_PROJECTS_DATA_DIR?.trim() || "/home/ec2-user/workspace/data/projects";
+  process.env.AGENT_PROJECTS_DATA_DIR?.trim() ||
+  "/home/ec2-user/workspace/data/projects"
 const logPath =
-  process.env.PROJECTS_LOG_PATH?.trim() || `${stateDir}/logs/projects-server.log`;
+  process.env.PROJECTS_LOG_PATH?.trim() ||
+  `${stateDir}/logs/projects-server.log`
 const configRoot =
-  process.env.AGENT_GITHUB_CONFIG_ROOT?.trim() || "/home/ec2-user/.config/agent-github";
+  process.env.AGENT_GITHUB_CONFIG_ROOT?.trim() ||
+  "/home/ec2-user/.config/agent-github"
 const registryPath =
-  process.env.AGENT_PROJECTS_REGISTRY_PATH?.trim() || `${appDataDir}/registry.json`;
-const port = Number.parseInt(process.env.PROJECTS_PORT ?? "8791", 10);
-const githubApiBaseUrl = process.env.GITHUB_API_BASE_URL?.trim() || "https://api.github.com";
-const workspaceProjectsRoot = join(workspaceRoot, "projects");
+  process.env.AGENT_PROJECTS_REGISTRY_PATH?.trim() ||
+  `${appDataDir}/registry.json`
+const port = Number.parseInt(process.env.PROJECTS_PORT ?? "8791", 10)
+const githubApiBaseUrl =
+  process.env.GITHUB_API_BASE_URL?.trim() || "https://api.github.com"
+const workspaceProjectsRoot = join(workspaceRoot, "projects")
 
 type GithubRepo = {
-  id: number;
-  name: string;
-  full_name: string;
-  clone_url: string;
-  default_branch: string;
-  private: boolean;
-  owner?: { login?: string };
+  id: number
+  name: string
+  full_name: string
+  clone_url: string
+  default_branch: string
+  private: boolean
+  owner?: { login?: string }
   permissions?: {
-    admin?: boolean;
-    push?: boolean;
-    pull?: boolean;
-  };
-};
+    admin?: boolean
+    push?: boolean
+    pull?: boolean
+  }
+}
 
-mkdirSync(dirname(logPath), { recursive: true });
-mkdirSync(appDataDir, { recursive: true });
-mkdirSync(configRoot, { recursive: true });
+mkdirSync(dirname(logPath), { recursive: true })
+mkdirSync(appDataDir, { recursive: true })
+mkdirSync(configRoot, { recursive: true })
 
 function log(message: string) {
-  appendFileSync(logPath, `[${new Date().toISOString()}:projects-server] ${message}\n`);
+  appendFileSync(
+    logPath,
+    `[${new Date().toISOString()}:projects-server] ${message}\n`,
+  )
 }
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -64,20 +73,22 @@ function jsonResponse(payload: unknown, status = 200): Response {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
     },
-  });
+  })
 }
 
 function textError(message: string, status = 400): Response {
-  return new Response(message, { status });
+  return new Response(message, { status })
 }
 
 function base64UrlFromBuffer(input: Buffer) {
-  return input.toString("base64url");
+  return input.toString("base64url")
 }
 
 function createAppJwt(installation: InstallationRecord) {
-  const now = Math.floor(Date.now() / 1000);
-  const header = base64UrlFromBuffer(Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })));
+  const now = Math.floor(Date.now() / 1000)
+  const header = base64UrlFromBuffer(
+    Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })),
+  )
   const payload = base64UrlFromBuffer(
     Buffer.from(
       JSON.stringify({
@@ -86,18 +97,20 @@ function createAppJwt(installation: InstallationRecord) {
         iss: installation.appId,
       }),
     ),
-  );
-  const signingInput = `${header}.${payload}`;
-  const signer = createSign("RSA-SHA256");
-  signer.update(signingInput);
-  signer.end();
-  const privateKey = createPrivateKey(readFileSync(installation.pemPath, "utf8"));
-  const signature = signer.sign(privateKey).toString("base64url");
-  return `${signingInput}.${signature}`;
+  )
+  const signingInput = `${header}.${payload}`
+  const signer = createSign("RSA-SHA256")
+  signer.update(signingInput)
+  signer.end()
+  const privateKey = createPrivateKey(
+    readFileSync(installation.pemPath, "utf8"),
+  )
+  const signature = signer.sign(privateKey).toString("base64url")
+  return `${signingInput}.${signature}`
 }
 
 async function fetchInstallationToken(installation: InstallationRecord) {
-  const jwt = createAppJwt(installation);
+  const jwt = createAppJwt(installation)
   const response = await fetch(
     `${githubApiBaseUrl}/app/installations/${installation.installationId}/access_tokens`,
     {
@@ -108,67 +121,94 @@ async function fetchInstallationToken(installation: InstallationRecord) {
         "X-GitHub-Api-Version": "2022-11-28",
       },
     },
-  );
+  )
   if (!response.ok) {
-    throw new Error(`GitHub token request failed (${response.status}) ${await response.text()}`);
+    throw new Error(
+      `GitHub token request failed (${response.status}) ${await response.text()}`,
+    )
   }
-  const payload = (await response.json()) as { token?: string };
+  const payload = (await response.json()) as { token?: string }
   if (!payload.token) {
-    throw new Error("GitHub installation token response did not include a token");
+    throw new Error(
+      "GitHub installation token response did not include a token",
+    )
   }
-  return payload.token;
+  return payload.token
 }
 
 async function fetchAccessibleRepos(installation: InstallationRecord) {
-  const token = await fetchInstallationToken(installation);
-  const response = await fetch(`${githubApiBaseUrl}/installation/repositories?per_page=100`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
+  const token = await fetchInstallationToken(installation)
+  const response = await fetch(
+    `${githubApiBaseUrl}/installation/repositories?per_page=100`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${token}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
     },
-  });
+  )
   if (!response.ok) {
-    throw new Error(`GitHub repository listing failed (${response.status}) ${await response.text()}`);
+    throw new Error(
+      `GitHub repository listing failed (${response.status}) ${await response.text()}`,
+    )
   }
-  const payload = (await response.json()) as { repositories?: GithubRepo[] };
-  return payload.repositories ?? [];
+  const payload = (await response.json()) as { repositories?: GithubRepo[] }
+  return payload.repositories ?? []
 }
 
 function ensureAllowedPath(pathValue: string) {
-  const resolved = resolve(pathValue);
-  const relativeToWorkspace = resolved.startsWith(`${workspaceRoot}/`) || resolved === workspaceRoot;
+  const resolved = resolve(pathValue)
+  const relativeToWorkspace =
+    resolved.startsWith(`${workspaceRoot}/`) || resolved === workspaceRoot
   if (!relativeToWorkspace) {
-    throw new Error(`path must stay under ${workspaceRoot}`);
+    throw new Error(`path must stay under ${workspaceRoot}`)
   }
-  return resolved;
+  return resolved
+}
+
+function decodeMatchGroup(match: RegExpExecArray, index: number) {
+  const value = match[index]
+  if (!value) {
+    throw new Error(`missing route parameter at index ${index}`)
+  }
+  return decodeURIComponent(value)
 }
 
 function normalizeRemoteInfo(remoteUrl: string) {
-  const trimmed = remoteUrl.trim();
+  const trimmed = remoteUrl.trim()
   const patterns = [
     /^https:\/\/github\.com\/([^/]+)\/([^/.]+)(?:\.git)?$/i,
     /^http:\/\/github\.com\/([^/]+)\/([^/.]+)(?:\.git)?$/i,
     /^git@github\.com:([^/]+)\/([^/.]+)(?:\.git)?$/i,
     /^ssh:\/\/git@github\.com\/([^/]+)\/([^/.]+)(?:\.git)?$/i,
-  ];
+  ]
   for (const pattern of patterns) {
-    const match = trimmed.match(pattern);
+    const match = trimmed.match(pattern)
     if (match) {
+      const owner = match[1]
+      const repo = match[2]
+      if (!owner || !repo) {
+        break
+      }
       return {
-        owner: match[1]!,
-        repo: match[2]!,
-      };
+        owner,
+        repo,
+      }
     }
   }
-  throw new Error(`unsupported GitHub remote URL: ${remoteUrl}`);
+  throw new Error(`unsupported GitHub remote URL: ${remoteUrl}`)
 }
 
 function authenticatedExtraHeader(token: string) {
-  return `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+  return `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`
 }
 
-function runGit(args: string[], cwd?: string, extraEnv?: Record<string, string>) {
+function runGit(
+  args: string[],
+  cwd?: string,
+  extraEnv?: Record<string, string>,
+) {
   const result = Bun.spawnSync(["git", ...args], {
     cwd,
     env: {
@@ -178,22 +218,27 @@ function runGit(args: string[], cwd?: string, extraEnv?: Record<string, string>)
     },
     stdout: "pipe",
     stderr: "pipe",
-  });
+  })
 
   if (result.exitCode !== 0) {
-    throw new Error(result.stderr.toString("utf8").trim() || `git ${args.join(" ")} failed`);
+    throw new Error(
+      result.stderr.toString("utf8").trim() || `git ${args.join(" ")} failed`,
+    )
   }
 
-  return result.stdout.toString("utf8").trim();
+  return result.stdout.toString("utf8").trim()
 }
 
 async function validateInstallationAccess(installation: InstallationRecord) {
-  const repos = await fetchAccessibleRepos(installation);
-  return repos.length;
+  const repos = await fetchAccessibleRepos(installation)
+  return repos.length
 }
 
-async function validateProjectBinding(project: ProjectRecord, installation: InstallationRecord) {
-  const token = await fetchInstallationToken(installation);
+async function validateProjectBinding(
+  project: ProjectRecord,
+  installation: InstallationRecord,
+) {
+  const token = await fetchInstallationToken(installation)
   runGit(
     [
       "-c",
@@ -204,23 +249,28 @@ async function validateProjectBinding(project: ProjectRecord, installation: Inst
       "HEAD",
     ],
     workspaceRoot,
-  );
+  )
 }
 
-async function cloneProjectRepo(project: ProjectRecord, installation: InstallationRecord) {
-  const targetPath = ensureAllowedPath(project.localPath);
+async function cloneProjectRepo(
+  project: ProjectRecord,
+  installation: InstallationRecord,
+) {
+  const targetPath = ensureAllowedPath(project.localPath)
   if (existsSync(targetPath)) {
-    const stats = statSync(targetPath);
+    const stats = statSync(targetPath)
     if (stats.isDirectory()) {
-      const entries = readdirSafe(targetPath);
+      const entries = readdirSafe(targetPath)
       if (entries.length > 0) {
-        throw new Error(`clone target already exists and is not empty: ${targetPath}`);
+        throw new Error(
+          `clone target already exists and is not empty: ${targetPath}`,
+        )
       }
     }
   } else {
-    mkdirSync(dirname(targetPath), { recursive: true });
+    mkdirSync(dirname(targetPath), { recursive: true })
   }
-  const token = await fetchInstallationToken(installation);
+  const token = await fetchInstallationToken(installation)
   runGit(
     [
       "-c",
@@ -230,62 +280,65 @@ async function cloneProjectRepo(project: ProjectRecord, installation: Installati
       targetPath,
     ],
     workspaceRoot,
-  );
+  )
 }
 
 function readdirSafe(pathValue: string) {
   try {
-    return Array.from(new Bun.Glob("*").scanSync({ cwd: pathValue }));
+    return Array.from(new Bun.Glob("*").scanSync({ cwd: pathValue }))
   } catch {
-    return [];
+    return []
   }
 }
 
 function remoteDefaultBranch(repoPath: string) {
   try {
-    const symbolicRef = runGit(["symbolic-ref", "refs/remotes/origin/HEAD"], repoPath);
-    const match = symbolicRef.match(/^refs\/remotes\/origin\/(.+)$/);
+    const symbolicRef = runGit(
+      ["symbolic-ref", "refs/remotes/origin/HEAD"],
+      repoPath,
+    )
+    const match = symbolicRef.match(/^refs\/remotes\/origin\/(.+)$/)
     if (match?.[1]) {
-      return match[1];
+      return match[1]
     }
   } catch {
     // Fall back to the current branch if the remote HEAD ref is not available locally.
   }
 
   try {
-    return runGit(["branch", "--show-current"], repoPath) || "development";
+    return runGit(["branch", "--show-current"], repoPath) || "development"
   } catch {
-    return "development";
+    return "development"
   }
 }
 
 function importableProjectRepos() {
   if (!existsSync(workspaceProjectsRoot)) {
-    return [];
+    return []
   }
 
   return readdirSync(workspaceProjectsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => join(workspaceProjectsRoot, entry.name))
-    .filter((repoPath) => existsSync(join(repoPath, ".git")));
+    .filter((repoPath) => existsSync(join(repoPath, ".git")))
 }
 
 function importProjectRecord(
   repoPath: string,
   registry: ProjectsRegistry,
 ): { project: ProjectRecord | null; reason?: string } {
-  const localPath = ensureAllowedPath(repoPath);
-  const remoteUrl = runGit(["remote", "get-url", "origin"], localPath);
-  const remote = normalizeRemoteInfo(remoteUrl);
+  const localPath = ensureAllowedPath(repoPath)
+  const remoteUrl = runGit(["remote", "get-url", "origin"], localPath)
+  const remote = normalizeRemoteInfo(remoteUrl)
   const installation = registry.installations.find(
     (entry) => entry.accountLogin.toLowerCase() === remote.owner.toLowerCase(),
-  );
+  )
 
   if (!installation) {
     return {
       project: null,
       reason: `no GitHub App installation matches owner ${remote.owner}`,
-    };
+    }
   }
 
   if (
@@ -298,10 +351,10 @@ function importProjectRecord(
     return {
       project: null,
       reason: "already registered",
-    };
+    }
   }
 
-  const now = Date.now();
+  const now = Date.now()
   return {
     project: {
       id: randomUUID(),
@@ -316,125 +369,149 @@ function importProjectRecord(
       createdAtMs: now,
       updatedAtMs: now,
     },
-  };
+  }
 }
 
 function projectStatus(project: ProjectRecord, registry: ProjectsRegistry) {
   const installation = registry.installations.find(
     (entry) => entry.installationId === project.installationId,
-  );
-  let localRepoExists = false;
-  let localPathAllowed = false;
+  )
+  let localRepoExists = false
+  let localPathAllowed = false
   try {
-    const resolved = ensureAllowedPath(project.localPath);
-    localPathAllowed = true;
-    localRepoExists = existsSync(join(resolved, ".git"));
+    const resolved = ensureAllowedPath(project.localPath)
+    localPathAllowed = true
+    localRepoExists = existsSync(join(resolved, ".git"))
   } catch {
-    localPathAllowed = false;
+    localPathAllowed = false
   }
 
   return {
     localRepoExists,
     authConfigured: Boolean(
-      installation && existsSync(installationEnvPath(configRoot, installation.installationId)),
+      installation &&
+        existsSync(
+          installationEnvPath(configRoot, installation.installationId),
+        ),
     ),
     localPathAllowed,
-  };
+  }
 }
 
-function installationSummary(installation: InstallationRecord, registry: ProjectsRegistry) {
+function installationSummary(
+  installation: InstallationRecord,
+  registry: ProjectsRegistry,
+) {
   return {
     ...installation,
-    repoCount: registry.projects.filter((project) => project.installationId === installation.installationId)
-      .length,
-  };
+    repoCount: registry.projects.filter(
+      (project) => project.installationId === installation.installationId,
+    ).length,
+  }
 }
 
 const server = Bun.serve({
   port,
   async fetch(request) {
-    const url = new URL(request.url);
+    const url = new URL(request.url)
 
     if (url.pathname === "/api/projects/health") {
-      return jsonResponse({ ok: true });
+      return jsonResponse({ ok: true })
     }
 
-    if (url.pathname === "/api/projects/installations" && request.method === "GET") {
-      const registry = readRegistry(registryPath, configRoot);
+    if (
+      url.pathname === "/api/projects/installations" &&
+      request.method === "GET"
+    ) {
+      const registry = readRegistry(registryPath, configRoot)
       return jsonResponse({
         installations: registry.installations.map((installation) =>
           installationSummary(installation, registry),
         ),
-      });
+      })
     }
 
-    if (url.pathname === "/api/projects/installations" && request.method === "POST") {
+    if (
+      url.pathname === "/api/projects/installations" &&
+      request.method === "POST"
+    ) {
       try {
         const body = (await request.json()) as {
-          label?: string;
-          accountLogin?: string;
-          appId?: string;
-          installationId?: string;
-          pemText?: string;
-        };
-        const label = body.label?.trim();
-        const accountLogin = body.accountLogin?.trim();
-        const appId = body.appId?.trim();
-        const installationId = body.installationId?.trim();
-        const pemText = body.pemText?.trim();
+          label?: string
+          accountLogin?: string
+          appId?: string
+          installationId?: string
+          pemText?: string
+        }
+        const label = body.label?.trim()
+        const accountLogin = body.accountLogin?.trim()
+        const appId = body.appId?.trim()
+        const installationId = body.installationId?.trim()
+        const pemText = body.pemText?.trim()
         if (!label || !accountLogin || !appId || !installationId || !pemText) {
-          return textError("label, accountLogin, appId, installationId, and pemText are required");
+          return textError(
+            "label, accountLogin, appId, installationId, and pemText are required",
+          )
         }
 
-        const registry = readRegistry(registryPath, configRoot);
-        const now = Date.now();
+        const registry = readRegistry(registryPath, configRoot)
+        const now = Date.now()
         const installation: InstallationRecord = {
           id:
-            registry.installations.find((entry) => entry.installationId === installationId)?.id ??
-            randomUUID(),
+            registry.installations.find(
+              (entry) => entry.installationId === installationId,
+            )?.id ?? randomUUID(),
           label,
           accountLogin,
           appId,
           installationId,
           pemPath: installationPemPath(configRoot, installationId),
           createdAtMs:
-            registry.installations.find((entry) => entry.installationId === installationId)?.createdAtMs ??
-            now,
+            registry.installations.find(
+              (entry) => entry.installationId === installationId,
+            )?.createdAtMs ?? now,
           updatedAtMs: now,
-        };
+        }
 
-        mkdirSync(installationDir(configRoot, installationId), { recursive: true });
-        writeFileSync(installation.pemPath, `${pemText}\n`, { mode: 0o600 });
-        persistInstallationEnv(configRoot, installation);
+        mkdirSync(installationDir(configRoot, installationId), {
+          recursive: true,
+        })
+        writeFileSync(installation.pemPath, `${pemText}\n`, { mode: 0o600 })
+        persistInstallationEnv(configRoot, installation)
 
-        await validateInstallationAccess(installation);
+        await validateInstallationAccess(installation)
 
         registry.installations = [
-          ...registry.installations.filter((entry) => entry.installationId !== installation.installationId),
+          ...registry.installations.filter(
+            (entry) => entry.installationId !== installation.installationId,
+          ),
           installation,
-        ].sort((left, right) => left.label.localeCompare(right.label));
-        writeRegistry(registryPath, registry);
+        ].sort((left, right) => left.label.localeCompare(right.label))
+        writeRegistry(registryPath, registry)
 
         return jsonResponse({
           ok: true,
           installation: installationSummary(installation, registry),
-        });
+        })
       } catch (error) {
-        log(`installation.save error=${String(error)}`);
-        return textError(error instanceof Error ? error.message : String(error));
+        log(`installation.save error=${String(error)}`)
+        return textError(error instanceof Error ? error.message : String(error))
       }
     }
 
-    const installationReposMatch = /^\/api\/projects\/installations\/([^/]+)\/repos$/.exec(url.pathname);
+    const installationReposMatch =
+      /^\/api\/projects\/installations\/([^/]+)\/repos$/.exec(url.pathname)
     if (installationReposMatch && request.method === "GET") {
       try {
-        const installationId = decodeURIComponent(installationReposMatch[1]!);
-        const registry = readRegistry(registryPath, configRoot);
-        const installation = registry.installations.find((entry) => entry.id === installationId);
+        const installationId = decodeMatchGroup(installationReposMatch, 1)
+        const registry = readRegistry(registryPath, configRoot)
+        const installation = registry.installations.find(
+          (entry) => entry.id === installationId,
+        )
         if (!installation) {
-          return textError("installation not found", 404);
+          return textError("installation not found", 404)
         }
-        const repositories = await fetchAccessibleRepos(installation);
+        const repositories = await fetchAccessibleRepos(installation)
         return jsonResponse({
           ok: true,
           repositories: repositories.map((repo) => ({
@@ -453,15 +530,15 @@ const server = Bun.serve({
                 }
               : null,
           })),
-        });
+        })
       } catch (error) {
-        log(`installation.repos error=${String(error)}`);
-        return textError(error instanceof Error ? error.message : String(error));
+        log(`installation.repos error=${String(error)}`)
+        return textError(error instanceof Error ? error.message : String(error))
       }
     }
 
     if (url.pathname === "/api/projects" && request.method === "GET") {
-      const registry = readRegistry(registryPath, configRoot);
+      const registry = readRegistry(registryPath, configRoot)
       return jsonResponse({
         projects: registry.projects
           .map((project) => ({
@@ -469,45 +546,55 @@ const server = Bun.serve({
             status: projectStatus(project, registry),
           }))
           .sort((left, right) => right.updatedAtMs - left.updatedAtMs),
-      });
+      })
     }
 
     if (url.pathname === "/api/projects" && request.method === "POST") {
       try {
         const body = (await request.json()) as {
-          name?: string;
-          owner?: string;
-          repo?: string;
-          remoteUrl?: string;
-          localPath?: string;
-          installationId?: string;
-          baseBranch?: string;
-          postMergeBunCommand?: string;
-          cloneOnCreate?: boolean;
-        };
-        const name = body.name?.trim();
-        const owner = body.owner?.trim();
-        const repo = body.repo?.trim();
-        const remoteUrl = body.remoteUrl?.trim();
-        const localPath = body.localPath?.trim();
-        const installationId = body.installationId?.trim();
-        const baseBranch = body.baseBranch?.trim();
-        if (!name || !owner || !repo || !remoteUrl || !localPath || !installationId || !baseBranch) {
+          name?: string
+          owner?: string
+          repo?: string
+          remoteUrl?: string
+          localPath?: string
+          installationId?: string
+          baseBranch?: string
+          postMergeBunCommand?: string
+          cloneOnCreate?: boolean
+        }
+        const name = body.name?.trim()
+        const owner = body.owner?.trim()
+        const repo = body.repo?.trim()
+        const remoteUrl = body.remoteUrl?.trim()
+        const localPath = body.localPath?.trim()
+        const installationId = body.installationId?.trim()
+        const baseBranch = body.baseBranch?.trim()
+        if (
+          !name ||
+          !owner ||
+          !repo ||
+          !remoteUrl ||
+          !localPath ||
+          !installationId ||
+          !baseBranch
+        ) {
           return textError(
             "name, owner, repo, remoteUrl, localPath, installationId, and baseBranch are required",
-          );
+          )
         }
 
-        ensureAllowedPath(localPath);
-        normalizeRemoteInfo(remoteUrl);
+        ensureAllowedPath(localPath)
+        normalizeRemoteInfo(remoteUrl)
 
-        const registry = readRegistry(registryPath, configRoot);
-        const installation = registry.installations.find((entry) => entry.id === installationId);
+        const registry = readRegistry(registryPath, configRoot)
+        const installation = registry.installations.find(
+          (entry) => entry.id === installationId,
+        )
         if (!installation) {
-          return textError("installation not found", 404);
+          return textError("installation not found", 404)
         }
 
-        const now = Date.now();
+        const now = Date.now()
         const project: ProjectRecord = {
           id: randomUUID(),
           name,
@@ -520,16 +607,16 @@ const server = Bun.serve({
           postMergeBunCommand: body.postMergeBunCommand?.trim() || "",
           createdAtMs: now,
           updatedAtMs: now,
-        };
-
-        await validateProjectBinding(project, installation);
-
-        if (body.cloneOnCreate !== false) {
-          await cloneProjectRepo(project, installation);
         }
 
-        registry.projects = [...registry.projects, project];
-        writeRegistry(registryPath, registry);
+        await validateProjectBinding(project, installation)
+
+        if (body.cloneOnCreate !== false) {
+          await cloneProjectRepo(project, installation)
+        }
+
+        registry.projects = [...registry.projects, project]
+        writeRegistry(registryPath, registry)
 
         return jsonResponse({
           ok: true,
@@ -537,70 +624,77 @@ const server = Bun.serve({
             ...project,
             status: projectStatus(project, registry),
           },
-        });
+        })
       } catch (error) {
-        log(`project.create error=${String(error)}`);
-        return textError(error instanceof Error ? error.message : String(error));
+        log(`project.create error=${String(error)}`)
+        return textError(error instanceof Error ? error.message : String(error))
       }
     }
 
-    if (url.pathname === "/api/projects/import-existing" && request.method === "POST") {
+    if (
+      url.pathname === "/api/projects/import-existing" &&
+      request.method === "POST"
+    ) {
       try {
-        const registry = readRegistry(registryPath, configRoot);
-        const imported: Array<ProjectRecord & { status: ReturnType<typeof projectStatus> }> = [];
-        const skipped: Array<{ localPath: string; reason: string }> = [];
+        const registry = readRegistry(registryPath, configRoot)
+        const imported: Array<
+          ProjectRecord & { status: ReturnType<typeof projectStatus> }
+        > = []
+        const skipped: Array<{ localPath: string; reason: string }> = []
 
         for (const repoPath of importableProjectRepos()) {
           try {
-            const candidate = importProjectRecord(repoPath, registry);
+            const candidate = importProjectRecord(repoPath, registry)
             if (!candidate.project) {
               skipped.push({
                 localPath: repoPath,
                 reason: candidate.reason ?? "not importable",
-              });
-              continue;
+              })
+              continue
             }
 
-            registry.projects.push(candidate.project);
+            registry.projects.push(candidate.project)
             imported.push({
               ...candidate.project,
               status: projectStatus(candidate.project, registry),
-            });
+            })
           } catch (error) {
             skipped.push({
               localPath: repoPath,
               reason: error instanceof Error ? error.message : String(error),
-            });
+            })
           }
         }
 
         if (imported.length > 0) {
-          writeRegistry(registryPath, registry);
+          writeRegistry(registryPath, registry)
         }
 
         return jsonResponse({
           ok: true,
           imported,
           skipped,
-        });
+        })
       } catch (error) {
-        log(`project.import_existing error=${String(error)}`);
-        return textError(error instanceof Error ? error.message : String(error));
+        log(`project.import_existing error=${String(error)}`)
+        return textError(error instanceof Error ? error.message : String(error))
       }
     }
 
-    const projectMatch = /^\/api\/projects\/([^/]+)$/.exec(url.pathname);
+    const projectMatch = /^\/api\/projects\/([^/]+)$/.exec(url.pathname)
     if (projectMatch && request.method === "PATCH") {
       try {
-        const projectId = decodeURIComponent(projectMatch[1]!);
+        const projectId = decodeMatchGroup(projectMatch, 1)
         const body = (await request.json()) as {
-          baseBranch?: string;
-          postMergeBunCommand?: string;
-        };
-        const registry = readRegistry(registryPath, configRoot);
-        const current = registry.projects.find((entry) => entry.id === projectId);
+          baseBranch?: string
+          postMergeBunCommand?: string
+        }
+        const registry = readRegistry(registryPath, configRoot)
+        const current = registry.projects.find(
+          (entry) => entry.id === projectId,
+        )
         if (!current) {
-          return textError("project not found", 404);
+          return textError("project not found", 404)
         }
 
         const next: ProjectRecord = {
@@ -611,12 +705,12 @@ const server = Bun.serve({
               ? current.postMergeBunCommand
               : body.postMergeBunCommand.trim(),
           updatedAtMs: Date.now(),
-        };
+        }
 
         registry.projects = registry.projects.map((entry) =>
           entry.id === projectId ? next : entry,
-        );
-        writeRegistry(registryPath, registry);
+        )
+        writeRegistry(registryPath, registry)
 
         return jsonResponse({
           ok: true,
@@ -624,15 +718,15 @@ const server = Bun.serve({
             ...next,
             status: projectStatus(next, registry),
           },
-        });
+        })
       } catch (error) {
-        log(`project.patch error=${String(error)}`);
-        return textError(error instanceof Error ? error.message : String(error));
+        log(`project.patch error=${String(error)}`)
+        return textError(error instanceof Error ? error.message : String(error))
       }
     }
 
-    return textError("not found", 404);
+    return textError("not found", 404)
   },
-});
+})
 
-log(`listening port=${server.port}`);
+log(`listening port=${server.port}`)

@@ -1,11 +1,14 @@
-import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 
 type VisibilityIconProps = {
-  visible: boolean;
-  className?: string;
-};
+  visible: boolean
+  className?: string
+}
 
-export function VisibilityIcon({ visible, className = "h-3.5 w-3.5" }: VisibilityIconProps) {
+export function VisibilityIcon({
+  visible,
+  className = "h-3.5 w-3.5",
+}: VisibilityIconProps) {
   useRenderCounter("VisibilityIcon")
   return (
     <svg
@@ -22,5 +25,5 @@ export function VisibilityIcon({ visible, className = "h-3.5 w-3.5" }: Visibilit
       <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
       {visible ? null : <path d="M4 20 20 4" />}
     </svg>
-  );
+  )
 }

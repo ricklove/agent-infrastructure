@@ -69,7 +69,9 @@ function dashboardAuthorizationHeader() {
 export function FloatingTicketWindows(props: { apiRootUrl: string }) {
   useRenderCounter("FloatingTicketWindows")
   const { openWindow, updateWindow, focusWindow } = useDashboardWindowLayer()
-  const [ticketWindows, setTicketWindows] = useState<Record<string, TicketWindowState>>({})
+  const [ticketWindows, setTicketWindows] = useState<
+    Record<string, TicketWindowState>
+  >({})
   const inFlightTicketIdsRef = useRef(new Set<string>())
 
   const syncWindow = useCallback(
@@ -122,7 +124,8 @@ export function FloatingTicketWindows(props: { apiRootUrl: string }) {
         const nextEntry: TicketWindowState = {
           ...entry,
           loading: false,
-          error: error instanceof Error ? error.message : "Ticket failed to load.",
+          error:
+            error instanceof Error ? error.message : "Ticket failed to load.",
         }
         setTicketWindows((current) => ({
           ...current,
@@ -138,7 +141,8 @@ export function FloatingTicketWindows(props: { apiRootUrl: string }) {
 
   useEffect(() => {
     function handleOpenTicketWindow(event: Event) {
-      const detail = (event as CustomEvent<DashboardOpenTicketWindowDetail>).detail
+      const detail = (event as CustomEvent<DashboardOpenTicketWindowDetail>)
+        .detail
       const ticketId = detail?.ticketId?.trim() ?? ""
       if (!ticketId) {
         return
@@ -211,7 +215,10 @@ export function FloatingTicketWindows(props: { apiRootUrl: string }) {
 
   useEffect(() => {
     const activeTicketIds = Object.values(ticketWindows)
-      .filter((entry) => !entry.error && entry.ticket && entry.ticket.status !== "completed")
+      .filter(
+        (entry) =>
+          !entry.error && entry.ticket && entry.ticket.status !== "completed",
+      )
       .map((entry) => entry.ticketId)
     if (activeTicketIds.length === 0) {
       return

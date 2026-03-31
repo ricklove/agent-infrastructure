@@ -1,53 +1,61 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import {
   DEFAULT_AGENT_HOME,
   DEFAULT_BOOTSTRAP_CONTEXT_PATH,
   DEFAULT_RUNTIME_DIR,
   DEFAULT_STATE_DIR,
   DEFAULT_WORKSPACE_DIR,
-} from "../paths.js";
+} from "../paths.js"
 
 const SYSTEM_EVENT_LOG_PATH =
-  process.env.SYSTEM_EVENT_LOG_PATH?.trim() || "/home/ec2-user/state/logs/system-events.log";
+  process.env.SYSTEM_EVENT_LOG_PATH?.trim() ||
+  "/home/ec2-user/state/logs/system-events.log"
 
 type BootstrapContext = Record<string, unknown> & {
-  managerMonitorPort?: number;
-  managerInstanceId?: string;
-  swarmTagValue?: string;
-};
+  managerMonitorPort?: number
+  managerInstanceId?: string
+  swarmTagValue?: string
+}
 
 type SetupHostConfig = {
-  runtimeDir: string;
-  stateDir: string;
-  workspaceDir: string;
-  hostRoot: string;
-  bootstrapContextPath: string;
-  agentGithubConfigRoot: string;
-};
+  runtimeDir: string
+  stateDir: string
+  workspaceDir: string
+  hostRoot: string
+  bootstrapContextPath: string
+  agentGithubConfigRoot: string
+}
 
 function logStep(message: string): void {
-  const line = `[${new Date().toISOString()}:setup-host] ${message}`;
-  mkdirSync("/home/ec2-user/state/logs", { recursive: true });
-  appendFileSync(SYSTEM_EVENT_LOG_PATH, `${line}\n`);
-  console.error(line);
+  const line = `[${new Date().toISOString()}:setup-host] ${message}`
+  mkdirSync("/home/ec2-user/state/logs", { recursive: true })
+  appendFileSync(SYSTEM_EVENT_LOG_PATH, `${line}\n`)
+  console.error(line)
 }
 
 function optionalOne(args: string[], flag: string): string | undefined {
-  const index = args.findIndex((value) => value === `--${flag}`);
+  const index = args.indexOf(`--${flag}`)
   if (index === -1) {
-    return undefined;
+    return undefined
   }
 
-  const next = args[index + 1];
+  const next = args[index + 1]
   if (!next || next.startsWith("--")) {
-    return undefined;
+    return undefined
   }
 
-  return next;
+  return next
 }
 
 function ensureTrailingNewline(value: string): string {
-  return value.endsWith("\n") ? value : `${value}\n`;
+  return value.endsWith("\n") ? value : `${value}\n`
 }
 
 function runChecked(
@@ -55,7 +63,7 @@ function runChecked(
   cwd?: string,
   extraEnv?: Record<string, string>,
 ): void {
-  logStep(`run ${command.join(" ")}`);
+  logStep(`run ${command.join(" ")}`)
   const result = Bun.spawnSync(command, {
     cwd,
     env: {
@@ -64,17 +72,21 @@ function runChecked(
     },
     stdout: "inherit",
     stderr: "inherit",
-  });
+  })
 
   if (result.exitCode !== 0) {
-    logStep(`error exit_code=${result.exitCode} command=${command.join(" ")}`);
-    throw new Error(`command failed: ${command.join(" ")}`);
+    logStep(`error exit_code=${result.exitCode} command=${command.join(" ")}`)
+    throw new Error(`command failed: ${command.join(" ")}`)
   }
-  logStep(`exit exit_code=0 command=${command.join(" ")}`);
+  logStep(`exit exit_code=0 command=${command.join(" ")}`)
 }
 
-function runBestEffort(command: string[], cwd?: string, extraEnv?: Record<string, string>): void {
-  logStep(`run ${command.join(" ")}`);
+function runBestEffort(
+  command: string[],
+  cwd?: string,
+  extraEnv?: Record<string, string>,
+): void {
+  logStep(`run ${command.join(" ")}`)
   const result = Bun.spawnSync(command, {
     cwd,
     env: {
@@ -83,30 +95,31 @@ function runBestEffort(command: string[], cwd?: string, extraEnv?: Record<string
     },
     stdout: "inherit",
     stderr: "inherit",
-  });
-  logStep(`exit exit_code=${result.exitCode} command=${command.join(" ")}`);
+  })
+  logStep(`exit exit_code=${result.exitCode} command=${command.join(" ")}`)
 }
 
 function commandOutput(command: string[]): string {
-  logStep(`start capture=${command.join(" ")}`);
+  logStep(`start capture=${command.join(" ")}`)
   const result = Bun.spawnSync(command, {
     stdout: "pipe",
     stderr: "pipe",
     env: process.env,
-  });
+  })
 
   if (result.exitCode !== 0) {
     throw new Error(
-      result.stderr.toString("utf8").trim() || `command failed: ${command.join(" ")}`,
-    );
+      result.stderr.toString("utf8").trim() ||
+        `command failed: ${command.join(" ")}`,
+    )
   }
-  return result.stdout.toString("utf8").trim();
+  return result.stdout.toString("utf8").trim()
 }
 
 function getSecretString(secretArn?: string): string {
-  const trimmed = secretArn?.trim();
+  const trimmed = secretArn?.trim()
   if (!trimmed) {
-    return "";
+    return ""
   }
 
   return commandOutput([
@@ -119,13 +132,13 @@ function getSecretString(secretArn?: string): string {
     "SecretString",
     "--output",
     "text",
-  ]);
+  ])
 }
 
 function getParameterString(parameterName?: string): string {
-  const trimmed = parameterName?.trim();
+  const trimmed = parameterName?.trim()
   if (!trimmed) {
-    return "";
+    return ""
   }
 
   return commandOutput([
@@ -138,7 +151,7 @@ function getParameterString(parameterName?: string): string {
     "Parameter.Value",
     "--output",
     "text",
-  ]);
+  ])
 }
 
 function parseArgs(argv: string[]): SetupHostConfig {
@@ -152,15 +165,15 @@ function parseArgs(argv: string[]): SetupHostConfig {
     agentGithubConfigRoot:
       optionalOne(argv, "agent-github-config-root") ??
       `${DEFAULT_AGENT_HOME}/.config/agent-github`,
-  };
+  }
 }
 
 function readBootstrapContext(path: string): BootstrapContext {
   if (!existsSync(path)) {
-    throw new Error(`bootstrap context not found: ${path}`);
+    throw new Error(`bootstrap context not found: ${path}`)
   }
 
-  return JSON.parse(readFileSync(path, "utf8")) as BootstrapContext;
+  return JSON.parse(readFileSync(path, "utf8")) as BootstrapContext
 }
 
 function fetchInstanceMetadata(path: string, token: string): string {
@@ -170,7 +183,7 @@ function fetchInstanceMetadata(path: string, token: string): string {
     "-H",
     `X-aws-ec2-metadata-token: ${token}`,
     `http://169.254.169.254/latest/meta-data/${path}`,
-  ]);
+  ])
 }
 
 function managerServiceUnit(hostRoot: string): string {
@@ -188,7 +201,7 @@ RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
-`;
+`
 }
 
 function managerNodeServiceUnit(hostRoot: string): string {
@@ -206,7 +219,7 @@ RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
-`;
+`
 }
 
 function managerControllerServiceUnit(hostRoot: string): string {
@@ -224,25 +237,29 @@ RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
-`;
+`
 }
 
 async function main(): Promise<void> {
-  const config = parseArgs(process.argv.slice(2));
-  logStep(`setup.start runtimeDir=${config.runtimeDir} stateDir=${config.stateDir}`);
-  mkdirSync(config.runtimeDir, { recursive: true });
-  mkdirSync(config.stateDir, { recursive: true });
-  mkdirSync(config.workspaceDir, { recursive: true });
-  const managerEnvPath = `${config.stateDir}/agent-swarm-monitor.env`;
-  const managerNodeEnvPath = `${config.stateDir}/agent-swarm-manager-node.env`;
-  const dashboardEnrollmentSecretPath = `${config.stateDir}/dashboard-enrollment-secret`;
-  const metricsDbPath = `${config.stateDir}/metrics.sqlite`;
-  const swarmSharedTokenPath = `${config.stateDir}/swarm-shared-token`;
-  const workerRuntimeReleaseManifestPath = `${config.stateDir}/worker-runtime-release.json`;
-  process.env.AGENT_HOME = process.env.AGENT_HOME?.trim() || config.runtimeDir.replace(/\/runtime$/, "");
+  const config = parseArgs(process.argv.slice(2))
+  logStep(
+    `setup.start runtimeDir=${config.runtimeDir} stateDir=${config.stateDir}`,
+  )
+  mkdirSync(config.runtimeDir, { recursive: true })
+  mkdirSync(config.stateDir, { recursive: true })
+  mkdirSync(config.workspaceDir, { recursive: true })
+  const managerEnvPath = `${config.stateDir}/agent-swarm-monitor.env`
+  const managerNodeEnvPath = `${config.stateDir}/agent-swarm-manager-node.env`
+  const dashboardEnrollmentSecretPath = `${config.stateDir}/dashboard-enrollment-secret`
+  const metricsDbPath = `${config.stateDir}/metrics.sqlite`
+  const swarmSharedTokenPath = `${config.stateDir}/swarm-shared-token`
+  const workerRuntimeReleaseManifestPath = `${config.stateDir}/worker-runtime-release.json`
+  process.env.AGENT_HOME =
+    process.env.AGENT_HOME?.trim() ||
+    config.runtimeDir.replace(/\/runtime$/, "")
 
-  const bootstrapContext = readBootstrapContext(config.bootstrapContextPath);
-  const monitorPort = Number(bootstrapContext.managerMonitorPort ?? 8787);
+  const bootstrapContext = readBootstrapContext(config.bootstrapContextPath)
+  const monitorPort = Number(bootstrapContext.managerMonitorPort ?? 8787)
   const metadataToken = commandOutput([
     "curl",
     "-X",
@@ -251,15 +268,17 @@ async function main(): Promise<void> {
     "http://169.254.169.254/latest/api/token",
     "-H",
     "X-aws-ec2-metadata-token-ttl-seconds: 21600",
-  ]);
-  const instanceId = fetchInstanceMetadata("instance-id", metadataToken);
-  const managerPrivateIp = fetchInstanceMetadata("local-ipv4", metadataToken);
+  ])
+  const instanceId = fetchInstanceMetadata("instance-id", metadataToken)
+  const managerPrivateIp = fetchInstanceMetadata("local-ipv4", metadataToken)
 
   if (!existsSync(swarmSharedTokenPath)) {
-    const token = commandOutput(["openssl", "rand", "-hex", "32"]);
-    writeFileSync(swarmSharedTokenPath, ensureTrailingNewline(token), { mode: 0o600 });
+    const token = commandOutput(["openssl", "rand", "-hex", "32"])
+    writeFileSync(swarmSharedTokenPath, ensureTrailingNewline(token), {
+      mode: 0o600,
+    })
   }
-  const swarmSharedToken = readFileSync(swarmSharedTokenPath, "utf8").trim();
+  const swarmSharedToken = readFileSync(swarmSharedTokenPath, "utf8").trim()
 
   writeFileSync(
     config.bootstrapContextPath,
@@ -274,57 +293,66 @@ async function main(): Promise<void> {
       null,
       2,
     )}\n`,
-  );
+  )
   const stackName =
     typeof bootstrapContext.swarmTagValue === "string" &&
     bootstrapContext.swarmTagValue.endsWith("-workers")
       ? bootstrapContext.swarmTagValue.slice(0, -"-workers".length)
-      : "";
+      : ""
   const cloudflareConfigParameterName = stackName
     ? `/agent-infrastructure/${stackName}/cloudflare/config`
-    : "";
+    : ""
   const cloudflareTunnelTokenSecretName = stackName
     ? `/agent-infrastructure/${stackName}/cloudflare/tunnel-token`
-    : "";
-  const cloudflareConfigJson = getParameterString(cloudflareConfigParameterName);
+    : ""
+  const cloudflareConfigJson = getParameterString(cloudflareConfigParameterName)
   const cloudflareConfig = cloudflareConfigJson
     ? (JSON.parse(cloudflareConfigJson) as {
-        zoneName?: string;
-        tunnelId?: string;
-        tunnelName?: string;
-        hostnameBase?: string;
+        zoneName?: string
+        tunnelId?: string
+        tunnelName?: string
+        hostnameBase?: string
       })
-    : {};
-  const cloudflareTunnelToken = getSecretString(cloudflareTunnelTokenSecretName);
+    : {}
+  const cloudflareTunnelToken = getSecretString(cloudflareTunnelTokenSecretName)
   const dashboardEnrollmentSecretSecretName = stackName
     ? `/agent-infrastructure/${stackName}/dashboard/enrollment-secret`
-    : "";
-  const dashboardEnrollmentSecret = getSecretString(dashboardEnrollmentSecretSecretName);
+    : ""
+  const dashboardEnrollmentSecret = getSecretString(
+    dashboardEnrollmentSecretSecretName,
+  )
   writeFileSync(
     dashboardEnrollmentSecretPath,
     ensureTrailingNewline(dashboardEnrollmentSecret),
     { mode: 0o600 },
-  );
+  )
 
   writeFileSync(
     "/etc/systemd/system/agent-swarm-monitor.service",
     managerServiceUnit(config.hostRoot),
-  );
-  logStep("wrote /etc/systemd/system/agent-swarm-monitor.service");
+  )
+  logStep("wrote /etc/systemd/system/agent-swarm-monitor.service")
   writeFileSync(
     "/etc/systemd/system/agent-swarm-manager-node.service",
     managerNodeServiceUnit(config.hostRoot),
-  );
-  logStep("wrote /etc/systemd/system/agent-swarm-manager-node.service");
+  )
+  logStep("wrote /etc/systemd/system/agent-swarm-manager-node.service")
   writeFileSync(
     "/etc/systemd/system/agent-manager-controller.service",
     managerControllerServiceUnit(config.hostRoot),
-  );
-  logStep("wrote /etc/systemd/system/agent-manager-controller.service");
+  )
+  logStep("wrote /etc/systemd/system/agent-manager-controller.service")
   if (existsSync("/etc/systemd/system/agent-dashboard-controller.service")) {
-    runBestEffort(["systemctl", "disable", "--now", "agent-dashboard-controller.service"]);
-    rmSync("/etc/systemd/system/agent-dashboard-controller.service", { force: true });
-    logStep("removed /etc/systemd/system/agent-dashboard-controller.service");
+    runBestEffort([
+      "systemctl",
+      "disable",
+      "--now",
+      "agent-dashboard-controller.service",
+    ])
+    rmSync("/etc/systemd/system/agent-dashboard-controller.service", {
+      force: true,
+    })
+    logStep("removed /etc/systemd/system/agent-dashboard-controller.service")
   }
 
   writeFileSync(
@@ -334,7 +362,7 @@ AGENT_RUNTIME_DIR=${config.runtimeDir}
 AGENT_STATE_DIR=${config.stateDir}
 AGENT_WORKSPACE_DIR=${config.workspaceDir}
 `) +
-    ensureTrailingNewline(`MANAGER_WS_HOST=0.0.0.0
+      ensureTrailingNewline(`MANAGER_WS_HOST=0.0.0.0
 MANAGER_WS_PORT=${monitorPort}
 SWARM_SHARED_TOKEN=${swarmSharedToken}
 METRICS_DB_PATH=${metricsDbPath}
@@ -354,7 +382,7 @@ CLOUDFLARED_TUNNEL_TOKEN=${cloudflareTunnelToken}
 DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
 `),
     { mode: 0o600 },
-  );
+  )
 
   writeFileSync(
     managerNodeEnvPath,
@@ -363,7 +391,7 @@ AGENT_RUNTIME_DIR=${config.runtimeDir}
 AGENT_STATE_DIR=${config.stateDir}
 AGENT_WORKSPACE_DIR=${config.workspaceDir}
 `) +
-    ensureTrailingNewline(`MONITOR_MANAGER_URL=ws://127.0.0.1:${monitorPort}/workers/stream
+      ensureTrailingNewline(`MONITOR_MANAGER_URL=ws://127.0.0.1:${monitorPort}/workers/stream
 MONITOR_SHARED_TOKEN=${swarmSharedToken}
 MONITOR_RECONNECT_DELAY_MS=1000
 MONITOR_NODE_ROLE=manager
@@ -381,7 +409,7 @@ CLOUDFLARED_TUNNEL_TOKEN=${cloudflareTunnelToken}
 DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
 `),
     { mode: 0o600 },
-  );
+  )
 
   if (!existsSync(workerRuntimeReleaseManifestPath)) {
     runChecked(
@@ -402,7 +430,7 @@ DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
         "manager-bootstrap",
       ],
       config.runtimeDir,
-    );
+    )
   }
 
   runChecked([
@@ -412,12 +440,22 @@ DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
     config.runtimeDir,
     config.stateDir,
     config.workspaceDir,
-  ]);
-  runChecked(["systemctl", "daemon-reload"]);
-  runChecked(["systemctl", "enable", "--now", "agent-swarm-monitor.service"]);
-  runChecked(["systemctl", "enable", "--now", "agent-swarm-manager-node.service"]);
-  runChecked(["systemctl", "enable", "--now", "agent-manager-controller.service"]);
-  logStep("setup.complete");
+  ])
+  runChecked(["systemctl", "daemon-reload"])
+  runChecked(["systemctl", "enable", "--now", "agent-swarm-monitor.service"])
+  runChecked([
+    "systemctl",
+    "enable",
+    "--now",
+    "agent-swarm-manager-node.service",
+  ])
+  runChecked([
+    "systemctl",
+    "enable",
+    "--now",
+    "agent-manager-controller.service",
+  ])
+  logStep("setup.complete")
 
   console.log(
     JSON.stringify({
@@ -427,7 +465,7 @@ DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
       workspaceDir: config.workspaceDir,
       hostRoot: config.hostRoot,
     }),
-  );
+  )
 }
 
-await main();
+await main()

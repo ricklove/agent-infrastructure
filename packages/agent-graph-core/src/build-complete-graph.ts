@@ -1,32 +1,35 @@
-import { buildDerivedEdges } from "./build-derived-edges.js";
-import { buildHiddenContextPortals } from "./build-hidden-context-portals.js";
+import { buildDerivedEdges } from "./build-derived-edges.js"
+import { buildHiddenContextPortals } from "./build-hidden-context-portals.js"
 import type {
   GraphEdge,
   GraphLayer,
   GraphNode,
+  GraphSnapshot,
   SourceWorkspace,
   WorkspaceState,
-  GraphSnapshot,
-} from "./types.js";
+} from "./types.js"
 
-const LAYER_PADDING_X = 32;
-const LAYER_PADDING_Y = 40;
-const NODE_WIDTH = 168;
-const NODE_COLUMN_GAP = 360;
-const NODE_ROW_GAP = 156;
-const PORTAL_OFFSET_X = 188;
-const PORTAL_WIDTH = 112;
+const LAYER_PADDING_X = 32
+const LAYER_PADDING_Y = 40
+const NODE_WIDTH = 168
+const NODE_COLUMN_GAP = 360
+const NODE_ROW_GAP = 156
+const PORTAL_OFFSET_X = 188
+const PORTAL_WIDTH = 112
 
-function computeLayerLayout(layer: WorkspaceState["layers"][number], nodeCount: number): {
-  columns: number;
-  rows: number;
-  graphLayer: GraphLayer;
+function computeLayerLayout(
+  layer: WorkspaceState["layers"][number],
+  nodeCount: number,
+): {
+  columns: number
+  rows: number
+  graphLayer: GraphLayer
 } {
   const columns =
     layer.kind === "overview"
       ? Math.min(3, Math.max(1, nodeCount))
-      : Math.max(1, Math.ceil(Math.sqrt(Math.max(nodeCount, 1))));
-  const rows = Math.max(1, Math.ceil(Math.max(nodeCount, 1) / columns));
+      : Math.max(1, Math.ceil(Math.sqrt(Math.max(nodeCount, 1))))
+  const rows = Math.max(1, Math.ceil(Math.max(nodeCount, 1) / columns))
 
   return {
     columns,
@@ -41,37 +44,46 @@ function computeLayerLayout(layer: WorkspaceState["layers"][number], nodeCount: 
           PORTAL_WIDTH +
           Math.max(0, columns - 1) * NODE_COLUMN_GAP,
       ),
-      height: Math.max(260, LAYER_PADDING_Y * 2 + 96 + Math.max(0, rows - 1) * NODE_ROW_GAP),
+      height: Math.max(
+        260,
+        LAYER_PADDING_Y * 2 + 96 + Math.max(0, rows - 1) * NODE_ROW_GAP,
+      ),
     },
-  };
+  }
 }
 
 export function buildCompleteGraph(args: {
-  sourceWorkspace: SourceWorkspace;
-  workspaceState: WorkspaceState;
+  sourceWorkspace: SourceWorkspace
+  workspaceState: WorkspaceState
 }): GraphSnapshot {
-  const { sourceWorkspace, workspaceState } = args;
-  const visibleLayers = workspaceState.layers.filter((layer) => layer.visible);
-  const visibleSourceIds = new Set(visibleLayers.flatMap((layer) => layer.nodeIds));
-  const renderedNodeIdsBySourceId = new Map<string, string[]>();
-  const layerLayouts = workspaceState.layers.map((layer) => computeLayerLayout(layer, layer.nodeIds.length));
-  const graphLayers = layerLayouts.map((layout) => layout.graphLayer);
-  const graphNodes: GraphNode[] = [];
+  const { sourceWorkspace, workspaceState } = args
+  const visibleLayers = workspaceState.layers.filter((layer) => layer.visible)
+  const visibleSourceIds = new Set(
+    visibleLayers.flatMap((layer) => layer.nodeIds),
+  )
+  const renderedNodeIdsBySourceId = new Map<string, string[]>()
+  const layerLayouts = workspaceState.layers.map((layer) =>
+    computeLayerLayout(layer, layer.nodeIds.length),
+  )
+  const graphLayers = layerLayouts.map((layout) => layout.graphLayer)
+  const graphNodes: GraphNode[] = []
 
   for (const layerLayout of layerLayouts) {
-    const layer = layerLayout.graphLayer;
+    const layer = layerLayout.graphLayer
     if (!layer.visible) {
-      continue;
+      continue
     }
     layer.nodeIds.forEach((sourceId, index) => {
-      const sourceNode = sourceWorkspace.nodes.find((node) => node.id === sourceId);
+      const sourceNode = sourceWorkspace.nodes.find(
+        (node) => node.id === sourceId,
+      )
       if (!sourceNode) {
-        return;
+        return
       }
 
-      const col = index % layerLayout.columns;
-      const row = Math.floor(index / layerLayout.columns);
-      const id = `${sourceId}::${layer.id}`;
+      const col = index % layerLayout.columns
+      const row = Math.floor(index / layerLayout.columns)
+      const id = `${sourceId}::${layer.id}`
       const graphNode: GraphNode = {
         id,
         sourceId,
@@ -80,25 +92,24 @@ export function buildCompleteGraph(args: {
         sourcePath: sourceNode.sourcePath,
         kind: "semantic-node",
         sourceKind: sourceNode.kind,
-        position:
-          workspaceState.nodePositions[id] ?? {
+        position: workspaceState.nodePositions[id] ?? {
           x: LAYER_PADDING_X + col * NODE_COLUMN_GAP,
           y: LAYER_PADDING_Y + 16 + row * NODE_ROW_GAP,
-          },
+        },
         summary: sourceNode.summary,
-      };
-      graphNodes.push(graphNode);
+      }
+      graphNodes.push(graphNode)
       renderedNodeIdsBySourceId.set(sourceId, [
         ...(renderedNodeIdsBySourceId.get(sourceId) ?? []),
         graphNode.id,
-      ]);
-    });
+      ])
+    })
   }
 
-  const directEdges: GraphEdge[] = [];
+  const directEdges: GraphEdge[] = []
   for (const edge of sourceWorkspace.edges) {
-    const sourceIds = renderedNodeIdsBySourceId.get(edge.sourceId) ?? [];
-    const targetIds = renderedNodeIdsBySourceId.get(edge.targetId) ?? [];
+    const sourceIds = renderedNodeIdsBySourceId.get(edge.sourceId) ?? []
+    const targetIds = renderedNodeIdsBySourceId.get(edge.targetId) ?? []
     for (const source of sourceIds) {
       for (const target of targetIds) {
         directEdges.push({
@@ -110,7 +121,7 @@ export function buildCompleteGraph(args: {
           label: edge.label,
           multiplicity: 1,
           supportingPathIds: [edge.id],
-        });
+        })
       }
     }
   }
@@ -120,7 +131,7 @@ export function buildCompleteGraph(args: {
     renderedNodeIdsBySourceId,
     sourceEdges: sourceWorkspace.edges,
     visibleSourceIds,
-  });
+  })
 
   const { portals, portalEdges } = buildHiddenContextPortals({
     renderedNodes: graphNodes,
@@ -128,7 +139,7 @@ export function buildCompleteGraph(args: {
     sourceNodes: sourceWorkspace.nodes,
     sourceEdges: sourceWorkspace.edges,
     visibleSourceIds,
-  });
+  })
 
   return {
     workspaceId: sourceWorkspace.id,
@@ -136,5 +147,5 @@ export function buildCompleteGraph(args: {
     layers: graphLayers,
     nodes: [...graphNodes, ...portals],
     edges: [...directEdges, ...derivedEdges, ...portalEdges],
-  };
+  }
 }

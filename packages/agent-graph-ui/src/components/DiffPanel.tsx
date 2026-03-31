@@ -1,21 +1,21 @@
-import { observer, useSelector } from "@legendapp/state/react";
-import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store";
-import { useRenderCounter } from "@agent-infrastructure/render-diagnostics";
+import type { AgentGraphStore } from "@agent-infrastructure/agent-graph-store"
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
+import { observer, useSelector } from "@legendapp/state/react"
 
 type DiffPanelProps = {
-  store: AgentGraphStore;
+  store: AgentGraphStore
   actions: {
-    requestDiff(): void;
-  };
-};
+    requestDiff(): void
+  }
+}
 
 export const DiffPanel = observer(function DiffPanel({
   store,
   actions,
 }: DiffPanelProps) {
-  useRenderCounter("DiffPanel");
-  const diff = useSelector(store.state$.diff);
-  const conflict = useSelector(store.state$.conflict);
+  useRenderCounter("DiffPanel")
+  const diff = useSelector(store.state$.diff)
+  const conflict = useSelector(store.state$.conflict)
 
   return (
     <section className="rounded-3xl border border-stone-800 bg-stone-900/80 p-3">
@@ -67,5 +67,5 @@ export const DiffPanel = observer(function DiffPanel({
         </div>
       ) : null}
     </section>
-  );
-});
+  )
+})
