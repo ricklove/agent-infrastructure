@@ -6,8 +6,8 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "bun ./scripts/tsgo-project-build.ts",
-    "check": "bun ./scripts/tsgo-project-build.ts",
+    "build": "./node_modules/.bin/tsgo -b tsconfig.projects.json --noEmit",
+    "check": "./node_modules/.bin/tsgo -b tsconfig.projects.json --noEmit",
     "lint": "./node_modules/.bin/biome check apps packages",
     "format": "./node_modules/.bin/biome format --write apps packages",
     "connect-vscode": "bash ./tools/connect-vscode.sh --profile agent-team-admin",
