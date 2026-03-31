@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --project tsconfig.json --noEmit",
-    "check": "tsc --project tsconfig.json --noEmit",
+    "build": "bun x tsgo --project tsconfig.json --noEmit",
+    "check": "bun x tsgo --project tsconfig.json --noEmit",
     "test": "bun test",
     "run:manager": "bun run src/manager/server.ts",
     "run:manager-controller": "bun run src/manager/manager-controller.ts",

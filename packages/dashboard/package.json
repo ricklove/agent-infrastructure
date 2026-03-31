@@ -3,20 +3,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc --project tsconfig.json --noEmit",
-    "check": "tsc --project tsconfig.json --noEmit",
+    "build": "bun x tsgo --project tsconfig.json --noEmit",
+    "check": "bun x tsgo --project tsconfig.json --noEmit",
     "start": "bun run src/server.ts"
   },
   "dependencies": {
+    "@agent-infrastructure/agent-chat-ui": "workspace:*",
     "@agent-infrastructure/agent-graph-ui": "workspace:*",
     "@agent-infrastructure/agent-swarm-ui": "workspace:*",
-    "@agent-infrastructure/agent-workbench-server": "workspace:*",
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
+    "@agent-infrastructure/projects-ui": "workspace:*",
     "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
     "@agent-infrastructure/ui-design-canvas-ui": "workspace:*",
-    "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
-    "@agent-infrastructure/agent-chat-server": "workspace:*",
-    "@agent-infrastructure/projects-server": "workspace:*"
+    "@agent-infrastructure/floating-window-debug-ui": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

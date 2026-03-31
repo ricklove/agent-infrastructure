@@ -8,8 +8,8 @@
     "./ui-plugin": "./src/dashboard-ui-plugin.ts"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json --noEmit",
-    "check": "tsc --project tsconfig.json --noEmit"
+    "build": "bun x tsgo --project tsconfig.json --noEmit",
+    "check": "bun x tsgo --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@agent-infrastructure/dashboard-plugin": "workspace:*",

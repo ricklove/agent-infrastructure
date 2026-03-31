@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -b && vite build",
-    "check": "tsc -b",
+    "build": "bun x tsgo -b && vite build",
+    "check": "bun x tsgo -b",
     "dev": "vite"
   },
   "dependencies": {

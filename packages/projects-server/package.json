@@ -7,8 +7,8 @@
     "./plugin": "./src/dashboard-plugin.ts"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json --noEmit",
-    "check": "tsc --project tsconfig.json --noEmit",
+    "build": "bun x tsgo --project tsconfig.json --noEmit",
+    "check": "bun x tsgo --project tsconfig.json --noEmit",
     "start": "bun run src/index.ts"
   },
   "devDependencies": {

@@ -6,12 +6,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json --noEmit",
-    "check": "tsc --project tsconfig.json --noEmit"
+    "build": "bun x tsgo --project tsconfig.json --noEmit",
+    "check": "bun x tsgo --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@agent-infrastructure/agent-chat-ui": "workspace:*",
-    "@agent-infrastructure/agent-workbench-ui": "workspace:*",
     "@agent-infrastructure/agent-graph-ui": "workspace:*",
     "@agent-infrastructure/agent-swarm-ui": "workspace:*",
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
