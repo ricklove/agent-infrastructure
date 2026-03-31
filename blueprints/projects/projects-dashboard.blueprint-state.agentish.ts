@@ -54,6 +54,7 @@ ProjectsDashboardBlueprintState.contains(
 CurrentReality.managedProjectsSurface.means(`
 - the dashboard exposes a first-party Projects tab
 - the backend serves project and installation records from durable app data
+- the server package now owns the base Projects dashboard plugin so the gateway no longer imports feature metadata from the UI package
 - operators can create project records and update per-project integration settings
 `);
 

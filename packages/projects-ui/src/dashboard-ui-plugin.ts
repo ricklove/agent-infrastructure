@@ -1,5 +1,5 @@
 import type { DashboardFeatureUiPlugin } from "@agent-infrastructure/dashboard-plugin"
-import { projectsDashboardPlugin } from "./dashboard-plugin.js"
+import { projectsDashboardPlugin } from "@agent-infrastructure/projects-server/plugin"
 
 export const projectsDashboardUiPlugin: DashboardFeatureUiPlugin = {
   ...projectsDashboardPlugin,

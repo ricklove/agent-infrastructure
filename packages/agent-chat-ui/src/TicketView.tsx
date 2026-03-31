@@ -1,125 +1,9 @@
-import type { ReactNode } from "react"
-
-export type AgentTicketDecisionOption = {
-  id: string
-  title: string
-  goto: string | null
-  next: boolean
-  block: boolean
-  complete: boolean
-  steps: AgentTicketStep[]
-}
-
-export type AgentTicketStep = {
-  id: string
-  title: string
-  kind: "task" | "wait" | "decision"
-  status: "pending" | "active" | "completed" | "blocked"
-  doneToken: string | null
-  blockedToken: string | null
-  decision: {
-    prompt: string
-    options: AgentTicketDecisionOption[]
-  } | null
-  steps: AgentTicketStep[]
-}
-
-export type AgentTicket = {
-  id: string
-  sessionId: string
-  title: string
-  description: string
-  processBlueprintId: string
-  processSnapshotId?: string | null
-  processTitle: string
-  status: "active" | "completed" | "blocked"
-  currentStepId: string | null
-  nextStepId: string | null
-  nextStepLabel: string | null
-  checklist: AgentTicketStep[]
-  resolution: string | null
-  createdAtMs: number
-  updatedAtMs: number
-}
-
-function formatTimestamp(timestampMs: number | null | undefined) {
-  if (!timestampMs) {
-    return null
-  }
-  try {
-    return new Date(timestampMs).toLocaleString()
-  } catch {
-    return null
-  }
-}
-
-function activeTicketStatusLabel(ticket: AgentTicket | null) {
-  if (!ticket) {
-    return null
-  }
-  if (ticket.status === "completed") {
-    return ticket.resolution ? `Done: ${ticket.resolution}` : "Ticket complete"
-  }
-  if (ticket.status === "blocked") {
-    return ticket.resolution
-      ? `Blocked: ${ticket.resolution}`
-      : ticket.nextStepLabel
-        ? `Blocked: ${ticket.nextStepLabel}`
-        : "Ticket blocked"
-  }
-  if (ticket.nextStepLabel) {
-    return `Next: ${ticket.nextStepLabel}`
-  }
-  return ticket.title
-}
-
-function ticketStepKindLabel(step: AgentTicketStep) {
-  if (step.kind === "wait") {
-    return " [wait]"
-  }
-  if (step.kind === "decision") {
-    return " [decision]"
-  }
-  return ""
-}
-
-function renderChecklistItems(
-  steps: AgentTicketStep[],
-  depth = 0,
-): ReactNode[] {
-  return steps.flatMap((step) => {
-    const row = (
-      <div
-        key={step.id}
-        style={{ paddingLeft: `${depth * 0.875}rem` }}
-        className={`leading-5 ${
-          step.status === "completed"
-            ? "text-slate-500"
-            : step.status === "active"
-              ? "text-white"
-              : step.status === "blocked"
-                ? "text-rose-200"
-                : "text-slate-400"
-        }`}
-      >
-        <span className="mr-2 inline-block w-7 text-slate-500">
-          {step.status === "completed" ? "[x]" : "[ ]"}
-        </span>
-        <span className={step.status === "completed" ? "line-through" : ""}>
-          {step.title}
-        </span>
-        <span className="text-slate-500">{ticketStepKindLabel(step)}</span>
-        {step.status === "active" ? (
-          <span className="ml-2 text-cyan-200">&lt;- current</span>
-        ) : null}
-        {step.status === "blocked" ? (
-          <span className="ml-2 text-rose-200">(blocked)</span>
-        ) : null}
-      </div>
-    )
-    return [row, ...renderChecklistItems(step.steps, depth + 1)]
-  })
-}
+import type { AgentTicket } from "./ticket-types"
+import {
+  formatTicketTimestamp,
+  renderTicketChecklistItems,
+  ticketStatusLabel,
+} from "./ticket-ui"
 
 export function TicketView(props: {
   ticket: AgentTicket | null
@@ -144,7 +28,8 @@ export function TicketView(props: {
     )
   }
 
-  const updatedLabel = formatTimestamp(props.ticket.updatedAtMs)
+  const updatedLabel = formatTicketTimestamp(props.ticket.updatedAtMs)
+  const statusLabel = ticketStatusLabel(props.ticket)
 
   return (
     <div className="space-y-2 px-3 py-2 text-[12px] leading-5 text-slate-200">
@@ -154,9 +39,9 @@ export function TicketView(props: {
             <span className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
               ticket
             </span>
-            {activeTicketStatusLabel(props.ticket) ? (
+            {statusLabel ? (
               <span className="text-[11px] text-emerald-200/90">
-                {activeTicketStatusLabel(props.ticket)}
+                {statusLabel}
               </span>
             ) : null}
           </div>
@@ -186,7 +71,7 @@ export function TicketView(props: {
 
       <div className="rounded-xl border border-white/10 bg-slate-950/55 px-2 py-2">
         <div className="space-y-1 font-mono text-[11px]">
-          {renderChecklistItems(props.ticket.checklist)}
+          {renderTicketChecklistItems(props.ticket.checklist)}
         </div>
       </div>
     </div>
