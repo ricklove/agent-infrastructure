@@ -1,3 +1,5 @@
+import { useState } from "react"
+import { TicketViewActions } from "./TicketViewActions"
 import type { AgentTicket } from "./ticket-types"
 import {
   formatTicketTimestamp,
@@ -5,11 +7,35 @@ import {
   ticketStatusLabel,
 } from "./ticket-ui"
 
+type TicketMutationResponse = {
+  ok: boolean
+  ticket: AgentTicket
+  error?: string
+}
+
+function buildHeaders(authorizationHeader: string | undefined) {
+  const headers = new Headers({
+    accept: "application/json",
+    "content-type": "application/json",
+  })
+  const normalizedAuthorization = authorizationHeader?.trim() ?? ""
+  if (normalizedAuthorization) {
+    headers.set("Authorization", normalizedAuthorization)
+  }
+  return headers
+}
+
 export function TicketView(props: {
   ticket: AgentTicket | null
   loading?: boolean
   error?: string | null
+  apiRootUrl?: string
+  authorizationHeader?: string
+  onTicketUpdated?: (ticket: AgentTicket) => void
 }) {
+  const [pendingStepId, setPendingStepId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
   if (props.loading) {
     return (
       <div className="px-3 py-2 text-xs text-slate-400">Loading ticket...</div>
@@ -30,6 +56,39 @@ export function TicketView(props: {
 
   const updatedLabel = formatTicketTimestamp(props.ticket.updatedAtMs)
   const statusLabel = ticketStatusLabel(props.ticket)
+
+  async function handleToggleStep(
+    step: AgentTicket,
+    stepId: string,
+    checked: boolean,
+  ) {
+    if (!props.apiRootUrl) {
+      return
+    }
+    setPendingStepId(stepId)
+    setActionError(null)
+    try {
+      const response = await fetch(
+        `${props.apiRootUrl}/tickets/${encodeURIComponent(step.id)}/step-selection`,
+        {
+          method: "POST",
+          headers: buildHeaders(props.authorizationHeader),
+          body: JSON.stringify({ stepId, checked }),
+        },
+      )
+      const payload = (await response.json()) as TicketMutationResponse
+      if (!response.ok || !payload.ok || !payload.ticket) {
+        throw new Error(payload.error ?? "Ticket step update failed.")
+      }
+      props.onTicketUpdated?.(payload.ticket)
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Ticket step update failed.",
+      )
+    } finally {
+      setPendingStepId(null)
+    }
+  }
 
   return (
     <div className="space-y-2 px-3 py-2 text-[12px] leading-5 text-slate-200">
@@ -69,9 +128,39 @@ export function TicketView(props: {
         </div>
       ) : null}
 
+      {props.apiRootUrl ? (
+        <TicketViewActions
+          ticket={props.ticket}
+          apiRootUrl={props.apiRootUrl}
+          authorizationHeader={props.authorizationHeader}
+          disabled={pendingStepId !== null}
+          onTicketUpdated={(ticket) => {
+            setActionError(null)
+            props.onTicketUpdated?.(ticket)
+          }}
+          onError={setActionError}
+        />
+      ) : null}
+
+      {actionError ? (
+        <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+          {actionError}
+        </div>
+      ) : null}
+
       <div className="rounded-xl border border-white/10 bg-slate-950/55 px-2 py-2">
         <div className="space-y-1 font-mono text-[11px]">
-          {renderTicketChecklistItems(props.ticket.checklist)}
+          {renderTicketChecklistItems(props.ticket.checklist, {
+            onToggleStep: props.apiRootUrl
+              ? (step, checked) =>
+                  void handleToggleStep(
+                    props.ticket as AgentTicket,
+                    step.id,
+                    checked,
+                  )
+              : undefined,
+            pendingStepId,
+          })}
         </div>
       </div>
     </div>

@@ -2,8 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { AgentTicketStore } from "./agent-tickets.js"
-import type { StoredAgentTicketStep } from "./agent-tickets.js"
+import {
+  AgentTicketStore,
+  type StoredAgentTicketStep,
+} from "./agent-tickets.js"
 import type { ProceduralProcessBlueprint } from "./process-blueprints.js"
 
 const createdDirs: string[] = []
@@ -399,6 +401,91 @@ describe("AgentTicketStore", () => {
     expect(resumed?.status).toBe("active")
     expect(resumed?.blockedSource).toBeNull()
     expect(store.getActiveTicketForSession("session-1")?.id).toBe(first.id)
+  })
+
+  test("manually selects a step boundary and clears downstream progress", () => {
+    const store = createStore()
+    const ticket = store.createOrReplaceSessionTicket("session-1", {
+      ...createBlueprint({
+        id: "manual-step-blueprint",
+        title: "Manual Step Blueprint",
+      }),
+      steps: [
+        {
+          id: "prepare",
+          title: "Prepare",
+          kind: "task",
+          doneToken: null,
+          blockedToken: null,
+          steps: [],
+          decision: null,
+        },
+        {
+          id: "review",
+          title: "Review",
+          kind: "task",
+          doneToken: null,
+          blockedToken: null,
+          steps: [],
+          decision: null,
+        },
+        {
+          id: "ship",
+          title: "Ship",
+          kind: "task",
+          doneToken: null,
+          blockedToken: null,
+          steps: [],
+          decision: null,
+        },
+      ],
+    })
+
+    const unchecked = store.selectStepForTicket(ticket.id, "review", false)
+    expect(unchecked?.currentStepId).toBe("review")
+    expect(unchecked?.status).toBe("active")
+    expect(unchecked && findStep(unchecked.checklist, "prepare")?.status).toBe(
+      "completed",
+    )
+    expect(unchecked && findStep(unchecked.checklist, "review")?.status).toBe(
+      "active",
+    )
+    expect(unchecked && findStep(unchecked.checklist, "ship")?.status).toBe(
+      "pending",
+    )
+
+    const checked = store.selectStepForTicket(ticket.id, "review", true)
+    expect(checked?.currentStepId).toBe("ship")
+    expect(checked?.status).toBe("active")
+    expect(checked && findStep(checked.checklist, "prepare")?.status).toBe(
+      "completed",
+    )
+    expect(checked && findStep(checked.checklist, "review")?.status).toBe(
+      "completed",
+    )
+    expect(checked && findStep(checked.checklist, "ship")?.status).toBe(
+      "active",
+    )
+  })
+
+  test("reassigns an unfinished ticket to another session and makes it the only active ticket there", () => {
+    const store = createStore()
+    const moved = store.createOrReplaceSessionTicket(
+      "session-1",
+      createBlueprint({ id: "moved-blueprint", title: "Moved Ticket" }),
+    )
+    const replaced = store.createOrReplaceSessionTicket(
+      "session-2",
+      createBlueprint({ id: "existing-blueprint", title: "Existing Ticket" }),
+    )
+
+    const reassigned = store.reassignTicketToSession(moved.id, "session-2")
+
+    expect(reassigned?.sessionId).toBe("session-2")
+    expect(store.getActiveTicketForSession("session-1")).toBeNull()
+    expect(store.getActiveTicketForSession("session-2")?.id).toBe(moved.id)
+    expect(store.getTicket(moved.id)?.sessionId).toBe("session-2")
+    expect(store.getTicket(replaced.id)?.sessionId).toBe("session-2")
   })
 })
 
