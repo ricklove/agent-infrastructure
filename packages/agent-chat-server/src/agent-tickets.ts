@@ -270,7 +270,9 @@ function updateStepById(
       })
     }
     const updatedNestedSteps =
-      step.steps.length > 0 ? updateStepById(step.steps, stepId, updater) : step.steps
+      step.steps.length > 0
+        ? updateStepById(step.steps, stepId, updater)
+        : step.steps
     const updatedDecision = step.decision
       ? {
           ...step.decision,
@@ -283,7 +285,10 @@ function updateStepById(
           })),
         }
       : null
-    if (updatedNestedSteps === step.steps && updatedDecision === step.decision) {
+    if (
+      updatedNestedSteps === step.steps &&
+      updatedDecision === step.decision
+    ) {
       return step
     }
     return {
@@ -299,7 +304,9 @@ function resetExecutableStepsFrom(
   startStepId: string,
 ): StoredAgentTicketStep[] {
   const executableSteps = flattenExecutableSteps(steps)
-  const startIndex = executableSteps.findIndex((step) => step.id === startStepId)
+  const startIndex = executableSteps.findIndex(
+    (step) => step.id === startStepId,
+  )
   if (startIndex < 0) {
     return steps
   }
@@ -308,9 +315,7 @@ function resetExecutableStepsFrom(
     executableSteps.slice(startIndex).map((step) => step.id),
   )
 
-  function reset(
-    entries: StoredAgentTicketStep[],
-  ): StoredAgentTicketStep[] {
+  function reset(entries: StoredAgentTicketStep[]): StoredAgentTicketStep[] {
     return entries.map((step) => {
       const nestedSteps = reset(step.steps)
       const shouldReset =
