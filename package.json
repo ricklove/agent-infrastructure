@@ -31,6 +31,7 @@
     "github-app-token": "bash ./tools/github-app-token.sh",
     "start:dashboard": "bun run --filter @agent-infrastructure/dashboard start",
     "open:dashboard": "bun run --filter @agent-infrastructure/swarm-manager run:open-dashboard",
+    "worker-setup-direct-development": "bun ./scripts/worker-setup-direct-development.ts",
     "test:swarm-manager": "bun run --filter @agent-infrastructure/swarm-manager test",
     "test:local-swarm": "bash ./tools/test-local-swarm.sh",
     "synth:aws-setup": "bun run --filter @agent-infrastructure/aws-setup synth",
