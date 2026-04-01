@@ -57,6 +57,248 @@ function createBlueprint(
 }
 
 describe("AgentTicketStore", () => {
+  test("decision goto resets downstream executable steps back to pending", () => {
+    const store = createStore()
+    const ticket = store.createOrReplaceSessionTicket("session-1", {
+      ...createBlueprint({
+        id: "loopback-blueprint",
+        title: "Loopback Blueprint",
+      }),
+      steps: [
+        {
+          id: "cycle",
+          title: "Cycle",
+          kind: "task",
+          doneToken: null,
+          blockedToken: null,
+          decision: null,
+          steps: [
+            {
+              id: "prepare",
+              title: "Prepare rewrite packet",
+              kind: "task",
+              doneToken: null,
+              blockedToken: null,
+              steps: [],
+              decision: null,
+            },
+            {
+              id: "review",
+              title: "Collect final review",
+              kind: "task",
+              doneToken: null,
+              blockedToken: null,
+              steps: [],
+              decision: null,
+            },
+            {
+              id: "decide",
+              title: "Did the team accept?",
+              kind: "decision",
+              doneToken: null,
+              blockedToken: null,
+              steps: [],
+              decision: {
+                prompt: "Did the team accept?",
+                options: [
+                  {
+                    id: "changes_requested",
+                    title: "Changes requested",
+                    goto: "prepare",
+                    next: false,
+                    block: false,
+                    complete: false,
+                    steps: [],
+                  },
+                  {
+                    id: "accepted",
+                    title: "Accepted",
+                    goto: null,
+                    next: true,
+                    block: false,
+                    complete: false,
+                    steps: [],
+                  },
+                ],
+              },
+            },
+            {
+              id: "align",
+              title: "Align process definition layer",
+              kind: "task",
+              doneToken: null,
+              blockedToken: null,
+              steps: [],
+              decision: null,
+            },
+          ],
+        },
+      ],
+    })
+
+    let transition = store.resolveStepFromAssistantText("session-1", "done: prepare")
+    expect(transition?.ticket.currentStepId).toBe("cycle.review")
+
+    transition = store.resolveStepFromAssistantText("session-1", "done: review")
+    expect(transition?.ticket.currentStepId).toBe("cycle.decide")
+
+    transition = store.resolveStepFromAssistantText(
+      "session-1",
+      "changes_requested",
+    )
+    expect(transition?.ticket.currentStepId).toBe("cycle.prepare")
+
+    const loopedTicket = store.getTicket(ticket.id)
+    expect(loopedTicket).not.toBeNull()
+    expect(loopedTicket?.currentStepId).toBe("cycle.prepare")
+    expect(loopedTicket?.nextStepId).toBe("cycle.prepare")
+    expect(loopedTicket?.nextStepLabel).toBe("Prepare rewrite packet")
+    expect(loopedTicket && findStep(loopedTicket.checklist, "cycle.review")?.status).toBe(
+      "pending",
+    )
+    expect(loopedTicket && findStep(loopedTicket.checklist, "cycle.decide")?.status).toBe(
+      "pending",
+    )
+    expect(loopedTicket && findStep(loopedTicket.checklist, "cycle.align")?.status).toBe(
+      "pending",
+    )
+
+    transition = store.resolveStepFromAssistantText("session-1", "done: prepare")
+    expect(transition?.ticket.currentStepId).toBe("cycle.review")
+  })
+
+  test("decision goto can rewind into a decision-option child step", () => {
+    const store = createStore()
+    store.createOrReplaceSessionTicket("session-1", {
+      ...createBlueprint({
+        id: "nested-loopback-blueprint",
+        title: "Nested Loopback Blueprint",
+      }),
+      steps: [
+        {
+          id: "cycle",
+          title: "Cycle",
+          kind: "task",
+          doneToken: null,
+          blockedToken: null,
+          decision: null,
+          steps: [
+            {
+              id: "prepare",
+              title: "Prepare target",
+              kind: "task",
+              doneToken: null,
+              blockedToken: null,
+              steps: [],
+              decision: null,
+            },
+            {
+              id: "branch",
+              title: "Choose branch",
+              kind: "decision",
+              doneToken: null,
+              blockedToken: null,
+              steps: [],
+              decision: {
+                prompt: "Choose branch",
+                options: [
+                  {
+                    id: "enter_branch",
+                    title: "Enter branch",
+                    goto: null,
+                    next: false,
+                    block: false,
+                    complete: false,
+                    steps: [
+                      {
+                        id: "rewrite",
+                        title: "Rewrite child step",
+                        kind: "task",
+                        doneToken: null,
+                        blockedToken: null,
+                        steps: [],
+                        decision: null,
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+            {
+              id: "decide",
+              title: "Did the team accept?",
+              kind: "decision",
+              doneToken: null,
+              blockedToken: null,
+              steps: [],
+              decision: {
+                prompt: "Did the team accept?",
+                options: [
+                  {
+                    id: "changes_requested",
+                    title: "Changes requested",
+                    goto: "rewrite",
+                    next: false,
+                    block: false,
+                    complete: false,
+                    steps: [],
+                  },
+                  {
+                    id: "accepted",
+                    title: "Accepted",
+                    goto: null,
+                    next: true,
+                    block: false,
+                    complete: false,
+                    steps: [],
+                  },
+                ],
+              },
+            },
+            {
+              id: "align",
+              title: "Align process definition layer",
+              kind: "task",
+              doneToken: null,
+              blockedToken: null,
+              steps: [],
+              decision: null,
+            },
+          ],
+        },
+      ],
+    })
+
+    let transition = store.resolveStepFromAssistantText("session-1", "done: prepare")
+    expect(transition?.ticket.currentStepId).toBe("cycle.branch")
+
+    transition = store.resolveStepFromAssistantText("session-1", "enter_branch")
+    expect(transition?.ticket.currentStepId).toBe("cycle.branch.rewrite")
+
+    transition = store.resolveStepFromAssistantText("session-1", "done: rewrite")
+    expect(transition?.ticket.currentStepId).toBe("cycle.decide")
+
+    transition = store.resolveStepFromAssistantText(
+      "session-1",
+      "changes_requested",
+    )
+    expect(transition?.ticket.currentStepId).toBe("cycle.branch.rewrite")
+    expect(transition?.ticket.nextStepId).toBe("cycle.branch.rewrite")
+    expect(transition?.ticket.nextStepLabel).toBe("Rewrite child step")
+    expect(findStep(transition?.ticket.checklist ?? [], "cycle.branch")?.status).toBe(
+      "completed",
+    )
+    expect(findStep(transition?.ticket.checklist ?? [], "cycle.decide")?.status).toBe(
+      "pending",
+    )
+    expect(findStep(transition?.ticket.checklist ?? [], "cycle.align")?.status).toBe(
+      "pending",
+    )
+
+    transition = store.resolveStepFromAssistantText("session-1", "done: rewrite")
+    expect(transition?.ticket.currentStepId).toBe("cycle.decide")
+  })
+
   test("marks the active ticket blocked when the assistant blocks the current step", () => {
     const store = createStore()
     const ticket = store.createOrReplaceSessionTicket(
@@ -143,3 +385,31 @@ describe("AgentTicketStore", () => {
     expect(store.getActiveTicketForSession("session-1")?.id).toBe(first.id)
   })
 })
+
+function findStep(
+  steps: ReturnType<typeof createBlueprint>["steps"],
+  stepId: string,
+): { status: string } | null {
+  for (const step of steps as any[]) {
+    if (step.id === stepId) {
+      return step
+    }
+    if (Array.isArray(step.steps)) {
+      const nested = findStep(step.steps, stepId)
+      if (nested) {
+        return nested
+      }
+    }
+    if (step.decision?.options) {
+      for (const option of step.decision.options) {
+        if (Array.isArray(option.steps)) {
+          const nested = findStep(option.steps, stepId)
+          if (nested) {
+            return nested
+          }
+        }
+      }
+    }
+  }
+  return null
+}

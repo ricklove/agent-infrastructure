@@ -210,6 +210,14 @@ function findStepById(
     if (nested) {
       return nested
     }
+    if (step.decision) {
+      for (const option of step.decision.options) {
+        const nestedOptionStep = findStepById(option.steps, stepId)
+        if (nestedOptionStep) {
+          return nestedOptionStep
+        }
+      }
+    }
   }
   return null
 }
@@ -240,6 +248,11 @@ function flattenExecutableSteps(
       flattened.push(step)
     }
     flattened.push(...flattenExecutableSteps(step.steps))
+    if (step.decision) {
+      for (const option of step.decision.options) {
+        flattened.push(...flattenExecutableSteps(option.steps))
+      }
+    }
   }
   return flattened
 }
@@ -256,14 +269,71 @@ function updateStepById(
         steps: cloneChecklist(step.steps),
       })
     }
-    if (step.steps.length === 0) {
+    const updatedNestedSteps =
+      step.steps.length > 0 ? updateStepById(step.steps, stepId, updater) : step.steps
+    const updatedDecision = step.decision
+      ? {
+          ...step.decision,
+          options: step.decision.options.map((option) => ({
+            ...option,
+            steps:
+              option.steps.length > 0
+                ? updateStepById(option.steps, stepId, updater)
+                : option.steps,
+          })),
+        }
+      : null
+    if (updatedNestedSteps === step.steps && updatedDecision === step.decision) {
       return step
     }
     return {
       ...step,
-      steps: updateStepById(step.steps, stepId, updater),
+      steps: updatedNestedSteps,
+      decision: updatedDecision,
     }
   })
+}
+
+function resetExecutableStepsFrom(
+  steps: StoredAgentTicketStep[],
+  startStepId: string,
+): StoredAgentTicketStep[] {
+  const executableSteps = flattenExecutableSteps(steps)
+  const startIndex = executableSteps.findIndex((step) => step.id === startStepId)
+  if (startIndex < 0) {
+    return steps
+  }
+
+  const resetStepIds = new Set(
+    executableSteps.slice(startIndex).map((step) => step.id),
+  )
+
+  function reset(
+    entries: StoredAgentTicketStep[],
+  ): StoredAgentTicketStep[] {
+    return entries.map((step) => {
+      const nestedSteps = reset(step.steps)
+      const shouldReset =
+        (step.kind === "decision" || nestedSteps.length === 0) &&
+        resetStepIds.has(step.id)
+      return {
+        ...step,
+        status: shouldReset ? "pending" : step.status,
+        steps: nestedSteps,
+        decision: step.decision
+          ? {
+              ...step.decision,
+              options: step.decision.options.map((option) => ({
+                ...option,
+                steps: reset(option.steps),
+              })),
+            }
+          : null,
+      }
+    })
+  }
+
+  return reset(steps)
 }
 
 function updateDecisionOptionSteps(
@@ -1086,9 +1156,13 @@ export class AgentTicketStore {
     if (option.goto) {
       const gotoStep = findStepByReference(baseChecklist, option.goto)
       if (gotoStep) {
+        const resetChecklist = resetExecutableStepsFrom(
+          baseChecklist,
+          gotoStep.id,
+        )
         const updated = ticketWithNextStep(
           current,
-          updateStepById(baseChecklist, gotoStep.id, (step) => ({
+          updateStepById(resetChecklist, gotoStep.id, (step) => ({
             ...step,
             status: "active",
           })),
