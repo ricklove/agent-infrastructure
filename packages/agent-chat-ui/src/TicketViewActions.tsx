@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import {
-  activateAgentChatSessionEventName,
   type AgentTicket,
+  activateAgentChatSessionEventName,
 } from "./ticket-types"
 
 type SessionSummary = {
@@ -60,37 +60,43 @@ export function TicketViewActions(props: {
     [sessions],
   )
 
-  async function loadSessions(options?: {
-    ownerSessionId?: string
-    preferredSelectedSessionId?: string
-  }) {
-    const response = await fetch(`${props.apiRootUrl}/sessions`, {
-      headers: buildHeaders(props.authorizationHeader),
-    })
-    const payload = (await response.json()) as SessionsResponse
-    if (!response.ok || !payload.ok || !Array.isArray(payload.sessions)) {
-      throw new Error(payload.error ?? "Failed to load chat sessions.")
-    }
+  const loadSessions = useCallback(
+    async (options?: {
+      ownerSessionId?: string
+      preferredSelectedSessionId?: string
+    }) => {
+      const response = await fetch(`${props.apiRootUrl}/sessions`, {
+        headers: buildHeaders(props.authorizationHeader),
+      })
+      const payload = (await response.json()) as SessionsResponse
+      if (!response.ok || !payload.ok || !Array.isArray(payload.sessions)) {
+        throw new Error(payload.error ?? "Failed to load chat sessions.")
+      }
 
-    setSessions(payload.sessions)
+      setSessions(payload.sessions)
 
-    const ownerSessionId = options?.ownerSessionId ?? props.ticket.sessionId
-    const preferredSelectedSessionId =
-      options?.preferredSelectedSessionId?.trim() ?? ""
-    const nextAvailableSessions = payload.sessions
-      .filter((session) => !session.archived)
-      .sort((left, right) => right.id.localeCompare(left.id))
-    const fallbackSession = nextAvailableSessions.find(
-      (session) => session.id !== ownerSessionId,
-    )
-    const preferredIsValid = nextAvailableSessions.some(
-      (session) =>
-        session.id === preferredSelectedSessionId && session.id !== ownerSessionId,
-    )
-    setSelectedSessionId(
-      preferredIsValid ? preferredSelectedSessionId : (fallbackSession?.id ?? ""),
-    )
-  }
+      const ownerSessionId = options?.ownerSessionId ?? props.ticket.sessionId
+      const preferredSelectedSessionId =
+        options?.preferredSelectedSessionId?.trim() ?? ""
+      const nextAvailableSessions = payload.sessions
+        .filter((session) => !session.archived)
+        .sort((left, right) => right.id.localeCompare(left.id))
+      const fallbackSession = nextAvailableSessions.find(
+        (session) => session.id !== ownerSessionId,
+      )
+      const preferredIsValid = nextAvailableSessions.some(
+        (session) =>
+          session.id === preferredSelectedSessionId &&
+          session.id !== ownerSessionId,
+      )
+      setSelectedSessionId(
+        preferredIsValid
+          ? preferredSelectedSessionId
+          : (fallbackSession?.id ?? ""),
+      )
+    },
+    [props.apiRootUrl, props.authorizationHeader, props.ticket.sessionId],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -114,7 +120,7 @@ export function TicketViewActions(props: {
     return () => {
       cancelled = true
     }
-  }, [props.apiRootUrl, props.authorizationHeader, props.ticket.sessionId])
+  }, [loadSessions, props.onError])
 
   useEffect(() => {
     const selectedStillExists = availableSessions.some(

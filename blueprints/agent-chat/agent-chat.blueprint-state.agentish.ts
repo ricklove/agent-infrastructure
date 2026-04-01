@@ -25,6 +25,7 @@ const CurrentReality = {
   processLifecycleVerificationGap: define.concept("ProcessLifecycleVerificationGap"),
   directoryAndTitleQueueing: define.concept("QueuedDirectoryAndTitleInstructions"),
   codexAndClaudeExecution: define.concept("CodexAndClaudeProviderExecution"),
+  multiAgentSchemaFoundation: define.concept("PartialMultiAgentSchemaFoundation"),
   claudeProcessModePolicy: define.concept("ClaudeProcessModePolicy"),
   currentChatProviderSettings: define.concept("CurrentChatProviderSettingsMenu"),
   clipboardImagePaste: define.concept("ClipboardImagePasteSupport"),
@@ -57,12 +58,13 @@ const CurrentReality = {
 AgentChatBlueprintState.defines(`
 - CurrentImplementationStatus means Agent Chat currently exists as a real dashboard feature with a working backend, working UI, canonical file-backed session persistence, realtime updates, clipboard image paste support, and more than one implemented provider path.
 - AssessmentConfidence is medium-high because the current state now has both direct source inspection and direct live-browser verification against the deployed dashboard at matching frontend and backend revisions.
-- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the shared dashboard session helper under packages/dashboard-plugin/src/session-client.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive live-browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-release-af79459/, /home/ec2-user/state/screenshots/agent-chat-mobile-audit-local-2/, and /home/ec2-user/state/screenshots/agent-chat-mobile-settings-submit/.
+- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the new shared multi-agent schema foundation under packages/agent-chat-server/src/schema.ts, the new targeted delivery regression coverage under packages/agent-chat-server/src/store.test.ts, the shared dashboard session helper under packages/dashboard-plugin/src/session-client.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive live-browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-release-af79459/, /home/ec2-user/state/screenshots/agent-chat-mobile-audit-local-2/, and /home/ec2-user/state/screenshots/agent-chat-mobile-settings-submit/.
 - ImplementationEvidence also includes shared ticket ownership now being localized under packages/agent-chat-ui/src/ticket-types.ts and packages/agent-chat-ui/src/ticket-ui.tsx, with both AgentChatScreen.tsx and TicketView.tsx consuming the same ticket status and checklist semantics.
 - This blueprint-state compares current implementation reality against the ideal Agent Chat product blueprint in agent-chat.agentish.ts, the implementation-resolved dashboard blueprint in agent-chat-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
-- ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
+- ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, canonical multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
 - ImplementationGap also includes chat durability still stopping at canonical file persistence rather than extending into manager-controlled workspace git commit and push.
 - ImplementationGap also includes the lack of a full layered verification suite for process lifecycle behavior at the real server boundary and at the headless client state-store boundary.
+- ImplementationGap also includes multi-agent host routing and projection still being only partially implemented today: canonical participant identity, visibility resolution, delivery-state persistence, participant-aware message routes, and manager-hosted Codex/Claude queue semantics are landed, but worker-host participants, offline replay, and full provider execution projection across multiple active agent hosts remain incomplete.
 - KnownIssue means the provider catalog and UI still include planned providers that do not yet execute in the backend today.
 - KnownIssue also includes the current Agent Chat provider layer still being uneven, with Codex and Claude implemented while OpenRouter and Gemini remain planned.
 - KnownIssue also includes the current Codex adapter retaining an adapter-level timeout policy that remains separate from the newer Claude path.
@@ -82,6 +84,7 @@ AgentChatBlueprintState.contains(
   CurrentReality.processLifecycleVerificationGap,
   CurrentReality.directoryAndTitleQueueing,
   CurrentReality.codexAndClaudeExecution,
+  CurrentReality.multiAgentSchemaFoundation,
   CurrentReality.claudeProcessModePolicy,
   CurrentReality.currentChatProviderSettings,
   CurrentReality.clipboardImagePaste,
@@ -158,6 +161,15 @@ CurrentReality.codexAndClaudeExecution.means(`
 - Codex app-server and Claude Agent SDK both have working execution adapters in the current backend
 - active Codex and Claude turns may be interrupted while a run is active
 - provider thread ids remain metadata attached to the workspace-owned session rather than replacing canonical chat history
+`);
+
+CurrentReality.multiAgentSchemaFoundation.means(`
+- the server codebase now has a shared schema module at packages/agent-chat-server/src/schema.ts for Agent Chat participant identity, host identity, default visibility, visibility-tag parsing, delivery records, and legacy compatibility helpers
+- the canonical store in packages/agent-chat-server/src/store.ts now persists participants, author participant identity, resolved message visibility, and recipient-scoped delivery records while preserving compatibility with legacy single-agent sessions and messages
+- the HTTP message route in packages/agent-chat-server/src/index.ts now accepts participant-authored messages and participant-scoped visibility overrides for the first manager-hosted multi-agent test slice
+- the current implementation slice remains manager-hosted, with Codex and Claude represented as distinct manager-hosted agent participants and queued delivery following the active provider participant when a session switches between them
+- provider input shaping now preserves peer authorship as attributed external input for non-user participant messages before they are handed to the active provider runtime, but full multi-host provider execution and offline replay are still incomplete
+- worker-local verification confirmed that the new schema, store, route, and targeted delivery regression changes build, load, and behave correctly in live server API checks after refreshing the worker install state
 `);
 
 CurrentReality.claudeProcessModePolicy.means(`
@@ -390,7 +402,7 @@ CurrentReality.dashboardSessionBoundary.means(`
 `);
 
 CurrentReality.deferredScope.means(`
-- multi-agent sessions are not implemented
+- canonical multi-agent sessions are still not wired end to end across manager and worker hosts, even though manager-hosted participant storage, routing, and queue semantics now exist
 - workspace entity references are not yet modeled as durable first-class chat references
 - import normalization is not implemented
 - native versus Agentish compaction is specified in blueprints but not yet exposed as a real editable session policy
