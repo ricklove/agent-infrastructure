@@ -2,7 +2,7 @@
   "id": "full_development_process_steps",
   "title": "Full Development Process (Nested Steps)",
   "catalogOrder": 51,
-  "expectation": "Use a worker-hosted feature-branch worktree as the only mutable implementation surface for active development in this process; never edit from the shared repository checkout, a manager-hosted worktree, or a worker shared checkout. Create that worker-hosted worktree from the current upstream base branch tip. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worker-hosted worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Connect through a persistent SSH session into the worker instance for the active development loop. Follow the full development-process blueprint through worker-backed blueprint updates, committed implementation, manager-side branch integration into `development`, promotion of that integrated commit onto `main`, creation of a release tag from the exact promoted commit, runtime deploy, runtime revision and version verification, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using that issued session URL, manager-dashboard screenshot verification, cleanup of the feature branch and worktree on success, and rollback recovery when screenshot verification fails.",
+  "expectation": "Use a worker-hosted feature-branch worktree as the only mutable implementation surface for active development in this process; never edit from the shared repository checkout, a manager-hosted worktree, or a worker shared checkout. Create that worker-hosted worktree from the current upstream base branch tip. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worker-hosted worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Connect through a persistent SSH session into the worker instance for the active development loop. Before implementation, explicitly read the relevant blueprint, update it if needed, read the relevant blueprint-state, and update it if needed. After each bounded implementation pass, update the relevant blueprint-state, ask the fixed team profile reviewer set to verify the blueprint-state against the blueprint and current implementation, and loop back into implementation whenever the team finds the blueprint-state incorrect or identifies remaining implementation work. Follow the full development-process blueprint through worker-backed blueprint updates, committed implementation, manager-side branch integration into `development`, promotion of that integrated commit onto `main`, creation of a release tag from the exact promoted commit, runtime deploy, runtime revision and version verification, live health verification, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification at the public Cloudflare manager dashboard URL using that issued session URL, manager-dashboard screenshot verification, cleanup of the feature branch and worktree on success, and rollback recovery when screenshot verification fails.",
   "idlePrompt": "If you fully completed the development process, reply only with 'done: full development process complete'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: full development process blocked'. Otherwise resume the work immediately and perform the next required implementation, verification, release, deploy, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: full development process complete",
@@ -26,8 +26,24 @@
       "title": "Complete the worker revision",
       "steps": [
         {
-          "id": "review_relevant_blueprints",
-          "title": "Review and update relevant blueprints"
+          "id": "read_relevant_blueprint",
+          "title": "Read the relevant blueprint"
+        },
+        {
+          "id": "update_relevant_blueprint_if_needed",
+          "title": "Update the relevant blueprint if implementation intent or ideal structure changed"
+        },
+        {
+          "id": "read_relevant_blueprint_state",
+          "title": "Read the relevant blueprint-state"
+        },
+        {
+          "id": "update_relevant_blueprint_state_if_needed",
+          "title": "Update the relevant blueprint-state if the recorded current reality, current files, or planned files are stale before implementation"
+        },
+        {
+          "id": "confirm_current_revision_scope",
+          "title": "Confirm the current bounded implementation scope from the blueprint and blueprint-state"
         },
         {
           "id": "implement_revision",
@@ -53,6 +69,34 @@
         },
         {
           "use": "worker_local_verification"
+        },
+        {
+          "id": "update_blueprint_state_after_implementation",
+          "title": "Update the relevant blueprint-state to reflect the latest implementation reality"
+        },
+        {
+          "id": "collect_team_blueprint_state_review",
+          "title": "Ask each team profile sub agent to review the updated blueprint-state against the blueprint and current implementation and report correctness plus any remaining required changes"
+        },
+        {
+          "id": "decide_blueprint_state_and_remaining_work",
+          "title": "Is the blueprint-state correct and does the team agree that no more implementation changes are required for the current scope?",
+          "kind": "decision",
+          "decision": {
+            "prompt": "Is the blueprint-state correct and does the team agree that no more implementation changes are required for the current scope?",
+            "options": [
+              {
+                "id": "blueprint_state_or_implementation_needs_more_changes",
+                "title": "The blueprint-state is incorrect, incomplete, or shows more implementation changes are required",
+                "goto": "implement_revision"
+              },
+              {
+                "id": "blueprint_state_correct_and_scope_complete",
+                "title": "The blueprint-state is correct and the current implementation scope is complete",
+                "next": true
+              }
+            ]
+          }
         },
         {
           "id": "commit_milestone",
