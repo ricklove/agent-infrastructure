@@ -1,0 +1,87 @@
+{
+  "id": "refine_with_team",
+  "title": "Refine with Team",
+  "catalogOrder": 28,
+  "expectation": "Use a manager-hosted feature-branch worktree as the only mutable surface for this process; never edit process definition files, blueprints, or other repository files from the shared repository checkout. Create that worktree from the current upstream base branch tip under the canonical worktree location. Do not reuse an existing feature branch or worktree unless you created it earlier in the current process and have already verified that it is the intended mutable surface. After creating that worktree, merge only any additional upstream branch that is intentionally required beyond the chosen base branch before continuing. Review the target to refine, the canonical Agentish sections blueprint, the Agentish quality blueprint, and the relevant agent-team blueprints before starting the refinement loop. Identify one bounded target scope to refine at a time, which may be a single item or a bounded set of related items. Send that same target scope to each team profile sub agent to collect role-specific change suggestions, apply the gathered suggestions into one latest candidate, send that same latest candidate back to the same fixed reviewer set to collect approvals or additional change requests, and repeat the review-and-change loop until every team profile sub agent approves the same latest candidate. Commit the resulting changes, merge the branch into development, and push development to origin.",
+  "companionPath": "blueprints/process-blueprints/refine-with-team.agentish.ts",
+  "idlePrompt": "If the refinement work is complete and every team profile has approved the same latest candidate for the target scope, reply only with 'done: refinement complete'. If you are truly blocked on missing user information, missing target definition, or required repository context, reply only with 'blocked: refinement requires clarification'. Otherwise resume the refinement loop immediately and perform the next review, change, approval, or integration step instead of giving only a status update.",
+  "completionMode": "exact_reply",
+  "completionToken": "done: refinement complete",
+  "blockedToken": "blocked: refinement requires clarification",
+  "stopConditions": [
+    "refinement work complete",
+    "missing information from the user",
+    "missing target definition",
+    "missing required repository context"
+  ],
+  "steps": [
+    {
+      "id": "refinement_worktree_surface",
+      "title": "Prepare the refinement worktree",
+      "steps": [
+        {
+          "use": "feature_worktree_setup"
+        }
+      ]
+    },
+    {
+      "id": "refinement_cycle",
+      "title": "Refine the target with the team",
+      "steps": [
+        {
+          "id": "review_refinement_context",
+          "title": "Review the target to refine, Agentish sections, Agentish quality blueprint, and agent-team blueprints"
+        },
+        {
+          "id": "identify_target_scope",
+          "title": "Identify one bounded target scope to refine"
+        },
+        {
+          "id": "collect_team_change_suggestions",
+          "title": "Ask each team profile sub agent to review the target scope and return role-specific change suggestions"
+        },
+        {
+          "id": "apply_suggested_changes",
+          "title": "Apply the gathered suggestions into one latest candidate for the same target scope"
+        },
+        {
+          "id": "collect_team_approval",
+          "title": "Ask each team profile sub agent to review the latest candidate and either approve it or request additional changes"
+        },
+        {
+          "id": "decide_completion",
+          "title": "Did every team profile sub agent approve the same latest candidate?",
+          "kind": "decision",
+          "decision": {
+            "prompt": "Did every team profile sub agent approve the same latest candidate?",
+            "options": [
+              {
+                "id": "more_changes_requested",
+                "title": "More changes were requested",
+                "goto": "apply_suggested_changes"
+              },
+              {
+                "id": "all_reviewers_approved",
+                "title": "All reviewers approved",
+                "next": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "commit_refinement_changes",
+          "title": "Commit the refinement changes"
+        },
+        {
+          "id": "merge_into_development",
+          "title": "Run `bun run agent:merge-manager-feature -- <feature-branch-name>` to merge the local feature branch from its manager worktree and push `development` to origin"
+        }
+      ]
+    }
+  ],
+  "watchdog": {
+    "enabled": true,
+    "idleTimeoutSeconds": 90,
+    "maxNudgesPerIdleEpisode": 0
+  }
+}
