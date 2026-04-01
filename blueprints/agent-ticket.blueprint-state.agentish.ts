@@ -29,10 +29,10 @@ const CurrentReality = {
   tokenDrivenProgressionExists: define.concept("TokenDrivenProgressionExists"),
   decisionLoopbackResetExists: define.concept("DecisionLoopbackResetExists"),
   currentSessionActivationExists: define.concept("CurrentSessionActivationExists"),
+  crossSessionReassignmentExists: define.concept("CrossSessionReassignmentExists"),
+  operatorStepSelectionExists: define.concept("OperatorStepSelectionExists"),
+  ticketViewActionSurfaceExists: define.concept("TicketViewActionSurfaceExists"),
   currentModelBindingInvariantExists: define.concept("CurrentModelActiveBindingInvariantExists"),
-  ticketViewIsReadOnly: define.concept("TicketViewIsStillReadOnly"),
-  missingTicketViewStepMutation: define.concept("MissingTicketViewStepMutation"),
-  missingCrossSessionReassignment: define.concept("MissingCrossSessionReassignment"),
 };
 
 const CurrentFile = {
@@ -40,20 +40,22 @@ const CurrentFile = {
   subjectBlueprintState: define.document("CurrentSubjectBlueprintStateFile"),
   serverStore: define.document("CurrentTicketStoreFile"),
   serverRouteSurface: define.document("CurrentTicketRouteSurfaceFile"),
+  serverRoutes: define.document("CurrentTicketRoutesFile"),
+  serverMutations: define.document("CurrentTicketMutationsFile"),
   serverBlueprintSupport: define.document("CurrentTicketBlueprintSupportFile"),
   serverSignalSupport: define.document("CurrentTicketSignalSupportFile"),
   serverTests: define.document("CurrentTicketStoreTestFile"),
   uiScreen: define.document("CurrentAgentChatScreenFile"),
   uiView: define.document("CurrentTicketViewFile"),
+  uiActions: define.document("CurrentTicketViewActionsFile"),
   uiTypes: define.document("CurrentTicketUiTypesFile"),
   uiRendering: define.document("CurrentTicketUiRenderingFile"),
-  uiExports: define.document("CurrentTicketUiExportsFile"),
+  uiWindowHost: define.document("CurrentFloatingTicketWindowHostFile"),
 };
 
 const PlannedFile = {
-  serverRoutes: define.document("PlannedTicketRoutesFile"),
-  serverMutations: define.document("PlannedTicketMutationsFile"),
-  uiActions: define.document("PlannedTicketViewActionsFile"),
+  serverRouteCleanup: define.document("PlannedTicketRouteCleanupFile"),
+  uiStateSyncHardening: define.document("PlannedTicketUiStateSyncHardeningFile"),
 };
 
 AgentTicketBlueprintState.contains(
@@ -71,25 +73,27 @@ AgentTicketBlueprintState.contains(
   CurrentReality.tokenDrivenProgressionExists,
   CurrentReality.decisionLoopbackResetExists,
   CurrentReality.currentSessionActivationExists,
+  CurrentReality.crossSessionReassignmentExists,
+  CurrentReality.operatorStepSelectionExists,
+  CurrentReality.ticketViewActionSurfaceExists,
   CurrentReality.currentModelBindingInvariantExists,
-  CurrentReality.ticketViewIsReadOnly,
-  CurrentReality.missingTicketViewStepMutation,
-  CurrentReality.missingCrossSessionReassignment,
   CurrentFile.subjectBlueprint,
   CurrentFile.subjectBlueprintState,
   CurrentFile.serverStore,
   CurrentFile.serverRouteSurface,
+  CurrentFile.serverRoutes,
+  CurrentFile.serverMutations,
   CurrentFile.serverBlueprintSupport,
   CurrentFile.serverSignalSupport,
   CurrentFile.serverTests,
   CurrentFile.uiScreen,
   CurrentFile.uiView,
+  CurrentFile.uiActions,
   CurrentFile.uiTypes,
   CurrentFile.uiRendering,
-  CurrentFile.uiExports,
-  PlannedFile.serverRoutes,
-  PlannedFile.serverMutations,
-  PlannedFile.uiActions,
+  CurrentFile.uiWindowHost,
+  PlannedFile.serverRouteCleanup,
+  PlannedFile.uiStateSyncHardening,
 );
 
 BlueprintStateSectionMap.defines(`- CurrentReality
@@ -100,12 +104,12 @@ BlueprintStateSection.currentReality.precedes(BlueprintStateSection.currentFiles
 BlueprintStateSection.currentFiles.precedes(BlueprintStateSection.plannedFiles);
 
 AgentTicketBlueprintState.defines(`
-- CurrentImplementationStatus means Agent Ticket already exists as a durable workspace-scoped runtime ticket store with authoritative checklist projection, active-session binding, token-driven step transitions, blocked-state recovery, loopback reset, and ticket activation within an existing owning chat session.
-- AssessmentConfidence is high for current store behavior and medium for ideal file-organization comparison because the comparison is grounded in direct source inspection of the ticket store, server routes, ticket-view UI surface, and regression tests, while some newly required file-split surfaces remain blueprint-only.
+- CurrentImplementationStatus means Agent Ticket now implements direct ticket-view step selection, downstream reset from the selected executable step, same-session activation, and moving an unfinished ticket to another existing or newly created chat session while preserving a single active-ticket binding per session.
+- AssessmentConfidence is high because the comparison is grounded in direct source inspection of the store, server route and mutation modules, browser verification of the ticket window, and regression tests.
 - ImplementationEvidence includes the concrete current files that implement or prove Agent Ticket behavior today.
 - This blueprint-state compares current reality against the canonical Agent Ticket subject blueprint in blueprints/agent-ticket.agentish.ts.
-- ImplementationGap means the current product surface does not yet expose direct ticket-view step check or uncheck mutations and does not yet expose moving an unfinished ticket to another existing or newly created chat session.
-- KnownIssue means the current implementation still concentrates route handling in index.ts and keeps the ticket view read-only even though the ideal blueprint now requires dedicated mutation and action surfaces.
+- ImplementationGap means only the remaining cleanup work needed to match the ideal file organization for this subject; the requested ticket-view behavior is implemented.
+- KnownIssue means route orchestration still terminates in index.ts even though the feature-level behavior is complete for the current scope.
 `);
 
 BlueprintStateSection.currentReality.answers(
@@ -116,51 +120,55 @@ BlueprintStateSection.currentReality.answers(
 );
 
 CurrentReality.workspaceTicketStoreExists.means(`
-- packages/agent-chat-server/src/agent-tickets.ts already owns the durable ticket record, pinned process snapshot reference, checklist status tree, currentStepId, nextStepId, nextStepLabel, status, resolution, blocked bookkeeping, and same-step attempt counting
-- ticket runtime state lives in the store and index rather than in chat transcript state or in the process blueprint
-- current implementation already preserves the rule that changing active chat focus does not rewrite older tickets into a synthetic inactive lifecycle state
+- packages/agent-chat-server/src/agent-tickets.ts owns the durable ticket record, pinned process snapshot reference, checklist status tree, currentStepId, nextStepId, nextStepLabel, status, resolution, blocked bookkeeping, and same-step attempt counting
+- ticket runtime state lives in the store and server layer rather than in chat transcript state or in the process blueprint
+- the implementation preserves the rule that changing active chat focus does not rewrite older tickets into a synthetic inactive lifecycle state
 `);
 
 CurrentReality.activeSessionBindingExists.means(`
-- the store already tracks one active ticket lookup per chat session through activeTicketBySessionId
-- unfinished tickets are activated within their existing owning session through activateTicketForSession
-- the current implementation already distinguishes ticket ownership state from chat-facing focus state
+- the store tracks one active ticket lookup per chat session through activeTicketBySessionId
+- unfinished tickets can be activated within their owning session and can be detached from a prior session when reassigned
+- the implementation distinguishes authoritative ticket ownership from chat-facing focus state
 `);
 
 CurrentReality.tokenDrivenProgressionExists.means(`
-- assistant done and blocked tokens already drive current-step completion, blockage, resume, and ticket completion against the pinned process snapshot
-- completeCurrentStep and resolveDecisionOption already recompute currentStepId, nextStepId, and nextStepLabel from the checklist projection
+- assistant done and blocked tokens still drive current-step completion, blockage, resume, and ticket completion against the pinned process snapshot
+- completeCurrentStep and resolveDecisionOption recompute currentStepId, nextStepId, and nextStepLabel from the checklist projection
 `);
 
 CurrentReality.decisionLoopbackResetExists.means(`
-- decision goto loopback now resets downstream executable steps back to pending rather than only rewinding currentStepId
-- nested option-child loopback targets are covered in the store traversal and regression tests
+- decision goto loopback resets downstream executable steps back to pending rather than only rewinding currentStepId
+- nested option-child loopback targets are covered in store traversal and regression tests
 `);
 
 CurrentReality.currentSessionActivationExists.means(`
-- POST /api/agent-chat/sessions/:sessionId/active-ticket already activates an unfinished ticket for that same existing session
-- the server resets watchdog state and broadcasts the refreshed session snapshot after that activation
+- POST /api/agent-chat/sessions/:sessionId/active-ticket activates an unfinished ticket for a specific existing session
+- the server resets watchdog state and broadcasts the refreshed session snapshot after activation
+`);
+
+CurrentReality.crossSessionReassignmentExists.means(`
+- POST /api/agent-chat/tickets/:ticketId/reassign moves an unfinished ticket to another existing session or creates a new destination session when requested
+- reassignment updates the ticket.sessionId owner, clears the previous session's active binding, and makes the ticket active in the destination session
+- browser verification confirmed a real ticket moved into a new chat session and the previous session no longer held the active ticket
+`);
+
+CurrentReality.operatorStepSelectionExists.means(`
+- POST /api/agent-chat/tickets/:ticketId/step-selection supports operator-driven selection of an executable step from the ticket view
+- selecting a later executable step marks all prerequisite executable steps complete and advances currentStepId to the next step after the selected boundary
+- clearing a previously completed executable step resets downstream executable steps and removes stale blocked state derived from later progress
+`);
+
+CurrentReality.ticketViewActionSurfaceExists.means(`
+- packages/agent-chat-ui/src/TicketView.tsx renders the current ticket summary and delegates mutations to TicketViewActions
+- packages/agent-chat-ui/src/TicketViewActions.tsx exposes Make Active In Owning Session, Move To Session, and Move To New Session controls
+- packages/agent-chat-ui/src/ticket-ui.tsx renders executable step toggles as clickable controls in the ticket window
+- browser verification confirmed the new action controls render and that step selection visibly updates the checklist state
 `);
 
 CurrentReality.currentModelBindingInvariantExists.means(`
-- current implementation already enforces one active ticket per chat session through the activeTicketBySessionId map and the session-scoped activation route
-- current implementation already enforces one owning session per unfinished ticket in the existing model because activation requires ticket.sessionId equality with the destination session
-- the missing behavior is not the current-model invariant itself; the missing behavior is cross-session reassignment and UI-surfaced mutation for changing that owning-session binding
-`);
-
-CurrentReality.ticketViewIsReadOnly.means(`
-- packages/agent-chat-ui/src/TicketView.tsx currently renders ticket metadata, currentStepId, resolution, and checklist status only
-- the current UI surface does not yet expose direct controls for checking or unchecking steps or for reassigning a ticket to another session
-`);
-
-CurrentReality.missingTicketViewStepMutation.means(`
-- the blueprint now requires manual check and uncheck from the ticket view, but there is no current API or store entrypoint dedicated to operator-driven step reselection from the UI
-- current manual step-boundary reset behavior exists only indirectly through token-driven completion and decision goto logic
-`);
-
-CurrentReality.missingCrossSessionReassignment.means(`
-- the blueprint now requires moving an unfinished ticket to another existing or newly created chat session and making it active there in one mutation
-- current implementation does not expose a mutation that changes a ticket's authoritative sessionId to another session or provisions a new destination session for that move
+- the implementation enforces that one ticket can be active for only one chat session at a time
+- the implementation enforces that one chat session can have only one active ticket at a time
+- reassignment preserves those invariants by clearing the prior session binding before activating the ticket in the destination session
 `);
 
 when(CurrentReality.workspaceTicketStoreExists.exists())
@@ -168,31 +176,28 @@ when(CurrentReality.workspaceTicketStoreExists.exists())
   .and(AgentTicketBlueprintState.treats("AgentTicketStore as the authoritative runtime owner of ticket progress and binding state"));
 
 when(CurrentReality.activeSessionBindingExists.exists())
-  .then(AgentTicketBlueprintState.records(Assessment.status, Assessment.evidence))
-  .and(AgentTicketBlueprintState.treats("current active-ticket binding as store-owned session focus state rather than as ticket lifecycle state"));
+  .then(AgentTicketBlueprintState.records(Assessment.status, Assessment.evidence));
 
 when(CurrentReality.tokenDrivenProgressionExists.exists())
   .then(AgentTicketBlueprintState.records(Assessment.evidence));
 
 when(CurrentReality.decisionLoopbackResetExists.exists())
-  .then(AgentTicketBlueprintState.records(Assessment.evidence))
-  .and(AgentTicketBlueprintState.treats("downstream executable-step reset after loopback as implemented store behavior rather than blueprint intent only"));
+  .then(AgentTicketBlueprintState.records(Assessment.evidence));
 
 when(CurrentReality.currentSessionActivationExists.exists())
   .then(AgentTicketBlueprintState.records(Assessment.evidence));
 
+when(CurrentReality.crossSessionReassignmentExists.exists())
+  .then(AgentTicketBlueprintState.records(Assessment.status, Assessment.evidence));
+
+when(CurrentReality.operatorStepSelectionExists.exists())
+  .then(AgentTicketBlueprintState.records(Assessment.status, Assessment.evidence));
+
+when(CurrentReality.ticketViewActionSurfaceExists.exists())
+  .then(AgentTicketBlueprintState.records(Assessment.status, Assessment.evidence));
+
 when(CurrentReality.currentModelBindingInvariantExists.exists())
-  .then(AgentTicketBlueprintState.records(Assessment.status, Assessment.evidence))
-  .and(AgentTicketBlueprintState.treats("the one-to-one active-binding invariant as implemented for the current session-owned model"));
-
-when(CurrentReality.ticketViewIsReadOnly.exists())
-  .then(AgentTicketBlueprintState.records(Assessment.gap, Assessment.issue));
-
-when(CurrentReality.missingTicketViewStepMutation.exists())
-  .then(AgentTicketBlueprintState.records(Assessment.gap, Assessment.issue));
-
-when(CurrentReality.missingCrossSessionReassignment.exists())
-  .then(AgentTicketBlueprintState.records(Assessment.gap, Assessment.issue));
+  .then(AgentTicketBlueprintState.records(Assessment.status, Assessment.evidence));
 
 BlueprintStateSection.currentFiles.answers(
   "What current files are related to this subject?",
@@ -215,6 +220,15 @@ CurrentFile.serverStore.means(`
 
 CurrentFile.serverRouteSurface.means(`
 - packages/agent-chat-server/src/index.ts
+- this file still wires the ticket routes into the main server surface and broadcasts refreshed session snapshots after ticket mutations
+`);
+
+CurrentFile.serverRoutes.means(`
+- packages/agent-chat-server/src/ticket-routes.ts
+`);
+
+CurrentFile.serverMutations.means(`
+- packages/agent-chat-server/src/ticket-mutations.ts
 `);
 
 CurrentFile.serverBlueprintSupport.means(`
@@ -237,6 +251,10 @@ CurrentFile.uiView.means(`
 - packages/agent-chat-ui/src/TicketView.tsx
 `);
 
+CurrentFile.uiActions.means(`
+- packages/agent-chat-ui/src/TicketViewActions.tsx
+`);
+
 CurrentFile.uiTypes.means(`
 - packages/agent-chat-ui/src/ticket-types.ts
 `);
@@ -245,8 +263,8 @@ CurrentFile.uiRendering.means(`
 - packages/agent-chat-ui/src/ticket-ui.tsx
 `);
 
-CurrentFile.uiExports.means(`
-- packages/agent-chat-ui/src/index.ts
+CurrentFile.uiWindowHost.means(`
+- packages/dashboard-ui/src/FloatingTicketWindows.tsx
 `);
 
 when(BlueprintStateSection.currentFiles.exists())
@@ -255,14 +273,17 @@ when(BlueprintStateSection.currentFiles.exists())
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.subjectBlueprintState))
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.serverStore))
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.serverRouteSurface))
+  .and(BlueprintStateSection.currentFiles.expects(CurrentFile.serverRoutes))
+  .and(BlueprintStateSection.currentFiles.expects(CurrentFile.serverMutations))
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.serverBlueprintSupport))
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.serverSignalSupport))
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.serverTests))
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.uiScreen))
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.uiView))
+  .and(BlueprintStateSection.currentFiles.expects(CurrentFile.uiActions))
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.uiTypes))
   .and(BlueprintStateSection.currentFiles.expects(CurrentFile.uiRendering))
-  .and(BlueprintStateSection.currentFiles.expects(CurrentFile.uiExports));
+  .and(BlueprintStateSection.currentFiles.expects(CurrentFile.uiWindowHost));
 
 BlueprintStateSection.plannedFiles.answers(
   "What new files should exist in the ideal implementation but do not exist yet?",
@@ -270,21 +291,17 @@ BlueprintStateSection.plannedFiles.answers(
   "Which existing files still need modification to match the ideal file hierarchy?",
 );
 
-PlannedFile.serverRoutes.means(`
-- packages/agent-chat-server/src/ticket-routes.ts should exist as the dedicated route surface for ticket-specific HTTP handlers that are currently concentrated in index.ts
+PlannedFile.serverRouteCleanup.means(`
+- no additional new server route file is required for this scope because packages/agent-chat-server/src/ticket-routes.ts already exists
+- existing file cleanup may still move more ticket-specific request handling out of packages/agent-chat-server/src/index.ts over time so the index surface becomes thinner
 `);
 
-PlannedFile.serverMutations.means(`
-- packages/agent-chat-server/src/ticket-mutations.ts should exist as the dedicated mutation surface for manual step reselection, downstream reset, same-session activation helpers, and future cross-session reassignment
-`);
-
-PlannedFile.uiActions.means(`
-- packages/agent-chat-ui/src/TicketViewActions.tsx should exist as the dedicated ticket-view action surface for step check or uncheck controls and session-activation or reassignment controls
-- existing files that still require modification to reach the ideal hierarchy include packages/agent-chat-server/src/index.ts, packages/agent-chat-server/src/agent-tickets.test.ts, packages/agent-chat-ui/src/AgentChatScreen.tsx, packages/agent-chat-ui/src/TicketView.tsx, and packages/agent-chat-ui/src/index.ts
+PlannedFile.uiStateSyncHardening.means(`
+- no additional new UI action file is required for this scope because packages/agent-chat-ui/src/TicketViewActions.tsx already exists
+- current session activation now follows ticket reassignment immediately in the chat UI, so no remaining implementation work is required for the requested ticket-view behavior; only optional future refactoring remains if shared session-navigation plumbing should be centralized
 `);
 
 when(BlueprintStateSection.plannedFiles.exists())
-  .then(AgentTicketBlueprintState.records(Assessment.gap))
-  .and(BlueprintStateSection.plannedFiles.expects(PlannedFile.serverRoutes))
-  .and(BlueprintStateSection.plannedFiles.expects(PlannedFile.serverMutations))
-  .and(BlueprintStateSection.plannedFiles.expects(PlannedFile.uiActions));
+  .then(AgentTicketBlueprintState.records(Assessment.gap, Assessment.issue))
+  .and(BlueprintStateSection.plannedFiles.expects(PlannedFile.serverRouteCleanup))
+  .and(BlueprintStateSection.plannedFiles.expects(PlannedFile.uiStateSyncHardening));

@@ -973,6 +973,118 @@ export class AgentTicketStore {
     return updated
   }
 
+  selectStepForTicket(ticketId: string, stepId: string, checked: boolean) {
+    const current = this.getTicket(ticketId)
+    if (!current || current.status === "completed") {
+      return null
+    }
+
+    const executableSteps = flattenExecutableSteps(
+      cloneChecklist(current.checklist),
+    )
+    const targetIndex = executableSteps.findIndex((step) => step.id === stepId)
+    if (targetIndex < 0) {
+      return null
+    }
+
+    let nextChecklist = cloneChecklist(current.checklist)
+    for (const [index, step] of executableSteps.entries()) {
+      nextChecklist = updateStepById(nextChecklist, step.id, (entry) => ({
+        ...entry,
+        status: index < targetIndex ? "completed" : "pending",
+      }))
+    }
+
+    const targetStep = executableSteps[targetIndex]
+    if (!targetStep) {
+      return null
+    }
+
+    if (checked) {
+      nextChecklist = updateStepById(nextChecklist, targetStep.id, (entry) => ({
+        ...entry,
+        status: "completed",
+      }))
+      const remainingSteps = flattenExecutableSteps(nextChecklist)
+      const nextStep = remainingSteps.find(
+        (step, index) => index > targetIndex && step.status === "pending",
+      )
+      const updated = nextStep
+        ? ticketWithNextStep(
+            current,
+            updateStepById(nextChecklist, nextStep.id, (entry) => ({
+              ...entry,
+              status: "active",
+            })),
+            nextStep.id,
+            null,
+            "active",
+            {
+              blockedSource: null,
+              sameStepAttemptCount: 0,
+            },
+          )
+        : ticketWithNextStep(current, nextChecklist, null, null, "completed", {
+            blockedSource: null,
+            sameStepAttemptCount: 0,
+          })
+      this.persistTicket(updated)
+      return updated
+    }
+
+    nextChecklist = updateStepById(nextChecklist, targetStep.id, (entry) => ({
+      ...entry,
+      status: "active",
+    }))
+    const updated = ticketWithNextStep(
+      current,
+      nextChecklist,
+      targetStep.id,
+      null,
+      "active",
+      {
+        blockedSource: null,
+        sameStepAttemptCount: 0,
+      },
+    )
+    this.persistTicket(updated)
+    return updated
+  }
+
+  reassignTicketToSession(ticketId: string, targetSessionId: string) {
+    const current = this.getTicket(ticketId)
+    if (!current || current.status === "completed") {
+      return null
+    }
+
+    const previousSessionId = current.sessionId
+    const rebound: StoredAgentTicket = {
+      ...current,
+      sessionId: targetSessionId,
+      updatedAtMs: Date.now(),
+    }
+
+    for (const [
+      sessionId,
+      activeTicketId,
+    ] of this.activeTicketBySessionId.entries()) {
+      if (activeTicketId === ticketId || sessionId === targetSessionId) {
+        this.activeTicketBySessionId.delete(sessionId)
+      }
+    }
+
+    this.ticketCache.set(rebound.id, rebound)
+    this.writeTicket(rebound)
+    this.activeTicketBySessionId.set(targetSessionId, rebound.id)
+    this.writeIndex()
+    this.notifyCanonicalWrite(previousSessionId)
+    if (targetSessionId !== previousSessionId) {
+      this.notifyCanonicalWrite(targetSessionId)
+    }
+
+    return this.activateTicketForSession(targetSessionId, rebound.id)
+  }
+
   private completeCurrentStep(
     current: StoredAgentTicket,
     currentIndex: number,

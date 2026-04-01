@@ -47,16 +47,6 @@ function TicketIcon(props: { className?: string }) {
   )
 }
 
-function ticketBody(entry: TicketWindowState) {
-  return (
-    <TicketView
-      ticket={entry.ticket}
-      loading={entry.loading}
-      error={entry.error}
-    />
-  )
-}
-
 function dashboardAuthorizationHeader() {
   if (typeof window === "undefined") {
     return ""
@@ -79,10 +69,32 @@ export function FloatingTicketWindows(props: { apiRootUrl: string }) {
       updateWindow(entry.windowId, {
         title: entry.ticket?.title ?? entry.title,
         icon: <TicketIcon className="h-3.5 w-3.5" />,
-        body: ticketBody(entry),
+        body: (
+          <TicketView
+            ticket={entry.ticket}
+            loading={entry.loading}
+            error={entry.error}
+            apiRootUrl={props.apiRootUrl}
+            authorizationHeader={dashboardAuthorizationHeader()}
+            onTicketUpdated={(ticket) => {
+              const nextEntry: TicketWindowState = {
+                ...entry,
+                ticket,
+                title: ticket.title,
+                loading: false,
+                error: "",
+              }
+              setTicketWindows((current) => ({
+                ...current,
+                [ticket.id]: nextEntry,
+              }))
+              syncWindow(nextEntry)
+            }}
+          />
+        ),
       })
     },
-    [updateWindow],
+    [props.apiRootUrl, updateWindow],
   )
 
   const fetchTicket = useCallback(
@@ -171,7 +183,15 @@ export function FloatingTicketWindows(props: { apiRootUrl: string }) {
         id: nextEntry.windowId,
         title: nextEntry.title,
         icon: <TicketIcon className="h-3.5 w-3.5" />,
-        body: ticketBody(nextEntry),
+        body: (
+          <TicketView
+            ticket={nextEntry.ticket}
+            loading={nextEntry.loading}
+            error={nextEntry.error}
+            apiRootUrl={props.apiRootUrl}
+            authorizationHeader={dashboardAuthorizationHeader()}
+          />
+        ),
       })
       void fetchTicket(ticketId, nextEntry)
     }
@@ -211,7 +231,7 @@ export function FloatingTicketWindows(props: { apiRootUrl: string }) {
         handleClosedWindow as EventListener,
       )
     }
-  }, [fetchTicket, focusWindow, openWindow, ticketWindows])
+  }, [fetchTicket, focusWindow, openWindow, props.apiRootUrl, ticketWindows])
 
   useEffect(() => {
     const activeTicketIds = Object.values(ticketWindows)
