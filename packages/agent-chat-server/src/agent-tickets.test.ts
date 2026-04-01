@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { AgentTicketStore } from "./agent-tickets.js"
-import type { ProcessBlueprint } from "./process-blueprints.js"
+import type { StoredAgentTicketStep } from "./agent-tickets.js"
+import type { ProceduralProcessBlueprint } from "./process-blueprints.js"
 
 const createdDirs: string[] = []
 
@@ -23,8 +24,8 @@ function createStore() {
 }
 
 function createBlueprint(
-  overrides: Partial<Pick<ProcessBlueprint, "id" | "title">> = {},
-): ProcessBlueprint {
+  overrides: Partial<Pick<ProceduralProcessBlueprint, "id" | "title">> = {},
+): ProceduralProcessBlueprint {
   return {
     id: overrides.id ?? "test-blueprint",
     title: overrides.title ?? "Test Blueprint",
@@ -136,7 +137,10 @@ describe("AgentTicketStore", () => {
       ],
     })
 
-    let transition = store.resolveStepFromAssistantText("session-1", "done: prepare")
+    let transition = store.resolveStepFromAssistantText(
+      "session-1",
+      "done: prepare",
+    )
     expect(transition?.ticket.currentStepId).toBe("cycle.review")
 
     transition = store.resolveStepFromAssistantText("session-1", "done: review")
@@ -153,17 +157,20 @@ describe("AgentTicketStore", () => {
     expect(loopedTicket?.currentStepId).toBe("cycle.prepare")
     expect(loopedTicket?.nextStepId).toBe("cycle.prepare")
     expect(loopedTicket?.nextStepLabel).toBe("Prepare rewrite packet")
-    expect(loopedTicket && findStep(loopedTicket.checklist, "cycle.review")?.status).toBe(
-      "pending",
-    )
-    expect(loopedTicket && findStep(loopedTicket.checklist, "cycle.decide")?.status).toBe(
-      "pending",
-    )
-    expect(loopedTicket && findStep(loopedTicket.checklist, "cycle.align")?.status).toBe(
-      "pending",
-    )
+    expect(
+      loopedTicket && findStep(loopedTicket.checklist, "cycle.review")?.status,
+    ).toBe("pending")
+    expect(
+      loopedTicket && findStep(loopedTicket.checklist, "cycle.decide")?.status,
+    ).toBe("pending")
+    expect(
+      loopedTicket && findStep(loopedTicket.checklist, "cycle.align")?.status,
+    ).toBe("pending")
 
-    transition = store.resolveStepFromAssistantText("session-1", "done: prepare")
+    transition = store.resolveStepFromAssistantText(
+      "session-1",
+      "done: prepare",
+    )
     expect(transition?.ticket.currentStepId).toBe("cycle.review")
   })
 
@@ -269,13 +276,19 @@ describe("AgentTicketStore", () => {
       ],
     })
 
-    let transition = store.resolveStepFromAssistantText("session-1", "done: prepare")
+    let transition = store.resolveStepFromAssistantText(
+      "session-1",
+      "done: prepare",
+    )
     expect(transition?.ticket.currentStepId).toBe("cycle.branch")
 
     transition = store.resolveStepFromAssistantText("session-1", "enter_branch")
     expect(transition?.ticket.currentStepId).toBe("cycle.branch.rewrite")
 
-    transition = store.resolveStepFromAssistantText("session-1", "done: rewrite")
+    transition = store.resolveStepFromAssistantText(
+      "session-1",
+      "done: rewrite",
+    )
     expect(transition?.ticket.currentStepId).toBe("cycle.decide")
 
     transition = store.resolveStepFromAssistantText(
@@ -285,17 +298,20 @@ describe("AgentTicketStore", () => {
     expect(transition?.ticket.currentStepId).toBe("cycle.branch.rewrite")
     expect(transition?.ticket.nextStepId).toBe("cycle.branch.rewrite")
     expect(transition?.ticket.nextStepLabel).toBe("Rewrite child step")
-    expect(findStep(transition?.ticket.checklist ?? [], "cycle.branch")?.status).toBe(
-      "completed",
-    )
-    expect(findStep(transition?.ticket.checklist ?? [], "cycle.decide")?.status).toBe(
-      "pending",
-    )
-    expect(findStep(transition?.ticket.checklist ?? [], "cycle.align")?.status).toBe(
-      "pending",
-    )
+    expect(
+      findStep(transition?.ticket.checklist ?? [], "cycle.branch")?.status,
+    ).toBe("completed")
+    expect(
+      findStep(transition?.ticket.checklist ?? [], "cycle.decide")?.status,
+    ).toBe("pending")
+    expect(
+      findStep(transition?.ticket.checklist ?? [], "cycle.align")?.status,
+    ).toBe("pending")
 
-    transition = store.resolveStepFromAssistantText("session-1", "done: rewrite")
+    transition = store.resolveStepFromAssistantText(
+      "session-1",
+      "done: rewrite",
+    )
     expect(transition?.ticket.currentStepId).toBe("cycle.decide")
   })
 
@@ -387,10 +403,10 @@ describe("AgentTicketStore", () => {
 })
 
 function findStep(
-  steps: ReturnType<typeof createBlueprint>["steps"],
+  steps: StoredAgentTicketStep[],
   stepId: string,
-): { status: string } | null {
-  for (const step of steps as any[]) {
+): StoredAgentTicketStep | null {
+  for (const step of steps) {
     if (step.id === stepId) {
       return step
     }

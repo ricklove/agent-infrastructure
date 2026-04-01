@@ -34,6 +34,7 @@ const Artifact = {
   renderDiagnostics: define.document("RenderDiagnosticsBlueprint"),
   processBlueprint: define.document("ProcessBlueprintJson"),
   blueprintState: define.document("RelevantBlueprintState"),
+  teamProfileBlueprint: define.document("RelevantAgentTeamProfileBlueprint"),
   releaseTag: define.document("ReleaseGitTag"),
   screenshot: define.document("VerificationScreenshot"),
   ticketPlan: define.document("ImplementationTicketPlan"),
@@ -59,6 +60,8 @@ const Rule = {
   verifyBehavior: define.concept("BehaviorVerification"),
   ticketPlanForActiveWork: define.concept("TicketSystemOwnsImplementationPlan"),
   standardRuntimeDeploy: define.concept("StandardRuntimeDeployBlueprint"),
+  implementationScopeConfirmed: define.concept("ImplementationScopeConfirmedFromBlueprintAndState"),
+  teamBlueprintStateReview: define.concept("TeamReviewedBlueprintState"),
 };
 
 DevelopmentProcess.enforces(`
@@ -71,9 +74,18 @@ DevelopmentProcess.enforces(`
 - Changes that alter repository-wide render instrumentation shape, naming, or diagnosis workflow must update the render-diagnostics blueprint before implementation dependence continues.
 - Relevant process blueprints under blueprints/ must be reviewed and updated when a feature changes session process behavior, watchdog semantics, or expectation-selection behavior.
 - Relevant blueprint-state documents must describe how current implementation compares to the ideal blueprint.
+- Before implementation begins, the relevant blueprint must be read.
+- Before implementation begins, the relevant blueprint must be updated if intended behavior, structure, contracts, dependency choice, or ideal file organization changed.
+- Before implementation begins, the relevant blueprint-state must be read.
+- Before implementation begins, the relevant blueprint-state must be updated if its current-reality comparison, current-file inventory, planned-file inventory, or stated gaps are stale.
+- The bounded implementation scope should be confirmed from the blueprint plus blueprint-state before implementation work begins.
 - Blueprint changes that alter architecture, workflow, or product requirements must be committed before dependent implementation work begins.
 - Implementation must not continue past blueprint edits until those blueprint edits are committed.
 - When operator feedback materially corrects intended product behavior during implementation, the relevant blueprints and blueprint-state must be updated to capture that correction before more implementation continues.
+- After each bounded implementation pass and local verification, the relevant blueprint-state must be updated to reflect the latest implementation reality.
+- After each bounded implementation pass, the same fixed team profile reviewer set should review the updated blueprint-state against the blueprint and the current implementation.
+- Blueprint-state team review should verify both that the blueprint-state is correct and whether more implementation changes are still required to complete the current scope.
+- If the blueprint-state is incorrect, incomplete, or still shows remaining implementation work, the implementation loop should return to implementation rather than advancing to milestone commit or branch integration.
 - Active implementation plans should live in the ticket system rather than as durable repository design documents.
 - Before installing or reconfiguring local developer tools, check `/home/ec2-user/workspace/README.md` and the referenced notes under `/home/ec2-user/workspace/tools/` for machine-specific guidance and already-installed utilities.
 - Source is the only editing surface for intended behavior changes.
@@ -156,6 +168,9 @@ DevelopmentProcess.defines(`
 - ProcessBlueprintJson means a machine-readable process contract in blueprints/ that the system may assign to a chat session.
 - BlueprintCommitBeforeImplementation means blueprint edits are turned into a committed source revision before dependent implementation work starts.
 - BlueprintStateTracksCurrentReality means blueprint-state records current implementation status, confidence, evidence, gaps, and known issues relative to the ideal blueprint.
+- RelevantAgentTeamProfileBlueprint means one of the repository team-profile blueprints used to evaluate structure, implementability, growth risk, ownership clarity, or fresh-read sufficiency.
+- ImplementationScopeConfirmedFromBlueprintAndState means the next bounded implementation pass is chosen from the ideal blueprint together with the current-reality blueprint-state rather than from memory alone.
+- TeamReviewedBlueprintState means the fixed team profile reviewer set evaluates the updated blueprint-state against both the blueprint and the current implementation before the process may conclude that the current implementation scope is complete.
 - WorkspaceToolingDiscovery means local machine tooling should be discovered from `/home/ec2-user/workspace/README.md` and `/home/ec2-user/workspace/tools/` guidance before installing replacements or parallel toolchains.
 - For UI verification on this machine, `agent-browser` is the expected browser tool for both behavior verification and visual verification, including small, medium, and wide viewport checks, unless a more specific documented workspace replacement supersedes it.
 - IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and manager-side integration, release, deploy, and live verification also happen in a dedicated manager integration worktree rather than in the shared checkout.
@@ -202,6 +217,7 @@ DevelopmentProcess.contains(
   Artifact.renderDiagnostics,
   Artifact.processBlueprint,
   Artifact.blueprintState,
+  Artifact.teamProfileBlueprint,
   Artifact.releaseTag,
   Artifact.screenshot,
   Artifact.ticketPlan,
@@ -224,16 +240,21 @@ DevelopmentProcess.contains(
   Rule.verifyBehavior,
   Rule.ticketPlanForActiveWork,
   Rule.standardRuntimeDeploy,
+  Rule.implementationScopeConfirmed,
+  Rule.teamBlueprintStateReview,
 );
 
 when(Actor.operator.implements("a feature or fix"))
   .then(DevelopmentProcess.requires(Rule.blueprintFirst))
   .and(DevelopmentProcess.requires(Rule.blueprintCommitFirst))
   .and(DevelopmentProcess.requires(Rule.blueprintStateRequired))
+  .and(DevelopmentProcess.requires(Rule.implementationScopeConfirmed))
+  .and(DevelopmentProcess.requires(Rule.teamBlueprintStateReview))
   .and(DevelopmentProcess.requires(Artifact.agentishSections))
   .and(DevelopmentProcess.requires(Artifact.techStack))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
   .and(DevelopmentProcess.requires(Artifact.renderDiagnostics))
+  .and(DevelopmentProcess.requires(Artifact.teamProfileBlueprint))
   .and(DevelopmentProcess.requires(Rule.sourceOnly))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
   .and(DevelopmentProcess.requires(Rule.workerBackedDevelopment))
@@ -249,10 +270,13 @@ when(Actor.providerAgent.implements("a feature or fix inside agent-chat"))
   .then(DevelopmentProcess.requires(Rule.blueprintFirst))
   .and(DevelopmentProcess.requires(Rule.blueprintCommitFirst))
   .and(DevelopmentProcess.requires(Rule.blueprintStateRequired))
+  .and(DevelopmentProcess.requires(Rule.implementationScopeConfirmed))
+  .and(DevelopmentProcess.requires(Rule.teamBlueprintStateReview))
   .and(DevelopmentProcess.requires(Artifact.agentishSections))
   .and(DevelopmentProcess.requires(Artifact.techStack))
   .and(DevelopmentProcess.requires(Artifact.codingStandards))
   .and(DevelopmentProcess.requires(Artifact.renderDiagnostics))
+  .and(DevelopmentProcess.requires(Artifact.teamProfileBlueprint))
   .and(DevelopmentProcess.requires(Rule.worktreeIsolation))
   .and(DevelopmentProcess.requires(Rule.workerBackedDevelopment))
   .and(DevelopmentProcess.requires(Rule.persistentWorkerTerminals))

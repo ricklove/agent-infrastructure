@@ -15,7 +15,8 @@
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "@agent-infrastructure/render-diagnostics": "workspace:*"
+    "@agent-infrastructure/render-diagnostics": "workspace:*",
+    "@agent-infrastructure/projects-server": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

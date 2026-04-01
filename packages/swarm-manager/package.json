@@ -29,5 +29,8 @@
   "devDependencies": {
     "bun-types": "^1.3.10",
     "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "@agent-infrastructure/dashboard-app": "workspace:*"
   }
 }
