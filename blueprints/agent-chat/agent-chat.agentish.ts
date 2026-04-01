@@ -51,6 +51,24 @@ const Participant = {
   human: define.entity("HumanParticipant"),
   agent: define.entity("AgentParticipant"),
   system: define.entity("SystemParticipant"),
+  host: define.entity("ParticipantHostIdentity"),
+  defaultVisibility: define.entity("DefaultVisibility"),
+};
+
+const Visibility = {
+  tag: define.entity("VisibilityTag"),
+  resolution: define.entity("VisibilityResolution"),
+};
+
+const Delivery = {
+  status: define.entity("DeliveryStatus"),
+  record: define.entity("DeliveryRecord"),
+  legacyDefaults: define.document("LegacySessionCompatibilityDefaults"),
+};
+
+const Projection = {
+  externalInput: define.document("ProjectedExternalInput"),
+  nativeSession: define.document("ProviderNativeSessionProjection"),
 };
 
 const Provider = {
@@ -106,6 +124,14 @@ const AgentChatImplementationPlan = define.section("AgentChatImplementationPlanS
 AgentChat.enforces(`
 - AgentChat owns canonical conversation history.
 - Provider state is replaceable, provider-owned, and never canonical.
+- Canonical transcript entries remain authoritative even when a session contains multiple agent participants across manager and worker hosts.
+- A session may contain multiple agent participants, each with stable participant identity, explicit host identity, and one default visibility rule.
+- The user is always allowed to see canonical chat history, even when non-user participant visibility is narrowed.
+- Message visibility determines which participants should see a canonical message, while delivery state determines which eligible participants have actually received that message.
+- Messages visible to an unreachable worker participant must remain canonical history immediately and must preserve pending or unreachable delivery state until that worker becomes reachable.
+- Provider-native per-host sessions are projection detail only and must not become the source of truth for participant audience, delivery semantics, or canonical ordering.
+- Peer-agent messages projected into another participant's provider context must be treated as attributed external input rather than as self-authored assistant turns.
+- Older sessions and messages that predate participant-host, default-visibility, or delivery-state fields must remain readable without pre-read migration.
 - A workspace chat session is the primary object the user opens, names, resumes, inspects, imports into, and references.
 - Session identity survives provider switching.
 - Provider bindings may change without rewriting canonical session history.
@@ -230,13 +256,24 @@ Session.conversation.contains(
 );
 
 Session.participant.contains(Participant.human, Participant.agent, Participant.system);
-Participant.agent.contains(Provider.binding);
+Participant.agent.contains(
+  Provider.binding,
+  Participant.host,
+  Participant.defaultVisibility,
+);
+Session.message.contains(
+  Visibility.tag,
+  Visibility.resolution,
+  Delivery.record,
+  Delivery.status,
+);
 Provider.binding.contains(
   Provider.adapter,
   Provider.thread,
   Provider.run,
   Provider.event,
   Provider.approval,
+  Projection.externalInput,
 );
 Compaction.agentish.contains(Compaction.artifact, Compaction.living);
 Context.active.contains(Context.packet, Context.window);
@@ -246,6 +283,15 @@ AgentChat.defines(`
 - A workspace chat session is a workspace-owned conversational artifact, not a provider-owned thread.
 - A canonical transcript is the durable event record for the session.
 - A provider binding is an execution attachment between one participant and one provider runtime.
+- ParticipantHostIdentity means the execution host attached to an agent participant, including manager and worker-specific identities such as worker:<instanceId>.
+- DefaultVisibility means the inherited non-user audience for a participant's message when no explicit visibility tag overrides it.
+- VisibilityTag means one explicit per-message audience override such as @all or @<participantId>.
+- VisibilityResolution means the computed recipient set for one canonical message after combining inherited default visibility with explicit visibility tags.
+- DeliveryStatus means the recipient-scoped state for whether an eligible participant is pending, delivered, seen, failed, or unreachable for one canonical message.
+- DeliveryRecord means the recipient-scoped canonical delivery metadata attached to a canonical message record.
+- LegacySessionCompatibilityDefaults means the inferred participant, host, visibility, and delivery defaults used to keep older sessions and messages readable without pre-read migration.
+- ProviderNativeSessionProjection means the per-host projected context derived from canonical transcript history and never used as canonical chat storage.
+- ProjectedExternalInput means a peer-agent message rendered into another participant's provider context as attributed external input rather than as a self-authored assistant turn.
 - ServerProcessLifecycleVerification means Bun integration tests start the real Agent Chat backend, call its real HTTP routes, subscribe to its real websocket session stream, and verify canonical persistence plus process-lifecycle behavior through the public server contract.
 - HeadlessStateStoreVerification means tests drive the Agent Chat client state layer without DOM rendering so websocket events, optimistic actions, selector sentinels, blocked-send rules, and queued-message projection can be verified as pure state behavior.
 - DeterministicProviderFixture means a controllable fake provider transport that emits scripted started, delta, waiting, activity, token-usage, blocked, completed, error, idle, and interrupted outcomes so process-lifecycle tests remain deterministic.
@@ -394,6 +440,65 @@ Provider.binding.means(`
 - subordinate to the workspace session
 - backend-owned enough that session watchdogs and process handling continue without a live dashboard websocket or browser tab
 `);
+
+Participant.host.means(`
+- stable execution-host identity for one agent participant
+- manager or worker-specific routing target
+- distinct from participant identity so many participants may exist without collapsing onto one host label
+`);
+
+Participant.defaultVisibility.means(`
+- inherited non-user audience for a participant-authored message when no explicit tag override is present
+- supports none, all, or an explicit participant list
+- may be narrowed for observer-style commentary or widened for shared execution visibility
+`);
+
+Visibility.tag.means(`
+- explicit one-message audience override
+- supports @all and @<participantId>
+- widens recipient eligibility for that one canonical message without rewriting session-level participant defaults
+`);
+
+Visibility.resolution.means(`
+- resolved recipient set for one canonical message
+- derived from participant default visibility plus explicit visibility tags
+- canonical record of which non-user participants are eligible to receive the message
+`);
+
+Delivery.record.means(`
+- recipient-scoped canonical delivery metadata for one message
+- records whether an eligible participant is pending, delivered, seen, failed, or unreachable
+- preserved in canonical chat state even while a worker host is offline
+`);
+
+Delivery.legacyDefaults.means(`
+- compatibility defaults used when older sessions or messages lack participant-host, visibility, or delivery fields
+- keeps legacy single-agent chat data readable without requiring pre-read migration
+- inferred compatibility state belongs to canonical read logic rather than to provider-local reconstruction
+`);
+
+Projection.externalInput.means(`
+- provider-facing projection artifact derived from canonical transcript history
+- preserves peer-agent authorship when one participant receives another participant's message
+- never replaces or rewrites canonical transcript entries
+`);
+
+Projection.nativeSession.means(`
+- per-host provider context projection derived from canonical transcript history
+- execution detail only, never the source of truth for transcript history or delivery semantics
+`);
+
+when(User.adds(Participant.agent).to(Session.conversation))
+  .then(Participant.agent.expects(Participant.host))
+  .and(Participant.agent.expects(Participant.defaultVisibility));
+
+when(Session.message.contains(Visibility.tag))
+  .then(Session.message.expects(Visibility.resolution))
+  .and(Session.message.expects(Delivery.record));
+
+when(Participant.agent.uses(Provider.binding))
+  .then(Provider.binding.preserves(Projection.nativeSession))
+  .and(Provider.binding.preserves(Projection.externalInput));
 
 Context.packet.means(`
 - recent turns
