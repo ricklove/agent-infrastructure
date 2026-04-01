@@ -42,6 +42,14 @@ import {
   type StoredMessageContentBlock,
   type StoredSession,
 } from "./store.js"
+import {
+  reassignTicketMutation,
+  selectTicketStepMutation,
+} from "./ticket-mutations.js"
+import {
+  matchTicketReassignRoute,
+  matchTicketStepSelectionRoute,
+} from "./ticket-routes.js"
 
 const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
 const appDataDir =
@@ -2473,6 +2481,111 @@ const server = Bun.serve<ChatSocketData>({
       const ticketId = decodeMatchGroup(ticketMatch, 1)
       const ticket = ticketStore.getTicket(ticketId)
       return ticket ? jsonResponse({ ok: true, ticket }) : notFound()
+    }
+
+    const ticketStepSelectionMatch = matchTicketStepSelectionRoute(url.pathname)
+    if (ticketStepSelectionMatch && request.method === "POST") {
+      const ticketId = decodeMatchGroup(ticketStepSelectionMatch, 1)
+      return request.json().then((body: unknown) => {
+        const payload = body as { stepId?: string | null; checked?: boolean }
+        const stepId = payload.stepId?.trim() || ""
+        if (!stepId) {
+          return jsonResponse({ ok: false, error: "stepId required" }, 400)
+        }
+
+        const ticket = selectTicketStepMutation({
+          ticketStore,
+          ticketId,
+          stepId,
+          checked: payload.checked === true,
+        })
+        if (!ticket) {
+          return jsonResponse(
+            {
+              ok: false,
+              error: "unfinished ticket or executable step not found",
+            },
+            404,
+          )
+        }
+
+        const snapshot = buildSessionSnapshot(ticket.sessionId)
+        if (snapshot) {
+          broadcastSession(ticket.sessionId, {
+            type: "session.snapshot",
+            session: snapshot.session,
+            messages: snapshot.messages,
+            queuedMessages: snapshot.queuedMessages,
+            activity: snapshot.activity,
+          })
+        }
+
+        return jsonResponse({ ok: true, ticket })
+      })
+    }
+
+    const ticketReassignMatch = matchTicketReassignRoute(url.pathname)
+    if (ticketReassignMatch && request.method === "POST") {
+      const ticketId = decodeMatchGroup(ticketReassignMatch, 1)
+      return request.json().then((body: unknown) => {
+        const payload = body as {
+          targetSessionId?: string | null
+          createSession?: boolean
+        }
+        const targetSessionId = payload.targetSessionId?.trim() || null
+        const createSession = payload.createSession === true
+        if (!createSession && !targetSessionId) {
+          return jsonResponse(
+            { ok: false, error: "targetSessionId or createSession required" },
+            400,
+          )
+        }
+
+        const result = reassignTicketMutation({
+          store,
+          ticketStore,
+          ticketId,
+          targetSessionId,
+          createSession,
+        })
+        if (!result) {
+          return jsonResponse(
+            {
+              ok: false,
+              error: "unfinished ticket or destination session not found",
+            },
+            404,
+          )
+        }
+
+        resetSessionWatchdogState(result.targetSessionId)
+        maybeScheduleSessionWatchdog(result.targetSessionId)
+
+        for (const sessionId of new Set([
+          result.previousSessionId,
+          result.targetSessionId,
+        ])) {
+          const snapshot = buildSessionSnapshot(sessionId)
+          if (!snapshot) {
+            continue
+          }
+          broadcastSession(sessionId, {
+            type: "session.snapshot",
+            session: snapshot.session,
+            messages: snapshot.messages,
+            queuedMessages: snapshot.queuedMessages,
+            activity: snapshot.activity,
+          })
+        }
+
+        return jsonResponse({
+          ok: true,
+          ticket: result.ticket,
+          createdSession: result.createdSession
+            ? buildSessionSummary(result.createdSession)
+            : null,
+        })
+      })
     }
 
     const sessionTicketsMatch =

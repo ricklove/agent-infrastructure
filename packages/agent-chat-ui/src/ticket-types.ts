@@ -1,3 +1,5 @@
+export const activateAgentChatSessionEventName = "agent-chat-activate-session"
+
 export type AgentTicketDecisionOption = {
   id: string
   title: string

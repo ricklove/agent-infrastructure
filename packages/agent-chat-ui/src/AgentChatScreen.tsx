@@ -19,7 +19,10 @@ import {
 } from "react"
 import { createPortal } from "react-dom"
 
-import type { AgentTicket } from "./ticket-types"
+import {
+  activateAgentChatSessionEventName,
+  type AgentTicket,
+} from "./ticket-types"
 import { renderTicketChecklistItems, ticketStatusLabel } from "./ticket-ui"
 
 type ProviderKind =
@@ -315,6 +318,7 @@ const maxSessionRailWidth = 520
 const completedProcessResolutionSentinel = "__process_done__"
 const ticketQuickSelectPrefix = "__ticket__:"
 const openTicketWindowEventName = "dashboard-open-ticket-window"
+const activateChatSessionEventName = activateAgentChatSessionEventName
 const typingHeartbeatMs = 1000
 const composerDraftPersistMs = 250
 const transcriptRenderPageSize = 200
@@ -4461,6 +4465,32 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     setActiveSessionId(sessionId)
     setMobileSessionsOpen(false)
   }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return
+    }
+
+    function handleActivateSession(event: Event) {
+      const detail = (event as CustomEvent<{ sessionId?: string | null }>).detail
+      const sessionId = detail?.sessionId?.trim() ?? ""
+      if (!sessionId) {
+        return
+      }
+      activateSessionFromList(sessionId)
+    }
+
+    window.addEventListener(
+      activateChatSessionEventName,
+      handleActivateSession as EventListener,
+    )
+    return () => {
+      window.removeEventListener(
+        activateChatSessionEventName,
+        handleActivateSession as EventListener,
+      )
+    }
+  }, [activateSessionFromList])
 
   useEffect(() => {
     if (typeof window === "undefined" || !activeSessionId) {
