@@ -20,8 +20,8 @@ import {
 import { createPortal } from "react-dom"
 
 import {
-  activateAgentChatSessionEventName,
   type AgentTicket,
+  activateAgentChatSessionEventName,
 } from "./ticket-types"
 import { renderTicketChecklistItems, ticketStatusLabel } from "./ticket-ui"
 
@@ -4472,7 +4472,8 @@ export function AgentChatScreen(props: AgentChatScreenProps) {
     }
 
     function handleActivateSession(event: Event) {
-      const detail = (event as CustomEvent<{ sessionId?: string | null }>).detail
+      const detail = (event as CustomEvent<{ sessionId?: string | null }>)
+        .detail
       const sessionId = detail?.sessionId?.trim() ?? ""
       if (!sessionId) {
         return

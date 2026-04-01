@@ -12,6 +12,28 @@ import {
 } from "node:fs"
 import { dirname, join } from "node:path"
 import type { AgentChatProviderKind } from "./catalog.js"
+import {
+  type AgentChatParticipant,
+  buildVisibilityResolution,
+  createPendingDeliveryRecord,
+  type DefaultVisibility,
+  type DeliveryRecord,
+  defaultParticipantsForProvider,
+  displayLabelForProvider,
+  ensureParticipantDefaultsTargetProvider,
+  extractVisibilityTagsFromContent,
+  legacySessionParticipants,
+  markDeliveryRecord,
+  normalizeDefaultVisibility,
+  normalizeVisibilityTags,
+  type ParticipantHost,
+  participantIdForProvider,
+  resolveActiveProviderParticipantId,
+  SYSTEM_PARTICIPANT_ID,
+  USER_PARTICIPANT_ID,
+  type VisibilityResolution,
+  type VisibilityTag,
+} from "./schema.js"
 
 const attachmentRoutePrefix = "/api/agent-chat/sessions"
 
@@ -47,6 +69,7 @@ export type StoredSession = {
   imageModelRef: string | null
   providerThreadId: string | null
   providerThreadPath: string | null
+  participants: AgentChatParticipant[]
   createdAtMs: number
   updatedAtMs: number
   preview: string | null
@@ -71,6 +94,12 @@ export type StoredMessage = {
     | "streamCheckpoint"
   replyToMessageId: string | null
   ticketId: string | null
+  authorParticipantId: string
+  authorHost: ParticipantHost
+  defaultVisibility: DefaultVisibility
+  visibilityTags: VisibilityTag[]
+  visibilityResolution: VisibilityResolution
+  deliveryRecords: DeliveryRecord[]
   providerSeenAtMs: number | null
   content: StoredMessageContentBlock[]
   createdAtMs: number
@@ -83,6 +112,18 @@ export type CreateSessionInput = {
   cwd: string
   authProfile?: string | null
   imageModelRef?: string | null
+}
+
+type AppendMessageInput = {
+  role: StoredMessage["role"]
+  content: StoredMessage["content"]
+  kind?: StoredMessage["kind"]
+  replyToMessageId?: string | null
+  ticketId?: string | null
+  providerSeenAtMs?: number | null
+  authorParticipantId?: string | null
+  defaultVisibility?: DefaultVisibility
+  visibilityTags?: VisibilityTag[]
 }
 
 type CanonicalWriteEvent = {
@@ -149,6 +190,261 @@ function sessionSummary(
   }
 }
 
+function findParticipant(
+  participants: AgentChatParticipant[],
+  participantId: string | null | undefined,
+) {
+  if (!participantId) {
+    return null
+  }
+  return (
+    participants.find(
+      (participant) => participant.participantId === participantId,
+    ) ?? null
+  )
+}
+
+function activeProviderParticipantIdForSession(session: StoredSession) {
+  return resolveActiveProviderParticipantId(
+    session.participants,
+    session.providerKind,
+  )
+}
+
+function queuedForParticipant(message: StoredMessage, participantId: string) {
+  return message.deliveryRecords.some(
+    (record) =>
+      record.recipientParticipantId === participantId &&
+      (record.status === "pending" || record.status === "unreachable"),
+  )
+}
+
+function ensureProviderParticipant(
+  participants: AgentChatParticipant[],
+  providerKind: AgentChatProviderKind,
+  createdAtMs: number,
+) {
+  const existing = participants.find(
+    (participant) =>
+      participant.role === "agent" &&
+      participant.host === "manager" &&
+      participant.providerKind === providerKind,
+  )
+  if (existing) {
+    return participants
+  }
+  return [
+    ...participants,
+    {
+      participantId: participantIdForProvider(providerKind),
+      role: "agent",
+      label: displayLabelForProvider(providerKind),
+      host: "manager",
+      defaultVisibility: "none",
+      providerKind,
+      createdAtMs,
+    } satisfies AgentChatParticipant,
+  ]
+}
+
+function resolveMessageAuthorParticipantId(
+  session: StoredSession,
+  input: AppendMessageInput,
+) {
+  if (input.authorParticipantId?.trim()) {
+    return input.authorParticipantId.trim()
+  }
+  if (input.role === "user") {
+    return USER_PARTICIPANT_ID
+  }
+  if (input.role === "system") {
+    return SYSTEM_PARTICIPANT_ID
+  }
+  return resolveActiveProviderParticipantId(
+    session.participants,
+    session.providerKind,
+  )
+}
+
+function reconcileDeliveryRecords(
+  participants: AgentChatParticipant[],
+  existingRecords: DeliveryRecord[],
+  visibilityResolution: VisibilityResolution,
+) {
+  const existingByParticipantId = new Map(
+    existingRecords.map(
+      (record) => [record.recipientParticipantId, record] as const,
+    ),
+  )
+  return visibilityResolution.audienceParticipantIds
+    .map((participantId) => {
+      const participant = findParticipant(participants, participantId)
+      if (!participant) {
+        return null
+      }
+      return (
+        existingByParticipantId.get(participantId) ??
+        createPendingDeliveryRecord(
+          participant,
+          visibilityResolution.resolvedAtMs,
+        )
+      )
+    })
+    .filter(Boolean) as DeliveryRecord[]
+}
+
+function normalizeStoredParticipants(
+  participants: AgentChatParticipant[] | undefined,
+  providerKind: AgentChatProviderKind,
+  createdAtMs: number,
+) {
+  const baseParticipants =
+    participants && participants.length > 0
+      ? participants.map((participant) => ({
+          ...participant,
+          defaultVisibility: normalizeDefaultVisibility(
+            participant.defaultVisibility,
+          ),
+          providerKind: participant.providerKind ?? null,
+          createdAtMs:
+            participant.createdAtMs === undefined
+              ? createdAtMs
+              : Number(participant.createdAtMs),
+        }))
+      : legacySessionParticipants(createdAtMs)
+  return ensureParticipantDefaultsTargetProvider(
+    ensureProviderParticipant(baseParticipants, providerKind, createdAtMs),
+    providerKind,
+  )
+}
+
+function normalizeAuthorParticipantId(
+  rawAuthorParticipantId: unknown,
+  role: StoredMessage["role"],
+  session: StoredSession,
+) {
+  if (
+    typeof rawAuthorParticipantId === "string" &&
+    rawAuthorParticipantId.trim()
+  ) {
+    return rawAuthorParticipantId.trim()
+  }
+  if (role === "user") {
+    return USER_PARTICIPANT_ID
+  }
+  if (role === "system") {
+    return SYSTEM_PARTICIPANT_ID
+  }
+  return resolveActiveProviderParticipantId(
+    session.participants,
+    session.providerKind,
+  )
+}
+
+function normalizeVisibilityResolutionForMessage(args: {
+  session: StoredSession
+  authorParticipantId: string
+  defaultVisibility: DefaultVisibility
+  visibilityTags: VisibilityTag[]
+  createdAtMs: number
+  rawVisibilityResolution?: Partial<VisibilityResolution> | null
+}) {
+  if (args.rawVisibilityResolution) {
+    return {
+      audienceParticipantIds: Array.isArray(
+        args.rawVisibilityResolution.audienceParticipantIds,
+      )
+        ? [
+            ...new Set(
+              args.rawVisibilityResolution.audienceParticipantIds.map(String),
+            ),
+          ]
+        : buildVisibilityResolution({
+            participants: args.session.participants,
+            senderParticipantId: args.authorParticipantId,
+            senderDefaultVisibility: args.defaultVisibility,
+            tagOverrides: args.visibilityTags,
+            resolvedAtMs: args.createdAtMs,
+          }).audienceParticipantIds,
+      tagOverrides: args.visibilityTags,
+      resolvedFromDefaultVisibility: args.defaultVisibility,
+      resolvedAtMs:
+        args.rawVisibilityResolution.resolvedAtMs === undefined
+          ? args.createdAtMs
+          : Number(args.rawVisibilityResolution.resolvedAtMs),
+    } satisfies VisibilityResolution
+  }
+  return buildVisibilityResolution({
+    participants: args.session.participants,
+    senderParticipantId: args.authorParticipantId,
+    senderDefaultVisibility: args.defaultVisibility,
+    tagOverrides: args.visibilityTags,
+    resolvedAtMs: args.createdAtMs,
+  })
+}
+
+function normalizeDeliveryRecordsForMessage(args: {
+  session: StoredSession
+  visibilityResolution: VisibilityResolution
+  rawDeliveryRecords: DeliveryRecord[] | undefined
+  providerSeenAtMs: number | null
+}) {
+  if (
+    Array.isArray(args.rawDeliveryRecords) &&
+    args.rawDeliveryRecords.length > 0
+  ) {
+    return reconcileDeliveryRecords(
+      args.session.participants,
+      args.rawDeliveryRecords.map((record) => ({
+        ...record,
+        recipientParticipantId: String(record.recipientParticipantId),
+        recipientHost: record.recipientHost,
+        status: record.status,
+        visibleAtMs: Number(record.visibleAtMs),
+        pendingSinceMs:
+          record.pendingSinceMs === null || record.pendingSinceMs === undefined
+            ? null
+            : Number(record.pendingSinceMs),
+        deliveredAtMs:
+          record.deliveredAtMs === null || record.deliveredAtMs === undefined
+            ? null
+            : Number(record.deliveredAtMs),
+        seenAtMs:
+          record.seenAtMs === null || record.seenAtMs === undefined
+            ? null
+            : Number(record.seenAtMs),
+        error: record.error ?? null,
+      })),
+      args.visibilityResolution,
+    )
+  }
+  const activeProviderParticipantId = resolveActiveProviderParticipantId(
+    args.session.participants,
+    args.session.providerKind,
+  )
+  return args.visibilityResolution.audienceParticipantIds
+    .map((participantId) =>
+      findParticipant(args.session.participants, participantId),
+    )
+    .filter(
+      (participant): participant is AgentChatParticipant =>
+        participant !== null,
+    )
+    .map((participant) => {
+      const baseRecord = createPendingDeliveryRecord(
+        participant,
+        args.visibilityResolution.resolvedAtMs,
+      )
+      if (
+        participant.participantId === activeProviderParticipantId &&
+        args.providerSeenAtMs !== null
+      ) {
+        return markDeliveryRecord(baseRecord, "seen", args.providerSeenAtMs)
+      }
+      return baseRecord
+    }) as DeliveryRecord[]
+}
+
 export class AgentChatStore {
   private readonly sessionsDir: string
   private readonly onCanonicalWrite?: (event: CanonicalWriteEvent) => void
@@ -193,6 +489,7 @@ export class AgentChatStore {
       imageModelRef: input.imageModelRef ?? null,
       providerThreadId: null,
       providerThreadPath: null,
+      participants: defaultParticipantsForProvider(input.providerKind, now),
       createdAtMs: now,
       updatedAtMs: now,
     }
@@ -253,10 +550,13 @@ export class AgentChatStore {
   }
 
   listQueuedMessages(sessionId: string): StoredMessage[] {
-    return this.listMessages(sessionId).filter(
-      (message) =>
-        message.providerSeenAtMs === null &&
-        (message.role === "user" || message.role === "system"),
+    const session = this.sessionCache.get(sessionId)
+    if (!session) {
+      return []
+    }
+    const activeParticipantId = activeProviderParticipantIdForSession(session)
+    return this.listMessages(sessionId).filter((message) =>
+      queuedForParticipant(message, activeParticipantId),
     )
   }
 
@@ -325,32 +625,73 @@ export class AgentChatStore {
   }
 
   listQueuedUserMessages(sessionId: string): StoredMessage[] {
+    const session = this.sessionCache.get(sessionId)
+    if (!session) {
+      return []
+    }
+    const activeParticipantId = activeProviderParticipantIdForSession(session)
     return this.listMessages(sessionId).filter(
       (message) =>
-        message.providerSeenAtMs === null &&
+        queuedForParticipant(message, activeParticipantId) &&
         (message.role === "user" ||
           message.kind === "watchdogPrompt" ||
-          message.kind === "ticketEvent"),
+          message.kind === "ticketEvent" ||
+          (message.role === "assistant" &&
+            message.authorParticipantId !== activeParticipantId)),
     )
   }
 
-  appendMessage(
-    sessionId: string,
-    input: {
-      role: StoredMessage["role"]
-      content: StoredMessage["content"]
-      kind?: StoredMessage["kind"]
-      replyToMessageId?: string | null
-      ticketId?: string | null
-      providerSeenAtMs?: number | null
-    },
-  ): StoredMessage {
+  appendMessage(sessionId: string, input: AppendMessageInput): StoredMessage {
     const session = this.sessionCache.get(sessionId)
     if (!session) {
       throw new Error(`Unknown session ${sessionId}`)
     }
 
     const createdAtMs = Date.now()
+    const authorParticipantId = resolveMessageAuthorParticipantId(
+      session,
+      input,
+    )
+    const authorParticipant = findParticipant(
+      session.participants,
+      authorParticipantId,
+    )
+    const defaultVisibility = normalizeDefaultVisibility(
+      input.defaultVisibility ?? authorParticipant?.defaultVisibility ?? "none",
+    )
+    const visibilityTags = normalizeVisibilityTags(
+      input.visibilityTags ?? extractVisibilityTagsFromContent(input.content),
+    )
+    const visibilityResolution = buildVisibilityResolution({
+      participants: session.participants,
+      senderParticipantId: authorParticipantId,
+      senderDefaultVisibility: defaultVisibility,
+      tagOverrides: visibilityTags,
+      resolvedAtMs: createdAtMs,
+    })
+    const activeProviderParticipantId = resolveActiveProviderParticipantId(
+      session.participants,
+      session.providerKind,
+    )
+    const deliveryRecords = visibilityResolution.audienceParticipantIds
+      .map((participantId) =>
+        findParticipant(session.participants, participantId),
+      )
+      .filter(
+        (participant): participant is AgentChatParticipant =>
+          participant !== null,
+      )
+      .map((participant) => {
+        const baseRecord = createPendingDeliveryRecord(participant, createdAtMs)
+        if (
+          participant.participantId === activeProviderParticipantId &&
+          input.providerSeenAtMs !== null &&
+          input.providerSeenAtMs !== undefined
+        ) {
+          return markDeliveryRecord(baseRecord, "seen", input.providerSeenAtMs)
+        }
+        return baseRecord
+      }) as DeliveryRecord[]
     const message: StoredMessage = {
       id: randomUUID(),
       sessionId,
@@ -358,6 +699,12 @@ export class AgentChatStore {
       kind: input.kind ?? "chat",
       replyToMessageId: input.replyToMessageId ?? null,
       ticketId: input.ticketId?.trim() || null,
+      authorParticipantId,
+      authorHost: authorParticipant?.host ?? "manager",
+      defaultVisibility,
+      visibilityTags,
+      visibilityResolution,
+      deliveryRecords,
       providerSeenAtMs:
         input.providerSeenAtMs === undefined
           ? createdAtMs
@@ -416,9 +763,20 @@ export class AgentChatStore {
       if (message.id !== messageId) {
         return message
       }
+      const nextContent = input.content ?? message.content
+      const nextVisibilityTags = normalizeVisibilityTags(
+        extractVisibilityTagsFromContent(nextContent),
+      )
+      const nextVisibilityResolution = buildVisibilityResolution({
+        participants: currentSession.participants,
+        senderParticipantId: message.authorParticipantId,
+        senderDefaultVisibility: message.defaultVisibility,
+        tagOverrides: nextVisibilityTags,
+        resolvedAtMs: Date.now(),
+      })
       updatedMessage = {
         ...message,
-        content: input.content ?? message.content,
+        content: nextContent,
         kind: input.kind ?? message.kind,
         providerSeenAtMs:
           input.providerSeenAtMs === undefined
@@ -430,6 +788,13 @@ export class AgentChatStore {
             : input.replyToMessageId,
         ticketId:
           input.ticketId === undefined ? message.ticketId : input.ticketId,
+        visibilityTags: nextVisibilityTags,
+        visibilityResolution: nextVisibilityResolution,
+        deliveryRecords: reconcileDeliveryRecords(
+          currentSession.participants,
+          message.deliveryRecords,
+          nextVisibilityResolution,
+        ),
       }
       return updatedMessage
     })
@@ -632,6 +997,14 @@ export class AgentChatStore {
       providerThreadPath: clearProviderThread
         ? null
         : current.providerThreadPath,
+      participants: ensureParticipantDefaultsTargetProvider(
+        ensureProviderParticipant(
+          current.participants,
+          input.providerKind,
+          current.createdAtMs,
+        ),
+        input.providerKind,
+      ),
       updatedAtMs: Date.now(),
     }
     this.writeSessionMetadata(nextSession)
@@ -796,26 +1169,48 @@ export class AgentChatStore {
     sessionId: string,
     messageIds: string[],
     seenAtMs = Date.now(),
+    participantId?: string,
   ) {
     if (messageIds.length === 0) {
       return
     }
 
     const currentMessages = this.messageCache.get(sessionId)
-    if (!currentMessages?.length) {
+    const currentSession = this.sessionCache.get(sessionId)
+    if (!currentMessages?.length || !currentSession) {
       return
     }
 
+    const activeProviderParticipantId =
+      participantId ?? activeProviderParticipantIdForSession(currentSession)
     const targets = new Set(messageIds)
     let changed = false
     const nextMessages = currentMessages.map((message) => {
-      if (!targets.has(message.id) || message.providerSeenAtMs !== null) {
+      if (!targets.has(message.id)) {
+        return message
+      }
+      let updated = false
+      const nextDeliveryRecords = message.deliveryRecords.map((record) => {
+        if (record.recipientParticipantId !== activeProviderParticipantId) {
+          return record
+        }
+        if (record.status === "seen") {
+          return record
+        }
+        updated = true
+        return markDeliveryRecord(record, "seen", seenAtMs)
+      })
+      if (!updated) {
         return message
       }
       changed = true
       return {
         ...message,
-        providerSeenAtMs: seenAtMs,
+        providerSeenAtMs:
+          message.providerSeenAtMs === null
+            ? seenAtMs
+            : message.providerSeenAtMs,
+        deliveryRecords: nextDeliveryRecords,
       }
     })
 
@@ -845,9 +1240,10 @@ export class AgentChatStore {
 
     for (const sessionId of this.listSessionDirectories()) {
       const metadata = this.readSessionMetadata(sessionId)
-      const messages = this.readMessages(sessionId)
-      const summary = sessionSummary(metadata, messages)
-      this.sessionCache.set(sessionId, summary)
+      const summary = sessionSummary(metadata, [])
+      const messages = this.readMessages(summary)
+      const hydratedSummary = sessionSummary(summary, messages)
+      this.sessionCache.set(sessionId, hydratedSummary)
       this.messageCache.set(sessionId, messages)
     }
   }
@@ -927,6 +1323,7 @@ export class AgentChatStore {
       imageModelRef: session.imageModelRef,
       providerThreadId: session.providerThreadId,
       providerThreadPath: session.providerThreadPath,
+      participants: session.participants,
       createdAtMs: session.createdAtMs,
       updatedAtMs: session.updatedAtMs,
     }
@@ -944,6 +1341,8 @@ export class AgentChatStore {
     const parsed = safeJsonParse<Partial<SessionMetadata>>(
       readFileSync(this.sessionMetadataPath(sessionId), "utf8"),
     )
+    const createdAtMs = Number(parsed.createdAtMs)
+    const providerKind = parsed.providerKind as AgentChatProviderKind
     return {
       id: String(parsed.id),
       title: String(parsed.title),
@@ -977,7 +1376,7 @@ export class AgentChatStore {
             ? null
             : Number(parsed.watchdogState.completedAtMs),
       },
-      providerKind: parsed.providerKind as AgentChatProviderKind,
+      providerKind,
       modelRef: String(parsed.modelRef),
       cwd: String(parsed.cwd || "/home/ec2-user/workspace"),
       pendingSystemInstruction: parsed.pendingSystemInstruction
@@ -991,13 +1390,18 @@ export class AgentChatStore {
       providerThreadPath: parsed.providerThreadPath
         ? String(parsed.providerThreadPath)
         : null,
-      createdAtMs: Number(parsed.createdAtMs),
+      participants: normalizeStoredParticipants(
+        parsed.participants as AgentChatParticipant[] | undefined,
+        providerKind,
+        createdAtMs,
+      ),
+      createdAtMs,
       updatedAtMs: Number(parsed.updatedAtMs),
     }
   }
 
-  private readMessages(sessionId: string): StoredMessage[] {
-    const path = this.messagesPath(sessionId)
+  private readMessages(session: StoredSession): StoredMessage[] {
+    const path = this.messagesPath(session.id)
     if (!existsSync(path)) {
       return []
     }
@@ -1009,6 +1413,40 @@ export class AgentChatStore {
       .filter(Boolean)
       .map((line) => {
         const parsed = safeJsonParse<Partial<StoredMessage>>(line)
+        const providerSeenAtMs =
+          parsed.providerSeenAtMs === null ||
+          parsed.providerSeenAtMs === undefined
+            ? null
+            : Number(parsed.providerSeenAtMs)
+        const authorParticipantId = normalizeAuthorParticipantId(
+          parsed.authorParticipantId,
+          parsed.role as StoredMessage["role"],
+          session,
+        )
+        const defaultVisibility = normalizeDefaultVisibility(
+          (parsed.defaultVisibility as DefaultVisibility | undefined) ??
+            findParticipant(session.participants, authorParticipantId)
+              ?.defaultVisibility ??
+            "none",
+        )
+        const visibilityTags = normalizeVisibilityTags(
+          Array.isArray(parsed.visibilityTags)
+            ? (parsed.visibilityTags as string[])
+            : extractVisibilityTagsFromContent(
+                (parsed.content ?? []) as StoredMessage["content"],
+              ),
+        )
+        const visibilityResolution = normalizeVisibilityResolutionForMessage({
+          session,
+          authorParticipantId,
+          defaultVisibility,
+          visibilityTags,
+          createdAtMs: Number(parsed.createdAtMs),
+          rawVisibilityResolution:
+            (parsed.visibilityResolution as
+              | Partial<VisibilityResolution>
+              | undefined) ?? null,
+        })
         return {
           id: String(parsed.id),
           sessionId: String(parsed.sessionId),
@@ -1034,11 +1472,24 @@ export class AgentChatStore {
             typeof parsed.ticketId === "string" && parsed.ticketId.trim()
               ? parsed.ticketId
               : null,
-          providerSeenAtMs:
-            parsed.providerSeenAtMs === null ||
-            parsed.providerSeenAtMs === undefined
-              ? null
-              : Number(parsed.providerSeenAtMs),
+          authorParticipantId,
+          authorHost:
+            typeof parsed.authorHost === "string" && parsed.authorHost.trim()
+              ? (parsed.authorHost as ParticipantHost)
+              : (findParticipant(session.participants, authorParticipantId)
+                  ?.host ?? "manager"),
+          defaultVisibility,
+          visibilityTags,
+          visibilityResolution,
+          deliveryRecords: normalizeDeliveryRecordsForMessage({
+            session,
+            visibilityResolution,
+            rawDeliveryRecords: Array.isArray(parsed.deliveryRecords)
+              ? (parsed.deliveryRecords as DeliveryRecord[])
+              : undefined,
+            providerSeenAtMs,
+          }),
+          providerSeenAtMs,
           content: (parsed.content ?? []) as StoredMessage["content"],
           createdAtMs: Number(parsed.createdAtMs),
         } satisfies StoredMessage
@@ -1154,16 +1605,47 @@ export class AgentChatStore {
           providerThreadPath: row.provider_thread_path
             ? String(row.provider_thread_path)
             : null,
+          participants: defaultParticipantsForProvider(
+            row.provider_kind as AgentChatProviderKind,
+            Number(row.created_at_ms),
+          ),
           createdAtMs: Number(row.created_at_ms),
           updatedAtMs: Number(row.updated_at_ms),
         }
+        const legacySession = sessionSummary(metadata, [])
 
         const messages = messageQuery.all(metadata.id).map((messageRow) => {
           const rowObject = messageRow as Record<string, unknown>
+          const role = rowObject.role as StoredMessage["role"]
+          const providerSeenAtMs =
+            rowObject.provider_seen_at_ms === null ||
+            rowObject.provider_seen_at_ms === undefined
+              ? null
+              : Number(rowObject.provider_seen_at_ms)
+          const content = safeJsonParse<StoredMessage["content"]>(
+            String(rowObject.content_json),
+          )
+          const authorParticipantId = normalizeAuthorParticipantId(
+            null,
+            role,
+            legacySession,
+          )
+          const defaultVisibility = normalizeDefaultVisibility(
+            findParticipant(legacySession.participants, authorParticipantId)
+              ?.defaultVisibility ?? "none",
+          )
+          const visibilityTags = extractVisibilityTagsFromContent(content)
+          const visibilityResolution = buildVisibilityResolution({
+            participants: legacySession.participants,
+            senderParticipantId: authorParticipantId,
+            senderDefaultVisibility: defaultVisibility,
+            tagOverrides: visibilityTags,
+            resolvedAtMs: Number(rowObject.created_at_ms),
+          })
           return {
             id: String(rowObject.id),
             sessionId: String(rowObject.session_id),
-            role: rowObject.role as StoredMessage["role"],
+            role,
             kind:
               rowObject.kind === "directoryInstruction"
                 ? "directoryInstruction"
@@ -1172,14 +1654,21 @@ export class AgentChatStore {
               ? String(rowObject.reply_to_message_id)
               : null,
             ticketId: null,
-            providerSeenAtMs:
-              rowObject.provider_seen_at_ms === null ||
-              rowObject.provider_seen_at_ms === undefined
-                ? null
-                : Number(rowObject.provider_seen_at_ms),
-            content: safeJsonParse<StoredMessage["content"]>(
-              String(rowObject.content_json),
-            ),
+            authorParticipantId,
+            authorHost:
+              findParticipant(legacySession.participants, authorParticipantId)
+                ?.host ?? "manager",
+            defaultVisibility,
+            visibilityTags,
+            visibilityResolution,
+            deliveryRecords: normalizeDeliveryRecordsForMessage({
+              session: legacySession,
+              visibilityResolution,
+              rawDeliveryRecords: undefined,
+              providerSeenAtMs,
+            }),
+            providerSeenAtMs,
+            content,
             createdAtMs: Number(rowObject.created_at_ms),
           } satisfies StoredMessage
         })

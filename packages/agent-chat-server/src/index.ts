@@ -36,6 +36,11 @@ import {
 } from "./process-blueprints.js"
 import { findStandaloneSignalLine } from "./process-signals.js"
 import {
+  resolveActiveProviderParticipantId,
+  SYSTEM_PARTICIPANT_ID,
+  USER_PARTICIPANT_ID,
+} from "./schema.js"
+import {
   AgentChatStore,
   type SessionWatchdogState,
   type StoredMessage,
@@ -1992,6 +1997,40 @@ function buildProviderInputContent(
   }, [])
 }
 
+function buildProviderInputContentForMessage(
+  session: StoredSession,
+  targetParticipantId: string,
+  message: StoredMessage,
+): ProviderInputBlock[] {
+  const providerInput = buildProviderInputContent(message.content)
+  const author = session.participants.find(
+    (participant) => participant.participantId === message.authorParticipantId,
+  )
+  if (!author || author.participantId === targetParticipantId) {
+    return providerInput
+  }
+  if (author.participantId === USER_PARTICIPANT_ID) {
+    return providerInput
+  }
+
+  const prefix =
+    author.participantId === SYSTEM_PARTICIPANT_ID
+      ? "[System]\n"
+      : `[${author.label} -> you]\n`
+
+  if (providerInput[0]?.type === "text") {
+    return [
+      {
+        ...providerInput[0],
+        text: `${prefix}${providerInput[0].text}`,
+      },
+      ...providerInput.slice(1),
+    ]
+  }
+
+  return [{ type: "text", text: prefix.trimEnd() }, ...providerInput]
+}
+
 function normalizeOptionalValue(value: string | null | undefined) {
   return value?.trim() || ""
 }
@@ -2137,8 +2176,16 @@ async function runProviderTurnForQueuedMessages(
       throw new Error("Session disappeared before provider execution started")
     }
 
+    const activeProviderParticipantId = resolveActiveProviderParticipantId(
+      currentSession.participants,
+      currentSession.providerKind,
+    )
     const messageContent = queuedMessages.flatMap((queuedMessage) =>
-      buildProviderInputContent(queuedMessage.content),
+      buildProviderInputContentForMessage(
+        currentSession,
+        activeProviderParticipantId,
+        queuedMessage,
+      ),
     )
     const callbacks = providerActivityCallbacks(
       sessionId,
@@ -3223,7 +3270,11 @@ const server = Bun.serve<ChatSocketData>({
       return request.json().then((body: unknown) => {
         const payload = body as {
           text?: string
+          role?: "user" | "assistant" | "system"
+          authorParticipantId?: string | null
           replyToMessageId?: string | null
+          defaultVisibility?: unknown
+          visibilityTags?: string[]
           content?: Array<
             | { type?: "text"; text?: string }
             | { type?: "image"; dataUrl?: string }
@@ -3244,9 +3295,44 @@ const server = Bun.serve<ChatSocketData>({
           )
         }
 
+        const session = store.getSession(sessionId)
+        if (!session) {
+          return notFound()
+        }
+        const authorParticipantId = payload.authorParticipantId?.trim() || null
+        const authorParticipant = authorParticipantId
+          ? (session.participants.find(
+              (participant) =>
+                participant.participantId === authorParticipantId,
+            ) ?? null)
+          : null
+        if (authorParticipantId && !authorParticipant) {
+          return jsonResponse(
+            { ok: false, error: `Unknown participant: ${authorParticipantId}` },
+            400,
+          )
+        }
+        const role =
+          payload.role ??
+          (authorParticipant?.role === "agent"
+            ? "assistant"
+            : (authorParticipant?.role ?? "user"))
+        const activeProviderParticipantId = resolveActiveProviderParticipantId(
+          session.participants,
+          session.providerKind,
+        )
+        const providerSeenAtMs =
+          role === "assistant" &&
+          authorParticipantId === activeProviderParticipantId
+            ? Date.now()
+            : null
+
         const userMessage = store.appendMessage(sessionId, {
-          role: "user",
-          providerSeenAtMs: null,
+          role,
+          authorParticipantId,
+          defaultVisibility: payload.defaultVisibility as never,
+          visibilityTags: payload.visibilityTags as never,
+          providerSeenAtMs,
           replyToMessageId: payload.replyToMessageId?.trim() || null,
           content,
         })
