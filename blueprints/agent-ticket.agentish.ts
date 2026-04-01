@@ -41,7 +41,7 @@ when(SubjectBlueprint.contains(Section.scenarios))
   .then(Section.scenarios.answers("how direct work, delegated work, orchestration, focused-ticket chat updates, manual ticket-view step reselection, session reassignment, and token-driven step or process transitions should behave"));
 
 when(SubjectBlueprint.contains(Section.implementationPlan))
-  .then(Section.implementationPlan.answers("where checklist state, next-step projection, manual step-reset mutation responsibility, session reassignment, references, and canonical system events live"));
+  .then(Section.implementationPlan.answers("where checklist state, next-step projection, manual step-reset mutation responsibility, session reassignment, references, canonical system events, and the ideal file hierarchy live"));
 
 when(SubjectBlueprint.contains(Section.contracts))
   .then(Section.contracts.answers("exact ticket record fields, process-state fields, active-session binding fields, reference fields, mutation fields, and system-event fields"));
@@ -51,6 +51,7 @@ const Artifact = {
   title: define.document("AgentTicketTitle"),
   description: define.document("AgentTicketDescription"),
   processState: define.document("AgentTicketProcessState"),
+  fileHierarchy: define.document("IdealFileHierarchy"),
   snapshot: define.document("AgentProcessSnapshot"),
   chatSession: define.document("AgentChatSessionBinding"),
   reference: define.entity("AgentTicketReference"),
@@ -170,6 +171,7 @@ AgentTicket.defines(`
 - MinimalTicketCore means the ticket stays minimal instead of accreting generic issue-tracker metadata.
 - GeneralReferenceGraph means a ticket may reference several workspace object kinds through one common reference contract.
 - DirectOrDelegatedExecution means the same ticket may be worked inline by the chat agent or through delegated workers.
+- IdealFileHierarchy means the complete directory and file tree that should exist for the ideal Agent Ticket implementation, including blueprint files, server files, UI files, and tests.
 `);
 
 Artifact.store.contains(Artifact.ticket);
@@ -177,6 +179,7 @@ Artifact.store.contains(Artifact.index);
 Artifact.ticket.contains(
   Artifact.title,
   Artifact.description,
+  Artifact.fileHierarchy,
   Artifact.snapshot,
   Artifact.chatSession,
   Artifact.processState,
@@ -258,6 +261,32 @@ when(Artifact.ticket.exists())
 when(Artifact.ticket.references("a chat message target"))
   .then(Artifact.reference.allows(Artifact.referenceRange))
   .and(Artifact.reference.expects(ReferenceContract.relation));
+
+when(SubjectBlueprint.writes(Section.implementationPlan))
+  .then(Section.implementationPlan.expects(Artifact.fileHierarchy))
+  .and(Artifact.fileHierarchy.expects(`
+- blueprints/
+  - agent-ticket.agentish.ts
+  - agent-ticket.blueprint-state.agentish.ts
+- packages/
+  - agent-chat-server/
+    - src/
+      - agent-tickets.ts
+      - agent-tickets.test.ts
+      - process-blueprints.ts
+      - process-signals.ts
+      - ticket-routes.ts
+      - ticket-mutations.ts
+      - index.ts
+  - agent-chat-ui/
+    - src/
+      - AgentChatScreen.tsx
+      - TicketView.tsx
+      - TicketViewActions.tsx
+      - ticket-types.ts
+      - ticket-ui.tsx
+      - index.ts
+`));
 
 when(Actor.operator.uses(Artifact.ticketView))
   .then(Artifact.ticketView.reads(Artifact.ticket))
