@@ -1,4 +1,4 @@
-export type WorkbenchNodeRecord = {
+export type WorkbenchTextNodeRecord = {
   id: string
   type: "text"
   x: number
@@ -7,6 +7,20 @@ export type WorkbenchNodeRecord = {
   height?: number
   text: string
 }
+
+export type WorkbenchIntNodeRecord = {
+  id: string
+  type: "int"
+  x: number
+  y: number
+  width?: number
+  height?: number
+  value: number
+}
+
+export type WorkbenchNodeRecord =
+  | WorkbenchTextNodeRecord
+  | WorkbenchIntNodeRecord
 
 export type WorkbenchEdgeRecord = {
   id: string
