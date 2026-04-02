@@ -2,7 +2,7 @@
   "id": "deploy_steps",
   "title": "Deploy (Nested Steps)",
   "catalogOrder": 48,
-  "expectation": "Use a dedicated manager integration worktree as the only mutable surface for this process; never edit the shared repository checkout during integration, release, deploy, or live validation. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then run the worker-feature merge flow to refresh that branch from latest `origin/development`, integrate it through the manager worktree, and push `development` to origin before continuing. After a successful merge into `development`, promote that integrated commit onto `main`, create a release tag from the exact promoted commit, deploy the runtime through the canonical deploy-manager-runtime path, verify runtime revision and version match, perform local and browser verification, and complete cleanup or rollback recovery as required.",
+  "expectation": "Use a dedicated manager integration worktree as the only mutable surface for this process; never edit the shared repository checkout during integration, release, deploy, or live validation. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then run the repository-profile-aware worker-feature merge flow to refresh that branch from latest base and either integrate it through the manager worktree or push the feature branch and open the staging PR before continuing. After that integration step, follow the repository profile promotion and deploy path: runtime repos promote onto `main`, tag, and deploy through the canonical runtime path, while PR-to-staging repos merge the reviewed PR into `staging` and validate the staged environment. Complete cleanup or rollback recovery as required.",
   "idlePrompt": "If deployment is complete, reply only with 'done: deploy complete'. If you are truly blocked on a missing focused feature branch, user decision, or environment dependency, reply only with 'blocked: deploy blocked'. Otherwise resume the deploy process immediately and perform the next required integration, release, deploy, cleanup, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: deploy complete",
@@ -38,7 +38,7 @@
         },
         {
           "id": "merge_feature_branch",
-          "title": "Run `bun run agent:merge-worker-feature -- <feature-branch-name>` to refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin"
+          "title": "Run `bun run agent:merge-worker-feature -- [--repo-profile <repo-profile>] <feature-branch-name>` to apply the repository profile integration behavior before continuing with release or staged validation"
         },
         {
           "id": "assess_feature_merge",

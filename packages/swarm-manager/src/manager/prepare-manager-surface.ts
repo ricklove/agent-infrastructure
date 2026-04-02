@@ -1,8 +1,4 @@
-import { DEFAULT_WORKSPACE_DIR } from "../paths.js"
-
-const DEFAULT_BASE_BRANCH = "development"
-const DEFAULT_REPO_PATH = `${DEFAULT_WORKSPACE_DIR}/projects/agent-infrastructure`
-const DEFAULT_WORKTREE_ROOT = `${DEFAULT_WORKSPACE_DIR}/projects-worktrees/agent-infrastructure-manager`
+import { parseRepoProfileArg, resolveRepoProfile } from "./repo-profiles.js"
 
 type CommandResult = {
   exitCode: number
@@ -45,7 +41,7 @@ function runChecked(command: string[], cwd?: string): string {
 
 function usage(): never {
   console.log(
-    "Usage: bun run src/manager/prepare-manager-surface.ts -- <feature-branch-name>",
+    "Usage: bun run src/manager/prepare-manager-surface.ts -- [--repo-profile <profile>] <feature-branch-name>",
   )
   process.exit(1)
 }
@@ -59,10 +55,17 @@ function branchDirName(branchName: string): string {
 }
 
 function main() {
+  const argv = process.argv.slice(2)
+  const repoProfile = resolveRepoProfile(parseRepoProfileArg(argv))
   const branchName =
-    process.argv
-      .slice(2)
-      .find((value) => value !== "--")
+    argv
+      .filter(
+        (value, index) =>
+          value !== "--" &&
+          value !== "--repo-profile" &&
+          argv[index - 1] !== "--repo-profile",
+      )
+      .find(Boolean)
       ?.trim() ?? ""
   if (!branchName) {
     usage()
@@ -73,14 +76,17 @@ function main() {
     fail("feature branch name must contain at least one path-safe character")
   }
 
-  const worktreePath = `${DEFAULT_WORKTREE_ROOT}/${worktreeDirName}`
+  const worktreePath = `${repoProfile.managerWorktreeRoot}/${worktreeDirName}`
 
-  runChecked(["git", "fetch", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH)
+  runChecked(
+    ["git", "fetch", "origin", repoProfile.baseBranch],
+    repoProfile.repoPath,
+  )
 
   if (
     runCommand(
       ["git", "show-ref", "--verify", "--quiet", `refs/heads/${branchName}`],
-      DEFAULT_REPO_PATH,
+      repoProfile.repoPath,
     ).exitCode === 0
   ) {
     fail(`feature branch already exists on manager: ${branchName}`)
@@ -98,11 +104,12 @@ function main() {
       "-b",
       branchName,
       worktreePath,
-      `origin/${DEFAULT_BASE_BRANCH}`,
+      `origin/${repoProfile.baseBranch}`,
     ],
-    DEFAULT_REPO_PATH,
+    repoProfile.repoPath,
   )
 
+  console.log(`repo_profile=${repoProfile.id}`)
   console.log(`branch=${branchName}`)
   console.log(`worktree=${worktreePath}`)
   console.log(`start_command=cd ${worktreePath} && exec bash -l`)

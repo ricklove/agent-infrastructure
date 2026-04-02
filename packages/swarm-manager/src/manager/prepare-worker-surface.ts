@@ -1,8 +1,5 @@
-import { DEFAULT_WORKSPACE_DIR } from "../paths.js"
-
-const DEFAULT_BASE_BRANCH = "development"
-const DEFAULT_REPO_PATH = `${DEFAULT_WORKSPACE_DIR}/projects/agent-infrastructure`
-const DEFAULT_WORKTREE_ROOT = `${DEFAULT_WORKSPACE_DIR}/projects-worktrees/agent-infrastructure`
+import { DEFAULT_AGENT_HOME } from "../paths.js"
+import { parseRepoProfileArg, resolveRepoProfile } from "./repo-profiles.js"
 
 type CommandResult = {
   exitCode: number
@@ -49,7 +46,7 @@ function shellQuote(value: string): string {
 
 function usage(): never {
   console.log(
-    "Usage: bun run src/manager/prepare-worker-surface.ts -- <feature-branch-name>",
+    "Usage: bun run src/manager/prepare-worker-surface.ts -- [--repo-profile <profile>] <feature-branch-name>",
   )
   process.exit(1)
 }
@@ -81,11 +78,38 @@ function resolveHostAlias(): string {
   return alias
 }
 
+function shellCommand(command: string[]): string {
+  return command.map((value) => shellQuote(value)).join(" ")
+}
+
+function ensureWorkerGithubAuth(hostAlias: string): void {
+  runChecked([
+    "ssh",
+    hostAlias,
+    "mkdir -p /home/ec2-user/.config /home/ec2-user/runtime/tools /home/ec2-user/workspace/data/projects",
+  ])
+  runChecked([
+    "bash",
+    "-lc",
+    [
+      "set -euo pipefail",
+      `tar -cf - -C ${shellQuote(DEFAULT_AGENT_HOME)} .config/agent-github runtime/tools/github-app-token.sh workspace/data/projects/registry.json | ssh ${shellQuote(hostAlias)} ${shellQuote(`tar -xf - -C ${DEFAULT_AGENT_HOME}`)}`,
+    ].join("\n"),
+  ])
+}
+
 function main() {
+  const argv = process.argv.slice(2)
+  const repoProfile = resolveRepoProfile(parseRepoProfileArg(argv))
   const branchName =
-    process.argv
-      .slice(2)
-      .find((value) => value !== "--")
+    argv
+      .filter(
+        (value, index) =>
+          value !== "--" &&
+          value !== "--repo-profile" &&
+          argv[index - 1] !== "--repo-profile",
+      )
+      .find(Boolean)
       ?.trim() ?? ""
   if (!branchName) {
     usage()
@@ -97,16 +121,30 @@ function main() {
   }
 
   const hostAlias = resolveHostAlias()
-  const worktreePath = `${DEFAULT_WORKTREE_ROOT}/${worktreeDirName}`
+  const worktreePath = `${repoProfile.workerWorktreeRoot}/${worktreeDirName}`
+
+  runChecked(
+    ["git", "fetch", "origin", repoProfile.baseBranch],
+    repoProfile.repoPath,
+  )
+  ensureWorkerGithubAuth(hostAlias)
 
   const remoteScript = [
     "set -euo pipefail",
-    `REPO=${shellQuote(DEFAULT_REPO_PATH)}`,
-    `WORKTREE_ROOT=${shellQuote(DEFAULT_WORKTREE_ROOT)}`,
+    `export AGENT_GITHUB_CONFIG_ROOT=${shellQuote(`${DEFAULT_AGENT_HOME}/.config/agent-github`)}`,
+    `export AGENT_PROJECTS_REGISTRY_PATH=${shellQuote(`${DEFAULT_AGENT_HOME}/workspace/data/projects/registry.json`)}`,
+    `export GIT_ASKPASS=${shellQuote(`${DEFAULT_AGENT_HOME}/.config/agent-github/git-askpass.sh`)}`,
+    "export GIT_TERMINAL_PROMPT=0",
+    `REPO=${shellQuote(repoProfile.repoPath)}`,
+    `ORIGIN_URL=${shellQuote(repoProfile.originUrl)}`,
+    `WORKTREE_ROOT=${shellQuote(repoProfile.workerWorktreeRoot)}`,
     `WORKTREE=${shellQuote(worktreePath)}`,
     `BRANCH=${shellQuote(branchName)}`,
-    `BASE_BRANCH=${shellQuote(DEFAULT_BASE_BRANCH)}`,
-    'test -d "$REPO"',
+    `BASE_BRANCH=${shellQuote(repoProfile.baseBranch)}`,
+    'if ! test -d "$REPO/.git"; then',
+    '  mkdir -p "$(dirname "$REPO")"',
+    '  git clone "$ORIGIN_URL" "$REPO"',
+    "fi",
     'mkdir -p "$WORKTREE_ROOT"',
     'cd "$REPO"',
     'git fetch origin "$BASE_BRANCH"',
@@ -119,13 +157,14 @@ function main() {
     "fi",
     'git worktree add -b "$BRANCH" "$WORKTREE" "origin/$BASE_BRANCH"',
     'cd "$WORKTREE"',
-    "bun install",
+    shellCommand(repoProfile.installCommand),
   ].join("\n")
 
   runChecked(["ssh", hostAlias, remoteScript])
 
   const startCommand = `ssh ${hostAlias} 'cd ${worktreePath} && exec bash -l'`
   console.log(`worker_alias=${hostAlias}`)
+  console.log(`repo_profile=${repoProfile.id}`)
   console.log(`branch=${branchName}`)
   console.log(`worktree=${worktreePath}`)
   console.log(`start_command=${startCommand}`)

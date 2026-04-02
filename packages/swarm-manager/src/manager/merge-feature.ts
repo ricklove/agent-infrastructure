@@ -1,9 +1,4 @@
-import { DEFAULT_WORKSPACE_DIR } from "../paths.js"
-
-const DEFAULT_BASE_BRANCH = "development"
-const DEFAULT_REPO_PATH = `${DEFAULT_WORKSPACE_DIR}/projects/agent-infrastructure`
-const DEFAULT_WORKER_WORKTREE_ROOT = `${DEFAULT_WORKSPACE_DIR}/projects-worktrees/agent-infrastructure`
-const DEFAULT_MANAGER_WORKTREE_ROOT = `${DEFAULT_WORKSPACE_DIR}/projects-worktrees/agent-infrastructure-manager`
+import { parseRepoProfileArg, resolveRepoProfile } from "./repo-profiles.js"
 
 type CommandResult = {
   exitCode: number
@@ -67,42 +62,39 @@ function shellQuote(value: string): string {
 
 function usage(): never {
   console.log(
-    "Usage: bun run src/manager/merge-feature.ts -- <feature-branch-name>",
+    "Usage: bun run src/manager/merge-feature.ts -- [--repo-profile <profile>] <feature-branch-name>",
   )
   process.exit(1)
 }
 
-function setSharedCheckoutWritable(writable: boolean): void {
+function setSharedCheckoutWritable(repoPath: string, writable: boolean): void {
   const mode = writable ? "u+w" : "a-w"
   const script = [
     "set -euo pipefail",
-    `repo=${shellQuote(DEFAULT_REPO_PATH)}`,
+    `repo=${shellQuote(repoPath)}`,
     `chmod ${mode} "$repo"`,
     `find "$repo" -path "$repo/.git" -prune -o -exec chmod ${mode} {} +`,
   ].join("\n")
   runChecked(["bash", "-lc", script])
 }
 
-function refreshSharedDevelopmentCheckout(): void {
-  setSharedCheckoutWritable(true)
+function refreshSharedDevelopmentCheckout(
+  repoPath: string,
+  baseBranch: string,
+): void {
+  setSharedCheckoutWritable(repoPath, true)
   try {
-    runChecked(
-      ["git", "fetch", "origin", DEFAULT_BASE_BRANCH],
-      DEFAULT_REPO_PATH,
-    )
+    runChecked(["git", "fetch", "origin", baseBranch], repoPath)
     const currentBranch = runChecked(
       ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-      DEFAULT_REPO_PATH,
+      repoPath,
     )
-    if (currentBranch !== DEFAULT_BASE_BRANCH) {
-      runChecked(["git", "checkout", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH)
+    if (currentBranch !== baseBranch) {
+      runChecked(["git", "checkout", baseBranch], repoPath)
     }
-    runChecked(
-      ["git", "pull", "--ff-only", "origin", DEFAULT_BASE_BRANCH],
-      DEFAULT_REPO_PATH,
-    )
+    runChecked(["git", "pull", "--ff-only", "origin", baseBranch], repoPath)
   } finally {
-    setSharedCheckoutWritable(false)
+    setSharedCheckoutWritable(repoPath, false)
   }
 }
 
@@ -133,11 +125,58 @@ function resolveHostAlias(): string {
   return alias
 }
 
+function createPullRequest(
+  repoPath: string,
+  featureBranch: string,
+  baseBranch: string,
+): string {
+  const token = runChecked(
+    ["bash", "./tools/github-app-token.sh", "--repo-path", repoPath, "token"],
+    repoPath,
+  )
+  const repoRemote = runChecked(
+    ["git", "remote", "get-url", "origin"],
+    repoPath,
+  )
+  const repoMatch = repoRemote.match(/github\.com[:/](.+?)\/(.+?)(?:\.git)?$/)
+  if (!repoMatch) {
+    fail(`could not parse GitHub repo from remote: ${repoRemote}`)
+  }
+  const owner = repoMatch[1]
+  const repo = repoMatch[2]
+  const title = featureBranch.replaceAll(/[-_]+/g, " ").trim()
+  const body = `Automated feature PR for ${featureBranch}.`
+  const response = runChecked([
+    "curl",
+    "-sS",
+    "-L",
+    "-H",
+    "Accept: application/vnd.github+json",
+    "-H",
+    `Authorization: Bearer ${token}`,
+    `https://api.github.com/repos/${owner}/${repo}/pulls`,
+    "-d",
+    JSON.stringify({
+      title,
+      head: featureBranch,
+      base: baseBranch,
+      body,
+    }),
+  ])
+  const urlMatch = response.match(/"html_url":\s*"([^"]+)"/)
+  if (!urlMatch) {
+    console.error(response)
+    fail("could not parse pull request url from GitHub response")
+  }
+  return urlMatch[1]
+}
+
 function ensureWorkerBranchReady(
   hostAlias: string,
   branchName: string,
+  workerWorktreeRoot: string,
 ): string {
-  const workerWorktreePath = `${DEFAULT_WORKER_WORKTREE_ROOT}/${branchDirName(branchName)}`
+  const workerWorktreePath = `${workerWorktreeRoot}/${branchDirName(branchName)}`
   const mergeBaseBranch = `merge-base/${branchDirName(branchName)}`
   const remoteScript = [
     "set -euo pipefail",
@@ -177,10 +216,17 @@ function ensureWorkerBranchReady(
 }
 
 function main() {
+  const argv = process.argv.slice(2)
+  const repoProfile = resolveRepoProfile(parseRepoProfileArg(argv))
   const featureBranch =
-    process.argv
-      .slice(2)
-      .find((value) => value !== "--")
+    argv
+      .filter(
+        (value, index) =>
+          value !== "--" &&
+          value !== "--repo-profile" &&
+          argv[index - 1] !== "--repo-profile",
+      )
+      .find(Boolean)
       ?.trim() ?? ""
   if (!featureBranch) {
     usage()
@@ -193,23 +239,60 @@ function main() {
 
   const mergeBaseBranch = `merge-base/${featureDirName}`
   const integrationBranch = `merge-${featureDirName}`
-  const managerWorktreePath = `${DEFAULT_MANAGER_WORKTREE_ROOT}/${featureDirName}`
+  const managerWorktreePath = `${repoProfile.managerWorktreeRoot}/${featureDirName}`
   const hostAlias = resolveHostAlias()
-  const workerWorktreePath = `${DEFAULT_WORKER_WORKTREE_ROOT}/${featureDirName}`
+  const workerWorktreePath = `${repoProfile.workerWorktreeRoot}/${featureDirName}`
   const workerRepoRemote = `ssh://ec2-user@${hostAlias}${workerWorktreePath}`
 
-  runChecked(["git", "fetch", "origin", DEFAULT_BASE_BRANCH], DEFAULT_REPO_PATH)
+  runChecked(
+    ["git", "fetch", "origin", repoProfile.baseBranch],
+    repoProfile.repoPath,
+  )
   runChecked(
     [
       "git",
       "push",
       workerRepoRemote,
-      `refs/remotes/origin/${DEFAULT_BASE_BRANCH}:refs/heads/${mergeBaseBranch}`,
+      `refs/remotes/origin/${repoProfile.baseBranch}:refs/heads/${mergeBaseBranch}`,
     ],
-    DEFAULT_REPO_PATH,
+    repoProfile.repoPath,
   )
 
-  ensureWorkerBranchReady(hostAlias, featureBranch)
+  ensureWorkerBranchReady(
+    hostAlias,
+    featureBranch,
+    repoProfile.workerWorktreeRoot,
+  )
+
+  if (repoProfile.integrationMode === "push_feature_branch_pr_to_staging") {
+    runChecked(
+      [
+        "git",
+        "fetch",
+        workerRepoRemote,
+        `${featureBranch}:refs/heads/${featureBranch}`,
+      ],
+      repoProfile.repoPath,
+    )
+    runChecked(
+      ["git", "push", "origin", `${featureBranch}:${featureBranch}`],
+      repoProfile.repoPath,
+    )
+    const pullRequestUrl = createPullRequest(
+      repoProfile.repoPath,
+      featureBranch,
+      repoProfile.pullRequestBaseBranch ?? "staging",
+    )
+
+    console.log(`merge_outcome=completed`)
+    console.log(`repo_profile=${repoProfile.id}`)
+    console.log(`worker_alias=${hostAlias}`)
+    console.log(`feature_branch=${featureBranch}`)
+    console.log(`worker_merge_base_branch=${mergeBaseBranch}`)
+    console.log(`worker_worktree=${workerWorktreePath}`)
+    console.log(`pull_request_url=${pullRequestUrl}`)
+    return
+  }
 
   if (
     runCommand(
@@ -220,7 +303,7 @@ function main() {
         "--quiet",
         `refs/heads/${integrationBranch}`,
       ],
-      DEFAULT_REPO_PATH,
+      repoProfile.repoPath,
     ).exitCode === 0
   ) {
     fail(`manager integration branch already exists: ${integrationBranch}`)
@@ -240,9 +323,9 @@ function main() {
       "-b",
       integrationBranch,
       managerWorktreePath,
-      `origin/${DEFAULT_BASE_BRANCH}`,
+      `origin/${repoProfile.baseBranch}`,
     ],
-    DEFAULT_REPO_PATH,
+    repoProfile.repoPath,
   )
 
   runChecked(
@@ -256,12 +339,13 @@ function main() {
   )
   runChecked(["git", "merge", "--no-edit", featureBranch], managerWorktreePath)
   runChecked(
-    ["git", "push", "origin", `${integrationBranch}:${DEFAULT_BASE_BRANCH}`],
+    ["git", "push", "origin", `${integrationBranch}:${repoProfile.baseBranch}`],
     managerWorktreePath,
   )
-  refreshSharedDevelopmentCheckout()
+  refreshSharedDevelopmentCheckout(repoProfile.repoPath, repoProfile.baseBranch)
 
   console.log(`merge_outcome=completed`)
+  console.log(`repo_profile=${repoProfile.id}`)
   console.log(`worker_alias=${hostAlias}`)
   console.log(`feature_branch=${featureBranch}`)
   console.log(`worker_merge_base_branch=${mergeBaseBranch}`)

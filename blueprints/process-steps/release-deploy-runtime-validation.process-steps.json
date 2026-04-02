@@ -4,19 +4,19 @@
   "steps": [
     {
       "id": "promote_release",
-      "title": "Merge the integrated `development` commit onto `main`, push `main`, and create and push a release tag from that exact promoted commit"
+      "title": "Run the repository-profile promotion step: for runtime repos, merge the integrated `development` commit onto `main`, push `main`, and create and push a release tag from that exact promoted commit; for PR-to-staging repos, merge the reviewed PR into `staging` and use that merged staging revision as the deploy candidate"
     },
     {
       "id": "deploy_runtime",
-      "title": "Run `bun run deploy-manager-runtime <release-tag>` to deploy the promoted release tag, or run `bun run deploy-manager-runtime` to deploy `origin/main` when no explicit release tag is being used"
+      "title": "Run the repository-profile deploy step: for runtime repos, use `bun run deploy-manager-runtime <release-tag>` or `bun run deploy-manager-runtime`; for PR-to-staging repos, wait for the staged deployment path driven by the merged PR and capture the deployed revision or version"
     },
     {
       "id": "verify_runtime_revision_and_versions",
-      "title": "Verify the runtime checkout revision match and frontend-backend version match"
+      "title": "Verify the repository-profile environment revision match and any required frontend-backend version match"
     },
     {
       "id": "perform_live_health_verification",
-      "title": "Check `http://127.0.0.1:3000/api/health` and confirm the dashboard and manager report healthy status"
+      "title": "Run the repository-profile live health verification: for runtime repos, check `http://127.0.0.1:3000/api/health` and confirm the dashboard and manager report healthy status; for PR-to-staging repos, confirm the staged environment loads and the changed behavior is healthy there"
     }
   ]
 }

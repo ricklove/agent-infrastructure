@@ -8,7 +8,7 @@
     },
     {
       "id": "setup_worker_surface",
-      "title": "Run `bun run agent:prepare-worker-surface -- <feature-branch-name>` to ensure a worker is ready, create the worker-hosted feature-branch worktree from `origin/development`, run `bun install`, and print the resulting `start_command` for entering that worktree"
+      "title": "Run `bun run agent:prepare-worker-surface -- [--repo-profile <repo-profile>] <feature-branch-name>` to ensure a worker is ready, prepare the target repository on that worker, create the worker-hosted feature-branch worktree from the repository profile base branch, run the repository profile install command, and print the resulting `start_command` for entering that worktree"
     },
     {
       "id": "assess_worker_preflight",
