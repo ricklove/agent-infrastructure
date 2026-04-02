@@ -18,57 +18,22 @@ const Assessment = {
 };
 
 const CurrentReality = {
-  verticalSlice: define.concept("WorkingDashboardVerticalSlice"),
-  viewportBoundLayout: define.concept("ViewportBoundThreadLayout"),
-  filePersistence: define.concept("FileBackedCanonicalSessions"),
-  realtime: define.concept("RealtimeSessionUpdates"),
-  processLifecycleVerificationGap: define.concept("ProcessLifecycleVerificationGap"),
-  directoryAndTitleQueueing: define.concept("QueuedDirectoryAndTitleInstructions"),
-  codexAndClaudeExecution: define.concept("CodexAndClaudeProviderExecution"),
-  multiAgentSchemaFoundation: define.concept("PartialMultiAgentSchemaFoundation"),
-  claudeProcessModePolicy: define.concept("ClaudeProcessModePolicy"),
-  currentChatProviderSettings: define.concept("CurrentChatProviderSettingsMenu"),
-  clipboardImagePaste: define.concept("ClipboardImagePasteSupport"),
-  archivedSessionOrganization: define.concept("ArchivedSessionOrganization"),
-  sessionListSearch: define.concept("SessionListSearch"),
-  sessionListQuickProcessSet: define.concept("SessionListQuickProcessSet"),
-  processResolutionGuard: define.concept("ProcessResolutionGuard"),
-  stalledTurnWatchdog: define.concept("StalledTurnWatchdog"),
-  providerErrorRetry: define.concept("ProviderErrorRetry"),
-  typingAwareIdleSuppression: define.concept("TypingAwareIdleSuppression"),
-  canonicalActivityHistory: define.concept("CanonicalActivityHistory"),
-  providerLimitActivity: define.concept("ProviderLimitActivity"),
-  providerUsageTelemetryGap: define.concept("ProviderUsageTelemetryGap"),
-  sessionListWorkflowPolishGap: define.concept("SessionListWorkflowPolishGap"),
-  threadNavigationGap: define.concept("ThreadNavigationGap"),
-  transcriptRawViewGap: define.concept("TranscriptRawViewGap"),
-  backendOwnedWatchdogContinuity: define.concept("BackendOwnedWatchdogContinuity"),
-  settingsAndMessageStateGap: define.concept("SettingsAndMessageStateGap"),
-  genericSessionActivity: define.concept("GenericSessionActivityOnly"),
-  claudeSdkModelCatalog: define.concept("ClaudeSdkModelCatalog"),
-  fixedTurnDeadline: define.concept("FixedCodexTurnDeadline"),
-  noFolderOrganization: define.concept("NoCanonicalFolderOrganization"),
-  plannedProviders: define.concept("PlannedButUnimplementedProviders"),
-  noWorkspaceRepoDurability: define.concept("NoManagerControlledWorkspaceRepoDurability"),
-  dashboardSessionBoundary: define.concept("DashboardSessionBoundary"),
+  durableAgentBindingFoundation: define.concept("DurableAgentBindingFoundation"),
+  managerHostedBindingSlice: define.concept("ManagerHostedBindingSlice"),
+  compatibilityNormalization: define.concept("CompatibilityNormalization"),
+  canonicalTranscriptAuthority: define.concept("CanonicalTranscriptAuthority"),
+  targetedVerification: define.concept("TargetedVerificationEvidence"),
   deferredScope: define.concept("DeferredProductScope"),
   workflowAlignment: define.concept("DevelopmentProcessAlignment"),
 };
 
 AgentChatBlueprintState.defines(`
-- CurrentImplementationStatus means Agent Chat currently exists as a real dashboard feature with a working backend, working UI, canonical file-backed session persistence, realtime updates, clipboard image paste support, and more than one implemented provider path.
-- AssessmentConfidence is medium-high because the current state now has both direct source inspection and direct live-browser verification against the deployed dashboard at matching frontend and backend revisions.
-- ImplementationEvidence includes the file-backed store under packages/agent-chat-server/src/store.ts, the HTTP and WebSocket session backend under packages/agent-chat-server/src/index.ts, the Codex execution path under packages/agent-chat-server/src/codex-provider.ts, the Claude execution path under packages/agent-chat-server/src/claude-provider.ts, the new shared multi-agent schema foundation under packages/agent-chat-server/src/schema.ts, the new targeted delivery regression coverage under packages/agent-chat-server/src/store.test.ts, the shared dashboard session helper under packages/dashboard-plugin/src/session-client.ts, the dashboard surface under packages/agent-chat-ui/src/AgentChatScreen.tsx, the dashboard shell constraint in packages/dashboard-ui/src/DashboardShell.tsx, and responsive live-browser screenshots captured under /home/ec2-user/state/screenshots/agent-chat-release-af79459/, /home/ec2-user/state/screenshots/agent-chat-mobile-audit-local-2/, and /home/ec2-user/state/screenshots/agent-chat-mobile-settings-submit/.
-- ImplementationEvidence also includes shared ticket ownership now being localized under packages/agent-chat-ui/src/ticket-types.ts and packages/agent-chat-ui/src/ticket-ui.tsx, with both AgentChatScreen.tsx and TicketView.tsx consuming the same ticket status and checklist semantics.
-- This blueprint-state compares current implementation reality against the ideal Agent Chat product blueprint in agent-chat.agentish.ts, the implementation-resolved dashboard blueprint in agent-chat-dashboard-implementation.agentish.ts, and the shared workflow rules in development-process.agentish.ts.
-- ImplementationGap means the current product does not yet satisfy the full ideal Agent Chat blueprint around provider breadth, canonical multi-agent participation, workspace references, import flows, compaction management, and inspectable retained context artifacts.
-- ImplementationGap also includes chat durability still stopping at canonical file persistence rather than extending into manager-controlled workspace git commit and push.
-- ImplementationGap also includes the lack of a full layered verification suite for process lifecycle behavior at the real server boundary and at the headless client state-store boundary.
-- ImplementationGap also includes multi-agent host routing and projection still being only partially implemented today: canonical participant identity, visibility resolution, delivery-state persistence, participant-aware message routes, and manager-hosted Codex/Claude queue semantics are landed, but worker-host participants, offline replay, and full provider execution projection across multiple active agent hosts remain incomplete.
-- KnownIssue means the provider catalog and UI still include planned providers that do not yet execute in the backend today.
-- KnownIssue also includes the current Agent Chat provider layer still being uneven, with Codex and Claude implemented while OpenRouter and Gemini remain planned.
-- KnownIssue also includes the current Codex adapter retaining an adapter-level timeout policy that remains separate from the newer Claude path.
-- KnownIssue also includes the current implementation now supporting in-session provider switching ahead of the older V1 cut language in the dashboard implementation blueprint, so that blueprint should no longer be read as excluding the shipped behavior.
+- CurrentImplementationStatus means the current Agent Chat implementation has landed a bounded server-side refactor toward the refined blueprint direction: durable non-human agent identity through agentId plus replaceable provider attachment through providerBinding.
+- AssessmentConfidence is medium-high because this state is grounded in direct source inspection, targeted worker-local tests, successful build and lint verification, clean server startup on the worker surface, and live API verification against a running local server.
+- ImplementationEvidence includes packages/agent-chat-server/src/schema.ts, packages/agent-chat-server/src/store.ts, packages/agent-chat-server/src/store.test.ts, worker-local runtime verification on http://127.0.0.1:8891, and the worker-local verification artifact at /home/ec2-user/temp/provider-binding-verification-8891.svg.
+- This blueprint-state compares current implementation reality against the intended Agent Chat blueprint in agent-chat.agentish.ts, especially its durable ChatAgent identity, replaceable ChatAgentProviderBinding, compatibility-preserving participant vocabulary, and manager-hosted bounded-slice language.
+- ImplementationGap means the current code has not yet completed the full blueprint direction around detached bindings, binding replacement, context-policy-driven catch-up after rebinding, worker-host execution targets, and broader multi-endpoint runtime behavior.
+- KnownIssue means current runtime behavior is still manager-hosted only even though execution-target vocabulary is now modeled more cleanly under provider binding.
 `);
 
 AgentChatBlueprintState.contains(
@@ -77,390 +42,82 @@ AgentChatBlueprintState.contains(
   Assessment.evidence,
   Assessment.gap,
   Assessment.issue,
-  CurrentReality.verticalSlice,
-  CurrentReality.viewportBoundLayout,
-  CurrentReality.filePersistence,
-  CurrentReality.realtime,
-  CurrentReality.processLifecycleVerificationGap,
-  CurrentReality.directoryAndTitleQueueing,
-  CurrentReality.codexAndClaudeExecution,
-  CurrentReality.multiAgentSchemaFoundation,
-  CurrentReality.claudeProcessModePolicy,
-  CurrentReality.currentChatProviderSettings,
-  CurrentReality.clipboardImagePaste,
-  CurrentReality.archivedSessionOrganization,
-  CurrentReality.sessionListSearch,
-  CurrentReality.sessionListQuickProcessSet,
-  CurrentReality.processResolutionGuard,
-  CurrentReality.stalledTurnWatchdog,
-  CurrentReality.providerErrorRetry,
-  CurrentReality.typingAwareIdleSuppression,
-  CurrentReality.canonicalActivityHistory,
-  CurrentReality.providerLimitActivity,
-  CurrentReality.providerUsageTelemetryGap,
-  CurrentReality.sessionListWorkflowPolishGap,
-  CurrentReality.threadNavigationGap,
-  CurrentReality.transcriptRawViewGap,
-  CurrentReality.backendOwnedWatchdogContinuity,
-  CurrentReality.settingsAndMessageStateGap,
-  CurrentReality.genericSessionActivity,
-  CurrentReality.claudeSdkModelCatalog,
-  CurrentReality.fixedTurnDeadline,
-  CurrentReality.noFolderOrganization,
-  CurrentReality.plannedProviders,
-  CurrentReality.noWorkspaceRepoDurability,
-  CurrentReality.dashboardSessionBoundary,
+  CurrentReality.durableAgentBindingFoundation,
+  CurrentReality.managerHostedBindingSlice,
+  CurrentReality.compatibilityNormalization,
+  CurrentReality.canonicalTranscriptAuthority,
+  CurrentReality.targetedVerification,
   CurrentReality.deferredScope,
   CurrentReality.workflowAlignment,
 );
 
-CurrentReality.verticalSlice.means(`
-- the dashboard loads a real Agent Chat screen instead of a placeholder
-- the backend serves provider catalog, session list, session creation, session read, session patch, interrupt, and websocket subscription routes
-- the UI can create chats, open chats, send messages, stream assistant deltas, rename chats, and show run activity
+CurrentReality.durableAgentBindingFoundation.means(`
+- packages/agent-chat-server/src/schema.ts now defines and normalizes durable non-human identity through agentId together with explicit providerBinding data for provider-backed agent participants
+- providerBinding now carries bindingId, providerKind, executionTarget, providerSessionId, and attachment status instead of relying on provider thread metadata as the primary participant identity surface
+- default provider-backed manager participants now materialize with explicit providerBinding records and stable agent identity
+- providerKind remains present as a compatibility-facing field, but the intended internal direction is durable agent identity plus provider binding rather than provider kind or provider thread as identity
 `);
 
-CurrentReality.viewportBoundLayout.means(`
-- the dashboard shell now constrains feature rendering to the browser viewport instead of letting the page grow with sidebar content
-- the Agent Chat sessions list scrolls independently from the active thread and composer
-- short transcripts remain visible with the composer in the same viewport rather than creating a tall dead zone between the first message and the input
-- the dashboard shell main-menu rail is now hidden by default on mobile and opens as an overlay drawer instead of permanently stealing horizontal space from feature content
-- mobile transcript cards that represent assistant stream checkpoints or thought checkpoints now use the full available thread width instead of collapsing into a narrow unreadable column
-- the mobile session rail overlay still has a layering bug where the floating composer dock can remain above the drawer and block menu content, so the current mobile overlay behavior is still partial rather than complete
-- this specific behavior was verified in-browser at small, medium, and wide viewport sizes
+CurrentReality.managerHostedBindingSlice.means(`
+- the currently landed runtime slice is manager-hosted only
+- manager-hosted Codex and Claude participants are persisted with stable agentId values and attached providerBinding records
+- providerBinding.executionTarget currently resolves to manager for the landed slice
+- current session creation and store reads now expose those manager-hosted binding fields in returned session participant data
+- runtime behavior, visibility, and delivery semantics remain aligned to the existing manager-hosted chat flow while using the newer binding-aware participant normalization underneath
 `);
 
-CurrentReality.filePersistence.means(`
-- canonical session metadata is stored as session.json per session under durable app data
-- canonical transcript history is stored as messages.jsonl per session under durable app data
-- runtime logs and legacy sqlite migration inputs remain separate from canonical app data
+CurrentReality.compatibilityNormalization.means(`
+- packages/agent-chat-server/src/store.ts now normalizes older stored participant data into the newer durable-agent-plus-binding shape during reads
+- older manager-hosted sessions that only carried legacy participant or provider fields continue to load through inferred manager-hosted binding state
+- the current bounded slice intentionally allows legacy-facing fields and newer binding-aware fields to coexist so the internal source of truth can move without breaking stored sessions
 `);
 
-CurrentReality.realtime.means(`
-- the backend tracks per-session runtime activity in memory
-- websocket subscribers receive session snapshots, incremental updates, run activity, run deltas, run completion, run interruption, and run failure events
-- the browser uses those events to keep transcript, queued-message, and activity state live
+CurrentReality.canonicalTranscriptAuthority.means(`
+- canonical session and transcript ownership still belongs to Agent Chat rather than to provider-local session state
+- providerBinding is treated as replaceable execution attachment metadata, not as canonical history ownership
+- delivery and visibility continue to resolve at the canonical session layer even though provider-backed agent participants now carry richer binding metadata
+- this pass improves the identity and attachment model under the existing manager-hosted runtime without changing transcript authority
 `);
 
-CurrentReality.processLifecycleVerificationGap.means(`
-- Agent Chat does not yet have a blueprint-complete layered verification suite for process lifecycle behavior
-- the current gap is concentrated in Bun server integration coverage for the real HTTP plus websocket contract and in headless client state-store coverage for process-aware operator workflow state
-- process creation, process reassignment, interruption, resume on the same active ticket, completion-token handling, blocked-ticket handling, queued follow-up handling, and idle continuation behavior should be treated as priority verification scope
-- deterministic provider fixtures are the intended way to cover those server-level edge cases without depending on live provider credentials
-- full browser end-to-end process coverage is intentionally deferred until the server and state-store layers exist
-`);
-
-CurrentReality.directoryAndTitleQueueing.means(`
-- changing session cwd writes canonical session state immediately
-- changing session cwd also queues a provider-visible system instruction for the next turn
-- changing session title writes canonical session state immediately
-- changing session title also queues a provider-visible system instruction for the next turn
-`);
-
-CurrentReality.codexAndClaudeExecution.means(`
-- Codex app-server and Claude Agent SDK both have working execution adapters in the current backend
-- active Codex and Claude turns may be interrupted while a run is active
-- provider thread ids remain metadata attached to the workspace-owned session rather than replacing canonical chat history
-`);
-
-CurrentReality.multiAgentSchemaFoundation.means(`
-- the server codebase now has a shared schema module at packages/agent-chat-server/src/schema.ts for Agent Chat participant identity, host identity, default visibility, visibility-tag parsing, delivery records, and legacy compatibility helpers
-- the canonical store in packages/agent-chat-server/src/store.ts now persists participants, author participant identity, resolved message visibility, and recipient-scoped delivery records while preserving compatibility with legacy single-agent sessions and messages
-- the HTTP message route in packages/agent-chat-server/src/index.ts now accepts participant-authored messages and participant-scoped visibility overrides for the first manager-hosted multi-agent test slice
-- the current implementation slice remains manager-hosted, with Codex and Claude represented as distinct manager-hosted agent participants and queued delivery following the active provider participant when a session switches between them
-- provider input shaping now preserves peer authorship as attributed external input for non-user participant messages before they are handed to the active provider runtime, but full multi-host provider execution and offline replay are still incomplete
-- worker-local verification confirmed that the new schema, store, route, and targeted delivery regression changes build, load, and behave correctly in live server API checks after refreshing the worker install state
-`);
-
-CurrentReality.claudeProcessModePolicy.means(`
-- the current Claude adapter now maps Discuss sessions to Claude SDK plan mode instead of writable execution mode
-- the current Claude adapter also maps sessions with no explicit process blueprint to Claude SDK plan mode so question-first chats do not silently gain edit capability
-- blueprint-authoring and implementation-oriented process selections still use Claude writable execution mode
-`);
-
-CurrentReality.currentChatProviderSettings.means(`
-- the composer-area current-chat menu now exposes provider, model, auth-profile, directory, and image-model controls for an existing session
-- existing sessions may switch between currently ready providers without creating a new canonical chat session
-- changing provider settings clears provider-owned thread metadata and preserves canonical transcript history
-- provider switching is blocked while a run is active, but otherwise works as a normal session patch
-- live browser verification confirms the current-chat provider, model, and auth-profile controls render as comboboxes on the deployed dashboard
-- the current-chat settings panel now keeps its primary save action pinned inside the menu on constrained mobile viewports instead of letting the action fall below the visible sheet
-- local iPhone-sized browser verification confirmed that pressing the focused text field's keyboard confirmation key submits the current-chat settings form and persists the session patch
-`);
-
-CurrentReality.clipboardImagePaste.means(`
-- the composer accepts pasted clipboard image files and stages them as removable attachments before send
-- sending a message with pasted images stores those images durably under canonical app data rather than leaving them in browser-only blob state
-- transcript rendering now shows stored image blocks inline rather than reducing them to raw URL text
-- the current Codex and Claude provider adapters now receive structured image input derived from the canonical image blocks
-`);
-
-CurrentReality.transcriptRawViewGap.means(`
-- the current transcript still lacks a per-message raw-text toggle, so once markdown rendering or image-link expansion kicks in the operator cannot yet inspect the original unrendered message body inline
-- manager-host live validation also still depends on the referenced image source remaining readable from the deployed host, so worker-local preview paths that no longer exist on the manager still degrade into an unavailable-image state even though the transcript now recognizes them as image links
-- copied per-message links still inherit the current browser origin verbatim, so temporary tunnel domains can leak into shared session/message references and go stale as soon as that preview origin rotates
-- markdown links that reference in-app chat messages still render only as ordinary links today, so pasted `/chat?sessionId=...#message-...` references do not yet preview the target chat and message context inline
-- local file references currently navigate through dashboard-level preview routes instead of opening an in-chat modal viewer, so inspecting a referenced file still pulls the operator out of the conversation context
-`);
-
-CurrentReality.archivedSessionOrganization.means(`
-- canonical session metadata now tracks whether a chat is archived
-- archived chats are removed from the default main list without deleting transcript or provider metadata
-- the session-list menu now reveals a hidden archived section where archived chats can be browsed and restored
-- the current-chat menu also exposes archive or restore visibility controls for the active session
-`);
-
-CurrentReality.sessionListSearch.means(`
-- the session list now exposes an inline search field
-- search filters sessions by title, preview, provider, model, and cwd without leaving the session surface
-- the same filter applies to both the main chat list and the archived section when that section is opened
-`);
-
-CurrentReality.sessionListQuickProcessSet.means(`
-- the active-thread header now exposes a compact process selector for the current chat near the thread menu button
-- the operator can change the assigned process blueprint for the active session without opening the current-chat settings menu
-- the quick-set control uses the same repository-backed process blueprint catalog as new-chat creation and current-chat settings
-- the unassigned quick-set state is shown explicitly rather than as an imperative placeholder action label
-- creating a new chat with a selected process blueprint now emits the waiting expectation entry immediately instead of leaving the fresh transcript blank about the assigned contract
-- changing the process assignment updates the queued next-turn system instruction so the agent sees the updated expectation on the next explicit human-send turn
-- the older bug where a watchdog-only follow-up turn could consume that queued process expectation before the operator's next real send is now closed in the current source implementation
-- the remaining older bug where selecting a process could immediately inherit stale provider-idle state and fire a zero-delay watchdog before the next real send should now be treated as a backend scheduling bug rather than intended behavior
-`);
-
-CurrentReality.processResolutionGuard.means(`
-- when the active session process reaches its completion token, the quick-set control enters a required unresolved state instead of silently reusing the completed process contract
-- when the active ticket reaches a blocked condition, the session should pause that same ticket instead of forcing a fresh process selection before the operator can comment
-- agent-emitted blocked tokens and system-owned repeated-non-progress detection should feed the same blocked-ticket pause behavior
-- the blocked ticket should remain resumable from the same chat while it stays the active ticket
-- a user comment on that still-active blocked ticket should resume the same ticket and reset its same-step attempt counter
-- changing the active ticket should move chat focus without deleting or silently replacing the previously active ticket record
-- only the done condition should enter the required unresolved process-selection guard
-- the done unresolved state is shown as red Done warning text in the quick-set selector rather than as a stored process value or selectable option
-- the current-chat settings surface also highlights that completed-process state and keeps normal process options available for resolution
-- the composer send path is blocked only for done-state resolution that still requires the operator to choose the next normal process selection
-- the unresolved Done state is now backed by a distinct selector sentinel value, so the operator can explicitly choose the same previous process again and have that count as a fresh re-application of the contract
-- reapplying the same completed process now resets the completed watchdog state and queues the next-turn process instruction again instead of being ignored as a no-op
-`);
-
-CurrentReality.stalledTurnWatchdog.means(`
-- watchdog scheduling now tracks the last meaningful visible progress time even while a provider turn remains in running state
-- a stalled running turn can now flip watchdog state to nudged and append a watchdog prompt before the provider emits turn completion
-- local verification confirmed that a long-running shell command session stayed provider-running, then received its Full Development Process watchdog prompt after the configured inactivity budget expired
-- the process-blueprint watchdog prompts now explicitly tell the agent to resume real work by default and reserve plain text terminal replies for exact done or blocked outcomes
-- when the provider finishes a turn and reports itself idle before the process is done or blocked, the watchdog becomes immediately eligible instead of waiting a second idle timeout
-- repeated system-owned nudges on the same current ticket step should increment a consecutive same-step attempt counter
-- if the same current step still has not advanced after three consecutive attempts, the system should block that ticket step automatically
-- a user comment that resumes the same active blocked ticket should reset that same-step attempt counter before execution continues
-`);
-
-CurrentReality.providerErrorRetry.means(`
-- provider failures now record canonical activity history instead of silently vanishing into transient runtime state
-- retryable provider errors enter bounded retry with backoff rather than immediately collapsing the process into dead stop
-- non-retryable or exhausted failures still surface as explicit run failure state instead of idle-watchdog wording
-`);
-
-CurrentReality.typingAwareIdleSuppression.means(`
-- active human typing now sends ephemeral typing presence to the backend
-- while that typing grace window is active, idle-watchdog prompting is deferred
-- once typing stops and the grace window expires, normal watchdog scheduling resumes
-`);
-
-CurrentReality.canonicalActivityHistory.means(`
-- surfaced provider activity such as tool execution and background-task transitions now enters canonical transcript history as activity messages
-- those activity records survive refresh and backend restart instead of existing only as transient browser state
-- canonical activity coverage is still incomplete across every possible surfaced event class, so this area remains partial rather than finished
-`);
-
-CurrentReality.providerLimitActivity.means(`
-- the Codex adapter now opts into supported app-server raw status events through the experimental API capability
-- when Codex exposes token-budget, quota, or context-window exhaustion without assistant text, Agent Chat now converts that provider status into canonical transcript activity instead of falling back to an empty assistant response
-- local verification with an isolated fake Codex app-server confirmed that an exhausted-provider completion now records a concrete provider-limit activity message in canonical history
-`);
-
-CurrentReality.providerUsageTelemetryGap.means(`
-- the Codex adapter now surfaces latest token-usage updates into session runtime state instead of keeping them only inside completion-issue interpretation
-- the current browser UI now exposes latest reported context usage, context window, cached-input usage, and last-turn usage for the active session in the thread header
-- current workspace canonical session files still do not persist that provider usage telemetry, so provider-local Codex session artifacts remain the strongest fallback evidence source outside live runtime state
-- the remaining gap is persistence and broader provider coverage, not basic runtime or UI visibility for Codex usage telemetry
-`);
-
-CurrentReality.backendOwnedWatchdogContinuity.means(`
-- the Agent Chat backend runs as a detached server process separate from the dashboard web process
-- disconnected dashboard clients do not pause process handling or watchdog timers once the Agent Chat backend is already running
-- direct verification confirmed that after the dashboard process on :3000 was stopped, agent-chat-server on :8789 remained alive and still emitted a Full Development Process watchdog prompt for a stalled running turn
-- the server package now owns the base Agent Chat dashboard plugin definition, while the UI package only composes the screen loader onto that server-owned feature definition
-- the dashboard plugin definition still declares Agent Chat as an explicit `always` backend so dashboard startup proactively restores the backend instead of waiting for a new chat request
-- unresolved idle watchdog episodes are now re-armed from persisted session timestamps on backend restart, so overdue sessions can nudge promptly after boot instead of waiting for a later interaction
-`);
-
-CurrentReality.sessionListWorkflowPolishGap.means(`
-- the session list now renders through memoized main and archived session-card boundaries, so ordinary thread and composer churn no longer re-renders every card action button in the rail
-- session-list card hierarchy and spacing are still looser than the intended compact workflow surface
-- titles, status color, and model metadata do not yet reflect the intended stronger visual hierarchy
-- button and icon chrome still costs too much row space in the session list
-- the top-of-rail text and new-chat surface still consume space that should be easier to reclaim
-- the archived reveal control still has a known broken path and needs reliability work
-- the new-chat surface still needs explicit scrollability under constrained rail heights
-`);
-
-CurrentReality.threadNavigationGap.means(`
-- loading a session still relies on a short retry burst to reach the latest content after the transcript mounts
-- if the thread is already pinned at the bottom, live transcript growth can still drift upward instead of keeping the latest visible content in view
-- the current custom transcript rail is still not reliable enough to justify its space and should be removed or deferred until a clearly stable design exists
-- the latest mobile audit recorded zero document-level and body-level horizontal overflow on the verified chat viewport, but horizontal containment should still be watched as transcript chrome evolves
-- richer local zoom or lens treatment is still deferred until there is a version that preserves the stability of the thin rail
-`);
-
-CurrentReality.settingsAndMessageStateGap.means(`
-- chat settings are still more constrained than intended during active work
-- provider selection in an active session can still reset unexpectedly before save
-- duplicate message rendering still appears after send until refresh in some flows
-- queued and transcript rendering still blur pending versus delivered state instead of showing one clear message-state model
-- queued user messages are now consumed into the next provider turn as one batch instead of one-at-a-time follow-up turns
-- when queued system instructions such as process changes are consumed at run start, they now become canonical transcript history at that moment and survive refresh
-- Codex reasoning checkpoints are not yet recorded canonically at receipt time, so the current thought-entry behavior is not aligned with the intended canonical-only transcript model
-- live assistant streaming text is still only an in-memory UI buffer and is not yet recorded canonically as transcript checkpoint history
-- transcript text still renders mostly as plain paragraphs, so markdown structure and code blocks are harder to read than intended
-- transcript markdown still does not render markdown image references, inline links, and related provenance affordances as first-class content, so generated screenshots and shared image references still degrade into raw markdown or ambiguous URLs
-- the current implementation also lacks a Keep image promotion flow for temp or external markdown images, so agents still have too much incentive to rely on ad hoc filesystem paths instead of a user-controlled attachment promotion path
-- the current transcript surface still lacks a per-message raw-text view, so richer markdown rendering can still make it harder to inspect exact provider output during debugging
-- very long threads now render through a bounded recent-item window with an explicit `Show earlier items` affordance so the live transcript DOM stays smaller while the operator is typing in active sessions
-- the main activity status now uses a compact composer-border treatment instead of a separate footer card
-- the bottom composer stack now floats over the thread instead of sitting inside a dedicated footer slab, and the transcript adds measured bottom spacer so the latest message stays visible above the composer
-- the mobile thread and composer now trim their outer gutter and card padding more aggressively on narrow screens so iPhone focus/zoom keeps more horizontal room for transcript and typed text while the working chip sits slightly higher on the composer border
-- on narrow screens the floating composer now goes flat edge-to-edge with no extra side margin, and the active textarea plus quick-process selector use iPhone-safe 16px mobile text sizing to avoid Safari focus zoom
-- when the operator scrolls up away from the latest content, the thread now exposes a compact `scroll to bottom` affordance above the floating composer instead of relying only on manual scrollbar dragging
-- the current bottom-toolbar layout still becomes crowded on narrow widths because the process selector, menu actions, and send controls compete for the same horizontal strip instead of using a cleaner compact or layered treatment
-- the Done or Blocked resolution warning still needs a more compact treatment that preserves clarity without consuming a whole extra line in the mobile composer
-- the unresolved Done state can linger visually even after the worker resumes under a fresh process, so terminal selector chrome is not yet clearing tightly enough with active runtime state
-- the current Waiting for Agent panel is too large, too top-heavy, and too willing to surface raw process-change or watchdog text as the waiting summary instead of keeping that waiting explanation compact and bottom-oriented
-- system-injected transcript items and execution-activity items still read too much like ordinary assistant chat, so the thread does not yet separate assistant prose, system history, and agent activity clearly enough
-- changing the quick-set process selector now patches only the queued next-turn process state and does not flush the current draft or submit the message composer
-- the browser now retries transient Agent Chat websocket disconnects with backoff, delays the disconnect warning until the socket stays down beyond the short grace window, and clears that warning promptly after reconnect
-- composer draft text and pasted-image state now live in an isolated memoized composer panel so ordinary typing no longer requires the main thread surface to own those keystroke updates
-- composer draft persistence now debounces localStorage writes and typing-presence reports now heartbeat locally inside the composer, so long sessions no longer force synchronous storage work and backend typing chatter on every keystroke
-- the active textarea now keeps draft text in a ref-backed input path instead of React state, so ordinary typing no longer re-renders the composer subtree on every character
-- the memoized composer now compares a narrow stable prop surface instead of parent callback identity and broad session object identity, so thread updates no longer invalidate the composer just because the parent rendered again
-- expanded activity rows still use overly generic wording like command execution started or completed instead of foregrounding the actual task identity
-- collapsed activity-cluster summaries still run long and list too much prior event detail instead of one short recent-task summary
-- activity transcript items still do not collapse consistently; singleton items can collapse, but adjacent pairs can still fall through as expanded activity messages instead of using the shared collapsed chrome
-- very short singleton activity items now over-collapse into less informative summaries like `Provider`, where leaving the original short text expanded would be clearer
-- provider-originated run events are still not consistently persisted into canonical Agent Chat history, so the transcript cannot yet be replayed solely from app-owned records for every surfaced provider event
-- the current stream-history presentation still mislabels observed provider text as draft semantics and needs cleaner stream-specific wording
-- internal stream checkpoint storage still leaks too directly into operator-facing transcript concepts and needs cleaner presentation boundaries
-- replaced-stream history still needs to move into the main assistant header row; the current collapsed expander still costs a separate row above the message body
-- the current inline replaced-stream expander still needs one more correction so expanded replaced history appears above the final assistant text instead of after it
-- transcript spacing around secondary history affordances is still looser than intended and wastes vertical space ahead of visible message content
-- the browser now receives the provider-seen transition for queued user messages at run start so stale queued badges clear without waiting for a later refresh
-`);
-
-CurrentReality.claudeSdkModelCatalog.means(`
-- the current backend now refreshes Claude model options through the Claude Agent SDK initialization handshake rather than a generic vendor model listing
-- the current implementation now normalizes Claude SDK alias values into explicit operator-facing refs such as anthropic/claude-opus-4-6-1m and anthropic/claude-sonnet-4-6 while preserving the SDK alias mapping internally for execution
-- Claude model discovery is cached server-side and falls back to a curated compatible alias set when the SDK probe fails or times out
-- the current discovery path is still global to the server process rather than explicitly varying by the session's selected Claude auth profile
-`);
-
-CurrentReality.verticalSlice.means(`
-- the deployed dashboard frontend and backend were verified at matching revision dashboard-092de11c11 during live browser validation
-`);
-
-CurrentReality.genericSessionActivity.means(`
-- the session list currently receives a generic activity object with status, timing, background-process count, and waiting flags
-- the browser now renders that activity into a clearer worker-status summary on each session item, including running, queued, elapsed, waiting, background, and error detail when available
-- the current implementation still does not model worker state as a richer explicit backend contract beyond that generic activity object
-`);
-
-CurrentReality.fixedTurnDeadline.means(`
-- the current Codex adapter still applies its own turn timeout policy in packages/agent-chat-server/src/codex-provider.ts
-- the Claude adapter does not share that exact transport or timeout path
-- provider runtime behavior therefore still differs across the implemented adapters
-`);
-
-CurrentReality.noFolderOrganization.means(`
-- sessions are currently listed as one flat collection sorted by last activity
-- sessions do not currently belong to canonical folders
-- the current implementation therefore lacks workspace-owned session organization beyond title, provider, and cwd metadata
-`);
-
-CurrentReality.noWorkspaceRepoDurability.means(`
-- Agent Chat currently writes canonical session files under durable app data
-- the current implementation does not yet notify a manager-side workspace persistence controller after canonical mutations
-- workspace git commit and push therefore remain an operator concern rather than a built-in part of chat durability
-- manager-instance failure can still lose recent canonical chat history that has not yet been pushed from the workspace repository
-`);
-
-CurrentReality.plannedProviders.means(`
-- OpenRouter and Gemini still appear in the provider catalog as planned entries
-- new sessions cannot be created with those planned providers because the backend rejects non-ready provider selections
-- the multi-provider blueprint direction is established, but the implementation is still partial rather than blueprint-complete
-`);
-
-CurrentReality.dashboardSessionBoundary.means(`
-- Agent Chat UI request authorization now reads dashboard session state through a shared dashboard-plugin helper instead of keeping feature-local session-storage plumbing in the screen file
-- websocket auth remains chat-specific because it carries the dashboard session token through the websocket protocol handshake, but plain HTTP request auth now stays on the shared dashboard infrastructure side of the package boundary
+CurrentReality.targetedVerification.means(`
+- bun lint passes for the bounded provider-binding slice
+- bun build passes for the bounded provider-binding slice
+- bun test packages/agent-chat-server/src/store.test.ts passes, including regression coverage for providerBinding persistence and manager-hosted execution-target shape
+- timeout 15s bun packages/agent-chat-server/src/index.ts starts cleanly on the worker surface with no startup or import failure before timeout stops it
+- live worker-local verification against http://127.0.0.1:8891/api/agent-chat/providers returns ok true
+- live worker-local verification against POST /api/agent-chat/sessions returns manager-hosted Codex and Claude participant records with stable agentId, providerBinding.bindingId, providerBinding.providerKind, providerBinding.executionTarget.targetKind manager, and providerBinding.status attached
+- the worker-local verification artifact at /home/ec2-user/temp/provider-binding-verification-8891.svg captures the live session payload used for that verification
 `);
 
 CurrentReality.deferredScope.means(`
-- canonical multi-agent sessions are still not wired end to end across manager and worker hosts, even though manager-hosted participant storage, routing, and queue semantics now exist
-- workspace entity references are not yet modeled as durable first-class chat references
-- import normalization is not implemented
-- native versus Agentish compaction is specified in blueprints but not yet exposed as a real editable session policy
-- session folders are not implemented
-- explicit worker-state summaries in the backend contract are not implemented beyond the generic activity payload
-- retained context inspection is still much thinner than the ideal blueprint describes
+- detached binding runtime behavior is modeled in the blueprint but is not yet implemented in the current runtime slice
+- binding replacement and rebinding catch-up are not yet implemented beyond the foundational identity and binding schema direction
+- worker-host execution targets are not yet implemented in the runtime even though executionTarget is now part of the providerBinding contract
+- broader multi-endpoint execution, worker-host replay, and richer provider rebinding flows remain future work
+- this blueprint-state intentionally treats those items as deferred scope for the current slice rather than as evidence that the landed manager-hosted foundation is absent
 `);
 
 CurrentReality.workflowAlignment.means(`
-- Agent Chat now has a dedicated blueprint-state document rather than relying only on ideal-state blueprints
-- Agent Chat browser session auth for HTTP headers and dashboard-session websocket protocols now flows through the shared helper in packages/dashboard-plugin/src/session-client.ts rather than feature-local sessionStorage code
-- this document is intended to be the durable current-reality comparison for Agent Chat implementation work
-- provider-backed implementation work inside Agent Chat is expected to inherit the shared development-process workflow and keep this comparison current
+- this blueprint-state is intentionally narrower than the older broad Agent Chat product snapshot
+- its job in the current development loop is to describe the actual bounded implementation slice that just landed against the refined durable-agent and provider-binding blueprint direction
+- future implementation passes should revise this file when detached bindings, rebinding, worker-host execution targets, or catch-up behavior become real implementation evidence instead of leaving those changes implicit
 `);
 
-when(CurrentReality.plannedProviders.exists())
+when(CurrentReality.durableAgentBindingFoundation.exists())
+  .then(AgentChatBlueprintState.treats("durable agent identity plus replaceable provider binding as the current canonical implementation direction"));
+
+when(CurrentReality.managerHostedBindingSlice.exists())
+  .then(AgentChatBlueprintState.treats("the current shipped slice as manager-hosted only even though the blueprint models broader execution-target diversity"));
+
+when(CurrentReality.compatibilityNormalization.exists())
+  .then(AgentChatBlueprintState.treats("legacy participant data as compatibility input that is normalized into newer binding-aware state"));
+
+when(CurrentReality.targetedVerification.exists())
+  .then(AgentChatBlueprintState.records(Assessment.evidence));
+
+when(CurrentReality.deferredScope.exists())
   .then(AgentChatBlueprintState.records(Assessment.gap))
   .and(AgentChatBlueprintState.records(Assessment.issue));
-
-when(CurrentReality.genericSessionActivity.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap));
-
-when(CurrentReality.processLifecycleVerificationGap.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap));
-
-when(CurrentReality.claudeSdkModelCatalog.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap));
-
-when(CurrentReality.sessionListWorkflowPolishGap.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap))
-  .and(AgentChatBlueprintState.records(Assessment.issue));
-
-when(CurrentReality.threadNavigationGap.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap));
-
-when(CurrentReality.settingsAndMessageStateGap.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap))
-  .and(AgentChatBlueprintState.records(Assessment.issue));
-
-when(CurrentReality.currentChatProviderSettings.exists())
-  .then(AgentChatBlueprintState.records("current implementation now exceeds the older V1 cut by supporting in-session provider switching"));
-
-when(CurrentReality.clipboardImagePaste.exists())
-  .then(AgentChatBlueprintState.treats("clipboard image paste as an implemented part of the current Agent Chat vertical slice"));
-
-when(CurrentReality.fixedTurnDeadline.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap))
-  .and(AgentChatBlueprintState.records(Assessment.issue));
-
-when(CurrentReality.noFolderOrganization.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap));
-
-when(CurrentReality.noWorkspaceRepoDurability.exists())
-  .then(AgentChatBlueprintState.records(Assessment.gap))
-  .and(AgentChatBlueprintState.records(Assessment.issue));
-
-when(CurrentReality.codexAndClaudeExecution.exists())
-  .then(AgentChatBlueprintState.treats("Agent Chat as a useful but partial vertical slice rather than a blueprint-complete system"));
 
 when(CurrentReality.workflowAlignment.exists())
-  .then(AgentChatBlueprintState.treats("Agent Chat blueprint-state as the current implementation comparison required by the shared development process"));
+  .then(AgentChatBlueprintState.treats("Agent Chat blueprint-state as a bounded current-reality artifact that should evolve alongside implementation slices"));

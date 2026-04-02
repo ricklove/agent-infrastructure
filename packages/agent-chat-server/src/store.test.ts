@@ -22,6 +22,55 @@ function createStore() {
 }
 
 describe("AgentChatStore multi-agent delivery", () => {
+  test("persists provider bindings on durable chat agents", () => {
+    const store = createStore()
+    const session = store.createSession({
+      title: "Provider binding persistence",
+      providerKind: "codex-app-server",
+      modelRef: "openai-codex/gpt-5.4",
+      cwd: "/home/ec2-user/workspace",
+      authProfile: "chatgpt",
+    })
+
+    const codexParticipant = session.participants.find(
+      (participant) =>
+        participant.participantId === "agent:codex-app-server:manager",
+    )
+    const claudeParticipant = session.participants.find(
+      (participant) =>
+        participant.participantId === "agent:claude-agent-sdk:manager",
+    )
+
+    expect(codexParticipant).toEqual(
+      expect.objectContaining({
+        agentId: "agent:codex-app-server:manager",
+        providerKind: "codex-app-server",
+        providerBinding: expect.objectContaining({
+          providerKind: "codex-app-server",
+          status: "attached",
+          executionTarget: expect.objectContaining({
+            targetKind: "manager",
+            host: "manager",
+          }),
+        }),
+      }),
+    )
+    expect(claudeParticipant).toEqual(
+      expect.objectContaining({
+        agentId: "agent:claude-agent-sdk:manager",
+        providerKind: "claude-agent-sdk",
+        providerBinding: expect.objectContaining({
+          providerKind: "claude-agent-sdk",
+          status: "attached",
+          executionTarget: expect.objectContaining({
+            targetKind: "manager",
+            host: "manager",
+          }),
+        }),
+      }),
+    )
+  })
+
   test("queued delivery follows the active provider participant", () => {
     const store = createStore()
     const session = store.createSession({

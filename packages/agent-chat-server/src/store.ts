@@ -16,6 +16,7 @@ import {
   type AgentChatParticipant,
   buildVisibilityResolution,
   createPendingDeliveryRecord,
+  createProviderBinding,
   type DefaultVisibility,
   type DeliveryRecord,
   defaultParticipantsForProvider,
@@ -25,6 +26,7 @@ import {
   legacySessionParticipants,
   markDeliveryRecord,
   normalizeDefaultVisibility,
+  normalizeProviderBinding,
   normalizeVisibilityTags,
   type ParticipantHost,
   participantIdForProvider,
@@ -228,19 +230,23 @@ function ensureProviderParticipant(
     (participant) =>
       participant.role === "agent" &&
       participant.host === "manager" &&
-      participant.providerKind === providerKind,
+      (participant.providerBinding?.providerKind ??
+        participant.providerKind) === providerKind,
   )
   if (existing) {
     return participants
   }
+  const participantId = participantIdForProvider(providerKind)
   return [
     ...participants,
     {
-      participantId: participantIdForProvider(providerKind),
+      participantId,
+      agentId: participantId,
       role: "agent",
       label: displayLabelForProvider(providerKind),
       host: "manager",
       defaultVisibility: "none",
+      providerBinding: createProviderBinding(participantId, providerKind),
       providerKind,
       createdAtMs,
     } satisfies AgentChatParticipant,
@@ -300,17 +306,31 @@ function normalizeStoredParticipants(
 ) {
   const baseParticipants =
     participants && participants.length > 0
-      ? participants.map((participant) => ({
-          ...participant,
-          defaultVisibility: normalizeDefaultVisibility(
-            participant.defaultVisibility,
-          ),
-          providerKind: participant.providerKind ?? null,
-          createdAtMs:
-            participant.createdAtMs === undefined
-              ? createdAtMs
-              : Number(participant.createdAtMs),
-        }))
+      ? participants.map((participant) => {
+          const participantId = participant.participantId
+          const normalizedProviderBinding = normalizeProviderBinding(
+            participantId,
+            participant.host,
+            participant.providerBinding ?? null,
+            participant.providerKind ?? null,
+          )
+          return {
+            ...participant,
+            agentId: participant.agentId ?? participantId,
+            defaultVisibility: normalizeDefaultVisibility(
+              participant.defaultVisibility,
+            ),
+            providerBinding: normalizedProviderBinding,
+            providerKind:
+              normalizedProviderBinding?.providerKind ??
+              participant.providerKind ??
+              null,
+            createdAtMs:
+              participant.createdAtMs === undefined
+                ? createdAtMs
+                : Number(participant.createdAtMs),
+          }
+        })
       : legacySessionParticipants(createdAtMs)
   return ensureParticipantDefaultsTargetProvider(
     ensureProviderParticipant(baseParticipants, providerKind, createdAtMs),
