@@ -40,6 +40,10 @@ function workbenchFilePath(id: string) {
   return join(workbenchRoot, `${id}.workbench.ts`)
 }
 
+function legacyWorkbenchFilePath(id: string) {
+  return join(legacyWorkbenchRoot, `${id}.workbench.ts`)
+}
+
 function serializeWorkbench(record: WorkbenchDocumentRecord) {
   return [
     "// Agent Workbench document",
@@ -63,77 +67,111 @@ function loadWorkbenchModule(filePath: string) {
   return JSON.parse(match[1]) as WorkbenchDocumentRecord
 }
 
+function normalizeWorkbenchRecord(record: WorkbenchDocumentRecord) {
+  const normalizedId = record.id.trim() || defaultWorkbenchId
+  return {
+    ...record,
+    id: normalizedId,
+    title: record.title.trim() || normalizedId,
+  } satisfies WorkbenchDocumentRecord
+}
+
+function writeWorkbenchFile(filePath: string, record: WorkbenchDocumentRecord) {
+  mkdirSync(dirname(filePath), { recursive: true })
+  writeFileSync(filePath, serializeWorkbench(normalizeWorkbenchRecord(record)))
+}
+
+function summarizeWorkbenchFile(filePath: string): WorkbenchSummary {
+  const stats = statSync(filePath)
+  const id = basename(filePath, ".workbench.ts")
+  let title = id
+  try {
+    title = loadWorkbenchModule(filePath).title.trim() || id
+  } catch {
+    title = id
+  }
+  return {
+    id,
+    title,
+    path: filePath,
+    updatedAtMs: stats.mtimeMs,
+  }
+}
+
+function migrateLegacyWorkbench(id: string) {
+  const canonicalPath = workbenchFilePath(id)
+  if (existsSync(canonicalPath)) {
+    return canonicalPath
+  }
+
+  const legacyPath = legacyWorkbenchFilePath(id)
+  if (!existsSync(legacyPath)) {
+    return canonicalPath
+  }
+
+  const legacyRecord = loadWorkbenchModule(legacyPath)
+  writeWorkbenchFile(canonicalPath, legacyRecord)
+  return canonicalPath
+}
+
+function migrateLegacyWorkbenches() {
+  ensureWorkbenchRoot()
+  if (!existsSync(legacyWorkbenchRoot)) {
+    return
+  }
+
+  for (const entry of readdirSync(legacyWorkbenchRoot)) {
+    if (!entry.endsWith(".workbench.ts")) {
+      continue
+    }
+    const id = basename(entry, ".workbench.ts")
+    migrateLegacyWorkbench(id)
+  }
+}
+
 export function ensureWorkbenchRoot() {
   mkdirSync(workbenchRoot, { recursive: true })
 }
 
-function workbenchRootsInReadOrder() {
-  return [workbenchRoot, legacyWorkbenchRoot]
-}
-
-function resolveExistingWorkbenchPath(id: string) {
-  for (const root of workbenchRootsInReadOrder()) {
-    const candidate = join(root, `${id}.workbench.ts`)
-    if (existsSync(candidate)) {
-      return candidate
-    }
-  }
-  return workbenchFilePath(id)
-}
-
 export async function ensureDefaultWorkbench() {
-  ensureWorkbenchRoot()
+  migrateLegacyWorkbenches()
   const targetPath = workbenchFilePath(defaultWorkbenchId)
-  if (
-    !existsSync(targetPath) &&
-    !existsSync(resolveExistingWorkbenchPath(defaultWorkbenchId))
-  ) {
-    writeFileSync(targetPath, serializeWorkbench(defaultWorkbench))
+  if (!existsSync(targetPath)) {
+    writeWorkbenchFile(targetPath, defaultWorkbench)
   }
-  return resolveExistingWorkbenchPath(defaultWorkbenchId)
+  return targetPath
 }
 
 export async function listWorkbenches(): Promise<WorkbenchSummary[]> {
   await ensureDefaultWorkbench()
-  const summariesById = new Map<string, WorkbenchSummary>()
+  const summaries: WorkbenchSummary[] = []
 
-  for (const root of workbenchRootsInReadOrder()) {
-    if (!existsSync(root)) {
+  for (const entry of readdirSync(workbenchRoot)) {
+    if (!entry.endsWith(".workbench.ts")) {
       continue
     }
-    for (const entry of readdirSync(root)) {
-      if (!entry.endsWith(".workbench.ts")) {
-        continue
-      }
-      const filePath = join(root, entry)
-      const stats = statSync(filePath)
-      const id = basename(entry, ".workbench.ts")
-      if (summariesById.has(id)) {
-        continue
-      }
-      summariesById.set(id, {
-        id,
-        title: id,
-        path: filePath,
-        updatedAtMs: stats.mtimeMs,
-      })
-    }
+    summaries.push(summarizeWorkbenchFile(join(workbenchRoot, entry)))
   }
 
-  return [...summariesById.values()].sort(
+  return summaries.sort(
     (left: WorkbenchSummary, right: WorkbenchSummary) =>
       right.updatedAtMs - left.updatedAtMs,
   )
 }
 
 export async function readWorkbench(id?: string) {
+  await ensureDefaultWorkbench()
+  if (id?.trim()) {
+    migrateLegacyWorkbench(id.trim())
+  }
+
   const summaries = await listWorkbenches()
   const selectedId = id?.trim() || summaries[0]?.id || defaultWorkbenchId
-  const filePath = resolveExistingWorkbenchPath(selectedId)
+  const filePath = workbenchFilePath(selectedId)
   if (!existsSync(filePath)) {
     throw new Error(`Workbench not found: ${selectedId}`)
   }
-  const workbench = await loadWorkbenchModule(filePath)
+  const workbench = loadWorkbenchModule(filePath)
   const matchingSummary = summaries.find((summary) => summary.id === selectedId)
   return {
     workbench,
@@ -154,14 +192,8 @@ export async function readWorkbench(id?: string) {
 
 export async function writeWorkbench(record: WorkbenchDocumentRecord) {
   ensureWorkbenchRoot()
-  const normalizedId = record.id.trim() || defaultWorkbenchId
-  const normalizedRecord: WorkbenchDocumentRecord = {
-    ...record,
-    id: normalizedId,
-    title: record.title.trim() || defaultWorkbenchId,
-  }
-  const filePath = workbenchFilePath(normalizedId)
-  mkdirSync(dirname(filePath), { recursive: true })
-  writeFileSync(filePath, serializeWorkbench(normalizedRecord))
+  const normalizedRecord = normalizeWorkbenchRecord(record)
+  const filePath = workbenchFilePath(normalizedRecord.id)
+  writeWorkbenchFile(filePath, normalizedRecord)
   return normalizedRecord
 }
