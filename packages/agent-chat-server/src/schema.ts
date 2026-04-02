@@ -22,14 +22,35 @@ export type DefaultVisibility =
       participantIds: string[]
     }
 
-export type AgentChatParticipant = {
-  participantId: string
+export type ChatAgentProviderBindingStatus = "attached" | "detached"
+
+export type ChatAgentExecutionTarget = {
+  targetId: string
+  targetKind: "manager" | "worker" | "local" | "cloud" | "external"
+  host: ParticipantHost
+}
+
+export type ChatAgentProviderBinding = {
+  bindingId: string
+  providerKind: AgentChatProviderKind | null
+  executionTarget: ChatAgentExecutionTarget | null
+  providerSessionId: string | null
+  status: ChatAgentProviderBindingStatus
+}
+
+export type ChatAgent = {
+  agentId: string
   role: ParticipantRole
   label: string
   host: ParticipantHost
   defaultVisibility: DefaultVisibility
-  providerKind: AgentChatProviderKind | null
+  providerBinding: ChatAgentProviderBinding | null
+  providerKind?: AgentChatProviderKind | null
   createdAtMs: number
+}
+
+export type AgentChatParticipant = ChatAgent & {
+  participantId: string
 }
 
 export type VisibilityResolution = {
@@ -52,6 +73,68 @@ export type DeliveryRecord = {
 
 export function participantIdForProvider(providerKind: AgentChatProviderKind) {
   return `agent:${providerKind}:manager`
+}
+
+export function providerBindingIdForParticipant(participantId: string) {
+  return `binding:${participantId}`
+}
+
+export function createProviderBinding(
+  participantId: string,
+  providerKind: AgentChatProviderKind,
+  host: ParticipantHost = "manager",
+): ChatAgentProviderBinding {
+  return {
+    bindingId: providerBindingIdForParticipant(participantId),
+    providerKind,
+    executionTarget: {
+      targetId: host === "manager" ? "manager" : host.slice("worker:".length),
+      targetKind: host === "manager" ? "manager" : "worker",
+      host,
+    },
+    providerSessionId: null,
+    status: "attached",
+  }
+}
+
+export function normalizeProviderBinding(
+  participantId: string,
+  host: ParticipantHost,
+  binding: ChatAgentProviderBinding | null | undefined,
+  legacyProviderKind?: AgentChatProviderKind | null,
+): ChatAgentProviderBinding | null {
+  const providerKind = binding?.providerKind ?? legacyProviderKind ?? null
+  if (!providerKind) {
+    return null
+  }
+  const normalizedHost = binding?.executionTarget?.host ?? host
+  return {
+    bindingId:
+      binding?.bindingId?.trim() ||
+      providerBindingIdForParticipant(participantId),
+    providerKind,
+    executionTarget: {
+      targetId:
+        binding?.executionTarget?.targetId?.trim() ||
+        (normalizedHost === "manager"
+          ? "manager"
+          : normalizedHost.slice("worker:".length)),
+      targetKind:
+        binding?.executionTarget?.targetKind ??
+        (normalizedHost === "manager" ? "manager" : "worker"),
+      host: normalizedHost,
+    },
+    providerSessionId: binding?.providerSessionId ?? null,
+    status: binding?.status ?? "attached",
+  }
+}
+
+export function getParticipantProviderKind(participant: AgentChatParticipant) {
+  return (
+    participant.providerBinding?.providerKind ??
+    participant.providerKind ??
+    null
+  )
 }
 
 export function displayLabelForProvider(providerKind: AgentChatProviderKind) {
@@ -217,6 +300,7 @@ export function defaultParticipantsForProvider(
   return [
     {
       participantId: USER_PARTICIPANT_ID,
+      agentId: USER_PARTICIPANT_ID,
       role: "user",
       label: "User",
       host: "manager",
@@ -224,11 +308,13 @@ export function defaultParticipantsForProvider(
         type: "participant_list",
         participantIds: [defaultAgentParticipantId],
       },
+      providerBinding: null,
       providerKind: null,
       createdAtMs,
     },
     {
       participantId: SYSTEM_PARTICIPANT_ID,
+      agentId: SYSTEM_PARTICIPANT_ID,
       role: "system",
       label: "System",
       host: "manager",
@@ -236,24 +322,35 @@ export function defaultParticipantsForProvider(
         type: "participant_list",
         participantIds: [defaultAgentParticipantId],
       },
+      providerBinding: null,
       providerKind: null,
       createdAtMs,
     },
     {
       participantId: participantIdForProvider("codex-app-server"),
+      agentId: participantIdForProvider("codex-app-server"),
       role: "agent",
       label: displayLabelForProvider("codex-app-server"),
       host: "manager",
       defaultVisibility: "none",
+      providerBinding: createProviderBinding(
+        participantIdForProvider("codex-app-server"),
+        "codex-app-server",
+      ),
       providerKind: "codex-app-server",
       createdAtMs,
     },
     {
       participantId: participantIdForProvider("claude-agent-sdk"),
+      agentId: participantIdForProvider("claude-agent-sdk"),
       role: "agent",
       label: displayLabelForProvider("claude-agent-sdk"),
       host: "manager",
       defaultVisibility: "none",
+      providerBinding: createProviderBinding(
+        participantIdForProvider("claude-agent-sdk"),
+        "claude-agent-sdk",
+      ),
       providerKind: "claude-agent-sdk",
       createdAtMs,
     },
@@ -266,6 +363,7 @@ export function legacySessionParticipants(
   return [
     {
       participantId: USER_PARTICIPANT_ID,
+      agentId: USER_PARTICIPANT_ID,
       role: "user",
       label: "User",
       host: "manager",
@@ -273,11 +371,13 @@ export function legacySessionParticipants(
         type: "participant_list",
         participantIds: [LEGACY_AGENT_PARTICIPANT_ID],
       },
+      providerBinding: null,
       providerKind: null,
       createdAtMs,
     },
     {
       participantId: SYSTEM_PARTICIPANT_ID,
+      agentId: SYSTEM_PARTICIPANT_ID,
       role: "system",
       label: "System",
       host: "manager",
@@ -285,15 +385,18 @@ export function legacySessionParticipants(
         type: "participant_list",
         participantIds: [LEGACY_AGENT_PARTICIPANT_ID],
       },
+      providerBinding: null,
       providerKind: null,
       createdAtMs,
     },
     {
       participantId: LEGACY_AGENT_PARTICIPANT_ID,
+      agentId: LEGACY_AGENT_PARTICIPANT_ID,
       role: "agent",
       label: "Legacy agent",
       host: "manager",
       defaultVisibility: "none",
+      providerBinding: null,
       providerKind: null,
       createdAtMs,
     },
@@ -308,7 +411,7 @@ export function resolveActiveProviderParticipantId(
     (participant) =>
       participant.role === "agent" &&
       participant.host === "manager" &&
-      participant.providerKind === providerKind,
+      getParticipantProviderKind(participant) === providerKind,
   )
   if (directMatch) {
     return directMatch.participantId
