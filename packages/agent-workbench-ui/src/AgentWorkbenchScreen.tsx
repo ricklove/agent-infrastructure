@@ -455,7 +455,7 @@ function RegisteredWorkbenchNode({
   ) => JSX.Element | null
   return (
     <>
-      {data.definition.resizable ? (
+      {data.definition.resizable !== false ? (
         <NodeResizer
           isVisible={selected}
           lineClassName="!border-cyan-300/70"
