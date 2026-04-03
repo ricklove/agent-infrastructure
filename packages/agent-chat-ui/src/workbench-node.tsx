@@ -113,8 +113,6 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
       }`}
     >
       <NodeResizer
-        minWidth={340}
-        minHeight={320}
         isVisible={selected}
         lineClassName="!border-cyan-300/70"
         handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
