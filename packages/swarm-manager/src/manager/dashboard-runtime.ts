@@ -1186,9 +1186,8 @@ function ensureNamedTunnelConfigFile(
   config: NamedTunnelConfig,
   port: number,
 ): void {
-  writeFileSync(
-    config.configPath,
-    `tunnel: ${config.tunnelId}
+  const fileContents = `
+tunnel: ${config.tunnelId}
 ingress:
 ${getNamedTunnelIngressEntries(config, port)
   .map(
@@ -1197,7 +1196,11 @@ ${getNamedTunnelIngressEntries(config, port)
   )
   .join("\n")}
   - service: http_status:404
-`,
+`.trim()
+
+  writeFileSync(
+    config.configPath,
+    `${fileContents}\n`,
     { mode: 0o600 },
   )
 }
