@@ -33,9 +33,24 @@ type BrowserTestCase = {
   run(context: BrowserTestContext): Promise<void>
 }
 
+type WorkbenchNodeSnapshot = {
+  id: string
+  type: string
+  width?: number
+  height?: number
+}
+
+type WorkbenchSnapshot = {
+  ok: true
+  workbench: {
+    id: string
+    nodes: WorkbenchNodeSnapshot[]
+  }
+}
+
 const agentBrowserBin =
   process.env.AGENT_BROWSER_BIN?.trim() ||
-  "/home/ec2-user/.local/bin/agent-browser"
+  "/home/ec2-user/.nvm/versions/node/v24.14.0/bin/agent-browser"
 const baseUrl =
   process.env.AGENT_BROWSER_BASE_URL?.trim() ||
   "http://127.0.0.1:4173/workbench"
@@ -65,6 +80,13 @@ function screenshotPath(testName: string) {
   return `${screenshotDir}/${sanitizeName(testName)}.png`
 }
 
+function workbenchApiUrl() {
+  const url = new URL(baseUrl)
+  url.pathname = "/api/agent-workbench/workbench"
+  url.search = ""
+  return url.toString()
+}
+
 async function runAgentBrowser(session: string, args: string[]) {
   const proc = Bun.spawn([agentBrowserBin, "--session", session, ...args], {
     stdout: "pipe",
@@ -90,7 +112,7 @@ async function runAgentBrowser(session: string, args: string[]) {
 }
 
 async function evalJson<T>(session: string, expression: string): Promise<T> {
-  const output = await runAgentBrowser(session, ["get", "eval", expression])
+  const output = await runAgentBrowser(session, ["eval", expression])
   return JSON.parse(output) as T
 }
 
@@ -102,6 +124,16 @@ async function openWorkbench(session: string) {
   await runAgentBrowser(session, ["close"]).catch(() => undefined)
   await runAgentBrowser(session, ["open", baseUrl])
   await runAgentBrowser(session, ["wait", "1500"])
+}
+
+async function fetchWorkbenchSnapshot(): Promise<WorkbenchSnapshot> {
+  const response = await fetch(workbenchApiUrl())
+  if (!response.ok) {
+    throw new Error(
+      `workbench api request failed with ${response.status}: ${await response.text()}`,
+    )
+  }
+  return (await response.json()) as WorkbenchSnapshot
 }
 
 async function getWorkbenchState(session: string) {
@@ -184,6 +216,57 @@ async function doubleClickPane(session: string) {
     String(Math.round(point.clientY)),
   ])
   await runAgentBrowser(session, ["wait", "500"])
+}
+
+async function createNodeFromMenu(session: string, keys: string[]) {
+  const before = await fetchWorkbenchSnapshot()
+  await twoClickPane(session)
+  for (const key of keys) {
+    await runAgentBrowser(session, ["press", key])
+    await runAgentBrowser(session, ["wait", key.length === 1 ? "80" : "120"])
+  }
+  await runAgentBrowser(session, ["wait", "900"])
+  const after = await fetchWorkbenchSnapshot()
+  const previousIds = new Set(before.workbench.nodes.map((node) => node.id))
+  const createdNode = after.workbench.nodes.find((node) => !previousIds.has(node.id))
+  assert(createdNode, "expected a newly created workbench node")
+  return createdNode
+}
+
+async function getResizeHandleCount(session: string) {
+  return await evalJson<number>(
+    session,
+    `JSON.stringify(document.querySelectorAll(".react-flow__resize-control").length)`,
+  )
+}
+
+async function resizeNodeByStyle(
+  session: string,
+  nodeId: string,
+  width: number,
+  height: number,
+) {
+  await runAgentBrowser(session, [
+    "eval",
+    `(() => {
+      const outer = document.querySelector('.react-flow__node[data-id="${nodeId}"]');
+      if (!(outer instanceof HTMLElement)) {
+        throw new Error("target node not found");
+      }
+      const inner = outer.lastElementChild;
+      outer.style.width = "${width}px";
+      outer.style.height = "${height}px";
+      if (inner instanceof HTMLElement) {
+        inner.style.width = "100%";
+        inner.style.height = "100%";
+      }
+      return JSON.stringify({
+        outer: outer.getBoundingClientRect(),
+        inner: inner instanceof HTMLElement ? inner.getBoundingClientRect() : null,
+      });
+    })()`,
+  ])
+  await runAgentBrowser(session, ["wait", "1800"])
 }
 
 const tests: BrowserTestCase[] = [
@@ -282,6 +365,73 @@ const tests: BrowserTestCase[] = [
       )
     },
   },
+  {
+    name: "text-node-shows-resize-handles",
+    async run(context) {
+      await openWorkbench(context.session)
+      await createNodeFromMenu(context.session, ["Enter"])
+      const handleCount = await getResizeHandleCount(context.session)
+      assert(handleCount >= 8, "expected resize handles on text node")
+      await screenshot(context.session, "text-node-shows-resize-handles")
+    },
+  },
+  {
+    name: "int-node-shows-resize-handles",
+    async run(context) {
+      await openWorkbench(context.session)
+      await createNodeFromMenu(context.session, ["ArrowDown", "Enter"])
+      const handleCount = await getResizeHandleCount(context.session)
+      assert(handleCount >= 8, "expected resize handles on int node")
+      await screenshot(context.session, "int-node-shows-resize-handles")
+    },
+  },
+  {
+    name: "agent-chat-node-shows-resize-handles",
+    async run(context) {
+      await openWorkbench(context.session)
+      const createdNode = await createNodeFromMenu(context.session, [
+        "a",
+        "g",
+        "e",
+        "n",
+        "t",
+        "Enter",
+      ])
+      assert(createdNode.type === "agent-chat", "expected agent-chat node to be created")
+      const handleCount = await getResizeHandleCount(context.session)
+      assert(handleCount >= 8, "expected resize handles on agent-chat node")
+      await screenshot(context.session, "agent-chat-node-shows-resize-handles")
+    },
+  },
+  {
+    name: "int-node-resize-persists-dimensions",
+    async run(context) {
+      await openWorkbench(context.session)
+      const createdNode = await createNodeFromMenu(context.session, [
+        "ArrowDown",
+        "Enter",
+      ])
+      assert(createdNode.type === "int", "expected created node to be int")
+      await resizeNodeByStyle(context.session, createdNode.id, 220, 80)
+      const afterResize = await fetchWorkbenchSnapshot()
+      const resizedNode = afterResize.workbench.nodes.find(
+        (node) => node.id === createdNode.id,
+      )
+      assert(resizedNode, "expected resized int node in workbench snapshot")
+      assert(resizedNode.width === 220, `expected persisted width 220, got ${resizedNode.width}`)
+      assert(resizedNode.height === 80, `expected persisted height 80, got ${resizedNode.height}`)
+
+      await openWorkbench(context.session)
+      const afterReload = await fetchWorkbenchSnapshot()
+      const reloadedNode = afterReload.workbench.nodes.find(
+        (node) => node.id === createdNode.id,
+      )
+      assert(reloadedNode, "expected resized int node after reload")
+      assert(reloadedNode.width === 220, `expected reloaded width 220, got ${reloadedNode.width}`)
+      assert(reloadedNode.height === 80, `expected reloaded height 80, got ${reloadedNode.height}`)
+      await screenshot(context.session, "int-node-resize-persists-dimensions")
+    },
+  },
 ]
 
 async function main() {
@@ -311,30 +461,23 @@ async function main() {
       console.error(error instanceof Error ? error.message : String(error))
       try {
         const consoleMessages = await runAgentBrowser(context.session, [
-          "get",
           "console",
         ])
         if (consoleMessages) {
           console.error("console:", consoleMessages)
         }
       } catch {
-        // ignore console collection failures
       }
       try {
-        const pageErrors = await runAgentBrowser(context.session, [
-          "get",
-          "errors",
-        ])
+        const pageErrors = await runAgentBrowser(context.session, ["errors"])
         if (pageErrors) {
           console.error("errors:", pageErrors)
         }
       } catch {
-        // ignore page error collection failures
       }
       try {
         await screenshot(context.session, `${testCase.name}-failure`)
       } catch {
-        // ignore follow-up screenshot failures
       }
     } finally {
       await runAgentBrowser(context.session, ["close"]).catch(() => undefined)
