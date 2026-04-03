@@ -532,6 +532,9 @@ export function DashboardShell({
         const currentUrl = new URL(window.location.href)
         const bootstrapKey = currentUrl.searchParams.get("sessionKey")
         if (bootstrapKey) {
+          currentUrl.searchParams.delete("sessionKey")
+          window.history.replaceState({}, "", currentUrl.toString())
+
           const exchangeResponse = await fetch("/api/session/exchange", {
             method: "POST",
             headers: {
@@ -550,8 +553,6 @@ export function DashboardShell({
             sessionStorageKey,
             exchangePayload.sessionToken,
           )
-          currentUrl.searchParams.delete("sessionKey")
-          window.history.replaceState({}, "", currentUrl.toString())
         }
 
         if (nextConfig.requiresSession && !readStoredSessionToken()) {
