@@ -136,6 +136,24 @@ async function fetchWorkbenchSnapshot(): Promise<WorkbenchSnapshot> {
   return (await response.json()) as WorkbenchSnapshot
 }
 
+async function persistWorkbenchSnapshot(snapshot: WorkbenchSnapshot["workbench"]) {
+  const url = new URL(workbenchApiUrl())
+  url.searchParams.set("id", snapshot.id)
+  const response = await fetch(url.toString(), {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(snapshot),
+  })
+  if (!response.ok) {
+    throw new Error(
+      `workbench api save failed with ${response.status}: ${await response.text()}`,
+    )
+  }
+  return (await response.json()) as WorkbenchSnapshot
+}
+
 async function getWorkbenchState(session: string) {
   return await evalJson<{
     body: string
@@ -267,6 +285,23 @@ async function resizeNodeByStyle(
     })()`,
   ])
   await runAgentBrowser(session, ["wait", "1800"])
+}
+
+async function setFirstTextareaValue(session: string, value: string) {
+  await runAgentBrowser(session, [
+    "eval",
+    `(() => {
+      const textarea = document.querySelector("textarea");
+      if (!(textarea instanceof HTMLTextAreaElement)) {
+        throw new Error("textarea not found");
+      }
+      textarea.focus();
+      textarea.value = ${JSON.stringify(value)};
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    })()`,
+  ])
+  await runAgentBrowser(session, ["wait", "1200"])
 }
 
 const tests: BrowserTestCase[] = [
@@ -430,6 +465,46 @@ const tests: BrowserTestCase[] = [
       assert(reloadedNode.width === 220, `expected reloaded width 220, got ${reloadedNode.width}`)
       assert(reloadedNode.height === 80, `expected reloaded height 80, got ${reloadedNode.height}`)
       await screenshot(context.session, "int-node-resize-persists-dimensions")
+    },
+  },
+  {
+    name: "corrupt-zero-dimensions-are-cleared-on-next-save",
+    async run(context) {
+      await openWorkbench(context.session)
+      const createdNode = await createNodeFromMenu(context.session, ["Enter"])
+      assert(createdNode.type === "text", "expected created node to be text")
+
+      const initialSnapshot = await fetchWorkbenchSnapshot()
+      const corruptedNodes = initialSnapshot.workbench.nodes.map((node) =>
+        node.id === createdNode.id ? { ...node, width: 0, height: 0 } : node,
+      )
+      await persistWorkbenchSnapshot({
+        ...initialSnapshot.workbench,
+        nodes: corruptedNodes,
+      })
+
+      await openWorkbench(context.session)
+      const loadedSnapshot = await fetchWorkbenchSnapshot()
+      const loadedNode = loadedSnapshot.workbench.nodes.find(
+        (node) => node.id === createdNode.id,
+      )
+      assert(loadedNode, "expected corrupted text node after reload")
+      assert(loadedNode.width === 0, `expected corrupted width 0 before save, got ${loadedNode.width}`)
+      assert(loadedNode.height === 0, `expected corrupted height 0 before save, got ${loadedNode.height}`)
+
+      await setFirstTextareaValue(context.session, "normalized after reload")
+
+      const afterEdit = await fetchWorkbenchSnapshot()
+      const savedNode = afterEdit.workbench.nodes.find(
+        (node) => node.id === createdNode.id,
+      )
+      assert(savedNode, "expected text node after save")
+      assert(savedNode.width === undefined, `expected width to be cleared, got ${savedNode.width}`)
+      assert(savedNode.height === undefined, `expected height to be cleared, got ${savedNode.height}`)
+      await screenshot(
+        context.session,
+        "corrupt-zero-dimensions-are-cleared-on-next-save",
+      )
     },
   },
 ]
