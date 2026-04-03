@@ -671,22 +671,73 @@ export function AgentWorkbenchScreen({
       }
 
       setNodes((currentNodes) => {
-        const nextNodes = applyNodeChanges(changes, currentNodes)
-        if (dimensionChanges.length > 0) {
+        const resizedNodeIds = new Set(dimensionChanges.map((change) => change.id))
+        if (resizedNodeIds.size > 0) {
           dashboardSessionDebugLog(
-            "wb.onNodesChange.nextNodes",
-            nextNodes.map((node) => ({
-              id: node.id,
-              width: node.width,
-              height: node.height,
-              initialWidth: node.initialWidth,
-              initialHeight: node.initialHeight,
-              measured: node.measured,
-              recordWidth: node.data.record.width,
-              recordHeight: node.data.record.height,
-            })),
+            "wb.onNodesChange.beforeNodes",
+            currentNodes
+              .filter((node) => resizedNodeIds.has(node.id))
+              .map((node) => ({
+                id: node.id,
+                width: node.width,
+                height: node.height,
+                initialWidth: node.initialWidth,
+                initialHeight: node.initialHeight,
+                measured: node.measured,
+                style: node.style,
+                recordWidth: node.data.record.width,
+                recordHeight: node.data.record.height,
+              })),
           )
         }
+
+        const nextNodes = applyNodeChanges(changes, currentNodes).map((node) => {
+          if (!resizedNodeIds.has(node.id)) {
+            return node
+          }
+          const width =
+            typeof node.width === "number" ? node.width : node.data.record.width
+          const height =
+            typeof node.height === "number"
+              ? node.height
+              : node.data.record.height
+          return {
+            ...node,
+            style: {
+              ...node.style,
+              width,
+              height,
+            },
+            data: {
+              ...node.data,
+              record: {
+                ...node.data.record,
+                width,
+                height,
+              },
+            },
+          }
+        })
+
+        if (resizedNodeIds.size > 0) {
+          dashboardSessionDebugLog(
+            "wb.onNodesChange.afterNodes",
+            nextNodes
+              .filter((node) => resizedNodeIds.has(node.id))
+              .map((node) => ({
+                id: node.id,
+                width: node.width,
+                height: node.height,
+                initialWidth: node.initialWidth,
+                initialHeight: node.initialHeight,
+                measured: node.measured,
+                style: node.style,
+                recordWidth: node.data.record.width,
+                recordHeight: node.data.record.height,
+              })),
+          )
+        }
+
         return nextNodes
       })
     },
@@ -880,6 +931,15 @@ export function AgentWorkbenchScreen({
         position: { x: record.x, y: record.y },
         width: record.width,
         height: record.height,
+        initialWidth: record.width,
+        initialHeight: record.height,
+        style:
+          typeof record.width === "number" || typeof record.height === "number"
+            ? {
+                width: record.width,
+                height: record.height,
+              }
+            : undefined,
         data: {
           record,
           definition:
