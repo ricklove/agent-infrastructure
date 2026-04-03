@@ -1186,18 +1186,16 @@ function ensureNamedTunnelConfigFile(
   config: NamedTunnelConfig,
   port: number,
 ): void {
-  const ingress = getNamedTunnelIngressEntries(config, port)
-    .map(
-      (entry) =>
-        `  - hostname: "${entry.hostname}"\n    service: ${entry.service}`,
-    )
-    .join("\n")
-
   writeFileSync(
     config.configPath,
     `tunnel: ${config.tunnelId}
 ingress:
-${ingress}
+${getNamedTunnelIngressEntries(config, port)
+  .map(
+    (entry) => `  - hostname: "${entry.hostname}"
+    service: ${entry.service}`,
+  )
+  .join("\n")}
   - service: http_status:404
 `,
     { mode: 0o600 },
