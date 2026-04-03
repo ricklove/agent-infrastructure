@@ -17,7 +17,10 @@ import {
   useNodesState,
   useOnSelectionChange,
 } from "reactflow"
-import "reactflow/dist/style.css"
+import { reactflowStylesLoaded } from "../reactflow-style-runtime.js"
+
+void reactflowStylesLoaded
+
 import type {
   GraphNode as AgentGraphNode,
   GraphEdge,

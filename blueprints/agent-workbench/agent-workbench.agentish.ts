@@ -73,6 +73,8 @@ const Workbench = {
 const Graph = {
   node: define.graphNode("WorkbenchNode"),
   textNode: define.graphNode("WorkbenchTextNode"),
+  intNode: define.graphNode("WorkbenchIntNode"),
+  agentChatNode: define.graphNode("WorkbenchAgentChatNode"),
   edge: define.graphEdge("WorkbenchEdge"),
   textEdge: define.graphEdge("WorkbenchTextEdge"),
   handle: define.entity("WorkbenchHandle"),
@@ -99,6 +101,8 @@ const Policy = {
   graphFirst: define.concept("GraphFirstFeatureSurface"),
   minimalScope: define.concept("MinimalInitialFeatureScope"),
   bootstrapSlice: define.concept("BootstrapTextNodeVerticalSlice"),
+  registryBackedNodeTypes: define.concept("RegistryBackedWorkbenchNodeTypes"),
+  pluginOwnedNodeViews: define.concept("PluginOwnedWorkbenchNodeViews"),
   reactFlowAdapterOnly: define.concept("ReactFlowIsWorkbenchAdapter"),
   sourceAuthoritative: define.concept("WorkbenchSourceDocumentsAreAuthoritative"),
   editorPrimitivesMinimal: define.concept("MinimalEditorPrimitives"),
@@ -110,10 +114,14 @@ AgentWorkbench.enforces(`
 - AgentWorkbench begins as a fresh minimal subject rather than as an extension of prior graph or canvas doctrine.
 - The initial feature surface is a full workbench view rendered through React Flow.
 - The initial editor primitives are node, edge, and handle.
-- The only initial node type is a text node.
+- Workbench node types should be registered through a shared registry rather than hardcoded inline inside the canvas screen.
+- The initial registry-backed node types are `text`, `int`, and plugin-owned projected node types such as `agent-chat`.
 - Text edges and text handles are allowed, but neither requires visible text to exist.
-- Double-clicking empty workbench space creates a new text node at the clicked location.
+- Double-clicking empty workbench space opens a searchable add-node menu at the clicked location.
+- The add-node menu defaults selection to the `text` node type so pressing Enter immediately creates a text node.
+- ArrowDown and ArrowUp should move add-node selection through the visible node-type results.
 - A text node should be directly editable through a resizable text area.
+- Plugin-owned projected node types should own their own rendering and feature semantics while Workbench owns placement, persistence, and windowing.
 - Workbench state must persist as source documents under workspace/data/workbench rather than as opaque browser-only state.
 - The first implementation milestone should close a full text-node vertical slice before richer workbench behavior expands.
 - The first implementation milestone is loading a workbench document, rendering the React Flow canvas, creating text nodes, editing text nodes, moving text nodes, and persisting those changes durably.
@@ -131,7 +139,9 @@ AgentWorkbench.defines(`
 - WorkbenchDocument means one durable graph document stored as source under workspace/data/workbench.
 - WorkbenchCanvas means the graph editing plane shown to the operator.
 - WorkbenchViewport means the persisted pan and zoom state for one workbench view.
-- WorkbenchTextNode means the initial authorable graph object with editable multiline text content.
+- WorkbenchTextNode means an authorable graph object with editable multiline text content.
+- WorkbenchIntNode means a primitive numeric node type registered through the shared Workbench node registry.
+- WorkbenchAgentChatNode means a projected Workbench node whose persisted record points at one Agent Chat session while the Agent Chat feature package owns the session selector and thread rendering shown inside the node.
 - WorkbenchTextEdge means the initial relationship line between workbench nodes, optionally carrying text.
 - WorkbenchTextHandle means the initial attachable handle on a node, optionally carrying text.
 - TextNodeDefinition means a lifted Agentish `define.text(...)` style constant emitted from a named text node.
@@ -139,8 +149,10 @@ AgentWorkbench.defines(`
 - HandleDefinedField means a named handle whose meaning has stabilized enough to act as a field, member, or relation role in lifted Agentish.
 - WorkbenchToAgentishLift means the projection from editable workbench graph material into named Agentish source structure.
 - GraphFirstFeatureSurface means the workbench route is the primary full-feature graph view rather than a sidecar inspector.
-- MinimalInitialFeatureScope means the v1 subject closes only text-node authoring, edge authoring, persistence, and workbench-doc structure.
+- MinimalInitialFeatureScope means the v1 subject closes only text-node authoring, edge authoring, persistence, workbench-doc structure, and the minimal registry wiring needed to add richer node types later.
 - BootstrapTextNodeVerticalSlice means the first shipped implementation milestone closes only the React Flow surface plus durable text-node creation, editing, movement, loading, and saving.
+- RegistryBackedWorkbenchNodeTypes means Workbench discovers available node types from feature-owned registration rather than from one screen-local hardcoded switch.
+- PluginOwnedWorkbenchNodeViews means a feature package such as Agent Chat may register and render its own Workbench node view while Workbench continues to own document persistence and canvas interaction.
 - ReactFlowIsWorkbenchAdapter means React Flow owns interaction mechanics but does not own the canonical workbench record.
 - WorkbenchSourceDocumentsAreAuthoritative means persisted `.workbench.ts` source files are the durable truth for workbench data.
 - WorkbenchNamesLiftToAgentishMeaning means named nodes, edges, and handles should eventually compile into proper Agentish structure rather than remaining anonymous editor geometry forever.
@@ -157,6 +169,8 @@ Workbench.workspace.contains(
   Graph.textEdge,
   Graph.handle,
   Graph.textHandle,
+  Graph.intNode,
+  Graph.agentChatNode,
   Storage.record,
   Language.textDefinition,
   Language.fluentRelation,
@@ -165,6 +179,8 @@ Workbench.workspace.contains(
   Policy.graphFirst,
   Policy.minimalScope,
   Policy.bootstrapSlice,
+  Policy.registryBackedNodeTypes,
+  Policy.pluginOwnedNodeViews,
   Policy.reactFlowAdapterOnly,
   Policy.sourceAuthoritative,
   Policy.editorPrimitivesMinimal,
@@ -186,9 +202,17 @@ when(Actor.operator.opens(Dashboard.route))
   .and(AgentWorkbench.requires(Policy.graphFirst));
 
 when(Actor.operator.doubleClicks(Workbench.canvas))
-  .then(AgentWorkbench.creates(Graph.textNode))
-  .and(AgentWorkbench.positions(Graph.textNode).at("the clicked canvas coordinates"))
-  .and(Actor.operator.starts("direct text entry in a resizable text area"));
+  .then(AgentWorkbench.opens("the searchable add-node menu"))
+  .and(AgentWorkbench.positions("the add-node menu").at("the clicked canvas coordinates"))
+  .and(AgentWorkbench.defaults("the selected node type").to("text"));
+
+when(Actor.operator.confirms("the selected node type from the add-node menu"))
+  .then(AgentWorkbench.creates(Graph.node))
+  .and(AgentWorkbench.positions(Graph.node).at("the clicked canvas coordinates"));
+
+when(Actor.operator.opens("the add-node menu"))
+  .then(AgentWorkbench.searches("registered node types"))
+  .and(AgentWorkbench.allows("ArrowDown and ArrowUp keyboard selection across visible node types"));
 
 when(Actor.operator.edits(Graph.textNode))
   .then(AgentWorkbench.updates(Storage.nodeRecord))
@@ -247,10 +271,12 @@ Package.workbenchUi.dependsOn(Package.workbenchProtocol);
 Package.workbenchServer.dependsOn(Package.workbenchProtocol);
 
 AgentWorkbench.implementsThrough(`
-- packages/agent-workbench-ui owns the React Flow workbench screen, text-node rendering, text-node editing, edge labeling, and save-triggering UI.
+- packages/agent-workbench-ui owns the React Flow workbench screen, node-type registry host, add-node menu, text-node rendering, edge labeling, and save-triggering UI.
 - The first implementation milestone should prioritize canvas boot, text-node creation, text-node editing, text-node movement, and file-backed save or reload before richer graph authoring.
 - packages/agent-workbench-server owns workbench document discovery, `.workbench.ts` read and write behavior, and source-of-truth persistence under workspace/data/workbench.
-- packages/agent-workbench-protocol owns the shared workbench record contracts used by the dashboard UI and server.
+- packages/agent-workbench-protocol owns the shared workbench record contracts used by the dashboard UI, feature packages, and server.
+- Feature packages may register Workbench node types whose renderers stay feature-owned while the Workbench host owns placement and persistence.
+- packages/agent-chat-ui should own the `agent-chat` Workbench node renderer, session selector, and embedded thread view for that node type.
 - packages/dashboard-ui and packages/dashboard register the Agent Workbench feature as a first-party full-screen dashboard route.
 - The initial workbench route should open directly into the graph surface rather than into a list-first shell that hides the main workbench.
 - React Flow should be used only as the interaction and rendering layer mapped from canonical workbench records.

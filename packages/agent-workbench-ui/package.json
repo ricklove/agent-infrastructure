@@ -5,7 +5,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./plugin": "./src/dashboard-plugin.ts",
-    "./ui-plugin": "./src/dashboard-ui-plugin.ts"
+    "./ui-plugin": "./src/dashboard-ui-plugin.ts",
+    "./workbench-registry": "./src/workbench-node-types.ts",
+    "./workbench-types": "./src/workbench-types.ts"
   },
   "scripts": {
     "build": "bun x tsgo --project tsconfig.json --noEmit",

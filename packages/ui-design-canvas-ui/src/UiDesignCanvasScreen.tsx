@@ -13,7 +13,9 @@ import ReactFlow, {
   useNodesState,
   type Viewport,
 } from "reactflow"
-import "reactflow/dist/style.css"
+import { reactflowStylesLoaded } from "./reactflow-style-runtime.js"
+
+void reactflowStylesLoaded
 
 type PromptLifecycle = "pending" | "commented" | "generated" | "failed"
 type VariantStatus = "idea" | "refined" | "candidate"

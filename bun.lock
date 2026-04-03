@@ -61,6 +61,7 @@
       "name": "@agent-infrastructure/agent-chat-ui",
       "dependencies": {
         "@agent-infrastructure/agent-chat-server": "workspace:*",
+        "@agent-infrastructure/agent-workbench-protocol": "workspace:*",
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
         "@agent-infrastructure/render-diagnostics": "workspace:*",
         "react": "^18.3.1",

@@ -1,52 +1,92 @@
-import type { WorkbenchNodeRecord } from "@agent-infrastructure/agent-workbench-protocol"
+import type {
+  WorkbenchNodeRecord,
+  WorkbenchNodeTypeDefinition,
+} from "@agent-infrastructure/agent-workbench-protocol"
 
-export type WorkbenchNodeTypeDefinition = {
-  id: WorkbenchNodeRecord["type"]
-  label: string
-  keywords: string[]
-  createRecord(args: { id: string; x: number; y: number }): WorkbenchNodeRecord
+export function sortWorkbenchNodeTypes(entries: WorkbenchNodeTypeDefinition[]) {
+  return [...entries].sort((left, right) => {
+    const leftOrder = left.sortOrder ?? 100
+    const rightOrder = right.sortOrder ?? 100
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder
+    }
+    return left.label.localeCompare(right.label)
+  })
 }
 
-export const workbenchNodeTypeRegistry: WorkbenchNodeTypeDefinition[] = [
-  {
-    id: "text",
-    label: "Text",
-    keywords: ["text", "note", "string"],
-    createRecord({ id, x, y }) {
-      return {
-        id,
-        type: "text",
-        text: "",
-        x,
-        y,
-      }
-    },
-  },
-  {
-    id: "int",
-    label: "Int",
-    keywords: ["int", "integer", "number"],
-    createRecord({ id, x, y }) {
-      return {
-        id,
-        type: "int",
-        value: 0,
-        x,
-        y,
-      }
-    },
-  },
-]
+export function mergeWorkbenchNodeTypes(
+  ...groups: WorkbenchNodeTypeDefinition[][]
+) {
+  const byId = new Map<
+    WorkbenchNodeRecord["type"],
+    WorkbenchNodeTypeDefinition
+  >()
+  for (const group of groups) {
+    for (const definition of group) {
+      byId.set(definition.id, definition)
+    }
+  }
+  return sortWorkbenchNodeTypes([...byId.values()])
+}
 
-export function filterWorkbenchNodeTypes(searchQuery: string) {
+export function getWorkbenchNodeType(
+  entries: WorkbenchNodeTypeDefinition[],
+  typeId: WorkbenchNodeRecord["type"],
+) {
+  return entries.find((entry) => entry.id === typeId) ?? null
+}
+
+export function filterWorkbenchNodeTypes(
+  entries: WorkbenchNodeTypeDefinition[],
+  searchQuery: string,
+) {
   const query = searchQuery.trim().toLowerCase()
   if (!query) {
-    return workbenchNodeTypeRegistry
+    return entries
   }
-  return workbenchNodeTypeRegistry.filter((entry) => {
+  return entries.filter((entry) => {
     const haystack = `${entry.label} ${entry.id} ${entry.keywords.join(" ")}`
       .trim()
       .toLowerCase()
     return haystack.includes(query)
   })
+}
+
+export function resolveWorkbenchNodeTypeSelection(
+  visibleTypes: WorkbenchNodeTypeDefinition[],
+  selectedTypeId: WorkbenchNodeRecord["type"] | null,
+) {
+  if (visibleTypes.length === 0) {
+    return null
+  }
+  if (selectedTypeId) {
+    const matching = visibleTypes.find((entry) => entry.id === selectedTypeId)
+    if (matching) {
+      return matching.id
+    }
+  }
+  return visibleTypes[0]?.id ?? null
+}
+
+export function getNextWorkbenchNodeTypeSelection(
+  visibleTypes: WorkbenchNodeTypeDefinition[],
+  selectedTypeId: WorkbenchNodeRecord["type"] | null,
+  offset: 1 | -1,
+) {
+  const resolvedSelection = resolveWorkbenchNodeTypeSelection(
+    visibleTypes,
+    selectedTypeId,
+  )
+  if (!resolvedSelection) {
+    return null
+  }
+  const currentIndex = visibleTypes.findIndex(
+    (entry) => entry.id === resolvedSelection,
+  )
+  if (currentIndex < 0) {
+    return visibleTypes[0]?.id ?? null
+  }
+  const nextIndex =
+    (currentIndex + offset + visibleTypes.length) % visibleTypes.length
+  return visibleTypes[nextIndex]?.id ?? null
 }

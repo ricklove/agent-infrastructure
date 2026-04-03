@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./plugin": "./src/dashboard-plugin.ts",
-    "./ui-plugin": "./src/dashboard-ui-plugin.ts"
+    "./ui-plugin": "./src/dashboard-ui-plugin.ts",
+    "./workbench-node": "./src/workbench-node.tsx"
   },
   "scripts": {
     "build": "bun x tsgo --project tsconfig.json --noEmit",
@@ -16,7 +17,8 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "@agent-infrastructure/render-diagnostics": "workspace:*",
-    "@agent-infrastructure/agent-chat-server": "workspace:*"
+    "@agent-infrastructure/agent-chat-server": "workspace:*",
+    "@agent-infrastructure/agent-workbench-protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
