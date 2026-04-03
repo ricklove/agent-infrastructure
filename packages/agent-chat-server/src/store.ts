@@ -1427,11 +1427,22 @@ export class AgentChatStore {
     }
 
     const raw = readFileSync(path, "utf8")
-    return raw
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
+    const messages: StoredMessage[] = []
+
+    for (const [index, rawLine] of raw.split("\n").entries()) {
+      const line = rawLine.trim()
+      if (!line) {
+        continue
+      }
+
+      if (line.includes("\0")) {
+        console.error(
+          `[agent-chat-store] skipped corrupt message line with NUL byte sessionId=${session.id} path=${path} line=${index + 1}`,
+        )
+        continue
+      }
+
+      try {
         const parsed = safeJsonParse<Partial<StoredMessage>>(line)
         const providerSeenAtMs =
           parsed.providerSeenAtMs === null ||
@@ -1467,7 +1478,7 @@ export class AgentChatStore {
               | Partial<VisibilityResolution>
               | undefined) ?? null,
         })
-        return {
+        const message = {
           id: String(parsed.id),
           sessionId: String(parsed.sessionId),
           role: parsed.role as StoredMessage["role"],
@@ -1513,13 +1524,21 @@ export class AgentChatStore {
           content: (parsed.content ?? []) as StoredMessage["content"],
           createdAtMs: Number(parsed.createdAtMs),
         } satisfies StoredMessage
-      })
-      .sort((left, right) => {
-        if (left.createdAtMs !== right.createdAtMs) {
-          return left.createdAtMs - right.createdAtMs
-        }
-        return left.id.localeCompare(right.id)
-      })
+        messages.push(message)
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
+        console.error(
+          `[agent-chat-store] skipped unreadable message line sessionId=${session.id} path=${path} line=${index + 1} error=${detail}`,
+        )
+      }
+    }
+
+    return messages.sort((left, right) => {
+      if (left.createdAtMs !== right.createdAtMs) {
+        return left.createdAtMs - right.createdAtMs
+      }
+      return left.id.localeCompare(right.id)
+    })
   }
 
   private importLegacySqliteIfNeeded(legacySqlitePath: string | null) {
