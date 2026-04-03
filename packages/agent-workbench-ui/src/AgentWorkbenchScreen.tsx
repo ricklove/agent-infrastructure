@@ -462,15 +462,13 @@ function RegisteredWorkbenchNode({
           handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
         />
       ) : null}
-      <div className="nodrag nopan nowheel h-full w-full">
-        <NodeRenderer
-          id={id}
-          record={data.record as never}
-          selected={selected}
-          onRecordChange={(nextRecord) => data.onRecordChange(id, nextRecord)}
-          onResize={data.onResize}
-        />
-      </div>
+      <NodeRenderer
+        id={id}
+        record={data.record as never}
+        selected={selected}
+        onRecordChange={(nextRecord) => data.onRecordChange(id, nextRecord)}
+        onResize={data.onResize}
+      />
     </>
   )
 }
