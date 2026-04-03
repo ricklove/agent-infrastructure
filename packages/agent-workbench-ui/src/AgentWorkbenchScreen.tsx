@@ -153,35 +153,14 @@ function WorkbenchIcon(props: { className?: string }) {
 }
 
 function TextWorkbenchNode({
-  id,
   record,
   selected,
   onRecordChange,
-  onResize,
 }: WorkbenchNodeComponentProps<WorkbenchTextNodeRecord>) {
   useRenderCounter("AgentWorkbenchScreen.TextWorkbenchNode")
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    const element = containerRef.current
-    if (!element) {
-      return
-    }
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) {
-        return
-      }
-      onResize(id, entry.contentRect.width, entry.contentRect.height)
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [id, onResize])
 
   return (
     <div
-      ref={containerRef}
       className={`h-full w-full rounded-2xl border bg-white/95 shadow-lg transition ${
         selected ? "border-sky-500 shadow-sky-200/70" : "border-slate-300"
       }`}
@@ -214,35 +193,14 @@ function TextWorkbenchNode({
 }
 
 function IntWorkbenchNode({
-  id,
   record,
   selected,
   onRecordChange,
-  onResize,
 }: WorkbenchNodeComponentProps<WorkbenchIntNodeRecord>) {
   useRenderCounter("AgentWorkbenchScreen.IntWorkbenchNode")
-  const containerRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    const element = containerRef.current
-    if (!element) {
-      return
-    }
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) {
-        return
-      }
-      onResize(id, entry.contentRect.width, entry.contentRect.height)
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [id, onResize])
 
   return (
     <div
-      ref={containerRef}
       className={`h-full w-full rounded-2xl border bg-white/95 shadow-lg transition ${
         selected ? "border-sky-500 shadow-sky-200/70" : "border-slate-300"
       }`}
@@ -487,6 +445,8 @@ const defaultWorkbenchNodeTypes: WorkbenchNodeTypeDefinition[] = [
         text: "",
         x,
         y,
+        width: 220,
+        height: 140,
       }
     },
     renderNode: TextWorkbenchNode as WorkbenchNodeTypeDefinition["renderNode"],
@@ -503,6 +463,8 @@ const defaultWorkbenchNodeTypes: WorkbenchNodeTypeDefinition[] = [
         value: 0,
         x,
         y,
+        width: 180,
+        height: 96,
       }
     },
     renderNode: IntWorkbenchNode as WorkbenchNodeTypeDefinition["renderNode"],
@@ -534,14 +496,16 @@ function flowNodesToRecords(
     ...node.data.record,
     x: node.position.x,
     y: node.position.y,
-    width:
+    width: normalizeNodeDimension(
       typeof node.width === "number"
         ? Math.round(node.width)
         : node.data.record.width,
-    height:
+    ),
+    height: normalizeNodeDimension(
       typeof node.height === "number"
         ? Math.round(node.height)
         : node.data.record.height,
+    ),
   }))
 }
 
@@ -554,6 +518,33 @@ function flowEdgesToRecords(edges: Edge[]): WorkbenchDocumentRecord["edges"] {
     targetHandleId: edge.targetHandle ?? undefined,
     text: typeof edge.label === "string" ? edge.label : undefined,
   }))
+}
+
+function normalizeNodeDimension(value: number | null | undefined) {
+  return typeof value === "number" && value > 0 ? value : undefined
+}
+
+const fixedWorkbenchNodeDimensions: Partial<
+  Record<WorkbenchNodeRecord["type"], { width: number; height: number }>
+> = {
+  text: {
+    width: 220,
+    height: 140,
+  },
+  int: {
+    width: 180,
+    height: 96,
+  },
+}
+
+function resolveFlowNodeDimensions(record: WorkbenchNodeRecord) {
+  const width = normalizeNodeDimension(record.width)
+  const height = normalizeNodeDimension(record.height)
+  const fallback = fixedWorkbenchNodeDimensions[record.type]
+  return {
+    width: width ?? fallback?.width,
+    height: height ?? fallback?.height,
+  }
 }
 
 export function AgentWorkbenchScreen({
@@ -639,12 +630,8 @@ export function AgentWorkbenchScreen({
           if (!resizedNodeIds.has(node.id)) {
             return node
           }
-          const width =
-            typeof node.width === "number" ? node.width : node.data.record.width
-          const height =
-            typeof node.height === "number"
-              ? node.height
-              : node.data.record.height
+          const width = normalizeNodeDimension(node.width)
+          const height = normalizeNodeDimension(node.height)
           return {
             ...node,
             style: {
@@ -826,19 +813,26 @@ export function AgentWorkbenchScreen({
   const nodeRecordToFlowNode = useCallback(
     (record: WorkbenchNodeRecord): Node<WorkbenchFlowNodeData> => {
       const onResize = (nodeId: string, width: number, height: number) => {
+        const nextWidth = normalizeNodeDimension(width)
+        const nextHeight = normalizeNodeDimension(height)
         setNodes((currentNodes) => {
           const nextNodes = currentNodes.map((node) =>
             node.id === nodeId
               ? {
                   ...node,
-                  width,
-                  height,
+                  width: nextWidth,
+                  height: nextHeight,
+                  style: {
+                    ...node.style,
+                    width: nextWidth,
+                    height: nextHeight,
+                  },
                   data: {
                     ...node.data,
                     record: {
                       ...node.data.record,
-                      width,
-                      height,
+                      width: nextWidth,
+                      height: nextHeight,
                     },
                   },
                 }
@@ -849,19 +843,21 @@ export function AgentWorkbenchScreen({
         })
       }
 
+      const { width, height } = resolveFlowNodeDimensions(record)
+
       return {
         id: record.id,
         type: "registeredWorkbenchNode",
         position: { x: record.x, y: record.y },
-        width: record.width,
-        height: record.height,
-        initialWidth: record.width,
-        initialHeight: record.height,
+        width,
+        height,
+        initialWidth: width,
+        initialHeight: height,
         style:
-          typeof record.width === "number" || typeof record.height === "number"
+          width !== undefined || height !== undefined
             ? {
-                width: record.width,
-                height: record.height,
+                width,
+                height,
               }
             : undefined,
         data: {
@@ -888,7 +884,7 @@ export function AgentWorkbenchScreen({
           },
           onResize,
         },
-      }
+      } as Node<WorkbenchFlowNodeData>
     },
     [availableNodeTypeDefinitions, requestAutosave, setNodes],
   )
