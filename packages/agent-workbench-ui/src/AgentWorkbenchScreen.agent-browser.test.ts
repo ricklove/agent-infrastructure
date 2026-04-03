@@ -1,5 +1,27 @@
 #!/usr/bin/env bun
 
+declare const Bun: {
+  spawn(
+    args: string[],
+    options: { stdout: "pipe"; stderr: "pipe" },
+  ): {
+    stdout: ReadableStream<Uint8Array>
+    stderr: ReadableStream<Uint8Array>
+    exited: Promise<number>
+  }
+  $: (
+    strings: TemplateStringsArray,
+    ...values: unknown[]
+  ) => {
+    quiet(): Promise<unknown>
+  }
+}
+declare const process: {
+  argv: string[]
+  env: Record<string, string | undefined>
+  exitCode?: number
+}
+
 type BrowserTestContext = {
   baseUrl: string
   session: string
@@ -325,3 +347,5 @@ async function main() {
 }
 
 await main()
+
+export {}
