@@ -197,7 +197,7 @@ function TextWorkbenchNode({
           })
         }
         placeholder="Write here..."
-        className="h-full w-full min-h-[140px] min-w-[220px] resize rounded-2xl border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none"
+        className="h-full w-full min-h-[140px] min-w-[220px] resize-none rounded-2xl border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none"
       />
       <Handle
         type="source"
