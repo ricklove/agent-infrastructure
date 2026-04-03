@@ -38,6 +38,8 @@ import ReactFlow, {
 } from "reactflow"
 import {
   filterWorkbenchNodeTypes,
+  getNextWorkbenchNodeTypeSelection,
+  resolveWorkbenchNodeTypeSelection,
   type WorkbenchNodeTypeDefinition,
 } from "./workbench-node-types"
 import type { WorkbenchFlowNodeData } from "./workbench-types"
@@ -1000,20 +1002,24 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
     [addNodeMenu?.searchQuery],
   )
 
-  const selectedNodeTypeId =
-    addNodeMenu == null
-      ? null
-      : visibleNodeTypes.some(
-            (entry) => entry.id === addNodeMenu.selectedTypeId,
-          )
-        ? addNodeMenu.selectedTypeId
-        : (visibleNodeTypes[0]?.id ?? null)
+  const selectedNodeTypeId = useMemo(() => {
+    if (addNodeMenu == null) {
+      return null
+    }
+    return resolveWorkbenchNodeTypeSelection(
+      visibleNodeTypes,
+      addNodeMenu.selectedTypeId,
+    )
+  }, [addNodeMenu, visibleNodeTypes])
 
   useEffect(() => {
     if (!addNodeMenu) {
       return
     }
-    const nextSelectedTypeId = visibleNodeTypes[0]?.id ?? null
+    const nextSelectedTypeId = resolveWorkbenchNodeTypeSelection(
+      visibleNodeTypes,
+      addNodeMenu.selectedTypeId,
+    )
     if (
       nextSelectedTypeId == null ||
       nextSelectedTypeId === addNodeMenu.selectedTypeId
@@ -1163,11 +1169,11 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
 
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault()
-        const offset = event.key === "ArrowDown" ? 1 : -1
-        const nextIndex =
-          (currentIndex + offset + visibleNodeTypes.length) %
-          visibleNodeTypes.length
-        const nextTypeId = visibleNodeTypes[nextIndex]?.id
+        const nextTypeId = getNextWorkbenchNodeTypeSelection(
+          visibleNodeTypes,
+          visibleNodeTypes[currentIndex]?.id ?? selectedNodeTypeId,
+          event.key === "ArrowDown" ? "next" : "previous",
+        )
         if (!nextTypeId) {
           return
         }

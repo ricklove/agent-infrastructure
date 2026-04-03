@@ -50,3 +50,43 @@ export function filterWorkbenchNodeTypes(searchQuery: string) {
     return haystack.includes(query)
   })
 }
+
+export function resolveWorkbenchNodeTypeSelection(
+  availableTypes: WorkbenchNodeTypeDefinition[],
+  selectedTypeId: WorkbenchNodeRecord["type"] | null,
+) {
+  if (availableTypes.length === 0) {
+    return null
+  }
+  if (
+    selectedTypeId != null &&
+    availableTypes.some((entry) => entry.id === selectedTypeId)
+  ) {
+    return selectedTypeId
+  }
+  return availableTypes[0]?.id ?? null
+}
+
+export function getNextWorkbenchNodeTypeSelection(
+  availableTypes: WorkbenchNodeTypeDefinition[],
+  selectedTypeId: WorkbenchNodeRecord["type"] | null,
+  direction: "next" | "previous",
+) {
+  const resolvedSelection = resolveWorkbenchNodeTypeSelection(
+    availableTypes,
+    selectedTypeId,
+  )
+  if (resolvedSelection == null) {
+    return null
+  }
+  const currentIndex = availableTypes.findIndex(
+    (entry) => entry.id === resolvedSelection,
+  )
+  if (currentIndex < 0) {
+    return resolvedSelection
+  }
+  const offset = direction === "next" ? 1 : -1
+  const nextIndex =
+    (currentIndex + offset + availableTypes.length) % availableTypes.length
+  return availableTypes[nextIndex]?.id ?? resolvedSelection
+}
