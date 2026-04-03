@@ -11,7 +11,8 @@
   },
   "scripts": {
     "build": "bun x tsgo --project tsconfig.json --noEmit",
-    "check": "bun x tsgo --project tsconfig.json --noEmit"
+    "check": "bun x tsgo --project tsconfig.json --noEmit",
+    "test:agent-browser": "bun ./src/AgentWorkbenchScreen.agent-browser.test.ts"
   },
   "dependencies": {
     "@agent-infrastructure/agent-workbench-protocol": "workspace:*",

@@ -625,10 +625,6 @@ export function AgentWorkbenchScreen({
   }, [viewport])
 
   useEffect(() => {
-    console.log("wb.addNodeMenu.state", addNodeMenu)
-  }, [addNodeMenu])
-
-  useEffect(() => {
     openWindowRef.current = openWindow
   }, [openWindow])
 
@@ -839,7 +835,6 @@ export function AgentWorkbenchScreen({
   const applyLoadedSnapshot = useCallback(
     (payload: WorkbenchSnapshotResponse) => {
       suspendAutosaveRef.current = true
-      console.log("wb.applyLoadedSnapshot")
       setAddNodeMenu(null)
       setWorkbench(payload.workbench)
       setAvailableWorkbenches(payload.availableWorkbenches)
@@ -1059,6 +1054,10 @@ export function AgentWorkbenchScreen({
     setAddNodeMenu(null)
   }, [])
 
+  useEffect(() => {
+    console.log("wb.addNodeMenu.state", addNodeMenu)
+  }, [addNodeMenu])
+
   const visibleNodeTypes = useMemo(
     () =>
       filterWorkbenchNodeTypes(
@@ -1076,33 +1075,6 @@ export function AgentWorkbenchScreen({
       ),
     [addNodeMenu?.selectedTypeId, visibleNodeTypes],
   )
-
-  useEffect(() => {
-    if (!addNodeMenu) {
-      return
-    }
-
-    function handlePointerDown(event: PointerEvent) {
-      if (!(event.target instanceof Element)) {
-        return
-      }
-      if (event.target.closest("[data-workbench-add-node-menu='true']")) {
-        return
-      }
-      console.log(
-        "wb.handlePointerDown.close",
-        event.target instanceof Element
-          ? event.target.className || event.target.tagName
-          : String(event.target),
-      )
-      closeAddNodeMenu()
-    }
-
-    window.addEventListener("pointerdown", handlePointerDown)
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown)
-    }
-  }, [addNodeMenu, closeAddNodeMenu])
 
   const openAddNodeMenuAtClientPoint = useCallback(
     (clientX: number, clientY: number, target: EventTarget | null) => {
@@ -1135,11 +1107,9 @@ export function AgentWorkbenchScreen({
               }
             })()
       if (!point) {
-        console.log("wb.openAddNodeMenu.noPoint")
         return false
       }
 
-      console.log("wb.openAddNodeMenu", { clientX, clientY, point })
       countEvent("agent-workbench.open-add-node-menu")
       setAddNodeMenu({
         clientX,
@@ -1195,6 +1165,126 @@ export function AgentWorkbenchScreen({
       setNodes,
     ],
   )
+
+  useEffect(() => {
+    if (!addNodeMenu) {
+      return
+    }
+
+    const currentSearchQuery = addNodeMenu.searchQuery
+
+    function targetAcceptsTyping(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) {
+        return false
+      }
+      const tagName = target.tagName
+      return (
+        tagName === "INPUT" ||
+        tagName === "TEXTAREA" ||
+        tagName === "SELECT" ||
+        target.isContentEditable
+      )
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!(event.target instanceof Element)) {
+        return
+      }
+      if (event.target.closest("[data-workbench-add-node-menu='true']")) {
+        return
+      }
+      closeAddNodeMenu()
+    }
+
+    function updateSearchQuery(nextQuery: string) {
+      setAddNodeMenu((current) => {
+        if (current == null) {
+          return current
+        }
+        return {
+          ...current,
+          searchQuery: nextQuery,
+          selectedTypeId:
+            resolveWorkbenchNodeTypeSelection(
+              filterWorkbenchNodeTypes(availableNodeTypeDefinitions, nextQuery),
+              current.selectedTypeId,
+            ) ?? "text",
+        }
+      })
+    }
+
+    function handleWindowKeyDown(event: KeyboardEvent) {
+      if (targetAcceptsTyping(event.target)) {
+        return
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        event.stopPropagation()
+        const nextTypeId = getNextWorkbenchNodeTypeSelection(
+          visibleNodeTypes,
+          selectedNodeTypeId,
+          event.key === "ArrowDown" ? 1 : -1,
+        )
+        if (!nextTypeId) {
+          return
+        }
+        setAddNodeMenu((current) =>
+          current == null
+            ? current
+            : {
+                ...current,
+                selectedTypeId: nextTypeId,
+              },
+        )
+        return
+      }
+      if (event.key === "Enter") {
+        if (!selectedNodeTypeId) {
+          return
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        createNodeFromType(selectedNodeTypeId)
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
+        closeAddNodeMenu()
+        return
+      }
+      if (event.key === "Backspace") {
+        event.preventDefault()
+        event.stopPropagation()
+        updateSearchQuery(currentSearchQuery.slice(0, -1))
+        return
+      }
+      if (
+        event.key.length === 1 &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        updateSearchQuery(`${currentSearchQuery}${event.key}`)
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown)
+    window.addEventListener("keydown", handleWindowKeyDown, true)
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown)
+      window.removeEventListener("keydown", handleWindowKeyDown, true)
+    }
+  }, [
+    addNodeMenu,
+    availableNodeTypeDefinitions,
+    closeAddNodeMenu,
+    createNodeFromType,
+    selectedNodeTypeId,
+    visibleNodeTypes,
+  ])
 
   const handleAddNodeMenuKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -1268,6 +1358,7 @@ export function AgentWorkbenchScreen({
         console.log("wb.handlePaneClick.notDouble")
         return
       }
+      console.log("wb.handlePaneClick.open")
       openAddNodeMenuAtClientPoint(event.clientX, event.clientY, event.target)
     },
     [openAddNodeMenuAtClientPoint],
@@ -1291,7 +1382,6 @@ export function AgentWorkbenchScreen({
   )
 
   const handleNodeDragStart = useCallback(() => {
-    console.log("wb.handleNodeDragStart")
     nodeDragActiveRef.current = true
     closeAddNodeMenu()
   }, [closeAddNodeMenu])
