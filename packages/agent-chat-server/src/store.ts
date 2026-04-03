@@ -155,8 +155,16 @@ const defaultWatchdogState = (
   completedAtMs: null,
 })
 
-function safeJsonParse<T>(raw: string): T {
-  return JSON.parse(raw) as T
+function safeJsonParse<T>(raw: string): T | null {
+  if (raw.includes("\0")) {
+    return null
+  }
+
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
 }
 
 function summarizePreview(messages: StoredMessage[]): string | null {
@@ -1361,6 +1369,9 @@ export class AgentChatStore {
     const parsed = safeJsonParse<Partial<SessionMetadata>>(
       readFileSync(this.sessionMetadataPath(sessionId), "utf8"),
     )
+    if (!parsed) {
+      throw new Error(`failed to parse session metadata for ${sessionId}`)
+    }
     const createdAtMs = Number(parsed.createdAtMs)
     const providerKind = parsed.providerKind as AgentChatProviderKind
     return {
@@ -1431,8 +1442,14 @@ export class AgentChatStore {
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
-      .map((line) => {
+      .map((line, index) => {
         const parsed = safeJsonParse<Partial<StoredMessage>>(line)
+        if (!parsed) {
+          console.error(
+            `[agent-chat-store] skipped unreadable message line sessionId=${session.id} path=${path} line=${index + 1}`,
+          )
+          return null
+        }
         const providerSeenAtMs =
           parsed.providerSeenAtMs === null ||
           parsed.providerSeenAtMs === undefined
@@ -1467,7 +1484,7 @@ export class AgentChatStore {
               | Partial<VisibilityResolution>
               | undefined) ?? null,
         })
-        return {
+        const message = {
           id: String(parsed.id),
           sessionId: String(parsed.sessionId),
           role: parsed.role as StoredMessage["role"],
@@ -1513,7 +1530,9 @@ export class AgentChatStore {
           content: (parsed.content ?? []) as StoredMessage["content"],
           createdAtMs: Number(parsed.createdAtMs),
         } satisfies StoredMessage
+        return message
       })
+      .filter((message): message is StoredMessage => message !== null)
       .sort((left, right) => {
         if (left.createdAtMs !== right.createdAtMs) {
           return left.createdAtMs - right.createdAtMs
@@ -1644,7 +1663,7 @@ export class AgentChatStore {
               : Number(rowObject.provider_seen_at_ms)
           const content = safeJsonParse<StoredMessage["content"]>(
             String(rowObject.content_json),
-          )
+          ) ?? []
           const authorParticipantId = normalizeAuthorParticipantId(
             null,
             role,
