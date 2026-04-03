@@ -40,6 +40,7 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
   type Viewport,
+  NodeResizer,
 } from "reactflow"
 import { reactflowStylesLoaded } from "./reactflow-style-runtime.js"
 import {
@@ -453,13 +454,22 @@ function RegisteredWorkbenchNode({
     props: WorkbenchNodeComponentProps,
   ) => JSX.Element | null
   return (
-    <NodeRenderer
-      id={id}
-      record={data.record as never}
-      selected={selected}
-      onRecordChange={(nextRecord) => data.onRecordChange(id, nextRecord)}
-      onResize={data.onResize}
-    />
+    <>
+      {data.definition.resizable ? (
+        <NodeResizer
+          isVisible={selected}
+          lineClassName="!border-cyan-300/70"
+          handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
+        />
+      ) : null}
+      <NodeRenderer
+        id={id}
+        record={data.record as never}
+        selected={selected}
+        onRecordChange={(nextRecord) => data.onRecordChange(id, nextRecord)}
+        onResize={data.onResize}
+      />
+    </>
   )
 }
 
@@ -1450,6 +1460,8 @@ export function AgentWorkbenchScreen({
         nodeTypes={nodeTypes}
         fitView={nodes.length === 0}
         defaultViewport={viewport}
+        minZoom={0.01}
+        maxZoom={8}
         className="h-full w-full"
       >
         <Background gap={20} size={1} color="#94a3b8" />
