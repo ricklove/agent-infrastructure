@@ -6,6 +6,7 @@ import type {
 import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { memo, useEffect, useRef, useState } from "react"
+import { NodeResizer } from "reactflow"
 
 import { AgentChatWorkbenchSessionView } from "./AgentChatScreen"
 
@@ -107,10 +108,17 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
   return (
     <div
       ref={containerRef}
-      className={`flex min-h-[320px] min-w-[340px] resize flex-col overflow-hidden rounded-2xl border bg-slate-950/95 shadow-lg transition ${
+      className={`flex min-h-[320px] min-w-[340px] flex-col overflow-hidden rounded-2xl border bg-slate-950/95 shadow-lg transition ${
         selected ? "border-cyan-300 shadow-cyan-900/40" : "border-slate-700"
       }`}
     >
+      <NodeResizer
+        minWidth={340}
+        minHeight={320}
+        isVisible={selected}
+        lineClassName="!border-cyan-300/70"
+        handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
+      />
       <div className="border-b border-white/10 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>
