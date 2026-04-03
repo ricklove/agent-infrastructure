@@ -44,8 +44,8 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
   type Viewport,
-  NodeResizer,
 } from "reactflow"
+import { WorkbenchNodeWrapper } from "./WorkbenchNodeWrapper"
 import { reactflowStylesLoaded } from "./reactflow-style-runtime.js"
 import {
   filterWorkbenchNodeTypes,
@@ -458,14 +458,11 @@ function RegisteredWorkbenchNode({
     props: WorkbenchNodeComponentProps,
   ) => JSX.Element | null
   return (
-    <>
-      {data.definition.resizable !== false ? (
-        <NodeResizer
-          isVisible={selected}
-          lineClassName="!border-cyan-300/70"
-          handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
-        />
-      ) : null}
+    <WorkbenchNodeWrapper
+      label={data.definition.label}
+      selected={selected}
+      resizable={data.definition.resizable !== false}
+    >
       <NodeRenderer
         id={id}
         record={data.record as never}
@@ -473,7 +470,7 @@ function RegisteredWorkbenchNode({
         onRecordChange={(nextRecord) => data.onRecordChange(id, nextRecord)}
         onResize={data.onResize}
       />
-    </>
+    </WorkbenchNodeWrapper>
   )
 }
 
