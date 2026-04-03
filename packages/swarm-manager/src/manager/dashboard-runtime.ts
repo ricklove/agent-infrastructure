@@ -751,6 +751,11 @@ type NamedTunnelConfig = {
   configPath: string
 }
 
+type NamedTunnelIngressEntry = {
+  hostname: string
+  service: string
+}
+
 function sanitizeDnsLabel(value: string): string {
   return value
     .toLowerCase()
@@ -788,6 +793,40 @@ function getNamedTunnelConfig(): NamedTunnelConfig | null {
     hostname,
     configPath: cloudflaredConfigPath,
   }
+}
+
+const dashboardDevTunnelHostnamePrefix =
+  process.env.DASHBOARD_DEV_TUNNEL_HOSTNAME_PREFIX?.trim() || "dev01"
+const dashboardDevTunnelPort = Number.parseInt(
+  process.env.DASHBOARD_DEV_TUNNEL_PORT?.trim() || "3300",
+  10,
+)
+
+function getDevNamedTunnelHostname(hostname: string): string {
+  const [firstLabel, ...rest] = hostname.split(".")
+  const devLabel = sanitizeDnsLabel(dashboardDevTunnelHostnamePrefix)
+  return [devLabel, firstLabel, ...rest].join(".")
+}
+
+function getNamedTunnelIngressEntries(
+  config: NamedTunnelConfig,
+  port: number,
+): NamedTunnelIngressEntry[] {
+  const entries: NamedTunnelIngressEntry[] = [
+    {
+      hostname: config.hostname,
+      service: `http://127.0.0.1:${port}`,
+    },
+  ]
+
+  if (Number.isInteger(dashboardDevTunnelPort) && dashboardDevTunnelPort > 0) {
+    entries.unshift({
+      hostname: getDevNamedTunnelHostname(config.hostname),
+      service: `http://127.0.0.1:${dashboardDevTunnelPort}`,
+    })
+  }
+
+  return entries
 }
 
 async function waitForHealth(port: number, maxAttempts = 40): Promise<void> {
@@ -1147,16 +1186,21 @@ function ensureNamedTunnelConfigFile(
   config: NamedTunnelConfig,
   port: number,
 ): void {
+  const fileContents = `
+tunnel: ${config.tunnelId}
+ingress:
+${getNamedTunnelIngressEntries(config, port)
+  .map(
+    (entry) => `  - hostname: "${entry.hostname}"
+    service: ${entry.service}`,
+  )
+  .join("\n")}
+  - service: http_status:404
+`.trim()
+
   writeFileSync(
     config.configPath,
-    [
-      `tunnel: ${config.tunnelId}`,
-      "ingress:",
-      `  - hostname: "${config.hostname}"`,
-      `    service: http://127.0.0.1:${port}`,
-      "  - service: http_status:404",
-      "",
-    ].join("\n"),
+    `${fileContents}\n`,
     { mode: 0o600 },
   )
 }

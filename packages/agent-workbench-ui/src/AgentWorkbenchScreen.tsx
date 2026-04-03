@@ -8,7 +8,9 @@ import type {
   WorkbenchSummary,
   WorkbenchTextNodeRecord,
 } from "@agent-infrastructure/agent-workbench-protocol"
-import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
+import {
+  dashboardSessionFetch,
+} from "@agent-infrastructure/dashboard-plugin"
 import { useDashboardWindowLayer } from "@agent-infrastructure/dashboard-ui"
 import {
   countEvent,
@@ -27,12 +29,14 @@ import {
 } from "react"
 import ReactFlow, {
   addEdge,
+  applyNodeChanges,
   Background,
   type Connection,
   Controls,
   type Edge,
   Handle,
   MiniMap,
+  type NodeChange,
   type Node,
   type NodeProps,
   Position,
@@ -197,7 +201,7 @@ function TextWorkbenchNode({
           })
         }
         placeholder="Write here..."
-        className="h-full w-full min-h-[140px] min-w-[220px] resize rounded-2xl border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none"
+        className="nodrag nopan nowheel h-full w-full resize-none rounded-2xl border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none"
       />
       <Handle
         type="source"
@@ -262,7 +266,7 @@ function IntWorkbenchNode({
               value: Math.trunc(Number(event.target.value) || 0),
             })
           }
-          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-semibold text-slate-900 outline-none"
+          className="nodrag nopan nowheel mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-semibold text-slate-900 outline-none"
         />
       </div>
       <Handle
@@ -626,6 +630,47 @@ export function AgentWorkbenchScreen({
     nodesRef.current = nodes
   }, [nodes])
 
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      setNodes((currentNodes) => {
+        const resizedNodeIds = new Set(
+          changes
+            .filter((change) => change.type === "dimensions")
+            .map((change) => change.id),
+        )
+        const nextNodes = applyNodeChanges(changes, currentNodes).map((node) => {
+          if (!resizedNodeIds.has(node.id)) {
+            return node
+          }
+          const width =
+            typeof node.width === "number" ? node.width : node.data.record.width
+          const height =
+            typeof node.height === "number"
+              ? node.height
+              : node.data.record.height
+          return {
+            ...node,
+            style: {
+              ...node.style,
+              width,
+              height,
+            },
+            data: {
+              ...node.data,
+              record: {
+                ...node.data.record,
+                width,
+                height,
+              },
+            },
+          }
+        })
+        return nextNodes
+      })
+    },
+    [setNodes],
+  )
+
   useEffect(() => {
     edgesRef.current = edges
   }, [edges])
@@ -813,6 +858,15 @@ export function AgentWorkbenchScreen({
         position: { x: record.x, y: record.y },
         width: record.width,
         height: record.height,
+        initialWidth: record.width,
+        initialHeight: record.height,
+        style:
+          typeof record.width === "number" || typeof record.height === "number"
+            ? {
+                width: record.width,
+                height: record.height,
+              }
+            : undefined,
         data: {
           record,
           definition:
@@ -1446,7 +1500,8 @@ export function AgentWorkbenchScreen({
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        deleteKeyCode={["Delete", "Backspace"]}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
         onNodeDragStart={handleNodeDragStart}
