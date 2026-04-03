@@ -50,6 +50,7 @@ export type WorkbenchNodeTypeDefinition<
   label: string
   keywords: string[]
   sortOrder?: number
+  resizable?: boolean
   createRecord(args: { id: string; x: number; y: number }): TRecord
   renderNode: (props: WorkbenchNodeComponentProps<TRecord>) => unknown
 }

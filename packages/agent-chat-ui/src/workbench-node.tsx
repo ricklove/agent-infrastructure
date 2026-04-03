@@ -175,6 +175,7 @@ export const agentChatWorkbenchNodeType: WorkbenchNodeTypeDefinition<WorkbenchAg
     label: "Agent Chat",
     keywords: ["agent", "chat", "thread", "session"],
     sortOrder: 100,
+    resizable: true,
     createRecord({ id, x, y }) {
       return {
         id,
@@ -182,8 +183,8 @@ export const agentChatWorkbenchNodeType: WorkbenchNodeTypeDefinition<WorkbenchAg
         sessionId: null,
         x,
         y,
-        width: 420,
-        height: 420,
+        width: 400,
+        height: 800,
       }
     },
     renderNode: AgentChatWorkbenchNode,
