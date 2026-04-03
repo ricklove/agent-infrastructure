@@ -156,10 +156,10 @@ function TextWorkbenchNode({
   onResize,
 }: WorkbenchNodeComponentProps<WorkbenchTextNodeRecord>) {
   useRenderCounter("AgentWorkbenchScreen.TextWorkbenchNode")
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    const element = textareaRef.current
+    const element = containerRef.current
     if (!element) {
       return
     }
@@ -177,7 +177,8 @@ function TextWorkbenchNode({
 
   return (
     <div
-      className={`rounded-2xl border bg-white/95 shadow-lg transition ${
+      ref={containerRef}
+      className={`h-full w-full rounded-2xl border bg-white/95 shadow-lg transition ${
         selected ? "border-sky-500 shadow-sky-200/70" : "border-slate-300"
       }`}
     >
@@ -188,7 +189,6 @@ function TextWorkbenchNode({
         className="!h-2.5 !w-2.5 !border-2 !border-slate-400 !bg-white"
       />
       <textarea
-        ref={textareaRef}
         value={record.text}
         onChange={(event) =>
           onRecordChange({
@@ -197,7 +197,7 @@ function TextWorkbenchNode({
           })
         }
         placeholder="Write here..."
-        className="min-h-[140px] min-w-[220px] resize rounded-2xl border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none"
+        className="h-full w-full min-h-[140px] min-w-[220px] resize rounded-2xl border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none"
       />
       <Handle
         type="source"
@@ -239,7 +239,7 @@ function IntWorkbenchNode({
   return (
     <div
       ref={containerRef}
-      className={`rounded-2xl border bg-white/95 shadow-lg transition ${
+      className={`h-full w-full rounded-2xl border bg-white/95 shadow-lg transition ${
         selected ? "border-sky-500 shadow-sky-200/70" : "border-slate-300"
       }`}
     >
@@ -249,7 +249,7 @@ function IntWorkbenchNode({
         position={Position.Left}
         className="!h-2.5 !w-2.5 !border-2 !border-slate-400 !bg-white"
       />
-      <div className="min-w-[180px] px-4 py-3">
+      <div className="h-full min-w-[180px] px-4 py-3">
         <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
           Integer
         </div>
@@ -455,7 +455,7 @@ function RegisteredWorkbenchNode({
   ) => JSX.Element | null
   return (
     <>
-      {data.definition.resizable ? (
+      {data.definition.resizable !== false ? (
         <NodeResizer
           isVisible={selected}
           lineClassName="!border-cyan-300/70"
