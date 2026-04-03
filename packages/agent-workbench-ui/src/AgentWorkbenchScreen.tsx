@@ -1450,6 +1450,8 @@ export function AgentWorkbenchScreen({
         nodeTypes={nodeTypes}
         fitView={nodes.length === 0}
         defaultViewport={viewport}
+        minZoom={0.01}
+        maxZoom={8}
         className="h-full w-full"
       >
         <Background gap={20} size={1} color="#94a3b8" />
