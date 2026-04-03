@@ -182,8 +182,8 @@ export const agentChatWorkbenchNodeType: WorkbenchNodeTypeDefinition<WorkbenchAg
         sessionId: null,
         x,
         y,
-        width: 420,
-        height: 420,
+        width: 400,
+        height: 800,
       }
     },
     renderNode: AgentChatWorkbenchNode,
