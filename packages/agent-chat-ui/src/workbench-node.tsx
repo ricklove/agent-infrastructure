@@ -6,7 +6,6 @@ import type {
 import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { memo, useEffect, useRef, useState } from "react"
-import { NodeResizer } from "reactflow"
 
 import { AgentChatWorkbenchSessionView } from "./AgentChatScreen"
 
@@ -112,11 +111,6 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
         selected ? "border-cyan-300 shadow-cyan-900/40" : "border-slate-700"
       }`}
     >
-      <NodeResizer
-        isVisible={selected}
-        lineClassName="!border-cyan-300/70"
-        handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
-      />
       <div className="border-b border-white/10 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -181,6 +175,7 @@ export const agentChatWorkbenchNodeType: WorkbenchNodeTypeDefinition<WorkbenchAg
     label: "Agent Chat",
     keywords: ["agent", "chat", "thread", "session"],
     sortOrder: 100,
+    resizable: true,
     createRecord({ id, x, y }) {
       return {
         id,
