@@ -9,7 +9,6 @@ import type {
   WorkbenchTextNodeRecord,
 } from "@agent-infrastructure/agent-workbench-protocol"
 import {
-  dashboardSessionDebugLog,
   dashboardSessionFetch,
 } from "@agent-infrastructure/dashboard-plugin"
 import { useDashboardWindowLayer } from "@agent-infrastructure/dashboard-ui"
@@ -465,27 +464,6 @@ function RegisteredWorkbenchNode({
           isVisible={selected}
           lineClassName="!border-cyan-300/70"
           handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
-          onResizeStart={(_event, params) => {
-            dashboardSessionDebugLog("wb.nodeResizer.start", {
-              id,
-              type: data.record.type,
-              params,
-            })
-          }}
-          onResize={(_event, params) => {
-            dashboardSessionDebugLog("wb.nodeResizer.resize", {
-              id,
-              type: data.record.type,
-              params,
-            })
-          }}
-          onResizeEnd={(_event, params) => {
-            dashboardSessionDebugLog("wb.nodeResizer.end", {
-              id,
-              type: data.record.type,
-              params,
-            })
-          }}
         />
       ) : null}
       <NodeRenderer
@@ -654,43 +632,12 @@ export function AgentWorkbenchScreen({
 
   const handleNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      const dimensionChanges = changes.filter(
-        (change) => change.type === "dimensions",
-      )
-      if (dimensionChanges.length > 0) {
-        dashboardSessionDebugLog(
-          "wb.onNodesChange.dimensions",
-          dimensionChanges.map((change) => ({
-            id: change.id,
-            type: change.type,
-            dimensions: change.dimensions,
-            resizing: change.resizing,
-            setAttributes: change.setAttributes,
-          })),
-        )
-      }
-
       setNodes((currentNodes) => {
-        const resizedNodeIds = new Set(dimensionChanges.map((change) => change.id))
-        if (resizedNodeIds.size > 0) {
-          dashboardSessionDebugLog(
-            "wb.onNodesChange.beforeNodes",
-            currentNodes
-              .filter((node) => resizedNodeIds.has(node.id))
-              .map((node) => ({
-                id: node.id,
-                width: node.width,
-                height: node.height,
-                initialWidth: node.initialWidth,
-                initialHeight: node.initialHeight,
-                measured: node.measured,
-                style: node.style,
-                recordWidth: node.data.record.width,
-                recordHeight: node.data.record.height,
-              })),
-          )
-        }
-
+        const resizedNodeIds = new Set(
+          changes
+            .filter((change) => change.type === "dimensions")
+            .map((change) => change.id),
+        )
         const nextNodes = applyNodeChanges(changes, currentNodes).map((node) => {
           if (!resizedNodeIds.has(node.id)) {
             return node
@@ -718,26 +665,6 @@ export function AgentWorkbenchScreen({
             },
           }
         })
-
-        if (resizedNodeIds.size > 0) {
-          dashboardSessionDebugLog(
-            "wb.onNodesChange.afterNodes",
-            nextNodes
-              .filter((node) => resizedNodeIds.has(node.id))
-              .map((node) => ({
-                id: node.id,
-                width: node.width,
-                height: node.height,
-                initialWidth: node.initialWidth,
-                initialHeight: node.initialHeight,
-                measured: node.measured,
-                style: node.style,
-                recordWidth: node.data.record.width,
-                recordHeight: node.data.record.height,
-              })),
-          )
-        }
-
         return nextNodes
       })
     },
