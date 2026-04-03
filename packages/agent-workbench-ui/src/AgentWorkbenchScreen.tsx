@@ -1446,6 +1446,7 @@ export function AgentWorkbenchScreen({
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        deleteKeyCode={["Delete", "Backspace"]}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={handleConnect}
