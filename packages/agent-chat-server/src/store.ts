@@ -155,8 +155,16 @@ const defaultWatchdogState = (
   completedAtMs: null,
 })
 
-function safeJsonParse<T>(raw: string): T {
-  return JSON.parse(raw) as T
+function safeJsonParse<T>(raw: string): T | null {
+  if (raw.includes("\0")) {
+    return null
+  }
+
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
 }
 
 function summarizePreview(messages: StoredMessage[]): string | null {
@@ -1361,6 +1369,9 @@ export class AgentChatStore {
     const parsed = safeJsonParse<Partial<SessionMetadata>>(
       readFileSync(this.sessionMetadataPath(sessionId), "utf8"),
     )
+    if (!parsed) {
+      throw new Error(`failed to parse session metadata for ${sessionId}`)
+    }
     const createdAtMs = Number(parsed.createdAtMs)
     const providerKind = parsed.providerKind as AgentChatProviderKind
     return {
@@ -1427,23 +1438,18 @@ export class AgentChatStore {
     }
 
     const raw = readFileSync(path, "utf8")
-    const messages: StoredMessage[] = []
-
-    for (const [index, rawLine] of raw.split("\n").entries()) {
-      const line = rawLine.trim()
-      if (!line) {
-        continue
-      }
-
-      if (line.includes("\0")) {
-        console.error(
-          `[agent-chat-store] skipped corrupt message line with NUL byte sessionId=${session.id} path=${path} line=${index + 1}`,
-        )
-        continue
-      }
-
-      try {
+    return raw
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line, index) => {
         const parsed = safeJsonParse<Partial<StoredMessage>>(line)
+        if (!parsed) {
+          console.error(
+            `[agent-chat-store] skipped unreadable message line sessionId=${session.id} path=${path} line=${index + 1}`,
+          )
+          return null
+        }
         const providerSeenAtMs =
           parsed.providerSeenAtMs === null ||
           parsed.providerSeenAtMs === undefined
@@ -1524,21 +1530,15 @@ export class AgentChatStore {
           content: (parsed.content ?? []) as StoredMessage["content"],
           createdAtMs: Number(parsed.createdAtMs),
         } satisfies StoredMessage
-        messages.push(message)
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error)
-        console.error(
-          `[agent-chat-store] skipped unreadable message line sessionId=${session.id} path=${path} line=${index + 1} error=${detail}`,
-        )
-      }
-    }
-
-    return messages.sort((left, right) => {
-      if (left.createdAtMs !== right.createdAtMs) {
-        return left.createdAtMs - right.createdAtMs
-      }
-      return left.id.localeCompare(right.id)
-    })
+        return message
+      })
+      .filter((message): message is StoredMessage => message !== null)
+      .sort((left, right) => {
+        if (left.createdAtMs !== right.createdAtMs) {
+          return left.createdAtMs - right.createdAtMs
+        }
+        return left.id.localeCompare(right.id)
+      })
   }
 
   private importLegacySqliteIfNeeded(legacySqlitePath: string | null) {
@@ -1663,7 +1663,7 @@ export class AgentChatStore {
               : Number(rowObject.provider_seen_at_ms)
           const content = safeJsonParse<StoredMessage["content"]>(
             String(rowObject.content_json),
-          )
+          ) ?? []
           const authorParticipantId = normalizeAuthorParticipantId(
             null,
             role,

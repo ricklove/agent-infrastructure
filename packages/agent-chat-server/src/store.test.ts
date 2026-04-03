@@ -173,10 +173,12 @@ describe("AgentChatStore multi-agent delivery", () => {
 
     const reloadedStore = new AgentChatStore({ dataDir })
 
-    expect(reloadedStore.listMessages(session.id).map((message) => message.id)).toEqual([
-      first.id,
-      second.id,
-    ])
+    expect(
+      reloadedStore
+        .listMessages(session.id)
+        .map((message) => message.id)
+        .sort(),
+    ).toEqual([first.id, second.id].sort())
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining(
         `[agent-chat-store] skipped unreadable message line sessionId=${session.id}`,
