@@ -1,17 +1,26 @@
 import type {
   WorkbenchDocumentRecord,
+  WorkbenchIntNodeRecord,
+  WorkbenchNodeComponentProps,
   WorkbenchNodeRecord,
+  WorkbenchNodeTypeDefinition,
   WorkbenchSnapshotResponse,
   WorkbenchSummary,
+  WorkbenchTextNodeRecord,
 } from "@agent-infrastructure/agent-workbench-protocol"
 import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
 import { useDashboardWindowLayer } from "@agent-infrastructure/dashboard-ui"
-import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
+import {
+  countEvent,
+  useRenderCounter,
+} from "@agent-infrastructure/render-diagnostics"
 import {
   memo,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -32,18 +41,27 @@ import ReactFlow, {
   useNodesState,
   type Viewport,
 } from "reactflow"
-import "reactflow/dist/style.css"
+import { reactflowStylesLoaded } from "./reactflow-style-runtime.js"
+import {
+  filterWorkbenchNodeTypes,
+  getNextWorkbenchNodeTypeSelection,
+  getWorkbenchNodeType,
+  mergeWorkbenchNodeTypes,
+  resolveWorkbenchNodeTypeSelection,
+} from "./workbench-node-types"
+import type { WorkbenchFlowNodeData } from "./workbench-types"
 
-type WorkbenchNodeData = {
-  text: string
-  onTextChange(nodeId: string, text: string): void
-  onResize(nodeId: string, width: number, height: number): void
-}
+void reactflowStylesLoaded
 
-type PaneClickState = {
-  atMs: number
+type AddNodeMenuState = {
   clientX: number
   clientY: number
+  menuLeft: number
+  menuTop: number
+  flowX: number
+  flowY: number
+  searchQuery: string
+  selectedTypeId: WorkbenchNodeRecord["type"]
 }
 
 type PendingSaveState = {
@@ -70,6 +88,16 @@ type WorkbenchControlsWindowProps = {
   onSearchChange(value: string): void
   onLoadWorkbench(id: string): void
   onCreateWorkbench(): void
+}
+
+type AddNodeMenuProps = {
+  menu: AddNodeMenuState
+  availableTypes: WorkbenchNodeTypeDefinition[]
+  selectedTypeId: WorkbenchNodeRecord["type"] | null
+  onSearchChange(value: string): void
+  onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>): void
+  onSelect(typeId: WorkbenchNodeRecord["type"]): void
+  onConfirm(typeId: WorkbenchNodeRecord["type"]): void
 }
 
 function createNodeId() {
@@ -121,9 +149,12 @@ function WorkbenchIcon(props: { className?: string }) {
 
 function TextWorkbenchNode({
   id,
-  data,
+  record,
   selected,
-}: NodeProps<WorkbenchNodeData>) {
+  onRecordChange,
+  onResize,
+}: WorkbenchNodeComponentProps<WorkbenchTextNodeRecord>) {
+  useRenderCounter("AgentWorkbenchScreen.TextWorkbenchNode")
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
@@ -137,11 +168,11 @@ function TextWorkbenchNode({
       if (!entry) {
         return
       }
-      data.onResize(id, entry.contentRect.width, entry.contentRect.height)
+      onResize(id, entry.contentRect.width, entry.contentRect.height)
     })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [data, id])
+  }, [id, onResize])
 
   return (
     <div
@@ -157,11 +188,82 @@ function TextWorkbenchNode({
       />
       <textarea
         ref={textareaRef}
-        value={data.text}
-        onChange={(event) => data.onTextChange(id, event.target.value)}
+        value={record.text}
+        onChange={(event) =>
+          onRecordChange({
+            ...record,
+            text: event.target.value,
+          })
+        }
         placeholder="Write here..."
         className="min-h-[140px] min-w-[220px] resize rounded-2xl border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none"
       />
+      <Handle
+        type="source"
+        id="right"
+        position={Position.Right}
+        className="!h-2.5 !w-2.5 !border-2 !border-slate-400 !bg-white"
+      />
+    </div>
+  )
+}
+
+function IntWorkbenchNode({
+  id,
+  record,
+  selected,
+  onRecordChange,
+  onResize,
+}: WorkbenchNodeComponentProps<WorkbenchIntNodeRecord>) {
+  useRenderCounter("AgentWorkbenchScreen.IntWorkbenchNode")
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const element = containerRef.current
+    if (!element) {
+      return
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) {
+        return
+      }
+      onResize(id, entry.contentRect.width, entry.contentRect.height)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [id, onResize])
+
+  return (
+    <div
+      ref={containerRef}
+      className={`rounded-2xl border bg-white/95 shadow-lg transition ${
+        selected ? "border-sky-500 shadow-sky-200/70" : "border-slate-300"
+      }`}
+    >
+      <Handle
+        type="target"
+        id="left"
+        position={Position.Left}
+        className="!h-2.5 !w-2.5 !border-2 !border-slate-400 !bg-white"
+      />
+      <div className="min-w-[180px] px-4 py-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+          Integer
+        </div>
+        <input
+          type="number"
+          value={record.value}
+          onChange={(event) =>
+            onRecordChange({
+              ...record,
+              value: Math.trunc(Number(event.target.value) || 0),
+            })
+          }
+          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-semibold text-slate-900 outline-none"
+        />
+      </div>
       <Handle
         type="source"
         id="right"
@@ -259,8 +361,145 @@ const WorkbenchControlsWindow = memo(function WorkbenchControlsWindow(
   )
 })
 
+const AddNodeMenu = memo(function AddNodeMenu(props: AddNodeMenuProps) {
+  useRenderCounter("AgentWorkbenchScreen.AddNodeMenu")
+  const inputRef = useRef<HTMLInputElement | null>(null)
+
+  useLayoutEffect(() => {
+    const focusInput = () => {
+      const activeElement = document.activeElement
+      if (
+        activeElement instanceof HTMLElement &&
+        activeElement !== inputRef.current
+      ) {
+        activeElement.blur()
+      }
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+    const frameHandle = window.requestAnimationFrame(focusInput)
+    const timeoutHandles = [32, 96, 180, 320].map((delayMs) =>
+      window.setTimeout(focusInput, delayMs),
+    )
+    return () => {
+      window.cancelAnimationFrame(frameHandle)
+      for (const handle of timeoutHandles) {
+        window.clearTimeout(handle)
+      }
+    }
+  }, [])
+
+  return (
+    <div
+      data-workbench-add-node-menu="true"
+      className="pointer-events-auto absolute z-20 w-72 rounded-2xl border border-slate-800/70 bg-slate-950/95 p-3 text-slate-100 shadow-2xl shadow-slate-950/40"
+      style={{
+        left: props.menu.menuLeft,
+        top: props.menu.menuTop,
+      }}
+    >
+      <div className="space-y-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/80">
+          Search Node Types
+        </div>
+        <input
+          ref={inputRef}
+          value={props.menu.searchQuery}
+          onChange={(event) => props.onSearchChange(event.target.value)}
+          onKeyDown={props.onKeyDown}
+          placeholder="Search node types"
+          className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+        />
+      </div>
+      <div className="mt-3 space-y-1">
+        {props.availableTypes.map((entry) => {
+          const selected = entry.id === props.selectedTypeId
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onMouseEnter={() => props.onSelect(entry.id)}
+              onClick={() => props.onConfirm(entry.id)}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition ${
+                selected
+                  ? "bg-cyan-300 text-slate-950"
+                  : "bg-white/5 text-slate-100 hover:bg-white/10"
+              }`}
+            >
+              <span className="text-sm font-medium">{entry.label}</span>
+              <span className="text-[11px] uppercase tracking-[0.18em] opacity-70">
+                {entry.id}
+              </span>
+            </button>
+          )
+        })}
+        {props.availableTypes.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-white/10 px-3 py-5 text-center text-xs text-slate-500">
+            No node types match this search.
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+})
+
+function RegisteredWorkbenchNode({
+  id,
+  data,
+  selected,
+}: NodeProps<WorkbenchFlowNodeData>) {
+  useRenderCounter("AgentWorkbenchScreen.RegisteredWorkbenchNode")
+  const NodeRenderer = data.definition.renderNode as (
+    props: WorkbenchNodeComponentProps,
+  ) => JSX.Element | null
+  return (
+    <NodeRenderer
+      id={id}
+      record={data.record as never}
+      selected={selected}
+      onRecordChange={(nextRecord) => data.onRecordChange(id, nextRecord)}
+      onResize={data.onResize}
+    />
+  )
+}
+
+const defaultWorkbenchNodeTypes: WorkbenchNodeTypeDefinition[] = [
+  {
+    id: "text",
+    label: "Text",
+    keywords: ["text", "note", "string"],
+    sortOrder: 0,
+    createRecord({ id, x, y }) {
+      return {
+        id,
+        type: "text",
+        text: "",
+        x,
+        y,
+      }
+    },
+    renderNode: TextWorkbenchNode as WorkbenchNodeTypeDefinition["renderNode"],
+  },
+  {
+    id: "int",
+    label: "Int",
+    keywords: ["int", "integer", "number"],
+    sortOrder: 1,
+    createRecord({ id, x, y }) {
+      return {
+        id,
+        type: "int",
+        value: 0,
+        x,
+        y,
+      }
+    },
+    renderNode: IntWorkbenchNode as WorkbenchNodeTypeDefinition["renderNode"],
+  },
+]
+
 const nodeTypes = {
-  textWorkbenchNode: TextWorkbenchNode,
+  registeredWorkbenchNode: RegisteredWorkbenchNode,
 }
 
 function edgeRecordToFlowEdge(
@@ -278,17 +517,20 @@ function edgeRecordToFlowEdge(
 }
 
 function flowNodesToRecords(
-  nodes: Node<WorkbenchNodeData>[],
+  nodes: Node<WorkbenchFlowNodeData>[],
 ): WorkbenchNodeRecord[] {
   return nodes.map((node) => ({
-    id: node.id,
-    type: "text",
-    text: node.data.text,
+    ...node.data.record,
     x: node.position.x,
     y: node.position.y,
-    width: typeof node.width === "number" ? Math.round(node.width) : undefined,
+    width:
+      typeof node.width === "number"
+        ? Math.round(node.width)
+        : node.data.record.width,
     height:
-      typeof node.height === "number" ? Math.round(node.height) : undefined,
+      typeof node.height === "number"
+        ? Math.round(node.height)
+        : node.data.record.height,
   }))
 }
 
@@ -303,10 +545,18 @@ function flowEdgesToRecords(edges: Edge[]): WorkbenchDocumentRecord["edges"] {
   }))
 }
 
-export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
+export function AgentWorkbenchScreen({
+  apiRootUrl,
+  nodeTypeDefinitions = [],
+}: {
+  apiRootUrl: string
+  nodeTypeDefinitions?: WorkbenchNodeTypeDefinition[]
+}) {
   useRenderCounter("AgentWorkbenchScreen")
   const { openWindow, updateWindow, closeWindow } = useDashboardWindowLayer()
-  const [nodes, setNodes, onNodesChange] = useNodesState<WorkbenchNodeData>([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<WorkbenchFlowNodeData>(
+    [],
+  )
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 })
   const [workbench, setWorkbench] = useState<WorkbenchDocumentRecord | null>(
@@ -320,19 +570,25 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   const [creatingWorkbench, setCreatingWorkbench] = useState(false)
   const [error, setError] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
+  const [addNodeMenu, setAddNodeMenu] = useState<AddNodeMenuState | null>(null)
   const [controlsVisible, setControlsVisible] = useState(
     () => window.location.pathname === "/workbench",
   )
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null)
+  const availableNodeTypeDefinitions = useMemo(
+    () =>
+      mergeWorkbenchNodeTypes(defaultWorkbenchNodeTypes, nodeTypeDefinitions),
+    [nodeTypeDefinitions],
+  )
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const suspendAutosaveRef = useRef(true)
   const workbenchRef = useRef<WorkbenchDocumentRecord | null>(null)
   const activeLoadRequestIdRef = useRef(0)
-  const nodesRef = useRef<Node<WorkbenchNodeData>[]>([])
+  const nodesRef = useRef<Node<WorkbenchFlowNodeData>[]>([])
   const edgesRef = useRef<Edge[]>([])
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 })
-  const lastPaneClickRef = useRef<PaneClickState | null>(null)
+  const initialLoadApiRootRef = useRef<string | null>(null)
   const createCooldownUntilRef = useRef(0)
   const nodeDragActiveRef = useRef(false)
   const controlsWindowOpenedRef = useRef(false)
@@ -483,7 +739,7 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
 
   const requestAutosave = useCallback(
     (
-      nextNodes: Node<WorkbenchNodeData>[],
+      nextNodes: Node<WorkbenchFlowNodeData>[],
       nextEdges: Edge[],
       nextViewport: Viewport,
     ) => {
@@ -516,54 +772,70 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   )
 
   const nodeRecordToFlowNode = useCallback(
-    (record: WorkbenchNodeRecord): Node<WorkbenchNodeData> => ({
-      id: record.id,
-      type: "textWorkbenchNode",
-      position: { x: record.x, y: record.y },
-      width: record.width,
-      height: record.height,
-      data: {
-        text: record.text,
-        onTextChange(nodeId, text) {
-          setNodes((currentNodes) => {
-            const nextNodes = currentNodes.map((node) =>
-              node.id === nodeId
-                ? {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      text,
+    (record: WorkbenchNodeRecord): Node<WorkbenchFlowNodeData> => {
+      const onResize = (nodeId: string, width: number, height: number) => {
+        setNodes((currentNodes) => {
+          const nextNodes = currentNodes.map((node) =>
+            node.id === nodeId
+              ? {
+                  ...node,
+                  width,
+                  height,
+                  data: {
+                    ...node.data,
+                    record: {
+                      ...node.data.record,
+                      width,
+                      height,
                     },
-                  }
-                : node,
-            )
-            requestAutosave(nextNodes, edgesRef.current, viewportRef.current)
-            return nextNodes
-          })
+                  },
+                }
+              : node,
+          )
+          requestAutosave(nextNodes, edgesRef.current, viewportRef.current)
+          return nextNodes
+        })
+      }
+
+      return {
+        id: record.id,
+        type: "registeredWorkbenchNode",
+        position: { x: record.x, y: record.y },
+        width: record.width,
+        height: record.height,
+        data: {
+          record,
+          definition:
+            getWorkbenchNodeType(availableNodeTypeDefinitions, record.type) ??
+            defaultWorkbenchNodeTypes[0],
+          onRecordChange(nodeId, nextRecord) {
+            setNodes((currentNodes) => {
+              const nextNodes = currentNodes.map((node) =>
+                node.id === nodeId
+                  ? {
+                      ...node,
+                      data: {
+                        ...node.data,
+                        record: nextRecord,
+                      },
+                    }
+                  : node,
+              )
+              requestAutosave(nextNodes, edgesRef.current, viewportRef.current)
+              return nextNodes
+            })
+          },
+          onResize,
         },
-        onResize(nodeId, width, height) {
-          setNodes((currentNodes) => {
-            const nextNodes = currentNodes.map((node) =>
-              node.id === nodeId
-                ? {
-                    ...node,
-                    width,
-                    height,
-                  }
-                : node,
-            )
-            requestAutosave(nextNodes, edgesRef.current, viewportRef.current)
-            return nextNodes
-          })
-        },
-      },
-    }),
-    [requestAutosave, setNodes],
+      }
+    },
+    [availableNodeTypeDefinitions, requestAutosave, setNodes],
   )
 
   const applyLoadedSnapshot = useCallback(
     (payload: WorkbenchSnapshotResponse) => {
       suspendAutosaveRef.current = true
+      setAddNodeMenu(null)
       setWorkbench(payload.workbench)
       setAvailableWorkbenches(payload.availableWorkbenches)
       setNodes(payload.workbench.nodes.map(nodeRecordToFlowNode))
@@ -635,14 +907,20 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   )
 
   useEffect(() => {
-    void loadWorkbench()
+    if (initialLoadApiRootRef.current !== apiRootUrl) {
+      initialLoadApiRootRef.current = apiRootUrl
+      void loadWorkbench()
+    }
+  }, [apiRootUrl, loadWorkbench])
+
+  useEffect(() => {
     return () => {
       const saveState = pendingSaveRef.current
       if (saveState.timerId != null) {
         window.clearTimeout(saveState.timerId)
       }
     }
-  }, [loadWorkbench])
+  }, [])
 
   const createWorkbench = useCallback(async () => {
     await flushAllSaves()
@@ -772,15 +1050,43 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
     }
   }, [])
 
-  const createNodeAtClientPoint = useCallback(
+  const closeAddNodeMenu = useCallback(() => {
+    setAddNodeMenu(null)
+  }, [])
+
+
+  const visibleNodeTypes = useMemo(
+    () =>
+      filterWorkbenchNodeTypes(
+        availableNodeTypeDefinitions,
+        addNodeMenu?.searchQuery ?? "",
+      ),
+    [addNodeMenu?.searchQuery, availableNodeTypeDefinitions],
+  )
+
+  const selectedNodeTypeId = useMemo(
+    () =>
+      resolveWorkbenchNodeTypeSelection(
+        visibleNodeTypes,
+        addNodeMenu?.selectedTypeId ?? null,
+      ),
+    [addNodeMenu?.selectedTypeId, visibleNodeTypes],
+  )
+
+  const openAddNodeMenuAtClientPoint = useCallback(
     (clientX: number, clientY: number, target: EventTarget | null) => {
       if (!canvasRef.current) {
         return false
       }
-      if (target instanceof Element && target.closest(".react-flow__node")) {
+      if (
+        target instanceof Element &&
+        (target.closest(".react-flow__node") ||
+          target.closest("[data-workbench-add-node-menu='true']"))
+      ) {
         return false
       }
 
+      const bounds = canvasRef.current.getBoundingClientRect()
       const viewportState = viewportRef.current
       const point =
         reactFlowInstance && "screenToFlowPosition" in reactFlowInstance
@@ -789,10 +1095,6 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
               y: clientY,
             })
           : (() => {
-              const bounds = canvasRef.current?.getBoundingClientRect()
-              if (!bounds) {
-                return null
-              }
               return {
                 x:
                   (clientX - bounds.left - viewportState.x) /
@@ -804,50 +1106,245 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
       if (!point) {
         return false
       }
-      const newNode = nodeRecordToFlowNode({
-        id: createNodeId(),
-        type: "text",
-        text: "",
-        x: point.x,
-        y: point.y,
+
+      countEvent("agent-workbench.open-add-node-menu")
+      setAddNodeMenu({
+        clientX,
+        clientY,
+        menuLeft: clientX - bounds.left,
+        menuTop: clientY - bounds.top,
+        flowX: point.x,
+        flowY: point.y,
+        searchQuery: "",
+        selectedTypeId: "text",
       })
-      const nextNodes = [...nodesRef.current, newNode]
-      setNodes(nextNodes)
-      requestAutosave(nextNodes, edgesRef.current, viewportRef.current)
-      lastPaneClickRef.current = null
       createCooldownUntilRef.current = performance.now() + createCooldownMs
       return true
     },
-    [nodeRecordToFlowNode, reactFlowInstance, requestAutosave, setNodes],
+    [reactFlowInstance],
+  )
+
+  const createNodeFromType = useCallback(
+    (typeId: WorkbenchNodeRecord["type"]) => {
+      const menuState = addNodeMenu
+      if (!menuState) {
+        return false
+      }
+      const definition = filterWorkbenchNodeTypes(
+        availableNodeTypeDefinitions,
+        menuState.searchQuery,
+      ).find((entry) => entry.id === typeId)
+      if (!definition) {
+        return false
+      }
+
+      const newNode = nodeRecordToFlowNode(
+        definition.createRecord({
+          id: createNodeId(),
+          x: menuState.flowX,
+          y: menuState.flowY,
+        }),
+      )
+      const nextNodes = [...nodesRef.current, newNode]
+      setNodes(nextNodes)
+      requestAutosave(nextNodes, edgesRef.current, viewportRef.current)
+      countEvent(`agent-workbench.create-node.${typeId}`)
+      closeAddNodeMenu()
+      createCooldownUntilRef.current = performance.now() + createCooldownMs
+      return true
+    },
+    [
+      addNodeMenu,
+      availableNodeTypeDefinitions,
+      closeAddNodeMenu,
+      nodeRecordToFlowNode,
+      requestAutosave,
+      setNodes,
+    ],
+  )
+
+  useEffect(() => {
+    if (!addNodeMenu) {
+      return
+    }
+
+    const currentSearchQuery = addNodeMenu.searchQuery
+
+    function targetAcceptsTyping(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) {
+        return false
+      }
+      const tagName = target.tagName
+      return (
+        tagName === "INPUT" ||
+        tagName === "TEXTAREA" ||
+        tagName === "SELECT" ||
+        target.isContentEditable
+      )
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!(event.target instanceof Element)) {
+        return
+      }
+      if (event.target.closest("[data-workbench-add-node-menu='true']")) {
+        return
+      }
+      closeAddNodeMenu()
+    }
+
+    function updateSearchQuery(nextQuery: string) {
+      setAddNodeMenu((current) => {
+        if (current == null) {
+          return current
+        }
+        return {
+          ...current,
+          searchQuery: nextQuery,
+          selectedTypeId:
+            resolveWorkbenchNodeTypeSelection(
+              filterWorkbenchNodeTypes(availableNodeTypeDefinitions, nextQuery),
+              current.selectedTypeId,
+            ) ?? "text",
+        }
+      })
+    }
+
+    function handleWindowKeyDown(event: KeyboardEvent) {
+      if (targetAcceptsTyping(event.target)) {
+        return
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        event.stopPropagation()
+        const nextTypeId = getNextWorkbenchNodeTypeSelection(
+          visibleNodeTypes,
+          selectedNodeTypeId,
+          event.key === "ArrowDown" ? 1 : -1,
+        )
+        if (!nextTypeId) {
+          return
+        }
+        setAddNodeMenu((current) =>
+          current == null
+            ? current
+            : {
+                ...current,
+                selectedTypeId: nextTypeId,
+              },
+        )
+        return
+      }
+      if (event.key === "Enter") {
+        if (!selectedNodeTypeId) {
+          return
+        }
+        event.preventDefault()
+        event.stopPropagation()
+        createNodeFromType(selectedNodeTypeId)
+        return
+      }
+      if (event.key === "Escape") {
+        event.preventDefault()
+        event.stopPropagation()
+        closeAddNodeMenu()
+        return
+      }
+      if (event.key === "Backspace") {
+        event.preventDefault()
+        event.stopPropagation()
+        updateSearchQuery(currentSearchQuery.slice(0, -1))
+        return
+      }
+      if (
+        event.key.length === 1 &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        updateSearchQuery(`${currentSearchQuery}${event.key}`)
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown)
+    window.addEventListener("keydown", handleWindowKeyDown, true)
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown)
+      window.removeEventListener("keydown", handleWindowKeyDown, true)
+    }
+  }, [
+    addNodeMenu,
+    availableNodeTypeDefinitions,
+    closeAddNodeMenu,
+    createNodeFromType,
+    selectedNodeTypeId,
+    visibleNodeTypes,
+  ])
+
+  const handleAddNodeMenuKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (visibleNodeTypes.length === 0) {
+        if (event.key === "Escape") {
+          event.preventDefault()
+          closeAddNodeMenu()
+        }
+        return
+      }
+
+      if (event.key === "Enter" && selectedNodeTypeId) {
+        event.preventDefault()
+        createNodeFromType(selectedNodeTypeId)
+        return
+      }
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault()
+        const nextTypeId = getNextWorkbenchNodeTypeSelection(
+          visibleNodeTypes,
+          selectedNodeTypeId,
+          event.key === "ArrowDown" ? 1 : -1,
+        )
+        if (!nextTypeId) {
+          return
+        }
+        setAddNodeMenu((current) =>
+          current == null
+            ? current
+            : {
+                ...current,
+                selectedTypeId: nextTypeId,
+              },
+        )
+        return
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault()
+        closeAddNodeMenu()
+      }
+    },
+    [
+      closeAddNodeMenu,
+      createNodeFromType,
+      selectedNodeTypeId,
+      visibleNodeTypes,
+    ],
   )
 
   const handlePaneClick = useCallback(
     (event: ReactMouseEvent<Element>) => {
       const nowMs = performance.now()
       if (nodeDragActiveRef.current || nowMs < createCooldownUntilRef.current) {
-        lastPaneClickRef.current = null
         return
       }
-      const lastClick = lastPaneClickRef.current
-      const isSecondClick =
-        lastClick != null &&
-        nowMs - lastClick.atMs <= 900 &&
-        Math.abs(lastClick.clientX - event.clientX) <= 32 &&
-        Math.abs(lastClick.clientY - event.clientY) <= 32
-
-      if (isSecondClick) {
-        lastPaneClickRef.current = null
-        createNodeAtClientPoint(event.clientX, event.clientY, event.target)
+      if (event.detail !== 2) {
         return
       }
-
-      lastPaneClickRef.current = {
-        atMs: nowMs,
-        clientX: event.clientX,
-        clientY: event.clientY,
-      }
+      openAddNodeMenuAtClientPoint(event.clientX, event.clientY, event.target)
     },
-    [createNodeAtClientPoint],
+    [openAddNodeMenuAtClientPoint],
   )
 
   const handleConnect = useCallback(
@@ -869,8 +1366,8 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
 
   const handleNodeDragStart = useCallback(() => {
     nodeDragActiveRef.current = true
-    lastPaneClickRef.current = null
-  }, [])
+    closeAddNodeMenu()
+  }, [closeAddNodeMenu])
 
   const handleNodeDragStop = useCallback(() => {
     nodeDragActiveRef.current = false
@@ -897,8 +1394,46 @@ export function AgentWorkbenchScreen({ apiRootUrl }: { apiRootUrl: string }) {
   return (
     <div
       ref={canvasRef}
-      className="h-full min-h-0 bg-[radial-gradient(circle_at_top,_#eff6ff,_#e2e8f0_55%,_#cbd5e1)]"
+      className="relative h-full min-h-0 bg-[radial-gradient(circle_at_top,_#eff6ff,_#e2e8f0_55%,_#cbd5e1)]"
     >
+      {addNodeMenu ? (
+        <AddNodeMenu
+          menu={addNodeMenu}
+          availableTypes={visibleNodeTypes}
+          selectedTypeId={selectedNodeTypeId}
+          onSearchChange={(value) => {
+            setAddNodeMenu((current) => {
+              if (current == null) {
+                return current
+              }
+              const nextSelectedTypeId =
+                resolveWorkbenchNodeTypeSelection(
+                  filterWorkbenchNodeTypes(availableNodeTypeDefinitions, value),
+                  current.selectedTypeId,
+                ) ?? "text"
+              return {
+                ...current,
+                searchQuery: value,
+                selectedTypeId: nextSelectedTypeId,
+              }
+            })
+          }}
+          onKeyDown={handleAddNodeMenuKeyDown}
+          onSelect={(typeId) => {
+            setAddNodeMenu((current) =>
+              current == null
+                ? current
+                : {
+                    ...current,
+                    selectedTypeId: typeId,
+                  },
+            )
+          }}
+          onConfirm={(typeId) => {
+            createNodeFromType(typeId)
+          }}
+        />
+      ) : null}
       <ReactFlow
         nodes={nodes}
         edges={edges}
