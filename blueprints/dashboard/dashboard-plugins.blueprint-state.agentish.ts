@@ -19,8 +19,9 @@ DashboardPluginsState.records(`
 ## Overview
 The dashboard plugin system is implemented per the blueprint architecture. Feature plugins are
 properly defined, startup-policy driven, and integrated with both shell and gateway. The current
-branch also proves dashboard-level composition of feature-provided Workbench node definitions into
-the rendered Workbench screen.
+branch also composes feature-provided Workbench node definitions into the rendered Workbench screen,
+and the shipped `agent-chat` Workbench node now reuses the canonical Agent Chat session surface from
+`agent-chat-ui` rather than a Workbench-only bounded renderer.
 
 ## Current State vs Blueprint
 
@@ -33,24 +34,21 @@ the rendered Workbench screen.
 - ✅ Feature-owned plugin definitions in place
 - ✅ Tab metadata, routes, icons, tooltips properly configured
 - ✅ Dashboard UI composition can inject feature-owned Workbench node definitions through composed plugin screen getProps
-
-### Verification Status
-- Workbench composed plugin registration: worker-local browser verification passed for menu open, text node create, int node create, and Agent Chat node create using package-local agent-browser checks in packages/agent-workbench-ui/src/AgentWorkbenchScreen.agent-browser.test.ts
-- Worker-local screenshot captured at /home/ec2-user/temp/worker-agent-chat-workbench-node.png
+- ✅ The `agent-chat` Workbench node is still feature-owned in `agent-chat-ui`
+- ✅ The `agent-chat` Workbench node now renders the canonical reusable Agent Chat session surface inside the node body
 
 ### Known Gaps
 - The current Workbench node registration path is composed explicitly in dashboard-ui feature wiring rather than through a broader discoverable plugin-node contribution system
-- Persisted reload coverage for feature-provided Workbench node state, including selected session ids, still needs an explicit verification pass
+- Persisted reload coverage for feature-provided Workbench node state, including selected session ids for `agent-chat`, still needs an explicit save/load verification pass
 
 ## Next Steps
-1. Carry the composed Workbench node registration through remaining review, merge, and release steps
-2. Add broader plugin-provided node coverage when additional feature nodes are introduced
-3. Add persisted reload verification for feature-provided Workbench node state where needed
+1. Add a dedicated save/load verification pass for persisted `agent-chat` node session selection
+2. Decide whether Workbench node contributions should stay explicitly composed in `dashboard-ui` or move to a broader discoverable contribution seam
+3. Keep package-local `agent-browser` checks alongside Workbench UI behavior as the fast verification loop
 `);
 
 DashboardPluginsState.tracks(`
 - Implementation alignment with blueprint
 - Dashboard-level composition of feature-owned Workbench node definitions
-- Verification status for Workbench plugin registration behavior
-- Known gaps and issues
+- Known gaps around persisted feature-node state verification and future plugin-node discovery design
 `);

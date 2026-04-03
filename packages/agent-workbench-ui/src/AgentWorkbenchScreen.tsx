@@ -1054,7 +1054,6 @@ export function AgentWorkbenchScreen({
     setAddNodeMenu(null)
   }, [])
 
-
   const visibleNodeTypes = useMemo(
     () =>
       filterWorkbenchNodeTypes(

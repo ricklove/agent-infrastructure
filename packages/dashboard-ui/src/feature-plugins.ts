@@ -15,7 +15,8 @@ const composedWorkbenchDashboardUiPlugin: DashboardFeatureUiPlugin = {
     ...(agentWorkbenchDashboardUiPlugin.screen ?? {}),
     getProps: (context) => ({
       ...(agentWorkbenchDashboardUiPlugin.screen?.getProps?.(context) ??
-        agentWorkbenchDashboardUiPlugin.screen?.props ?? {}),
+        agentWorkbenchDashboardUiPlugin.screen?.props ??
+        {}),
       nodeTypeDefinitions: [agentChatWorkbenchNodeType],
     }),
   },

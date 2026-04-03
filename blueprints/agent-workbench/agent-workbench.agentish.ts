@@ -122,6 +122,9 @@ AgentWorkbench.enforces(`
 - ArrowDown and ArrowUp should move add-node selection through the visible node-type results.
 - A text node should be directly editable through a resizable text area.
 - Plugin-owned projected node types should own their own rendering and feature semantics while Workbench owns placement, persistence, and windowing.
+- The agent-chat projected node should embed the canonical reusable Agent Chat session thread and composer view rather than a separate Workbench-only transcript renderer.
+- Each rendered agent-chat node instance should keep its own session selector state, composer state, and scroll state while reading and writing canonical session data through the shared Agent Chat store and APIs.
+- The agent-chat projected node must remain fully usable inside a resizable Workbench node container.
 - Workbench state must persist as source documents under workspace/data/workbench rather than as opaque browser-only state.
 - The first implementation milestone should close a full text-node vertical slice before richer workbench behavior expands.
 - The first implementation milestone is loading a workbench document, rendering the React Flow canvas, creating text nodes, editing text nodes, moving text nodes, and persisting those changes durably.
@@ -141,7 +144,7 @@ AgentWorkbench.defines(`
 - WorkbenchViewport means the persisted pan and zoom state for one workbench view.
 - WorkbenchTextNode means an authorable graph object with editable multiline text content.
 - WorkbenchIntNode means a primitive numeric node type registered through the shared Workbench node registry.
-- WorkbenchAgentChatNode means a projected Workbench node whose persisted record points at one Agent Chat session while the Agent Chat feature package owns the session selector and thread rendering shown inside the node.
+- WorkbenchAgentChatNode means a projected Workbench node whose persisted record points at one Agent Chat session while the Agent Chat feature package owns the reusable session selector, canonical thread view, and canonical composer shown inside the node.
 - WorkbenchTextEdge means the initial relationship line between workbench nodes, optionally carrying text.
 - WorkbenchTextHandle means the initial attachable handle on a node, optionally carrying text.
 - TextNodeDefinition means a lifted Agentish `define.text(...)` style constant emitted from a named text node.
@@ -213,6 +216,16 @@ when(Actor.operator.confirms("the selected node type from the add-node menu"))
 when(Actor.operator.opens("the add-node menu"))
   .then(AgentWorkbench.searches("registered node types"))
   .and(AgentWorkbench.allows("ArrowDown and ArrowUp keyboard selection across visible node types"));
+
+when(Actor.operator.selects(Graph.agentChatNode))
+  .then(AgentWorkbench.renders("the canonical Agent Chat session view inside the node body"))
+  .and(AgentWorkbench.positions("a compact session selector").at("the top of the node chrome"))
+  .and(AgentWorkbench.preserves("resizable node dimensions around the embedded chat view"));
+
+when(Actor.operator.opens("multiple agent-chat nodes"))
+  .then(AgentWorkbench.allows("independent per-node selected session state"))
+  .and(AgentWorkbench.allows("independent per-node composer state"))
+  .and(AgentWorkbench.requires("shared canonical session storage behind those node-local views"));
 
 when(Actor.operator.edits(Graph.textNode))
   .then(AgentWorkbench.updates(Storage.nodeRecord))

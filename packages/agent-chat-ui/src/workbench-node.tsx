@@ -5,10 +5,11 @@ import type {
 } from "@agent-infrastructure/agent-workbench-protocol"
 import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
-import { memo, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useEffect, useRef, useState } from "react"
+
+import { AgentChatWorkbenchSessionView } from "./AgentChatScreen"
 
 const agentChatApiRootUrl = "/api/agent-chat"
-const maxVisibleMessages = 40
 
 type ChatSessionSummary = {
   id: string
@@ -16,33 +17,9 @@ type ChatSessionSummary = {
   updatedAtMs: number
 }
 
-type ChatSessionMessage = {
-  id: string
-  role: "user" | "assistant" | "system"
-  content: Array<
-    { type: "text"; text: string } | { type: "image"; url: string }
-  >
-}
-
 type SessionsResponse = {
   ok: boolean
   sessions: ChatSessionSummary[]
-}
-
-type SessionSnapshotResponse = {
-  ok: boolean
-  messages: ChatSessionMessage[]
-}
-
-function summarizeMessageContent(message: ChatSessionMessage) {
-  const textContent = message.content
-    .map((part) =>
-      part.type === "text" ? part.text.trim() : `[image] ${part.url}`,
-    )
-    .filter(Boolean)
-    .join("\n")
-    .trim()
-  return textContent || "No visible content"
 }
 
 const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
@@ -55,9 +32,7 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
   useRenderCounter("AgentChatWorkbenchNode")
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([])
-  const [messages, setMessages] = useState<ChatSessionMessage[]>([])
   const [loadingSessions, setLoadingSessions] = useState(true)
-  const [loadingMessages, setLoadingMessages] = useState(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
@@ -108,8 +83,12 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
     }
 
     void loadSessions()
+    const refreshHandle = window.setInterval(() => {
+      void loadSessions()
+    }, 4000)
     return () => {
       cancelled = true
+      window.clearInterval(refreshHandle)
     }
   }, [])
 
@@ -123,55 +102,7 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
     })
   }, [onRecordChange, record, sessions])
 
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadMessages(sessionId: string) {
-      setLoadingMessages(true)
-      setError("")
-      try {
-        const response = (await dashboardSessionFetch(
-          `${agentChatApiRootUrl}/sessions/${encodeURIComponent(sessionId)}`,
-        )) as Response
-        if (!response.ok) {
-          throw new Error(await response.text())
-        }
-        const payload = (await response.json()) as SessionSnapshotResponse
-        if (!cancelled) {
-          setMessages(payload.messages)
-        }
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(
-            loadError instanceof Error ? loadError.message : String(loadError),
-          )
-          setMessages([])
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingMessages(false)
-        }
-      }
-    }
-
-    if (!record.sessionId) {
-      setMessages([])
-      return () => {
-        cancelled = true
-      }
-    }
-
-    void loadMessages(record.sessionId)
-    return () => {
-      cancelled = true
-    }
-  }, [record.sessionId])
-
   const selectedSessionId = record.sessionId ?? ""
-  const visibleMessages = useMemo(
-    () => messages.slice(-maxVisibleMessages),
-    [messages],
-  )
 
   return (
     <div
@@ -186,7 +117,7 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
             <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-200/80">
               Agent Chat
             </div>
-            <div className="text-xs text-slate-400">Session thread view</div>
+            <div className="text-xs text-slate-400">Canonical session view</div>
           </div>
           <select
             value={selectedSessionId}
@@ -225,40 +156,12 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
           </div>
         ) : null}
         {record.sessionId ? (
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-            {loadingMessages ? (
-              <div className="px-1 py-2 text-xs text-slate-400">
-                Loading thread…
-              </div>
-            ) : visibleMessages.length === 0 ? (
-              <div className="px-1 py-2 text-xs text-slate-500">
-                No messages in this session yet.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {visibleMessages.map((message) => {
-                  const tone =
-                    message.role === "assistant"
-                      ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-50"
-                      : message.role === "system"
-                        ? "border-violet-300/20 bg-violet-300/10 text-violet-50"
-                        : "border-white/10 bg-white/5 text-slate-100"
-                  return (
-                    <div
-                      key={message.id}
-                      className={`rounded-2xl border px-3 py-2 ${tone}`}
-                    >
-                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-70">
-                        {message.role}
-                      </div>
-                      <div className="whitespace-pre-wrap break-words text-xs leading-5">
-                        {summarizeMessageContent(message)}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+          <div className="min-h-0 flex-1">
+            <AgentChatWorkbenchSessionView
+              apiRootUrl={agentChatApiRootUrl}
+              sessionId={record.sessionId}
+              draftNamespace={`workbench-node:${id}`}
+            />
           </div>
         ) : null}
       </div>

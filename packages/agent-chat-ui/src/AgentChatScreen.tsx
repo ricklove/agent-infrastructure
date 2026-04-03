@@ -734,26 +734,35 @@ function dashboardSessionWebSocketProtocols(): string[] {
   )
 }
 
-function draftStorageKey(sessionId: string) {
-  return `${draftStorageKeyPrefix}${sessionId}`
+function draftStorageKey(sessionId: string, namespace?: string | null) {
+  const normalizedNamespace = namespace?.trim() ?? ""
+  return normalizedNamespace
+    ? `${draftStorageKeyPrefix}${normalizedNamespace}:${sessionId}`
+    : `${draftStorageKeyPrefix}${sessionId}`
 }
 
-function readDraft(sessionId: string) {
+function readDraft(sessionId: string, namespace?: string | null) {
   if (typeof window === "undefined" || !sessionId) {
     return ""
   }
-  return window.localStorage.getItem(draftStorageKey(sessionId)) ?? ""
+  return (
+    window.localStorage.getItem(draftStorageKey(sessionId, namespace)) ?? ""
+  )
 }
 
-function writeDraft(sessionId: string, draft: string) {
+function writeDraft(
+  sessionId: string,
+  draft: string,
+  namespace?: string | null,
+) {
   if (typeof window === "undefined" || !sessionId) {
     return
   }
   if (draft.trim()) {
-    window.localStorage.setItem(draftStorageKey(sessionId), draft)
+    window.localStorage.setItem(draftStorageKey(sessionId, namespace), draft)
     return
   }
-  window.localStorage.removeItem(draftStorageKey(sessionId))
+  window.localStorage.removeItem(draftStorageKey(sessionId, namespace))
 }
 
 function readSessionRailWidth() {
@@ -2227,6 +2236,7 @@ function MessageImageAsset(props: {
 const ComposerPanel = memo(
   function ComposerPanel(props: {
     activeSession: SessionSummary | null
+    draftNamespace?: string | null
     sending: boolean
     interrupting: boolean
     activity: SessionActivity
@@ -2285,10 +2295,14 @@ const ComposerPanel = memo(
 
       const previousSessionId = previousSessionIdRef.current
       if (previousSessionId && previousSessionId !== props.activeSession.id) {
-        writeDraft(previousSessionId, latestDraftRef.current)
+        writeDraft(
+          previousSessionId,
+          latestDraftRef.current,
+          props.draftNamespace,
+        )
       }
 
-      const nextDraft = readDraft(props.activeSession.id)
+      const nextDraft = readDraft(props.activeSession.id, props.draftNamespace)
       previousSessionIdRef.current = props.activeSession.id
       latestDraftRef.current = nextDraft
       lastTypingReportAtRef.current = 0
@@ -2298,18 +2312,21 @@ const ComposerPanel = memo(
       }
       setHasComposerText(nextDraft.trim().length > 0)
       setComposerImages([])
-    }, [props.activeSession?.id])
+    }, [props.activeSession?.id, props.draftNamespace])
 
-    const scheduleDraftPersist = useCallback((sessionId: string) => {
-      if (draftPersistTimeoutRef.current !== null) {
-        window.clearTimeout(draftPersistTimeoutRef.current)
-      }
+    const scheduleDraftPersist = useCallback(
+      (sessionId: string) => {
+        if (draftPersistTimeoutRef.current !== null) {
+          window.clearTimeout(draftPersistTimeoutRef.current)
+        }
 
-      draftPersistTimeoutRef.current = window.setTimeout(() => {
-        writeDraft(sessionId, latestDraftRef.current)
-        draftPersistTimeoutRef.current = null
-      }, composerDraftPersistMs)
-    }, [])
+        draftPersistTimeoutRef.current = window.setTimeout(() => {
+          writeDraft(sessionId, latestDraftRef.current, props.draftNamespace)
+          draftPersistTimeoutRef.current = null
+        }, composerDraftPersistMs)
+      },
+      [props.draftNamespace],
+    )
 
     useEffect(() => {
       return () => {
@@ -2317,10 +2334,14 @@ const ComposerPanel = memo(
           window.clearTimeout(draftPersistTimeoutRef.current)
         }
         if (previousSessionIdRef.current) {
-          writeDraft(previousSessionIdRef.current, latestDraftRef.current)
+          writeDraft(
+            previousSessionIdRef.current,
+            latestDraftRef.current,
+            props.draftNamespace,
+          )
         }
       }
-    }, [])
+    }, [props.draftNamespace])
 
     const reportComposerTyping = useCallback(
       async (active: boolean, options?: { force?: boolean }) => {
@@ -2380,7 +2401,7 @@ const ComposerPanel = memo(
       }
       latestDraftRef.current = ""
       if (props.activeSession?.id) {
-        writeDraft(props.activeSession.id, "")
+        writeDraft(props.activeSession.id, "", props.draftNamespace)
       }
       if (composerInputRef.current) {
         composerInputRef.current.value = ""
@@ -2396,6 +2417,7 @@ const ComposerPanel = memo(
       props.onSubmitMessage,
       props.processResolutionRequired,
       reportComposerTyping,
+      props.draftNamespace,
     ])
 
     const handleComposerKeyDown = useCallback(
@@ -3057,6 +3079,2143 @@ const ArchivedSessionCard = memo(
     previousProps.isArchiving === nextProps.isArchiving &&
     previousProps.onActivateSession === nextProps.onActivateSession &&
     previousProps.onRestoreSession === nextProps.onRestoreSession,
+)
+
+export type AgentChatWorkbenchSessionViewProps = {
+  apiRootUrl: string
+  sessionId: string | null
+  draftNamespace: string
+}
+
+export const AgentChatWorkbenchSessionView = memo(
+  function AgentChatWorkbenchSessionView(
+    props: AgentChatWorkbenchSessionViewProps,
+  ) {
+    useRenderCounter("AgentChatWorkbenchSessionView")
+    const activeSessionId = props.sessionId ?? ""
+    const wsRootUrl = useMemo(() => {
+      if (typeof window === "undefined") {
+        return "ws://127.0.0.1/ws/agent-chat"
+      }
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:"
+      return `${wsProtocol}//${window.location.host}/ws/agent-chat`
+    }, [])
+    const transcriptViewportRef = useRef<HTMLDivElement | null>(null)
+    const transcriptContentRef = useRef<HTMLDivElement | null>(null)
+    const transcriptBottomSentinelRef = useRef<HTMLDivElement | null>(null)
+    const composerDockRef = useRef<HTMLDivElement | null>(null)
+    const pendingSessionOpenScrollRef = useRef<string | null>(null)
+    const transcriptPinnedToBottomRef = useRef(true)
+    const typingStateRef = useRef<{
+      sessionId: string
+      lastSentAt: number
+      active: boolean
+    } | null>(null)
+    const messageElementRefs = useRef(new Map<string, HTMLElement>())
+    const queuedMessageCountRef = useRef(0)
+    const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
+    const [processBlueprints, setProcessBlueprints] = useState<
+      ProcessBlueprint[]
+    >([])
+    const [sessions, setSessions] = useState<SessionSummary[]>([])
+    const [messages, setMessages] = useState<SessionMessage[]>([])
+    const [queuedMessages, setQueuedMessages] = useState<SessionMessage[]>([])
+    const [activity, setActivity] = useState<SessionActivity>({
+      status: "idle",
+      startedAtMs: null,
+      threadId: null,
+      turnId: null,
+      backgroundProcessCount: 0,
+      waitingFlags: [],
+      lastError: null,
+      currentMessageId: null,
+      canInterrupt: false,
+    })
+    const [sending, setSending] = useState(false)
+    const [interrupting, setInterrupting] = useState(false)
+    const [error, setError] = useState("")
+    const [wsWarning, setWsWarning] = useState("")
+    const [streamingAssistantText, setStreamingAssistantText] = useState("")
+    const [activeSessionDirectory, setActiveSessionDirectory] = useState("")
+    const [activeSessionProviderKind, setActiveSessionProviderKind] =
+      useState<ProviderKind>("codex-app-server")
+    const [activeSessionModelRef, setActiveSessionModelRef] = useState("")
+    const [activeSessionAuthProfile, setActiveSessionAuthProfile] = useState("")
+    const [activeSessionImageModelRef, setActiveSessionImageModelRef] =
+      useState("")
+    const [
+      activeSessionProcessBlueprintId,
+      setActiveSessionProcessBlueprintId,
+    ] = useState("")
+    const [activeSessionTickets, setActiveSessionTickets] = useState<
+      AgentTicket[]
+    >([])
+    const [updatingDirectory, setUpdatingDirectory] = useState(false)
+    const [updatingQuickProcessBlueprint, setUpdatingQuickProcessBlueprint] =
+      useState(false)
+    const [settingsOpen, setSettingsOpen] = useState(false)
+    const [replyTargetMessageId, setReplyTargetMessageId] = useState<
+      string | null
+    >(null)
+    const [nowMs, setNowMs] = useState(() => Date.now())
+    const [
+      expandedReplacedStreamMessageIds,
+      setExpandedReplacedStreamMessageIds,
+    ] = useState<Record<string, boolean>>({})
+    const [expandedActivityClusterKeys, setExpandedActivityClusterKeys] =
+      useState<Record<string, boolean>>({})
+    const [rawTranscriptMessageIds, setRawTranscriptMessageIds] = useState<
+      Record<string, boolean>
+    >({})
+    const [fileReferenceModal, setFileReferenceModal] =
+      useState<FileReferenceModalState | null>(null)
+    const [highlightedMessageId, _setHighlightedMessageId] = useState("")
+    const [composerDockHeight, setComposerDockHeight] = useState(0)
+    const [transcriptRenderLimit, setTranscriptRenderLimit] = useState(
+      transcriptRenderPageSize,
+    )
+    const [threadViewportMetrics, setThreadViewportMetrics] = useState({
+      scrollTop: 0,
+      scrollHeight: 1,
+      clientHeight: 1,
+    })
+
+    const activeSession = useMemo(
+      () => sessions.find((session) => session.id === activeSessionId) ?? null,
+      [activeSessionId, sessions],
+    )
+    const activeSessionProvider = useMemo(
+      () =>
+        providers.find((entry) => entry.kind === activeSessionProviderKind) ??
+        null,
+      [activeSessionProviderKind, providers],
+    )
+    const activeSessionProcessBlueprint = useMemo(
+      () =>
+        processBlueprints.find(
+          (entry) => entry.id === activeSessionProcessBlueprintId,
+        ) ?? null,
+      [activeSessionProcessBlueprintId, processBlueprints],
+    )
+    const activeSessionUsageSummary = useMemo(
+      () => summarizeProviderUsage(activeSession?.providerUsage ?? null),
+      [activeSession?.providerUsage],
+    )
+    const hasBlockedActiveTicket =
+      activeSession?.activeTicket?.status === "blocked"
+    const processTerminalStatus =
+      activeSession?.processBlueprintId &&
+      activeSession.activity.status !== "running" &&
+      activeSession.activity.status !== "queued" &&
+      !activeSession.pendingSystemInstruction &&
+      activeSession.queuedMessageCount === 0 &&
+      (activeSession.watchdogState.status === "completed" ||
+        (activeSession.watchdogState.status === "blocked" &&
+          !hasBlockedActiveTicket))
+        ? activeSession.watchdogState.status
+        : null
+    const processResolutionRequired = processTerminalStatus !== null
+    const unfinishedSessionTickets = useMemo(() => {
+      const currentTicketId = activeSession?.activeTicket?.id ?? null
+      const ticketsById = new Map<string, AgentTicket>()
+      if (isUnfinishedTicket(activeSession?.activeTicket)) {
+        ticketsById.set(
+          activeSession.activeTicket.id,
+          activeSession.activeTicket,
+        )
+      }
+      for (const ticket of activeSessionTickets) {
+        if (
+          ticket.sessionId !== activeSessionId ||
+          !isUnfinishedTicket(ticket)
+        ) {
+          continue
+        }
+        const existing = ticketsById.get(ticket.id)
+        if (!existing || ticket.updatedAtMs > existing.updatedAtMs) {
+          ticketsById.set(ticket.id, ticket)
+        }
+      }
+      return [...ticketsById.values()].sort((left, right) => {
+        if (left.id === currentTicketId && right.id !== currentTicketId) {
+          return -1
+        }
+        if (right.id === currentTicketId && left.id !== currentTicketId) {
+          return 1
+        }
+        return right.updatedAtMs - left.updatedAtMs
+      })
+    }, [activeSession?.activeTicket, activeSessionId, activeSessionTickets])
+    const quickProcessSelectValue = processResolutionRequired
+      ? completedProcessResolutionSentinel
+      : isUnfinishedTicket(activeSession?.activeTicket)
+        ? ticketQuickSelectValue(activeSession.activeTicket.id)
+        : (activeSession?.processBlueprintId ?? "")
+    const compactWaitingSummary = useMemo(
+      () =>
+        waitingSummaryLabel(
+          activeSession?.pendingSystemInstruction,
+          queuedMessages.filter(
+            (message) =>
+              message.role === "system" && message.providerSeenAtMs === null,
+          ),
+        ),
+      [activeSession?.pendingSystemInstruction, queuedMessages],
+    )
+    const sessionMap = useMemo(
+      () => new Map(sessions.map((session) => [session.id, session])),
+      [sessions],
+    )
+    const messageMap = useMemo(
+      () => new Map(messages.map((message) => [message.id, message])),
+      [messages],
+    )
+    const activeReplyTarget = useMemo(
+      () =>
+        messages.find((message) => message.id === replyTargetMessageId) ?? null,
+      [messages, replyTargetMessageId],
+    )
+    const renderedTranscriptItems = useMemo(() => {
+      const items: RenderedTranscriptItem[] = []
+      let pendingStreamCheckpoints: SessionMessage[] = []
+      let pendingActivityMessages: SessionMessage[] = []
+
+      const flushActivityMessages = () => {
+        if (pendingActivityMessages.length === 0) {
+          return
+        }
+        const firstPendingActivityMessage = pendingActivityMessages[0]
+        if (
+          pendingActivityMessages.length === 1 &&
+          firstPendingActivityMessage &&
+          shouldKeepExpandedActivityMessage(firstPendingActivityMessage)
+        ) {
+          items.push({
+            type: "message",
+            message: firstPendingActivityMessage,
+            precedingStreamCheckpoints: [],
+          })
+          pendingActivityMessages = []
+          return
+        }
+        items.push({
+          type: "activityCluster",
+          messages: pendingActivityMessages,
+        })
+        pendingActivityMessages = []
+      }
+
+      for (const message of messages) {
+        if (message.kind === "streamCheckpoint") {
+          flushActivityMessages()
+          pendingStreamCheckpoints.push(message)
+          continue
+        }
+        if (message.kind === "activity") {
+          if (pendingStreamCheckpoints.length > 0) {
+            for (const streamMessage of pendingStreamCheckpoints) {
+              items.push({
+                type: "message",
+                message: streamMessage,
+                precedingStreamCheckpoints: [],
+              })
+            }
+            pendingStreamCheckpoints = []
+          }
+          pendingActivityMessages.push(message)
+          continue
+        }
+        flushActivityMessages()
+        if (message.role === "assistant" && message.kind === "chat") {
+          items.push({
+            type: "message",
+            message,
+            precedingStreamCheckpoints: pendingStreamCheckpoints,
+          })
+          pendingStreamCheckpoints = []
+          continue
+        }
+        if (pendingStreamCheckpoints.length > 0) {
+          for (const streamMessage of pendingStreamCheckpoints) {
+            items.push({
+              type: "message",
+              message: streamMessage,
+              precedingStreamCheckpoints: [],
+            })
+          }
+          pendingStreamCheckpoints = []
+        }
+        items.push({
+          type: "message",
+          message,
+          precedingStreamCheckpoints: [],
+        })
+      }
+
+      flushActivityMessages()
+      for (const streamMessage of pendingStreamCheckpoints) {
+        items.push({
+          type: "message",
+          message: streamMessage,
+          precedingStreamCheckpoints: [],
+        })
+      }
+      return items
+    }, [messages])
+    const hasVisibleStreamCheckpoint = useMemo(
+      () =>
+        renderedTranscriptItems.some(
+          (item) =>
+            item.type === "message" && item.message.kind === "streamCheckpoint",
+        ),
+      [renderedTranscriptItems],
+    )
+    const visibleTranscriptItems = useMemo(() => {
+      if (renderedTranscriptItems.length <= transcriptRenderLimit) {
+        return renderedTranscriptItems
+      }
+      return renderedTranscriptItems.slice(
+        renderedTranscriptItems.length - transcriptRenderLimit,
+      )
+    }, [renderedTranscriptItems, transcriptRenderLimit])
+    const hiddenTranscriptItemCount =
+      renderedTranscriptItems.length - visibleTranscriptItems.length
+    const showScrollToBottomButton = useMemo(
+      () =>
+        threadViewportMetrics.scrollHeight -
+          threadViewportMetrics.clientHeight -
+          threadViewportMetrics.scrollTop >
+        96,
+      [threadViewportMetrics],
+    )
+    const threadStatusSummary = summarizeSessionWorkerState(
+      activity,
+      queuedMessages.length,
+      nowMs,
+    )
+
+    const mergeSession = useCallback((session: SessionSummary | null) => {
+      if (!session) {
+        return
+      }
+      setSessions((current) => {
+        const next = current.some((entry) => entry.id === session.id)
+          ? current.map((entry) => (entry.id === session.id ? session : entry))
+          : [session, ...current]
+        return [...next].sort(
+          (left, right) => right.updatedAtMs - left.updatedAtMs,
+        )
+      })
+    }, [])
+
+    const syncCurrentChatSettingsFromSession = useCallback(
+      (session: SessionSummary | null) => {
+        setActiveSessionDirectory(session?.cwd ?? "")
+        setActiveSessionProviderKind(
+          session?.providerKind ?? "codex-app-server",
+        )
+        setActiveSessionModelRef(session?.modelRef ?? "")
+        setActiveSessionAuthProfile(session?.authProfile ?? "")
+        setActiveSessionImageModelRef(session?.imageModelRef ?? "")
+        setActiveSessionProcessBlueprintId(session?.processBlueprintId ?? "")
+      },
+      [],
+    )
+
+    const loadSessionTickets = useCallback(
+      async (sessionId: string) => {
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${sessionId}/tickets?unfinished=true`,
+        )
+        const payload = (await response.json()) as SessionTicketsResponse
+        if (!response.ok || !payload.ok || !Array.isArray(payload.tickets)) {
+          throw new Error(payload.error ?? "Session tickets failed to load.")
+        }
+        return payload.tickets
+      },
+      [props.apiRootUrl],
+    )
+
+    const loadSessionSnapshot = useCallback(
+      async (sessionId: string) => {
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${encodeURIComponent(sessionId)}`,
+        )
+        const payload = (await response.json()) as SessionSnapshotResponse & {
+          error?: string
+        }
+        if (!response.ok || !payload.ok || !Array.isArray(payload.messages)) {
+          throw new Error(payload.error ?? "Session load failed.")
+        }
+        return payload
+      },
+      [props.apiRootUrl],
+    )
+
+    const updateActiveSessionRuntime = useCallback(
+      (nextActivity: SessionActivity, queuedCount: number) => {
+        if (!activeSessionId) {
+          return
+        }
+        setSessions((current) =>
+          current.map((session) =>
+            session.id === activeSessionId
+              ? {
+                  ...session,
+                  activity: nextActivity,
+                  queuedMessageCount: queuedCount,
+                }
+              : session,
+          ),
+        )
+      },
+      [activeSessionId],
+    )
+
+    const reportTyping = useCallback(
+      async (
+        active: boolean,
+        options?: { force?: boolean; sessionId?: string },
+      ) => {
+        const targetSessionId = options?.sessionId ?? activeSessionId
+        if (!targetSessionId) {
+          return
+        }
+        const now = Date.now()
+        const currentState = typingStateRef.current
+        if (
+          !options?.force &&
+          active &&
+          currentState?.sessionId === targetSessionId &&
+          currentState.active &&
+          now - currentState.lastSentAt < typingHeartbeatMs
+        ) {
+          return
+        }
+        typingStateRef.current = {
+          sessionId: targetSessionId,
+          lastSentAt: now,
+          active,
+        }
+        try {
+          await apiFetch(
+            `${props.apiRootUrl}/sessions/${targetSessionId}/typing`,
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ active }),
+            },
+          )
+        } catch {
+          // Best-effort only.
+        }
+      },
+      [activeSessionId, props.apiRootUrl],
+    )
+
+    const updateThreadViewportMetrics = useCallback(() => {
+      const viewport = transcriptViewportRef.current
+      if (!viewport) {
+        return
+      }
+      setThreadViewportMetrics({
+        scrollTop: viewport.scrollTop,
+        scrollHeight: Math.max(1, viewport.scrollHeight),
+        clientHeight: Math.max(1, viewport.clientHeight),
+      })
+    }, [])
+
+    const isViewportNearBottom = useCallback((viewport: HTMLDivElement) => {
+      const distanceFromBottom =
+        viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop
+      return distanceFromBottom <= 48
+    }, [])
+
+    const scrollTranscriptToBottom = useCallback(() => {
+      const viewport = transcriptViewportRef.current
+      if (!viewport) {
+        return
+      }
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "auto" })
+      transcriptPinnedToBottomRef.current = true
+      updateThreadViewportMetrics()
+      if (
+        activeSessionId &&
+        pendingSessionOpenScrollRef.current === activeSessionId &&
+        isViewportNearBottom(viewport)
+      ) {
+        pendingSessionOpenScrollRef.current = null
+      }
+    }, [activeSessionId, isViewportNearBottom, updateThreadViewportMetrics])
+
+    const handleTranscriptViewportScroll = useCallback(() => {
+      const viewport = transcriptViewportRef.current
+      if (!viewport) {
+        return
+      }
+      const nearBottom = isViewportNearBottom(viewport)
+      transcriptPinnedToBottomRef.current = nearBottom
+      if (
+        nearBottom &&
+        activeSessionId &&
+        pendingSessionOpenScrollRef.current === activeSessionId
+      ) {
+        pendingSessionOpenScrollRef.current = null
+      }
+      updateThreadViewportMetrics()
+    }, [activeSessionId, isViewportNearBottom, updateThreadViewportMetrics])
+
+    const setMessageElementRef = useCallback(
+      (messageId: string, element: HTMLElement | null) => {
+        if (!element) {
+          messageElementRefs.current.delete(messageId)
+          return
+        }
+        messageElementRefs.current.set(messageId, element)
+      },
+      [],
+    )
+
+    const copyMessageLink = useCallback(
+      async (sessionId: string, messageId: string) => {
+        if (typeof navigator === "undefined" || !sessionId || !messageId) {
+          return
+        }
+        await navigator.clipboard.writeText(
+          buildMessagePermalink(sessionId, messageId),
+        )
+      },
+      [],
+    )
+
+    const openFileReferenceModal = useCallback((pathname: string) => {
+      if (!isAllowedLocalFileReference(pathname)) {
+        return
+      }
+      setFileReferenceModal({ pathname })
+    }, [])
+
+    const closeFileReferenceModal = useCallback(() => {
+      setFileReferenceModal(null)
+    }, [])
+
+    const toggleRawTranscriptMessage = useCallback((messageId: string) => {
+      setRawTranscriptMessageIds((current) => ({
+        ...current,
+        [messageId]: !current[messageId],
+      }))
+    }, [])
+
+    const toggleExpandedReplacedStreams = useCallback((messageId: string) => {
+      setExpandedReplacedStreamMessageIds((current) => ({
+        ...current,
+        [messageId]: !current[messageId],
+      }))
+    }, [])
+
+    const toggleExpandedActivityCluster = useCallback((clusterKey: string) => {
+      setExpandedActivityClusterKeys((current) => ({
+        ...current,
+        [clusterKey]: !current[clusterKey],
+      }))
+    }, [])
+
+    const openTicketWindow = useCallback(
+      (ticketId: string, sessionId: string, title: string) => {
+        window.dispatchEvent(
+          new CustomEvent(openTicketWindowEventName, {
+            detail: { ticketId, sessionId, title },
+          }),
+        )
+      },
+      [],
+    )
+
+    const activateSessionTicket = useCallback(
+      async (ticketId: string) => {
+        if (!activeSessionId) {
+          return
+        }
+        setUpdatingQuickProcessBlueprint(true)
+        setError("")
+        try {
+          const response = await apiFetch(
+            `${props.apiRootUrl}/sessions/${activeSessionId}/active-ticket`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ ticketId }),
+            },
+          )
+          const payload = (await response.json()) as SessionSnapshotResponse & {
+            error?: string
+          }
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.error ?? "Ticket activation failed.")
+          }
+          mergeSession(payload.session)
+          setMessages(payload.messages)
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+          syncCurrentChatSettingsFromSession(payload.session)
+          const refreshedTickets = await loadSessionTickets(activeSessionId)
+          setActiveSessionTickets(refreshedTickets)
+        } catch (nextError) {
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Ticket activation failed.",
+          )
+        } finally {
+          setUpdatingQuickProcessBlueprint(false)
+        }
+      },
+      [
+        activeSessionId,
+        loadSessionTickets,
+        mergeSession,
+        props.apiRootUrl,
+        syncCurrentChatSettingsFromSession,
+      ],
+    )
+
+    const applySessionSnapshot = useCallback(
+      (payload: SessionSnapshotResponse) => {
+        mergeSession(payload.session)
+        if (payload.session.id === activeSessionId) {
+          setMessages(payload.messages)
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+        }
+      },
+      [activeSessionId, mergeSession],
+    )
+
+    const updateActiveSessionProcessQuickSet = useCallback(
+      async (nextProcessBlueprintId: string) => {
+        if (!activeSessionId || !activeSession) {
+          return
+        }
+        const normalizedProcessBlueprintId = nextProcessBlueprintId || null
+        const forceProcessBlueprintReapply =
+          processResolutionRequired &&
+          (activeSession.processBlueprintId ?? null) ===
+            normalizedProcessBlueprintId
+        if (
+          (activeSession.processBlueprintId ?? null) ===
+            normalizedProcessBlueprintId &&
+          !forceProcessBlueprintReapply
+        ) {
+          return
+        }
+        setUpdatingQuickProcessBlueprint(true)
+        setError("")
+        try {
+          const response = await apiFetch(
+            `${props.apiRootUrl}/sessions/${activeSessionId}`,
+            {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                processBlueprintId: normalizedProcessBlueprintId,
+                forceProcessBlueprintReapply,
+              }),
+            },
+          )
+          const payload = (await response.json()) as SessionSnapshotResponse & {
+            error?: string
+          }
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.error ?? "Process update failed.")
+          }
+          mergeSession(payload.session)
+          setMessages(payload.messages)
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+          syncCurrentChatSettingsFromSession(payload.session)
+        } catch (nextError) {
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Process update failed.",
+          )
+        } finally {
+          setUpdatingQuickProcessBlueprint(false)
+        }
+      },
+      [
+        activeSession,
+        activeSessionId,
+        mergeSession,
+        processResolutionRequired,
+        props.apiRootUrl,
+        syncCurrentChatSettingsFromSession,
+      ],
+    )
+
+    function handleCurrentChatSettingsFieldKeyDown(
+      event: KeyboardEvent<HTMLInputElement>,
+    ) {
+      if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+        return
+      }
+      event.preventDefault()
+      event.currentTarget.form?.requestSubmit()
+    }
+
+    const updateCurrentChatSettings = useCallback(
+      async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        if (
+          !activeSessionId ||
+          !activeSession ||
+          !activeSessionDirectory.trim()
+        ) {
+          return
+        }
+        const nextPayload: Record<string, string | null | boolean> = {}
+        if (activeSessionDirectory.trim() !== activeSession.cwd) {
+          nextPayload.cwd = activeSessionDirectory.trim()
+        }
+        if (activeSessionProviderKind !== activeSession.providerKind) {
+          nextPayload.providerKind = activeSessionProviderKind
+        }
+        if (activeSessionModelRef !== activeSession.modelRef) {
+          nextPayload.modelRef = activeSessionModelRef
+        }
+        if (activeSessionAuthProfile !== (activeSession.authProfile ?? "")) {
+          nextPayload.authProfile = activeSessionAuthProfile || null
+        }
+        if (
+          activeSessionImageModelRef !== (activeSession.imageModelRef ?? "")
+        ) {
+          nextPayload.imageModelRef = activeSessionImageModelRef || null
+        }
+        if (
+          activeSessionProcessBlueprintId !==
+          (activeSession.processBlueprintId ?? "")
+        ) {
+          nextPayload.processBlueprintId =
+            activeSessionProcessBlueprintId || null
+        } else if (processResolutionRequired) {
+          nextPayload.processBlueprintId =
+            activeSessionProcessBlueprintId || null
+          nextPayload.forceProcessBlueprintReapply = true
+        }
+        if (Object.keys(nextPayload).length === 0) {
+          return
+        }
+        setUpdatingDirectory(true)
+        setError("")
+        try {
+          const response = await apiFetch(
+            `${props.apiRootUrl}/sessions/${activeSessionId}`,
+            {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(nextPayload),
+            },
+          )
+          const payload = (await response.json()) as SessionSnapshotResponse & {
+            error?: string
+          }
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.error ?? "Chat settings update failed.")
+          }
+          mergeSession(payload.session)
+          setMessages(payload.messages)
+          setQueuedMessages(payload.queuedMessages)
+          setActivity(payload.activity)
+          syncCurrentChatSettingsFromSession(payload.session)
+        } catch (nextError) {
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Chat settings update failed.",
+          )
+        } finally {
+          setUpdatingDirectory(false)
+        }
+      },
+      [
+        activeSession,
+        activeSessionAuthProfile,
+        activeSessionDirectory,
+        activeSessionId,
+        activeSessionImageModelRef,
+        activeSessionModelRef,
+        activeSessionProcessBlueprintId,
+        activeSessionProviderKind,
+        mergeSession,
+        processResolutionRequired,
+        props.apiRootUrl,
+        syncCurrentChatSettingsFromSession,
+      ],
+    )
+
+    const sendMessage = useCallback(
+      async (payload: ComposerSubmitPayload) => {
+        if (!activeSessionId) {
+          return false
+        }
+        if (!payload.text.trim() && payload.images.length === 0) {
+          return false
+        }
+        if (processResolutionRequired) {
+          setError("Choose the next process before sending.")
+          return false
+        }
+        setSending(true)
+        setError("")
+        try {
+          const response = await apiFetch(
+            `${props.apiRootUrl}/sessions/${activeSessionId}/messages`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                text: payload.text,
+                content: [
+                  ...(payload.text.trim()
+                    ? [{ type: "text" as const, text: payload.text }]
+                    : []),
+                  ...payload.images.map((image) => ({
+                    type: "image" as const,
+                    dataUrl: image.dataUrl,
+                  })),
+                ],
+                replyToMessageId: replyTargetMessageId,
+              }),
+            },
+          )
+          const responsePayload = (await response.json()) as { error?: string }
+          if (!response.ok) {
+            throw new Error(responsePayload.error ?? "Message send failed.")
+          }
+          const refreshed = await loadSessionSnapshot(activeSessionId)
+          mergeSession(refreshed.session)
+          setMessages(refreshed.messages)
+          setQueuedMessages(refreshed.queuedMessages)
+          setActivity(refreshed.activity)
+          setReplyTargetMessageId(null)
+          return true
+        } catch (nextError) {
+          setError(
+            nextError instanceof Error
+              ? nextError.message
+              : "Message send failed.",
+          )
+          return false
+        } finally {
+          setSending(false)
+        }
+      },
+      [
+        activeSessionId,
+        loadSessionSnapshot,
+        mergeSession,
+        processResolutionRequired,
+        props.apiRootUrl,
+        replyTargetMessageId,
+      ],
+    )
+
+    const interruptRun = useCallback(async () => {
+      if (
+        !activeSessionId ||
+        !activity.canInterrupt ||
+        activity.status !== "running"
+      ) {
+        return
+      }
+      setInterrupting(true)
+      setError("")
+      try {
+        const response = await apiFetch(
+          `${props.apiRootUrl}/sessions/${activeSessionId}/interrupt`,
+          { method: "POST" },
+        )
+        const payload = (await response.json()) as {
+          ok?: boolean
+          error?: string
+          activity?: SessionActivity
+        }
+        if (!response.ok || !payload.ok || !payload.activity) {
+          throw new Error(payload.error ?? "Interrupt failed.")
+        }
+        setActivity(payload.activity)
+      } catch (nextError) {
+        setError(
+          nextError instanceof Error ? nextError.message : "Interrupt failed.",
+        )
+      } finally {
+        setInterrupting(false)
+      }
+    }, [
+      activeSessionId,
+      activity.canInterrupt,
+      activity.status,
+      props.apiRootUrl,
+    ])
+
+    useEffect(() => {
+      let cancelled = false
+      async function loadInitial() {
+        try {
+          const [
+            providersResponse,
+            processBlueprintsResponse,
+            sessionsResponse,
+          ] = await Promise.all([
+            apiFetch(`${props.apiRootUrl}/providers`).then(async (response) => {
+              const payload = (await response.json()) as ProvidersResponse & {
+                error?: string
+              }
+              if (
+                !response.ok ||
+                !payload.ok ||
+                !Array.isArray(payload.providers)
+              ) {
+                throw new Error(
+                  payload.error ?? "Agent Chat providers failed to load.",
+                )
+              }
+              return payload
+            }),
+            apiFetch(`${props.apiRootUrl}/process-blueprints`).then(
+              async (response) => {
+                const payload =
+                  (await response.json()) as ProcessBlueprintsResponse & {
+                    error?: string
+                  }
+                if (
+                  !response.ok ||
+                  !payload.ok ||
+                  !Array.isArray(payload.processBlueprints)
+                ) {
+                  throw new Error(
+                    payload.error ??
+                      "Agent Chat process blueprints failed to load.",
+                  )
+                }
+                return payload
+              },
+            ),
+            apiFetch(`${props.apiRootUrl}/sessions`).then(async (response) => {
+              const payload = (await response.json()) as SessionsResponse & {
+                error?: string
+              }
+              if (
+                !response.ok ||
+                !payload.ok ||
+                !Array.isArray(payload.sessions)
+              ) {
+                throw new Error(
+                  payload.error ?? "Agent Chat sessions failed to load.",
+                )
+              }
+              return payload
+            }),
+          ])
+          if (cancelled) {
+            return
+          }
+          setProviders(providersResponse.providers)
+          setProcessBlueprints(processBlueprintsResponse.processBlueprints)
+          setSessions(sessionsResponse.sessions)
+        } catch (nextError) {
+          if (!cancelled) {
+            setError(
+              nextError instanceof Error
+                ? nextError.message
+                : "Agent Chat failed to load.",
+            )
+          }
+        }
+      }
+      void loadInitial()
+      return () => {
+        cancelled = true
+      }
+    }, [props.apiRootUrl])
+
+    useEffect(() => {
+      let cancelled = false
+      async function refreshSessions() {
+        try {
+          const response = await apiFetch(`${props.apiRootUrl}/sessions`)
+          const payload = (await response.json()) as SessionsResponse & {
+            error?: string
+          }
+          if (!response.ok || !payload.ok || !Array.isArray(payload.sessions)) {
+            throw new Error(
+              payload.error ?? "Agent Chat sessions failed to load.",
+            )
+          }
+          if (!cancelled) {
+            setSessions(payload.sessions)
+          }
+        } catch {
+          // Keep current list.
+        }
+      }
+      const intervalHandle = window.setInterval(() => {
+        void refreshSessions()
+      }, 4000)
+      return () => {
+        cancelled = true
+        window.clearInterval(intervalHandle)
+      }
+    }, [props.apiRootUrl])
+
+    useEffect(() => {
+      syncCurrentChatSettingsFromSession(activeSession)
+      setReplyTargetMessageId(null)
+    }, [activeSession, syncCurrentChatSettingsFromSession])
+
+    useEffect(() => {
+      if (!activeSessionId) {
+        setActiveSessionTickets([])
+        return
+      }
+      let cancelled = false
+      async function refreshSessionTickets() {
+        try {
+          const tickets = await loadSessionTickets(activeSessionId)
+          if (!cancelled) {
+            setActiveSessionTickets(tickets)
+          }
+        } catch (nextError) {
+          if (!cancelled) {
+            setError(
+              nextError instanceof Error
+                ? nextError.message
+                : "Session tickets failed to load.",
+            )
+          }
+        }
+      }
+      void refreshSessionTickets()
+      return () => {
+        cancelled = true
+      }
+    }, [activeSessionId, loadSessionTickets])
+
+    useEffect(() => {
+      if (!activeSessionId) {
+        setMessages([])
+        setQueuedMessages([])
+        setStreamingAssistantText("")
+        setActivity({
+          status: "idle",
+          startedAtMs: null,
+          threadId: null,
+          turnId: null,
+          backgroundProcessCount: 0,
+          waitingFlags: [],
+          lastError: null,
+          currentMessageId: null,
+          canInterrupt: false,
+        })
+        return
+      }
+      let cancelled = false
+      async function loadSession() {
+        try {
+          const payload = await loadSessionSnapshot(activeSessionId)
+          if (!cancelled) {
+            mergeSession(payload.session)
+            setMessages(payload.messages)
+            setQueuedMessages(payload.queuedMessages)
+            setActivity(payload.activity)
+          }
+        } catch (nextError) {
+          if (!cancelled) {
+            setError(
+              nextError instanceof Error
+                ? nextError.message
+                : "Session load failed.",
+            )
+          }
+        }
+      }
+      void loadSession()
+      return () => {
+        cancelled = true
+      }
+    }, [activeSessionId, loadSessionSnapshot, mergeSession])
+
+    useEffect(() => {
+      if (!activeSessionId) {
+        setWsWarning("")
+        return
+      }
+      const socketUrl = new URL(wsRootUrl)
+      socketUrl.searchParams.set("sessionId", activeSessionId)
+      const protocols = dashboardSessionWebSocketProtocols()
+      let socket: WebSocket | null = null
+      let disposed = false
+      let reconnectAttempt = 0
+      let reconnectTimer: number | null = null
+      let warningTimer: number | null = null
+      const clearReconnectTimer = () => {
+        if (reconnectTimer !== null) {
+          window.clearTimeout(reconnectTimer)
+          reconnectTimer = null
+        }
+      }
+      const clearWarningTimer = () => {
+        if (warningTimer !== null) {
+          window.clearTimeout(warningTimer)
+          warningTimer = null
+        }
+      }
+      const scheduleDisconnectWarning = () => {
+        if (warningTimer !== null) {
+          return
+        }
+        warningTimer = window.setTimeout(() => {
+          warningTimer = null
+          setWsWarning("Agent Chat WebSocket disconnected. Retrying…")
+        }, websocketWarningDelayMs)
+      }
+      const connect = () => {
+        if (disposed) {
+          return
+        }
+        socket =
+          protocols.length > 0
+            ? new WebSocket(socketUrl.toString(), protocols)
+            : new WebSocket(socketUrl.toString())
+        socket.addEventListener("open", () => {
+          reconnectAttempt = 0
+          clearReconnectTimer()
+          clearWarningTimer()
+          setWsWarning("")
+        })
+        socket.addEventListener("message", (event) => {
+          const payload = JSON.parse(String(event.data)) as
+            | SessionSnapshotEvent
+            | SessionUpdatedEvent
+            | RunStartedEvent
+            | RunDeltaEvent
+            | RunCompletedEvent
+            | RunFailedEvent
+            | RunInterruptedEvent
+            | RunActivityEvent
+          if (payload.type === "session.snapshot") {
+            setMessages(payload.messages)
+            setQueuedMessages(payload.queuedMessages)
+            setActivity(payload.activity)
+            updateActiveSessionRuntime(
+              payload.activity,
+              payload.queuedMessages.length,
+            )
+            setStreamingAssistantText("")
+            mergeSession(payload.session)
+            return
+          }
+          if (payload.type === "session.updated") {
+            if (payload.session) {
+              mergeSession(payload.session)
+            }
+            setMessages((current) =>
+              mergeMessagesById(current, payload.messages),
+            )
+            setQueuedMessages(payload.queuedMessages)
+            setActivity(payload.activity)
+            updateActiveSessionRuntime(
+              payload.activity,
+              payload.queuedMessages.length,
+            )
+            if (
+              payload.messages.some((message) => message.role === "assistant")
+            ) {
+              setStreamingAssistantText("")
+            }
+            return
+          }
+          if (payload.type === "run.started") {
+            setMessages((current) =>
+              mergeMessagesById(current, payload.messages),
+            )
+            setQueuedMessages(payload.queuedMessages)
+            setActivity(payload.activity)
+            updateActiveSessionRuntime(
+              payload.activity,
+              payload.queuedMessages.length,
+            )
+            setStreamingAssistantText("")
+            return
+          }
+          if (payload.type === "run.activity") {
+            setActivity(payload.activity)
+            setQueuedMessages(payload.queuedMessages)
+            updateActiveSessionRuntime(
+              payload.activity,
+              payload.queuedMessages.length,
+            )
+            return
+          }
+          if (payload.type === "run.delta") {
+            setActivity((current) => ({ ...current, status: "running" }))
+            setStreamingAssistantText((current) => current + payload.delta)
+            return
+          }
+          if (payload.type === "run.completed") {
+            setActivity(payload.activity)
+            updateActiveSessionRuntime(
+              payload.activity,
+              queuedMessageCountRef.current,
+            )
+            return
+          }
+          if (payload.type === "run.interrupted") {
+            setActivity(payload.activity)
+            updateActiveSessionRuntime(
+              payload.activity,
+              queuedMessageCountRef.current,
+            )
+            setStreamingAssistantText("")
+            return
+          }
+          if (payload.type === "run.failed") {
+            setActivity(payload.activity)
+            updateActiveSessionRuntime(
+              payload.activity,
+              queuedMessageCountRef.current,
+            )
+            setStreamingAssistantText("")
+            setError(payload.error)
+          }
+        })
+        socket.addEventListener("error", () => {
+          scheduleDisconnectWarning()
+        })
+        socket.addEventListener("close", () => {
+          if (disposed) {
+            return
+          }
+          scheduleDisconnectWarning()
+          const delayMs =
+            websocketRetryBackoffMs[
+              Math.min(reconnectAttempt, websocketRetryBackoffMs.length - 1)
+            ] ??
+            websocketRetryBackoffMs.at(-1) ??
+            8000
+          reconnectAttempt += 1
+          clearReconnectTimer()
+          reconnectTimer = window.setTimeout(() => {
+            reconnectTimer = null
+            connect()
+          }, delayMs)
+        })
+      }
+      connect()
+      return () => {
+        disposed = true
+        clearReconnectTimer()
+        clearWarningTimer()
+        socket?.close()
+      }
+    }, [activeSessionId, mergeSession, updateActiveSessionRuntime, wsRootUrl])
+
+    useEffect(() => {
+      if (activity.status !== "running") {
+        return
+      }
+      const handle = window.setInterval(() => {
+        setNowMs(Date.now())
+      }, 1000)
+      return () => {
+        window.clearInterval(handle)
+      }
+    }, [activity.status])
+
+    useEffect(() => {
+      queuedMessageCountRef.current = queuedMessages.length
+    }, [queuedMessages.length])
+
+    useEffect(() => {
+      pendingSessionOpenScrollRef.current = activeSessionId || null
+      transcriptPinnedToBottomRef.current = true
+      setTranscriptRenderLimit(transcriptRenderPageSize)
+    }, [activeSessionId])
+
+    useEffect(() => {
+      if (
+        !activeSessionId ||
+        (pendingSessionOpenScrollRef.current !== activeSessionId &&
+          !transcriptPinnedToBottomRef.current)
+      ) {
+        return
+      }
+      const handle = window.requestAnimationFrame(() => {
+        scrollTranscriptToBottom()
+      })
+      return () => {
+        window.cancelAnimationFrame(handle)
+      }
+    }, [activeSessionId, scrollTranscriptToBottom])
+
+    useEffect(() => {
+      if (!activeSessionId) {
+        return
+      }
+      const content = transcriptContentRef.current
+      if (!content || typeof ResizeObserver === "undefined") {
+        return
+      }
+      let frameHandle: number | null = null
+      const scheduleFollow = () => {
+        if (frameHandle !== null) {
+          window.cancelAnimationFrame(frameHandle)
+        }
+        frameHandle = window.requestAnimationFrame(() => {
+          frameHandle = null
+          if (
+            pendingSessionOpenScrollRef.current === activeSessionId ||
+            transcriptPinnedToBottomRef.current
+          ) {
+            scrollTranscriptToBottom()
+          } else {
+            updateThreadViewportMetrics()
+          }
+        })
+      }
+      const observer = new ResizeObserver(() => {
+        scheduleFollow()
+      })
+      observer.observe(content)
+      scheduleFollow()
+      return () => {
+        observer.disconnect()
+        if (frameHandle !== null) {
+          window.cancelAnimationFrame(frameHandle)
+        }
+      }
+    }, [activeSessionId, scrollTranscriptToBottom, updateThreadViewportMetrics])
+
+    useEffect(() => {
+      updateThreadViewportMetrics()
+      const viewport = transcriptViewportRef.current
+      if (!viewport) {
+        return
+      }
+      const handle = window.requestAnimationFrame(() => {
+        updateThreadViewportMetrics()
+      })
+      return () => {
+        window.cancelAnimationFrame(handle)
+      }
+    }, [updateThreadViewportMetrics])
+
+    useEffect(() => {
+      const composerDock = composerDockRef.current
+      if (!composerDock || typeof ResizeObserver === "undefined") {
+        return
+      }
+      const updateHeight = () => {
+        setComposerDockHeight(
+          Math.ceil(composerDock.getBoundingClientRect().height),
+        )
+      }
+      const observer = new ResizeObserver(() => {
+        updateHeight()
+      })
+      observer.observe(composerDock)
+      updateHeight()
+      return () => {
+        observer.disconnect()
+      }
+    }, [])
+
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-slate-950 text-slate-100">
+        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">
+              {activeSession?.title ?? "Agent Chat"}
+            </p>
+            <p className="truncate text-xs text-slate-500">
+              {activeSession
+                ? `${activeSession.providerKind} · ${activeSession.modelRef}${activeSession.archived ? " · archived" : ""}`
+                : "Select a session to see the thread."}
+            </p>
+            {activeSessionUsageSummary ? (
+              <p className="truncate text-[11px] text-cyan-300/80">
+                {activeSessionUsageSummary}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        {error ? (
+          <div className="border-b border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            {error}
+          </div>
+        ) : null}
+        {wsWarning ? (
+          <div className="border-b border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+            {wsWarning}
+          </div>
+        ) : null}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            ref={transcriptViewportRef}
+            onScroll={handleTranscriptViewportScroll}
+            data-agent-chat-transcript-viewport="true"
+            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4"
+            style={{
+              paddingBottom: `${Math.max(composerDockHeight + 12, 104)}px`,
+            }}
+          >
+            <div ref={transcriptContentRef} className="min-h-full">
+              {!activeSession ? (
+                <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
+                  Select a chat session to see the thread.
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 text-sm text-slate-500">
+                  This chat has no messages yet.
+                </div>
+              ) : (
+                <div className="mx-auto flex w-full min-w-0 gap-4 overflow-x-hidden">
+                  <div className="min-w-0 flex-1">
+                    <div className="mx-auto flex max-w-4xl flex-col gap-4">
+                      {hiddenTranscriptItemCount > 0 ? (
+                        <div className="flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTranscriptRenderLimit(
+                                (current) => current + transcriptRenderPageSize,
+                              )
+                            }
+                            className="rounded-full border border-white/10 bg-slate-950/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-300"
+                          >
+                            Show{" "}
+                            {Math.min(
+                              transcriptRenderPageSize,
+                              hiddenTranscriptItemCount,
+                            )}{" "}
+                            earlier items · {hiddenTranscriptItemCount} hidden
+                          </button>
+                        </div>
+                      ) : null}
+                      {visibleTranscriptItems.map((item) => {
+                        if (item.type === "activityCluster") {
+                          const clusterKey = activityClusterKey(item.messages)
+                          const expanded =
+                            !!expandedActivityClusterKeys[clusterKey]
+                          return (
+                            <article
+                              key={clusterKey}
+                              className="w-full overflow-hidden rounded-3xl border border-amber-300/15 bg-amber-300/[0.06] px-4 py-3 md:max-w-[64%]"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-100">
+                                      assistant
+                                    </p>
+                                    <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                      activity
+                                    </span>
+                                  </div>
+                                  <p className="mt-2 break-words text-sm text-slate-100">
+                                    {summarizeActivityCluster(item.messages)}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    toggleExpandedActivityCluster(clusterKey)
+                                  }
+                                  className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-100"
+                                >
+                                  {expanded
+                                    ? "Collapse"
+                                    : item.messages.length === 1
+                                      ? "Show"
+                                      : `Show ${item.messages.length}`}
+                                </button>
+                              </div>
+                              {expanded ? (
+                                <div className="mt-3 space-y-2">
+                                  {item.messages.map((message) => (
+                                    <div
+                                      key={message.id}
+                                      className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2"
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                          activity
+                                        </span>
+                                        <p className="text-[10px] text-slate-500">
+                                          {formatTime(message.createdAtMs)}
+                                        </p>
+                                      </div>
+                                      <p className="mt-2 break-words whitespace-pre-wrap text-sm leading-6 text-slate-200">
+                                        {firstTextBlock(message) || "Activity"}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </article>
+                          )
+                        }
+                        const { message, precedingStreamCheckpoints } = item
+                        const replyTarget = message.replyToMessageId
+                          ? (messageMap.get(message.replyToMessageId) ?? null)
+                          : null
+                        const queueLabel = threadMessageQueueLabel(message)
+                        const replacedStreamsExpanded =
+                          !!expandedReplacedStreamMessageIds[message.id]
+                        const rawTranscriptVisible =
+                          !!rawTranscriptMessageIds[message.id]
+                        return (
+                          <article
+                            key={message.id}
+                            id={`message-${message.id}`}
+                            ref={(element) =>
+                              setMessageElementRef(message.id, element)
+                            }
+                            className={`min-w-0 overflow-hidden rounded-3xl border px-4 py-3 ${message.kind === "thought" || message.kind === "streamCheckpoint" || message.kind === "activity" || message.kind === "ticketEvent" ? (message.kind === "activity" ? "w-full border-amber-300/15 bg-amber-300/[0.06] md:max-w-[64%]" : message.kind === "ticketEvent" ? "w-full border-cyan-300/20 bg-cyan-300/[0.06]" : "w-full border-white/10 bg-slate-950/60 md:max-w-[64%]") : message.role === "user" ? "ml-auto w-full max-w-[92%] border-fuchsia-300/20 bg-fuchsia-300/10 md:max-w-[80%]" : message.role === "system" ? "w-full border-slate-300/15 bg-slate-300/[0.04]" : "w-full border-white/10 bg-white/5 md:max-w-[88%]"} ${highlightedMessageId === message.id ? "ring-2 ring-cyan-300/40" : ""}`}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="relative flex min-w-0 items-center gap-2">
+                                <p
+                                  className={`text-xs font-semibold uppercase tracking-[0.2em] ${message.kind === "activity" ? "text-amber-100" : message.kind === "ticketEvent" ? "text-cyan-100" : message.role === "system" ? "text-slate-300" : "text-slate-400"}`}
+                                >
+                                  {message.kind === "activity"
+                                    ? "assistant"
+                                    : message.role}
+                                </p>
+                                {message.kind === "directoryInstruction" ? (
+                                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                    directory
+                                  </span>
+                                ) : null}
+                                {message.kind === "thought" ? (
+                                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-slate-300">
+                                    thought
+                                  </span>
+                                ) : null}
+                                {message.kind === "streamCheckpoint" ? (
+                                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                    stream
+                                  </span>
+                                ) : null}
+                                {message.kind === "activity" ? (
+                                  <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                    activity
+                                  </span>
+                                ) : null}
+                                {message.kind === "ticketEvent" ? (
+                                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                    ticket
+                                  </span>
+                                ) : null}
+                                {queueLabel ? (
+                                  <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-amber-100">
+                                    {queueLabel}
+                                  </span>
+                                ) : null}
+                                {message.role === "assistant" &&
+                                message.kind === "chat" &&
+                                precedingStreamCheckpoints.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      toggleExpandedReplacedStreams(message.id)
+                                    }
+                                    className="inline-flex items-center rounded-full border border-cyan-300/15 bg-cyan-300/5 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100"
+                                    aria-expanded={replacedStreamsExpanded}
+                                  >
+                                    Replaced Streams{" "}
+                                    {precedingStreamCheckpoints.length}
+                                  </button>
+                                ) : null}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs text-slate-500">
+                                  {formatTime(message.createdAtMs)}
+                                </p>
+                                {message.kind === "ticketEvent" &&
+                                message.ticketId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const ticketId = message.ticketId
+                                      if (!ticketId) return
+                                      openTicketWindow(
+                                        ticketId,
+                                        message.sessionId,
+                                        activeSession?.activeTicket?.id ===
+                                          ticketId
+                                          ? (activeSession.activeTicket.title ??
+                                              "Ticket")
+                                          : "Ticket",
+                                      )
+                                    }}
+                                    className="rounded-full border border-cyan-300/20 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100 hover:border-cyan-200/40 hover:text-cyan-50"
+                                    title="Open ticket window"
+                                  >
+                                    <OpenTicketIcon />
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    toggleRawTranscriptMessage(message.id)
+                                  }
+                                  className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-400 hover:border-white/20 hover:text-slate-200"
+                                >
+                                  {rawTranscriptVisible ? "Rendered" : "Raw"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void copyMessageLink(
+                                      message.sessionId,
+                                      message.id,
+                                    )
+                                  }
+                                  className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-400 hover:border-white/20 hover:text-slate-200"
+                                >
+                                  Copy link
+                                </button>
+                              </div>
+                            </div>
+                            {replyTarget ? (
+                              <div className="mt-2 min-w-0 rounded-2xl border border-white/10 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
+                                Replying to {replyTarget.role} ·{" "}
+                                {summarizeMessageContent(
+                                  replyTarget.content,
+                                  72,
+                                )}
+                              </div>
+                            ) : null}
+                            {message.role === "assistant" &&
+                            message.kind === "chat" &&
+                            precedingStreamCheckpoints.length > 0 &&
+                            replacedStreamsExpanded ? (
+                              <div className="mt-2.5 space-y-2">
+                                {precedingStreamCheckpoints.map(
+                                  (checkpoint, checkpointIndex) => (
+                                    <div
+                                      key={checkpoint.id}
+                                      className="rounded-2xl border border-white/10 bg-slate-950/40 px-3 py-2"
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                          Replaced Stream {checkpointIndex + 1}
+                                        </span>
+                                        <p className="text-[10px] text-slate-500">
+                                          {formatTime(checkpoint.createdAtMs)}
+                                        </p>
+                                      </div>
+                                      <p className="mt-1.5 break-words whitespace-pre-wrap text-sm leading-6 text-slate-200">
+                                        {summarizeStreamCheckpoint(
+                                          checkpoint.content[0]?.type === "text"
+                                            ? checkpoint.content[0].text
+                                            : "",
+                                        )}
+                                      </p>
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            ) : null}
+                            {rawTranscriptVisible ? (
+                              <div className="mt-2.5">
+                                {renderRawMessageContent(message)}
+                              </div>
+                            ) : message.kind === "thought" ? (
+                              <details className="mt-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300">
+                                <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                                  Collapsed Thought Checkpoint
+                                </summary>
+                                <div className="mt-3 space-y-3 text-sm leading-6 text-slate-200">
+                                  {message.content.map((block, index) =>
+                                    block.type === "text" ? (
+                                      <div
+                                        key={`${message.id}-${block.text}`}
+                                        className="space-y-3"
+                                      >
+                                        {renderMarkdownBlocks(
+                                          block.text,
+                                          `${message.id}-${index}`,
+                                          {
+                                            sessionId: message.sessionId,
+                                            messageId: message.id,
+                                            apiRootUrl: props.apiRootUrl,
+                                            onImageKept: applySessionSnapshot,
+                                            onOpenFileReference:
+                                              openFileReferenceModal,
+                                            activeSessionId,
+                                            sessionMap,
+                                            messageMap,
+                                          },
+                                        )}
+                                      </div>
+                                    ) : null,
+                                  )}
+                                </div>
+                              </details>
+                            ) : (
+                              <div className="mt-2.5 space-y-3 text-sm leading-6 text-slate-100">
+                                {message.content.map((block, index) =>
+                                  block.type === "text" ? (
+                                    <div
+                                      key={`${message.id}-${block.text}`}
+                                      className={
+                                        message.kind === "activity"
+                                          ? "text-slate-100"
+                                          : message.kind === "ticketEvent"
+                                            ? "text-cyan-50"
+                                            : message.role === "system"
+                                              ? "text-slate-200"
+                                              : ""
+                                      }
+                                    >
+                                      {renderMarkdownBlocks(
+                                        block.text,
+                                        `${message.id}-${index}`,
+                                        {
+                                          sessionId: message.sessionId,
+                                          messageId: message.id,
+                                          apiRootUrl: props.apiRootUrl,
+                                          onImageKept: applySessionSnapshot,
+                                          onOpenFileReference:
+                                            openFileReferenceModal,
+                                          activeSessionId,
+                                          sessionMap,
+                                          messageMap,
+                                        },
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <MessageImageAsset
+                                      key={`${message.id}-${block.url}`}
+                                      sessionId={message.sessionId}
+                                      messageId={message.id}
+                                      apiRootUrl={props.apiRootUrl}
+                                      sourceUrl={block.url}
+                                      altText="Shared image"
+                                      onImageKept={applySessionSnapshot}
+                                    />
+                                  ),
+                                )}
+                              </div>
+                            )}
+                            {message.role === "assistant" &&
+                            message.kind !== "thought" &&
+                            message.kind !== "streamCheckpoint" &&
+                            message.kind !== "activity" &&
+                            message.kind !== "ticketEvent" ? (
+                              <div className="mt-3 flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setReplyTargetMessageId(message.id)
+                                  }
+                                  className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300 hover:border-white/20"
+                                >
+                                  Reply to this
+                                </button>
+                              </div>
+                            ) : null}
+                          </article>
+                        )
+                      })}
+                      {streamingAssistantText && !hasVisibleStreamCheckpoint ? (
+                        <article className="w-full max-w-[88%] min-w-0 overflow-hidden rounded-3xl border border-cyan-300/20 bg-cyan-400/5 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-100">
+                              assistant
+                            </p>
+                            <p className="text-xs text-cyan-100/70">
+                              streaming...
+                            </p>
+                          </div>
+                          <div className="mt-3 space-y-3">
+                            {renderMarkdownBlocks(
+                              streamingAssistantText,
+                              "streaming",
+                              {
+                                sessionId: activeSessionId,
+                                messageId: "streaming-assistant",
+                                apiRootUrl: props.apiRootUrl,
+                                onImageKept: applySessionSnapshot,
+                                onOpenFileReference: openFileReferenceModal,
+                                activeSessionId,
+                                sessionMap,
+                                messageMap,
+                              },
+                            )}
+                          </div>
+                        </article>
+                      ) : null}
+                      <div
+                        ref={transcriptBottomSentinelRef}
+                        className="h-px w-full"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          <div
+            ref={composerDockRef}
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 px-3 pb-3"
+          >
+            <div className="mx-auto flex w-full">
+              <div className="pointer-events-auto mx-auto flex w-full max-w-4xl flex-col gap-2.5">
+                {showScrollToBottomButton ? (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => scrollTranscriptToBottom()}
+                      className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-cyan-100 shadow-lg backdrop-blur"
+                    >
+                      <ScrollToBottomIcon />
+                      <span>Scroll to bottom</span>
+                    </button>
+                  </div>
+                ) : null}
+                {activeReplyTarget ? (
+                  <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-50">
+                    <div className="flex items-center justify-between gap-3">
+                      <p>
+                        Replying to {activeReplyTarget.role} ·{" "}
+                        {summarizeMessageContent(
+                          activeReplyTarget.content,
+                          108,
+                        )}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setReplyTargetMessageId(null)}
+                        className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-100"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {settingsOpen ? (
+                  <div className="max-h-[min(34rem,calc(100dvh-15rem))] overflow-y-auto rounded-3xl border border-white/10 bg-white/5 p-4">
+                    <form
+                      onSubmit={updateCurrentChatSettings}
+                      className="space-y-4"
+                    >
+                      <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-start justify-between gap-3 rounded-t-3xl border-b border-white/10 bg-slate-950/95 px-4 py-4 backdrop-blur">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                            Current Chat
+                          </p>
+                          <p className="mt-2 text-sm text-slate-400">
+                            Keep the current thread focused here. Use directory
+                            changes when the next turn should work elsewhere.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSettingsOpen(false)}
+                          className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-300"
+                        >
+                          Close
+                        </button>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-300">
+                        <p>
+                          {activeSession
+                            ? `${activeSession.providerKind} · ${activeSession.modelRef}`
+                            : "No active chat selected."}
+                        </p>
+                        {activeSessionProcessBlueprint ? (
+                          <p className="mt-2 text-xs text-cyan-200/80">
+                            {activeSessionProcessBlueprint.title}
+                          </p>
+                        ) : null}
+                        {activeSession?.activeTicket ? (
+                          <p className="mt-2 text-xs text-emerald-200/80">
+                            {ticketStatusLabel(activeSession.activeTicket)}
+                          </p>
+                        ) : null}
+                      </div>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Process
+                        </span>
+                        <select
+                          value={
+                            processResolutionRequired
+                              ? completedProcessResolutionSentinel
+                              : activeSessionProcessBlueprintId
+                          }
+                          onChange={(event) => {
+                            setActiveSessionProcessBlueprintId(
+                              event.target.value,
+                            )
+                            void updateActiveSessionProcessQuickSet(
+                              event.target.value,
+                            )
+                          }}
+                          disabled={
+                            !activeSession || updatingQuickProcessBlueprint
+                          }
+                          className={`mt-2 w-full rounded-2xl border px-4 py-3 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50 ${darkNativeSelectClass} ${processResolutionRequired ? "border-rose-400/60" : "border-white/10"}`}
+                        >
+                          {processResolutionRequired ? (
+                            <option
+                              style={darkNativeOptionStyle}
+                              value={completedProcessResolutionSentinel}
+                              disabled
+                            >
+                              Choose next process
+                            </option>
+                          ) : null}
+                          <option style={darkNativeOptionStyle} value="">
+                            none
+                          </option>
+                          {processBlueprints.map((entry) => (
+                            <option
+                              style={darkNativeOptionStyle}
+                              key={entry.id}
+                              value={entry.id}
+                            >
+                              {entry.title}
+                            </option>
+                          ))}
+                        </select>
+                        {activeSessionProcessBlueprint ? (
+                          <p className="mt-2 text-xs text-slate-500">
+                            {activeSessionProcessBlueprint.expectation}
+                          </p>
+                        ) : null}
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Provider
+                        </span>
+                        <select
+                          value={activeSessionProviderKind}
+                          onChange={(event) =>
+                            setActiveSessionProviderKind(
+                              event.target.value as ProviderKind,
+                            )
+                          }
+                          disabled={!activeSession}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {providers.map((provider) => (
+                            <option
+                              className="text-slate-950"
+                              key={provider.kind}
+                              value={provider.kind}
+                            >
+                              {provider.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Model
+                        </span>
+                        {activeSessionProvider?.modelOptions.length ? (
+                          <select
+                            value={activeSessionModelRef}
+                            onChange={(event) =>
+                              setActiveSessionModelRef(event.target.value)
+                            }
+                            disabled={!activeSession}
+                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {activeSessionProvider.modelOptions.map((model) => (
+                              <option
+                                className="text-slate-950"
+                                key={model}
+                                value={model}
+                              >
+                                {model}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            value={activeSessionModelRef}
+                            readOnly
+                            disabled={!activeSession}
+                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                        )}
+                      </div>
+                      <div className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Auth Profile
+                        </span>
+                        {activeSessionProvider?.authProfiles.length ? (
+                          <select
+                            value={activeSessionAuthProfile}
+                            onChange={(event) =>
+                              setActiveSessionAuthProfile(event.target.value)
+                            }
+                            disabled={!activeSession}
+                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {activeSessionProvider.authProfiles.map(
+                              (profile) => (
+                                <option
+                                  className="text-slate-950"
+                                  key={profile}
+                                  value={profile}
+                                >
+                                  {profile}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                        ) : (
+                          <input
+                            value={activeSessionAuthProfile}
+                            readOnly
+                            disabled={!activeSession}
+                            className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                        )}
+                      </div>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Directory
+                        </span>
+                        <input
+                          value={activeSessionDirectory}
+                          onChange={(event) =>
+                            setActiveSessionDirectory(event.target.value)
+                          }
+                          onKeyDown={handleCurrentChatSettingsFieldKeyDown}
+                          placeholder={defaultSessionDirectory}
+                          enterKeyHint="done"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          disabled={!activeSession}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                          Image Model Override
+                        </span>
+                        <input
+                          value={activeSessionImageModelRef}
+                          onChange={(event) =>
+                            setActiveSessionImageModelRef(event.target.value)
+                          }
+                          onKeyDown={handleCurrentChatSettingsFieldKeyDown}
+                          placeholder="optional provider/model"
+                          enterKeyHint="done"
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          disabled={!activeSession}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-white outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                        />
+                      </label>
+                      <div className="sticky bottom-0 -mx-4 -mb-4 border-t border-white/10 bg-slate-950/95 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur">
+                        <button
+                          type="submit"
+                          disabled={
+                            !activeSession ||
+                            updatingDirectory ||
+                            !activeSessionDirectory.trim()
+                          }
+                          className="w-full rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                        >
+                          {updatingDirectory
+                            ? "Saving..."
+                            : "Save Chat Settings"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                ) : null}
+                {compactWaitingSummary ? (
+                  <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-sm text-amber-50">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-100">
+                        Waiting
+                      </span>
+                      <p className="min-w-0 truncate text-sm text-amber-50">
+                        {compactWaitingSummary}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+                <ComposerPanel
+                  activeSession={activeSession}
+                  draftNamespace={props.draftNamespace}
+                  sending={sending}
+                  interrupting={interrupting}
+                  activity={activity}
+                  threadStatusSummary={threadStatusSummary}
+                  processResolutionRequired={processResolutionRequired}
+                  processTerminalStatus={processTerminalStatus}
+                  quickProcessSelectValue={quickProcessSelectValue}
+                  unfinishedSessionTickets={unfinishedSessionTickets}
+                  processBlueprints={processBlueprints}
+                  activeProcessBlueprintId={
+                    activeSession?.processBlueprintId ?? null
+                  }
+                  updatingQuickProcessBlueprint={updatingQuickProcessBlueprint}
+                  settingsOpen={settingsOpen}
+                  onToggleSettings={() =>
+                    setSettingsOpen((current) => !current)
+                  }
+                  onQuickProcessChange={(nextSelection) => {
+                    if (nextSelection.startsWith(ticketQuickSelectPrefix)) {
+                      void activateSessionTicket(
+                        nextSelection.slice(ticketQuickSelectPrefix.length),
+                      )
+                      return
+                    }
+                    void updateActiveSessionProcessQuickSet(nextSelection)
+                  }}
+                  onOpenActiveTicket={() => {
+                    if (!activeSession?.activeTicket) {
+                      return
+                    }
+                    openTicketWindow(
+                      activeSession.activeTicket.id,
+                      activeSession.id,
+                      activeSession.activeTicket.title,
+                    )
+                  }}
+                  onInterrupt={() => void interruptRun()}
+                  onSubmitMessage={sendMessage}
+                  onReportTyping={reportTyping}
+                  onSetError={setError}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+        {fileReferenceModal ? (
+          <FileReferenceModal
+            pathname={fileReferenceModal.pathname}
+            onClose={closeFileReferenceModal}
+          />
+        ) : null}
+      </div>
+    )
+  },
 )
 
 export function AgentChatScreen(props: AgentChatScreenProps) {
