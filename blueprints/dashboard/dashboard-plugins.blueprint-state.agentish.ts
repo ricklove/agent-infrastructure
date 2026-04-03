@@ -18,7 +18,9 @@ DashboardPluginsState.records(`
 
 ## Overview
 The dashboard plugin system is implemented per the blueprint architecture. Feature plugins are
-properly defined, startup-policy driven, and integrated with both shell and gateway.
+properly defined, startup-policy driven, and integrated with both shell and gateway. The current
+branch also proves dashboard-level composition of feature-provided Workbench node definitions into
+the rendered Workbench screen.
 
 ## Current State vs Blueprint
 
@@ -30,40 +32,25 @@ properly defined, startup-policy driven, and integrated with both shell and gate
 - ✅ The gateway/runtime proactively restores `always` backends after startup
 - ✅ Feature-owned plugin definitions in place
 - ✅ Tab metadata, routes, icons, tooltips properly configured
-
-### Recently Fixed Issues
-- **Agent Swarm UI Scrolling (2026-03-23)**: The AgentSwarmScreen component was missing overflow
-  scrolling on its main content area. The outer container used flex h-full flex-col but the
-  content div at line 970 lacked overflow-y-auto and flex-1 classes. Fixed by adding these
-  classes to enable proper vertical scrolling when content exceeds viewport height.
-
-### Known Gaps
-- **Dashboard Version Popup Mobile Menu Interaction (2026-03-25)**: The version popup now works with
-  click-to-toggle, but when opened on mobile and then the mobile menu is closed, the popup remains
-  open creating orphaned UI. The popup should automatically close when the mobile menu closes to
-  maintain clean UI state.
-- **Dashboard Version Popup Mid-Width Layering (2026-03-27)**: The AI status/version popup can fall
-  behind the active feature surface on non-wide layouts, making the copied status summary effectively
-  unreadable unless the screen is very small. The shell needs a stable positioned stacking context
-  for this popup above feature content.
-
-### Recently Fixed Issues (Continued)
-- **Agent Swarm Process Color Distribution (2026-03-23)**: Colors are keyed by PID with preset
-  hue slots (23 positions) and salted hashes for saturation/lightness to ensure each unique
-  process instance gets a visually distinct color without collisions.
+- ✅ Dashboard UI composition can inject feature-owned Workbench node definitions through composed plugin screen getProps
 
 ### Verification Status
-- Agent Swarm UI scrolling fix: Awaiting browser verification and screenshot
+- Workbench composed plugin registration: worker-local browser verification passed for menu open, text node create, int node create, and Agent Chat node create using package-local agent-browser checks in packages/agent-workbench-ui/src/AgentWorkbenchScreen.agent-browser.test.ts
+- Worker-local screenshot captured at /home/ec2-user/temp/worker-agent-chat-workbench-node.png
+
+### Known Gaps
+- The current Workbench node registration path is composed explicitly in dashboard-ui feature wiring rather than through a broader discoverable plugin-node contribution system
+- Persisted reload coverage for feature-provided Workbench node state, including selected session ids, still needs an explicit verification pass
 
 ## Next Steps
-1. Verify agent swarm scrolling fix in browser with screenshots
-2. Deploy and verify version matching
-3. Test at multiple viewport sizes per responsive UI requirements
+1. Carry the composed Workbench node registration through remaining review, merge, and release steps
+2. Add broader plugin-provided node coverage when additional feature nodes are introduced
+3. Add persisted reload verification for feature-provided Workbench node state where needed
 `);
 
 DashboardPluginsState.tracks(`
 - Implementation alignment with blueprint
-- UI/UX issues and fixes
-- Verification status for changes
+- Dashboard-level composition of feature-owned Workbench node definitions
+- Verification status for Workbench plugin registration behavior
 - Known gaps and issues
 `);

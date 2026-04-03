@@ -13,10 +13,11 @@ const composedWorkbenchDashboardUiPlugin: DashboardFeatureUiPlugin = {
   ...agentWorkbenchDashboardUiPlugin,
   screen: {
     ...(agentWorkbenchDashboardUiPlugin.screen ?? {}),
-    props: {
-      ...(agentWorkbenchDashboardUiPlugin.screen?.props ?? {}),
+    getProps: (context) => ({
+      ...(agentWorkbenchDashboardUiPlugin.screen?.getProps?.(context) ??
+        agentWorkbenchDashboardUiPlugin.screen?.props ?? {}),
       nodeTypeDefinitions: [agentChatWorkbenchNodeType],
-    },
+    }),
   },
 }
 

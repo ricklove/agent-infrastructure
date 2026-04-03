@@ -6,7 +6,7 @@ const Agentish = define.language("Agentish");
 
 const AgentWorkbenchBlueprintState = define.system("AgentWorkbenchBlueprintState", {
   format: Agentish,
-  role: "Current implementation comparison for the Agent Workbench blueprints",
+  role: "Current implementation comparison for the Agent Workbench blueprints, including plugin-registered node types",
 });
 
 const Assessment = {
@@ -20,28 +20,29 @@ const Assessment = {
 const CurrentReality = {
   sharedDataPersistence: define.concept("SharedDataPersistence"),
   hostOwnedCanvas: define.concept("HostOwnedCanvas"),
-  localRegistryOnly: define.concept("LocalRegistryOnly"),
-  directNodeMenu: define.concept("DirectWorkbenchNodeMenu"),
-  missingPluginRegistration: define.concept("MissingPluginRegistration"),
-  missingAgentChatNode: define.concept("MissingAgentChatNode"),
+  pluginRegistryHost: define.concept("PluginRegistryHost"),
+  searchableNodeMenu: define.concept("SearchableWorkbenchNodeMenu"),
+  registeredAgentChatNode: define.concept("RegisteredAgentChatNode"),
   verificationBaseline: define.concept("VerificationBaseline"),
 };
 
 AgentWorkbenchBlueprintState.defines(`
-- CurrentImplementationStatus means the current Workbench implementation already persists canonical \
-  documents under workspace/data/workbench, renders through the shared dashboard shell, and supports a \
-  searchable add-node menu for host-owned node types.
-- AssessmentConfidence is medium because this state is grounded in direct source inspection of the current \
-  worker branch plus recent verified save/load behavior for Workbench documents, but the plugin-registered \
-  node-type architecture has not been implemented yet.
+- CurrentImplementationStatus means the current Workbench implementation persists canonical \
+  documents under workspace/data/workbench, renders through the shared dashboard shell, supports a \
+  searchable add-node menu, and now accepts plugin-registered node types through dashboard composition.
+- AssessmentConfidence is high because this state is grounded in direct source inspection of the current \
+  worker branch plus passing worker-local package-local agent-browser checks for route load, menu open, \
+  default text creation, int creation, and agent-chat node creation.
 - ImplementationEvidence includes packages/agent-workbench-ui/src/AgentWorkbenchScreen.tsx, \
   packages/agent-workbench-ui/src/workbench-node-types.ts, packages/agent-workbench-protocol/src/index.ts, \
-  packages/agent-workbench-server/src/workbench-store.ts, and the existing worker-local save/load \
-  verification artifacts from earlier Workbench persistence work.
-- ImplementationGap means Workbench node types are still hosted through Workbench-local registration \
-  logic rather than through feature-owned plugin registration, and there is no agent-chat node yet.
-- PlannedFiles means this implementation pass is expected to touch the Workbench protocol, Workbench UI \
-  registry host, dashboard/plugin bootstrap, and new Agent Chat UI node-rendering files.
+  packages/dashboard-ui/src/feature-plugins.ts, packages/agent-chat-ui/src/workbench-node.tsx, \
+  packages/agent-workbench-ui/src/AgentWorkbenchScreen.agent-browser.test.ts, and the worker-local \
+  verification artifact /home/ec2-user/temp/worker-agent-chat-workbench-node.png.
+- ImplementationGap means this pass does not yet prove persisted reload of the selected agent-chat sessionId \
+  through a full save/load cycle, and the node-registration path is currently composed in dashboard-ui rather \
+  than through a more generalized plugin discovery layer.
+- PlannedFiles means the current implementation pass touched the Workbench protocol, Workbench UI host, \
+  dashboard plugin composition, Agent Chat node rendering files, and package-local agent-browser verification.
 `);
 
 AgentWorkbenchBlueprintState.contains(
@@ -52,10 +53,9 @@ AgentWorkbenchBlueprintState.contains(
   Assessment.plannedFiles,
   CurrentReality.sharedDataPersistence,
   CurrentReality.hostOwnedCanvas,
-  CurrentReality.localRegistryOnly,
-  CurrentReality.directNodeMenu,
-  CurrentReality.missingPluginRegistration,
-  CurrentReality.missingAgentChatNode,
+  CurrentReality.pluginRegistryHost,
+  CurrentReality.searchableNodeMenu,
+  CurrentReality.registeredAgentChatNode,
   CurrentReality.verificationBaseline,
 );
 
@@ -71,52 +71,54 @@ CurrentReality.hostOwnedCanvas.means(`
 - Workbench still owns placement and persisted geometry for all node records
 `);
 
-CurrentReality.localRegistryOnly.means(`
-- packages/agent-workbench-ui/src/workbench-node-types.ts currently acts as a Workbench-local registry for
-  host-owned node types such as text and int
-- the registry is not yet feature-extensible and is not yet populated through dashboard plugin loading
+CurrentReality.pluginRegistryHost.means(`
+- packages/agent-workbench-ui/src/workbench-node-types.ts now provides merge/sort/filter utilities for a host-owned
+  registry that can be extended with feature-provided definitions
+- packages/agent-workbench-ui/src/AgentWorkbenchScreen.tsx accepts nodeTypeDefinitions as screen props and merges
+  built-in types with feature-provided node types at render time
+- packages/dashboard-ui/src/feature-plugins.ts now injects feature-owned Workbench node definitions through the
+  composed Workbench plugin getProps path
 `);
 
-CurrentReality.directNodeMenu.means(`
-- the current Workbench add-node flow already opens a searchable menu on double click
-- the menu defaults to text and supports ArrowDown and ArrowUp selection through visible results
-- this behavior exists inside Workbench UI only and does not yet allow feature packages to contribute node types
+CurrentReality.searchableNodeMenu.means(`
+- the current Workbench add-node flow opens a searchable menu on double click or two rapid pane clicks
+- the menu defaults to text, Enter creates the selected type, and ArrowDown / ArrowUp cycle through visible results
+- package-local worker verification now proves menu open, default text creation, and int creation through the real
+  agent-browser harness in packages/agent-workbench-ui/src/AgentWorkbenchScreen.agent-browser.test.ts
 `);
 
-CurrentReality.missingPluginRegistration.means(`
-- no shared registration contract currently allows a feature package such as agent-chat-ui to register a
-  Workbench node type when the plugin loads
-- dashboard/plugin bootstrap does not yet wire feature-owned node registration into the Workbench host
-`);
-
-CurrentReality.missingAgentChatNode.means(`
-- there is no persisted agent-chat workbench node record in packages/agent-workbench-protocol/src/index.ts
-- there is no Agent Chat Workbench node renderer, session selector node header, or embedded thread-view node body
-- AgentWorkbench cannot yet render or persist a node that references an Agent Chat session
+CurrentReality.registeredAgentChatNode.means(`
+- packages/agent-workbench-protocol/src/index.ts now defines the shared Workbench node registration contract and the
+  persisted WorkbenchAgentChatNodeRecord shape
+- packages/agent-chat-ui/src/workbench-node.tsx exports the feature-owned agent-chat node definition with searchable
+  metadata, compact session selector header, and embedded thread view body
+- packages/dashboard-ui/src/feature-plugins.ts now composes the agent-chat Workbench node into the Workbench plugin
+  through screen.getProps so the rendered Workbench node menu includes Agent Chat alongside text and int
 `);
 
 CurrentReality.verificationBaseline.means(`
-- Workbench save/load persistence has already been verified separately before this ticket
-- this ticket still needs bounded verification for plugin-registered node discovery, agent-chat node creation,
-  session switching inside the node, and save/load persistence of the selected session id
+- Workbench save/load persistence had already been verified separately before this ticket
+- this pass now verifies plugin-registered node discovery, agent-chat node creation, and rendered in-node session
+  thread view through package-local agent-browser checks plus the worker-local verification screenshot
+- this ticket still does not fully prove a persisted reload of selected agent-chat sessionId through a save/load cycle
 `);
 
 when(CurrentReality.sharedDataPersistence.exists())
   .then(AgentWorkbenchBlueprintState.records(Assessment.evidence));
 
-when(CurrentReality.localRegistryOnly.exists())
-  .then(AgentWorkbenchBlueprintState.records(Assessment.gap));
+when(CurrentReality.pluginRegistryHost.exists())
+  .then(AgentWorkbenchBlueprintState.records(Assessment.evidence));
 
-when(CurrentReality.missingPluginRegistration.exists())
-  .then(AgentWorkbenchBlueprintState.records(Assessment.gap));
+when(CurrentReality.registeredAgentChatNode.exists())
+  .then(AgentWorkbenchBlueprintState.records(Assessment.evidence));
 
-when(CurrentReality.missingAgentChatNode.exists())
+when(CurrentReality.verificationBaseline.exists())
   .then(AgentWorkbenchBlueprintState.records(Assessment.gap));
 
 Assessment.plannedFiles.means(`
-- expected files include packages/agent-workbench-protocol/src/index.ts
-- expected files include packages/agent-workbench-ui/src/AgentWorkbenchScreen.tsx and the Workbench registry host modules
-- expected files include dashboard/plugin bootstrap files that can register Workbench node types at feature load time
-- expected files include new or extracted Agent Chat UI components for the agent-chat Workbench node renderer,
-  compact session selector, and thread view
+- touched files include packages/agent-workbench-protocol/src/index.ts
+- touched files include packages/agent-workbench-ui/src/AgentWorkbenchScreen.tsx and packages/agent-workbench-ui/src/workbench-node-types.ts
+- touched files include packages/dashboard-ui/src/feature-plugins.ts for composed Workbench node registration
+- touched files include packages/agent-chat-ui/src/workbench-node.tsx for the feature-owned agent-chat node renderer
+- touched files include packages/agent-workbench-ui/src/AgentWorkbenchScreen.agent-browser.test.ts for package-local browser verification
 `);

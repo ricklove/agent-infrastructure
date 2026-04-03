@@ -1054,9 +1054,6 @@ export function AgentWorkbenchScreen({
     setAddNodeMenu(null)
   }, [])
 
-  useEffect(() => {
-    console.log("wb.addNodeMenu.state", addNodeMenu)
-  }, [addNodeMenu])
 
   const visibleNodeTypes = useMemo(
     () =>
@@ -1339,26 +1336,12 @@ export function AgentWorkbenchScreen({
   const handlePaneClick = useCallback(
     (event: ReactMouseEvent<Element>) => {
       const nowMs = performance.now()
-      console.log("wb.handlePaneClick", {
-        detail: event.detail,
-        x: event.clientX,
-        y: event.clientY,
-        cooldown: createCooldownUntilRef.current,
-        dragging: nodeDragActiveRef.current,
-        target:
-          event.target instanceof Element
-            ? event.target.className || event.target.tagName
-            : String(event.target),
-      })
       if (nodeDragActiveRef.current || nowMs < createCooldownUntilRef.current) {
-        console.log("wb.handlePaneClick.blocked")
         return
       }
       if (event.detail !== 2) {
-        console.log("wb.handlePaneClick.notDouble")
         return
       }
-      console.log("wb.handlePaneClick.open")
       openAddNodeMenuAtClientPoint(event.clientX, event.clientY, event.target)
     },
     [openAddNodeMenuAtClientPoint],
