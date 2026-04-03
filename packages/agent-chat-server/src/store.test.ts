@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { AgentChatStore } from "./store.js"
@@ -19,6 +19,15 @@ function createStore() {
   const dataDir = mkdtempSync(join(tmpdir(), "agent-chat-store-"))
   createdDirs.push(dataDir)
   return new AgentChatStore({ dataDir })
+}
+
+function createStoreContext() {
+  const dataDir = mkdtempSync(join(tmpdir(), "agent-chat-store-"))
+  createdDirs.push(dataDir)
+  return {
+    dataDir,
+    store: new AgentChatStore({ dataDir }),
+  }
 }
 
 describe("AgentChatStore multi-agent delivery", () => {
@@ -138,5 +147,41 @@ describe("AgentChatStore multi-agent delivery", () => {
     expect(
       store.listQueuedUserMessages(session.id).map((message) => message.id),
     ).toEqual([userMessage.id, peerMessage.id])
+  })
+
+  test("ignores corrupt message lines instead of failing session load", () => {
+    const consoleError = spyOn(console, "error").mockImplementation(() => {})
+    const { dataDir, store } = createStoreContext()
+    const session = store.createSession({
+      title: "Corrupt line recovery",
+      providerKind: "codex-app-server",
+      modelRef: "openai-codex/gpt-5.4",
+      cwd: "/home/ec2-user/workspace",
+      authProfile: "chatgpt",
+    })
+
+    const first = store.appendMessage(session.id, {
+      role: "user",
+      content: [{ type: "text", text: "first" }],
+    })
+    const second = store.appendMessage(session.id, {
+      role: "assistant",
+      content: [{ type: "text", text: "second" }],
+    })
+    const messagesPath = join(dataDir, "sessions", session.id, "messages.jsonl")
+    appendFileSync(messagesPath, "{\"id\":\"broken\"\n")
+
+    const reloadedStore = new AgentChatStore({ dataDir })
+
+    expect(reloadedStore.listMessages(session.id).map((message) => message.id)).toEqual([
+      first.id,
+      second.id,
+    ])
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `[agent-chat-store] skipped unreadable message line sessionId=${session.id}`,
+      ),
+    )
+    consoleError.mockRestore()
   })
 })
