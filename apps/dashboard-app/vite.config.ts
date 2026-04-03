@@ -8,6 +8,10 @@ import { defineConfig, type HmrContext, type Plugin } from "vite"
 
 const versionModuleId = "virtual:dashboard-app-version"
 const resolvedVersionModuleId = `\0${versionModuleId}`
+const dashboardDevServerPort = Number.parseInt(
+  process.env.DASHBOARD_DEV_SERVER_PORT ?? "3300",
+  10,
+)
 const frontendRoots = [
   resolve(__dirname, "src"),
   resolve(__dirname, "index.html"),
@@ -93,14 +97,15 @@ function versionPlugin(): Plugin {
 export default defineConfig({
   plugins: [versionPlugin(), react(), tailwindcss()],
   server: {
+    allowedHosts: true,
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:3000",
+        target: `http://127.0.0.1:${dashboardDevServerPort}`,
         changeOrigin: true,
       },
       "/ws": {
-        target: "ws://127.0.0.1:3000",
+        target: `ws://127.0.0.1:${dashboardDevServerPort}`,
         ws: true,
         changeOrigin: true,
       },

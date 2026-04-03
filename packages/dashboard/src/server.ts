@@ -139,7 +139,23 @@ type DashboardStatusWsData = {
   selectedProtocol: string | null
 }
 
-type DashboardWsData = ProxyWsData | DashboardStatusWsData
+type DashboardDebugLogWsData = {
+  kind: "debug-log"
+  selectedProtocol: string | null
+}
+
+type ViteProxyWsData = {
+  kind: "vite-proxy"
+  upstreamUrl: string
+  upstream: WebSocket | null
+  queue: string[]
+}
+
+type DashboardWsData =
+  | ProxyWsData
+  | DashboardStatusWsData
+  | DashboardDebugLogWsData
+  | ViteProxyWsData
 
 type GatewayBackendDefinition = {
   id: string
@@ -158,6 +174,8 @@ const repoRoot = resolve(sourceDir, "../../..")
 const dashboardDistDir = resolve(repoRoot, "apps/dashboard-app/dist")
 const managerBaseUrl =
   process.env.MANAGER_INTERNAL_URL?.trim() || "http://127.0.0.1:8787"
+const dashboardDevFrontendUrl =
+  process.env.DASHBOARD_DEV_FRONTEND_URL?.trim() || ""
 const stateRoot = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
 const systemEventLogPath =
   process.env.SYSTEM_EVENT_LOG_PATH?.trim() ||
@@ -190,6 +208,9 @@ const browserSessionRenewIntervalMs =
     ) || 300,
   ) * 1000
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
+const browserDebugLogPath =
+  process.env.DASHBOARD_BROWSER_DEBUG_LOG_PATH?.trim() ||
+  `${stateRoot}/logs/browser-debug.log`
 
 if (!Number.isInteger(port) || port <= 0) {
   throw new Error("DASHBOARD_PORT must be a positive integer")
@@ -242,6 +263,11 @@ function logSystemStep(source: string, message: string): void {
   mkdirSync(dirname(systemEventLogPath), { recursive: true })
   appendFileSync(systemEventLogPath, `${line}\n`)
   console.error(line)
+}
+
+function appendBrowserDebugLog(payload: string): void {
+  mkdirSync(dirname(browserDebugLogPath), { recursive: true })
+  appendFileSync(browserDebugLogPath, `${payload}\n`)
 }
 
 function shellQuote(value: string): string {
@@ -314,6 +340,20 @@ function jsonResponse(
 
 function wsBaseUrlFromHttpOrigin(origin: string): string {
   return origin.replace(/^http:/, "ws:").replace(/^https:/, "wss:")
+}
+
+function copyResponseHeaders(headers: Headers): Record<string, string> {
+  const copied: Record<string, string> = {}
+  headers.forEach((value, key) => {
+    copied[key] = value
+  })
+  return copied
+}
+
+function proxiedRequestHeaders(request: Request): Record<string, string> {
+  const headers = new Headers(request.headers)
+  headers.delete("host")
+  return copyResponseHeaders(headers)
 }
 
 function hashSessionToken(token: string): string {
@@ -1210,6 +1250,21 @@ function isAllowedLocalFilePreviewPath(pathname: string): boolean {
 }
 
 async function serveStatic(url: URL): Promise<Response> {
+  if (dashboardDevFrontendUrl) {
+    const upstreamUrl = `${dashboardDevFrontendUrl}${url.pathname}${url.search}`
+    const response = await fetch(upstreamUrl, {
+      method: "GET",
+      headers: {
+        accept: "*/*",
+      },
+    })
+
+    return new Response(response.body, {
+      status: response.status,
+      headers: copyResponseHeaders(response.headers),
+    })
+  }
+
   if (!existsSync(dashboardDistDir)) {
     return new Response(
       "Dashboard assets are missing. Run `bun run build:dashboard` first.",
@@ -1245,6 +1300,8 @@ const server = Bun.serve<DashboardWsData>({
   async fetch(request) {
     const url = new URL(request.url)
     const wsBackend = findWsBackend(url.pathname)
+    const requestWantsWebSocket =
+      request.headers.get("upgrade")?.toLowerCase() === "websocket"
 
     if (wsBackend) {
       const wsSession = requireDashboardWebSocketSession(request)
@@ -1300,6 +1357,47 @@ const server = Bun.serve<DashboardWsData>({
       return new Response("upgrade failed", { status: 500 })
     }
 
+    if (url.pathname === "/ws/debug-log" || url.pathname === "/ws/debug-log/") {
+      const wsSession = requireDashboardWebSocketSession(request)
+      if (wsSession.response) {
+        return wsSession.response
+      }
+
+      if (
+        server.upgrade(request, {
+          data: {
+            kind: "debug-log",
+            selectedProtocol: wsSession.selectedProtocol,
+          },
+          headers: wsSession.selectedProtocol
+            ? { "Sec-WebSocket-Protocol": wsSession.selectedProtocol }
+            : undefined,
+        })
+      ) {
+        return undefined
+      }
+
+      return new Response("upgrade failed", { status: 500 })
+    }
+
+    if (requestWantsWebSocket && dashboardDevFrontendUrl) {
+      const upstreamUrl = `${wsBaseUrlFromHttpOrigin(dashboardDevFrontendUrl)}${url.pathname}${url.search}`
+      if (
+        server.upgrade(request, {
+          data: {
+            kind: "vite-proxy",
+            upstreamUrl,
+            upstream: null,
+            queue: [],
+          },
+        })
+      ) {
+        return undefined
+      }
+
+      return new Response("upgrade failed", { status: 500 })
+    }
+
     if (url.pathname.startsWith("/api/")) {
       return handleApi(request)
     }
@@ -1315,6 +1413,40 @@ const server = Bun.serve<DashboardWsData>({
             ws.send(JSON.stringify(dashboardStatusPayload()))
           } catch {}
         }, 15000)
+        return
+      }
+
+      if (ws.data.kind === "debug-log") {
+        return
+      }
+
+      if (ws.data.kind === "vite-proxy") {
+        const proxyData = ws.data
+        const upstream = new WebSocket(proxyData.upstreamUrl)
+        proxyData.upstream = upstream
+
+        upstream.addEventListener("open", () => {
+          for (const message of proxyData.queue) {
+            upstream.send(message)
+          }
+          proxyData.queue = []
+        })
+
+        upstream.addEventListener("message", (event) => {
+          ws.send(String(event.data))
+        })
+
+        upstream.addEventListener("close", () => {
+          try {
+            ws.close()
+          } catch {}
+        })
+
+        upstream.addEventListener("error", () => {
+          try {
+            ws.close()
+          } catch {}
+        })
         return
       }
 
@@ -1378,6 +1510,22 @@ const server = Bun.serve<DashboardWsData>({
         return
       }
 
+      if (ws.data.kind === "debug-log") {
+        appendBrowserDebugLog(String(message))
+        return
+      }
+
+      if (ws.data.kind === "vite-proxy") {
+        const payload = String(message)
+        const upstream = ws.data.upstream
+        if (upstream && upstream.readyState === WebSocket.OPEN) {
+          upstream.send(payload)
+          return
+        }
+        ws.data.queue.push(payload)
+        return
+      }
+
       const payload = String(message)
       const upstream = ws.data.upstream
       if (upstream && upstream.readyState === WebSocket.OPEN) {
@@ -1393,6 +1541,17 @@ const server = Bun.serve<DashboardWsData>({
           clearInterval(ws.data.heartbeatTimer)
           ws.data.heartbeatTimer = null
         }
+        return
+      }
+
+      if (ws.data.kind === "debug-log") {
+        return
+      }
+
+      if (ws.data.kind === "vite-proxy") {
+        try {
+          ws.data.upstream?.close()
+        } catch {}
         return
       }
 

@@ -67,6 +67,7 @@ export type DashboardFeatureUiPlugin = DashboardFeaturePlugin & {
 
 export {
   createDashboardSessionHeaders,
+  dashboardSessionDebugLog,
   dashboardSessionAuthorizationHeaderValue,
   dashboardSessionFetch,
   dashboardSessionWebSocketProtocols,
