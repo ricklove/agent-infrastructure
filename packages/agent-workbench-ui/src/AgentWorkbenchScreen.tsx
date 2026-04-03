@@ -197,7 +197,7 @@ function TextWorkbenchNode({
           })
         }
         placeholder="Write here..."
-        className="h-full w-full min-h-[140px] min-w-[220px] resize-none rounded-2xl border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none"
+        className="nodrag nopan nowheel h-full w-full resize-none rounded-2xl border-0 bg-transparent px-4 py-3 text-sm leading-6 text-slate-900 outline-none"
       />
       <Handle
         type="source"
@@ -262,7 +262,7 @@ function IntWorkbenchNode({
               value: Math.trunc(Number(event.target.value) || 0),
             })
           }
-          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-semibold text-slate-900 outline-none"
+          className="nodrag nopan nowheel mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-semibold text-slate-900 outline-none"
         />
       </div>
       <Handle
@@ -462,13 +462,15 @@ function RegisteredWorkbenchNode({
           handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
         />
       ) : null}
-      <NodeRenderer
-        id={id}
-        record={data.record as never}
-        selected={selected}
-        onRecordChange={(nextRecord) => data.onRecordChange(id, nextRecord)}
-        onResize={data.onResize}
-      />
+      <div className="nodrag nopan nowheel h-full w-full">
+        <NodeRenderer
+          id={id}
+          record={data.record as never}
+          selected={selected}
+          onRecordChange={(nextRecord) => data.onRecordChange(id, nextRecord)}
+          onResize={data.onResize}
+        />
+      </div>
     </>
   )
 }

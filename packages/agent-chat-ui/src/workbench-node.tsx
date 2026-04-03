@@ -127,7 +127,7 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
                 sessionId: event.target.value || null,
               })
             }
-            className="max-w-[220px] rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-100 outline-none"
+            className="nodrag nopan nowheel max-w-[220px] rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-100 outline-none"
           >
             <option value="">Select chat session</option>
             {sessions.map((session) => (
