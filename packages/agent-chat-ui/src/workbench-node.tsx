@@ -107,7 +107,7 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
   return (
     <div
       ref={containerRef}
-      className={`flex min-h-[320px] min-w-[340px] flex-col overflow-hidden rounded-2xl border bg-slate-950/95 shadow-lg transition ${
+      className={`flex min-h-[320px] min-w-[340px] resize flex-col overflow-hidden rounded-2xl border bg-slate-950/95 shadow-lg transition ${
         selected ? "border-cyan-300 shadow-cyan-900/40" : "border-slate-700"
       }`}
     >
