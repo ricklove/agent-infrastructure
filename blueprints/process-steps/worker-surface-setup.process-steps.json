@@ -29,6 +29,30 @@
           }
         ]
       }
+    },
+    {
+      "id": "verify_worker_surface",
+      "title": "Run `bun run verify-worker-surface` to prove the worker tools, auth, repo-sync path, dashboard readiness, direct browser path, and provider verification paths are usable before implementation begins"
+    },
+    {
+      "id": "assess_worker_surface_verification",
+      "title": "Did worker verification pass?",
+      "kind": "decision",
+      "decision": {
+        "prompt": "Did worker verification pass?",
+        "options": [
+          {
+            "id": "worker_surface_verification_failed",
+            "title": "Worker verification failed with a phase-specific readiness error",
+            "block": true
+          },
+          {
+            "id": "worker_surface_verification_passed",
+            "title": "Worker verification passed and the worker surface is ready for implementation",
+            "next": true
+          }
+        ]
+      }
     }
   ]
 }

@@ -96,6 +96,7 @@ DevelopmentProcess.enforces(`
 - Active code-changing implementation should use an isolated git worktree for development and local verification when working from a feature branch.
 - Code-changing implementation work should use a swarm worker as the active development host rather than the manager runtime host.
 - The normal entrypoint for preparing a worker-backed feature branch should be `bun run agent:prepare-worker-surface -- <feature-branch-name>`, which should ensure or launch a worker, create the worker worktree from `origin/development`, run `bun install`, and print the canonical `start_command` for entering that worktree.
+- After `prepare-worker-surface` succeeds for a code-changing worker-backed run, `bun run verify-worker-surface` should prove worker readiness before implementation begins.
 - The normal entrypoint for preparing a manager-hosted feature branch should be `bun run agent:prepare-manager-surface -- <feature-branch-name>`, which should create the manager-hosted feature worktree from `origin/development` and print the canonical `start_command` for entering that worktree.
 - Before any prepare-surface command runs, the process should choose and record a unique feature branch name for that run.
 - Manager-hosted blueprint-definition and process-definition work should use the manager-hosted prepare and merge commands rather than worker-backed integration commands.
@@ -104,12 +105,11 @@ DevelopmentProcess.enforces(`
 - When a swarm worker is used for development, that worker should have its own isolated workspace checkout and its own worker-local runtime surface rather than sharing the manager host runtime or canonical shared checkout.
 - A manager-hosted worktree under `~/workspace/projects-worktrees/` is not a valid substitute for the required EC2 swarm worker implementation surface.
 - A worker-host implementation surface must not have direct write access to the manager host shared repository checkout or runtime checkout.
-- A worker-host implementation surface must not inherit long-lived manager git credentials or ambient git authority for canonical manager repositories.
-- When a swarm worker is used for development, the normal entrypoint for manager-side integration should be `bun run agent:merge-worker-feature -- <feature-branch-name>`, which should refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin.
+- A worker-host implementation surface must not inherit long-lived manager git credentials or ambient git authority for canonical manager repositories beyond the trusted repository authority intentionally granted for worker-side promotion.
+- When a swarm worker is used for development, the worker-hosted feature-branch worktree is the normal source-control promotion surface for trusted `git` and `gh` operations that merge the finished feature branch into `development`, promote `development` into `main`, and create and push the release tag from that promoted commit.
 - When a manager-hosted feature worktree is used for development, the normal entrypoint for manager-side integration should be `bun run agent:merge-manager-feature -- <feature-branch-name>`, which should merge the local feature branch from its manager worktree and push `development` to origin.
-- Worker-backed merge commands should print `merge_outcome=completed` on success or `merge_outcome=worker_conflict_resolution_required` when the worker feature branch requires conflict resolution.
 - Manager-hosted merge commands should print `merge_outcome=completed` on success.
-- When a swarm worker is used for development, a dedicated manager integration worktree remains the integration, GitHub push, release, deploy, and live-verification surface rather than the shared repository checkout or a parallel editing surface.
+- When a swarm worker is used for development, the manager host is the runtime checkout, restart, deploy, and live-verification surface rather than a second source-control promotion surface.
 - The manager host must not be used as the active mutable implementation surface for code-changing feature or fix work.
 - Development on a swarm worker should happen through persistent worker terminals entered via the printed `start_command` rather than through repeated manual ssh setup ceremony or one-off ssh command invocations for routine edit and verification loops.
 - Implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` rather than inside the shared repository tree or in ad hoc temp directories.
@@ -143,7 +143,7 @@ DevelopmentProcess.enforces(`
 - Once a merged worktree is clean and no longer needed, that worktree should be removed.
 - A merged worktree that still contains local changes must be reconciled deliberately or explicitly recorded as preserved unfinished work rather than being left behind silently.
 - Release rollout should start only after the shared base-branch checkout is clean.
-- Release rollout should promote the intended integrated commit onto `main`, create a release git tag from that exact commit, and deploy runtime from that tag.
+- Release rollout should promote the intended integrated commit onto `main` on the authoritative worker surface, create a release git tag from that exact commit, and deploy runtime from that promoted target.
 - Runtime is a deployed checkout and not an editing surface.
 - state/ is only for temporary runtime state and recoverable operational artifacts.
 - Durable app data must live outside state/.
@@ -173,16 +173,16 @@ DevelopmentProcess.defines(`
 - TeamReviewedBlueprintState means the fixed team profile reviewer set evaluates the updated blueprint-state against both the blueprint and the current implementation before the process may conclude that the current implementation scope is complete.
 - WorkspaceToolingDiscovery means local machine tooling should be discovered from `/home/ec2-user/workspace/README.md` and `/home/ec2-user/workspace/tools/` guidance before installing replacements or parallel toolchains.
 - For UI verification on this machine, `agent-browser` is the expected browser tool for both behavior verification and visual verification, including small, medium, and wide viewport checks, unless a more specific documented workspace replacement supersedes it.
-- IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, and manager-side integration, release, deploy, and live verification also happen in a dedicated manager integration worktree rather than in the shared checkout.
-- WorkerBackedDevelopment means code-changing implementation work belongs on a swarm worker host whose checkout serves as the active remote worktree for that branch, with the manager host reserved for integration, deployment, and live verification.
+- IsolatedGitWorktreeDevelopment means code-changing implementation work happens in a git worktree associated with a feature branch rather than in a shared checkout, while worker-host source-control promotion and manager-host runtime deploy and live verification stay on their respective dedicated surfaces rather than in the shared checkout.
+- WorkerBackedDevelopment means code-changing implementation work belongs on a swarm worker host whose checkout serves as the active remote worktree for that branch, with the worker also owning trusted repository promotion and the manager host reserved for runtime deployment and live verification.
 - WorkerIsolatedWorkspace means a development worker keeps its own workspace checkout and worker-local runtime surface instead of sharing the manager runtime tree or shared integration checkout.
-- ManagerGitAuthorityBoundary means manager-host git credentials and canonical repository authority stay on the manager integration surface and are not ambiently copied onto worker development surfaces.
+- ManagerGitAuthorityBoundary means manager-host runtime and repository authority stay on their intended manager-owned surfaces and are not ambiently copied onto worker development surfaces outside the explicitly trusted worker promotion boundary.
 - WorkerDashboardPreviewMode means a worker-host development session may expose a worker-local dashboard replica through the Bun dashboard gateway while forwarding frontend development traffic to Vite for HMR.
 - LivePeerDevelopment means a worker-backed feature branch stays in active iterative development with a live worker preview shared to the operator, while merge, release promotion, deploy, and manager live validation remain deferred.
 - StableMilestoneCommits means preview-driven feature work is checkpointed as deliberate feature-branch commits whenever the operator reaches a coherent testing milestone.
 - DiscussByDefaultForExploration means agent-chat sessions created from exploratory prompt canvases, critique tools, or similar high-level interactive design surfaces start in the `Discuss` process unless the operator explicitly selects a code-changing process.
 - PersistentWorkerTerminalWorkflow means worker-host development should use the `start_command` printed by `bun run agent:prepare-worker-surface -- <feature-branch-name>` to enter a long-lived worker terminal in the prepared worktree for normal editing and verification loops instead of repeated manual ssh setup.
-- WorkerPreflightVerification means a new worker-hosted feature branch is prepared by `bun run agent:prepare-worker-surface -- <feature-branch-name>`, which should ensure worker readiness, create the worker worktree, run `bun install`, and produce a usable worker worktree entrypoint before implementation begins.
+- WorkerPreflightVerification means a new worker-hosted feature branch is prepared by `bun run agent:prepare-worker-surface -- <feature-branch-name>` and then explicitly validated by `bun run verify-worker-surface` before implementation begins.
 - CanonicalWorktreeLocation means implementation worktrees should live under `~/workspace/projects-worktrees/<repo-name>/<branch-name>` so they stay separate from canonical shared repo checkouts and are easy to audit and remove.
 - FeatureBranchMergesIntoBase means implementation commits land on a feature branch first and are merged back into the base branch before rollout.
 - MergeCommitPromotion means branch-stage transitions stay visible as normal merge commits rather than being collapsed into fast-forward updates.
@@ -301,9 +301,10 @@ when(Actor.operator.starts("code-changing implementation on a feature or fix"))
   .and(DevelopmentProcess.expects("the active branch workspace to live on a worker checkout for implementation work"))
   .and(DevelopmentProcess.expects("the worker checkout to be isolated from the manager runtime checkout and shared integration checkout"))
   .and(DevelopmentProcess.expects("the worker runtime and workspace surfaces to be disposable or replaceable without mutating manager-host canonical surfaces"))
-  .and(DevelopmentProcess.expects("manager-host git authority to remain outside the worker unless an explicit promotion or fetch path is invoked"))
-  .and(DevelopmentProcess.expects("worker-host development to keep the manager host as the integration-only surface until fetch, push, deploy, or live verification is needed"))
+  .and(DevelopmentProcess.expects("manager-host runtime authority to remain separate from worker-host source-control promotion authority"))
+  .and(DevelopmentProcess.expects("worker-host development to keep the manager host as the runtime-only surface until deploy or live verification is needed"))
   .and(DevelopmentProcess.expects("worker-host development to use persistent worker terminals for routine editing and verification"))
+  .and(DevelopmentProcess.expects("worker readiness to be explicitly proved with `bun run verify-worker-surface` after prepare and before implementation"))
   .and(DevelopmentProcess.expects("feature-branch refresh to use normal merges only from the specific base or release branch that actually needs to be incorporated"))
   .and(DevelopmentProcess.associates(Artifact.featureBranch).with(Artifact.baseBranch))
   .and(DevelopmentProcess.associates(Artifact.implementationWorktree).with(Artifact.featureBranch))
