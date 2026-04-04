@@ -3,6 +3,7 @@ import { NodeResizer } from "reactflow"
 
 type WorkbenchNodeWrapperProps = {
   children: JSX.Element
+  editableLabelValue: string
   label: string
   labelPlaceholder?: boolean
   nodeId: string
@@ -50,6 +51,7 @@ function PencilIcon(props: { className?: string }) {
 
 export function WorkbenchNodeWrapper({
   children,
+  editableLabelValue,
   label,
   labelPlaceholder = false,
   nodeId,
@@ -59,13 +61,13 @@ export function WorkbenchNodeWrapper({
   workbenchReferenceSegment,
 }: WorkbenchNodeWrapperProps) {
   const [editingLabel, setEditingLabel] = useState(false)
-  const [draftLabel, setDraftLabel] = useState(label)
+  const [draftLabel, setDraftLabel] = useState(editableLabelValue)
 
   useEffect(() => {
     if (!editingLabel) {
-      setDraftLabel(label)
+      setDraftLabel(editableLabelValue)
     }
-  }, [editingLabel, label])
+  }, [editableLabelValue, editingLabel])
 
   return (
     <>
@@ -96,14 +98,14 @@ export function WorkbenchNodeWrapper({
                 onLabelChange(draftLabel)
               } else if (event.key === "Escape") {
                 setEditingLabel(false)
-                setDraftLabel(label)
+                setDraftLabel(editableLabelValue)
               }
             }}
-            className="nodrag rounded-full border border-cyan-300/60 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-700 shadow-sm outline-none"
+            className="nodrag rounded-full border border-cyan-300/60 bg-white px-3 py-1 text-[9px] font-semibold text-slate-700 shadow-sm outline-none"
           />
         ) : (
           <div
-            className={`cursor-grab rounded-full border border-slate-300/80 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] shadow-sm active:cursor-grabbing ${
+            className={`cursor-grab rounded-full border border-slate-300/80 bg-white px-3 py-1 text-[9px] font-semibold shadow-sm active:cursor-grabbing ${
               labelPlaceholder ? "text-slate-400" : "text-slate-600"
             }`}
           >
@@ -120,6 +122,7 @@ export function WorkbenchNodeWrapper({
             }`}
             onClick={(event) => {
               event.stopPropagation()
+              setDraftLabel(editableLabelValue)
               setEditingLabel(true)
             }}
             onPointerDown={(event) => {

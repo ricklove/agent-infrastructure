@@ -462,6 +462,7 @@ function RegisteredWorkbenchNode({
   const nodeName = data.record.name?.trim() ?? ""
   return (
     <WorkbenchNodeWrapper
+      editableLabelValue={nodeName}
       label={nodeName || data.definition.label}
       labelPlaceholder={!nodeName}
       nodeId={id}
