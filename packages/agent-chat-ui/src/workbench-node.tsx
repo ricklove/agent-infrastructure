@@ -5,7 +5,7 @@ import type {
 } from "@agent-infrastructure/agent-workbench-protocol"
 import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
-import { memo, useEffect, useRef, useState } from "react"
+import { memo, useEffect, useState } from "react"
 
 import { AgentChatWorkbenchSessionView } from "./AgentChatScreen"
 
@@ -27,30 +27,11 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
   record,
   selected,
   onRecordChange,
-  onResize,
 }: WorkbenchNodeComponentProps<WorkbenchAgentChatNodeRecord>) {
   useRenderCounter("AgentChatWorkbenchNode")
-  const containerRef = useRef<HTMLDivElement | null>(null)
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([])
   const [loadingSessions, setLoadingSessions] = useState(true)
   const [error, setError] = useState("")
-
-  useEffect(() => {
-    const element = containerRef.current
-    if (!element) {
-      return
-    }
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) {
-        return
-      }
-      onResize(id, entry.contentRect.width, entry.contentRect.height)
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [id, onResize])
 
   useEffect(() => {
     let cancelled = false
@@ -106,7 +87,6 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
 
   return (
     <div
-      ref={containerRef}
       className={`flex h-full w-full min-h-[320px] min-w-[340px] flex-col overflow-hidden rounded-2xl border bg-slate-950/95 shadow-lg transition ${
         selected ? "border-cyan-300 shadow-cyan-900/40" : "border-slate-700"
       }`}
@@ -127,7 +107,7 @@ const AgentChatWorkbenchNode = memo(function AgentChatWorkbenchNode({
                 sessionId: event.target.value || null,
               })
             }
-            className="max-w-[220px] rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-100 outline-none"
+            className="nodrag nopan nowheel max-w-[220px] rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-xs text-slate-100 outline-none"
           >
             <option value="">Select chat session</option>
             {sessions.map((session) => (
