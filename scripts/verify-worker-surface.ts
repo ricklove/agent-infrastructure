@@ -202,7 +202,7 @@ function hasFlag(args: string[], flag: string): boolean {
 }
 
 function printHelp(): void {
-  console.log(`Usage: bun ./scripts/worker-setup-direct-development.ts [options]
+  console.log(`Usage: bun ./scripts/verify-worker-surface.ts [options]
 
 Options:
   --config <path>                  JSON config override file
@@ -300,7 +300,7 @@ function makePromptSpec(promptId: string, resolvedText: string): WorkerPromptSpe
   return {
     promptId,
     sourceKind: "inline",
-    sourceRef: "scripts/worker-setup-direct-development.ts",
+    sourceRef: "scripts/verify-worker-surface.ts",
     resolvedText,
   };
 }
@@ -351,7 +351,7 @@ function defaultConfig(
 ): WorkerSetupScriptConfig {
   const dashboardPort = 5173;
   const dashboardUrl = `http://127.0.0.1:${dashboardPort}`;
-  const screenshotDir = resolve(workspaceRoot, "tmp", "worker-setup-direct-development");
+  const screenshotDir = resolve(workspaceRoot, "tmp", "verify-worker-surface");
   return {
     workspaceRoot,
     repoTargets,
@@ -1025,7 +1025,7 @@ async function main(): Promise<void> {
       reason: message,
       recoverable: true,
       resumeStepId: phaseResult?.stepId ?? "unknown",
-      rerunCommand: `bun ./scripts/worker-setup-direct-development.ts`,
+      rerunCommand: `bun ./scripts/verify-worker-surface.ts`,
       rerunCwd: config.workspaceRoot,
       partialArtifacts: artifacts,
       partialRepos: repoResults,

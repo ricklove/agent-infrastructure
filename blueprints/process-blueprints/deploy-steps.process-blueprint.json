@@ -2,66 +2,16 @@
   "id": "deploy_steps",
   "title": "Deploy (Nested Steps)",
   "catalogOrder": 48,
-  "expectation": "Use a dedicated manager integration worktree as the only mutable surface for this process; never edit the shared repository checkout during integration, release, deploy, or live validation. If a worker-hosted feature branch is the source of truth, first confirm that a focused feature branch exists, then run the worker-feature merge flow to refresh that branch from latest `origin/development`, integrate it through the manager worktree, and push `development` to origin before continuing. After a successful merge into `development`, promote that integrated commit onto `main`, create a release tag from the exact promoted commit, deploy the runtime through the canonical deploy-manager-runtime path, verify runtime revision and version match, perform local and browser verification, and complete cleanup or rollback recovery as required.",
-  "idlePrompt": "If deployment is complete, reply only with 'done: deploy complete'. If you are truly blocked on a missing focused feature branch, user decision, or environment dependency, reply only with 'blocked: deploy blocked'. Otherwise resume the deploy process immediately and perform the next required integration, release, deploy, cleanup, or validation step instead of giving only a status update.",
+  "expectation": "Use the manager runtime surface as the only mutable surface for this process; never edit the shared repository checkout or use a manager integration worktree for source-control promotion during deploy. Start from an already promoted release target whose merge into `development`, promotion onto `main`, and release-tag creation have already been completed on the authoritative worker surface. Then update the manager runtime checkout to that promoted target, restart through the canonical deploy-manager-runtime path, verify runtime revision and version match, perform local and browser verification, and complete cleanup or rollback recovery as required.",
+  "idlePrompt": "If deployment is complete, reply only with 'done: deploy complete'. If you are truly blocked on a missing promoted release target, user decision, or environment dependency, reply only with 'blocked: deploy blocked'. Otherwise resume the deploy process immediately and perform the next required runtime update, deploy, cleanup, or validation step instead of giving only a status update.",
   "completionMode": "exact_reply",
   "completionToken": "done: deploy complete",
   "blockedToken": "blocked: deploy blocked",
   "stopConditions": [
     "deploy process complete",
-    "blocked on focused feature branch, user decision, or environment dependency"
+    "blocked on promoted release target, user decision, or environment dependency"
   ],
   "steps": [
-    {
-      "id": "deploy_integration_setup",
-      "title": "Prepare the deploy integration state",
-      "steps": [
-        {
-          "id": "check_focused_feature_branch",
-          "title": "Is there a focused feature branch?",
-          "kind": "decision",
-          "decision": {
-            "prompt": "Is there a focused feature branch?",
-            "options": [
-              {
-                "id": "no_focused_feature_branch",
-                "title": "No focused feature branch",
-                "block": true
-              },
-              {
-                "id": "focused_feature_branch_exists",
-                "title": "Focused feature branch exists",
-                "next": true
-              }
-            ]
-          }
-        },
-        {
-          "id": "merge_feature_branch",
-          "title": "Run `bun run agent:merge-worker-feature -- <feature-branch-name>` to refresh the worker feature branch from latest `origin/development`, stop for worker conflict resolution if needed, create a dedicated manager integration worktree, merge the feature branch there, and push `development` to origin"
-        },
-        {
-          "id": "assess_feature_merge",
-          "title": "What is the feature merge outcome?",
-          "kind": "decision",
-          "decision": {
-            "prompt": "What is the feature merge outcome?",
-            "options": [
-              {
-                "id": "feature_merge_completed",
-                "title": "Feature merge completed successfully",
-                "next": true
-              },
-              {
-                "id": "feature_merge_requires_worker_conflict_resolution",
-                "title": "Feature merge requires worker conflict resolution",
-                "block": true
-              }
-            ]
-          }
-        }
-      ]
-    },
     {
       "id": "deploy_release_validation",
       "title": "Release and validate the deployment",
@@ -71,10 +21,6 @@
         },
         {
           "use": "manager_dashboard_verification"
-        },
-        {
-          "id": "cleanup_manager_integration_worktree",
-          "title": "Clean up the manager integration worktree"
         },
         {
           "id": "cleanup_feature_branch_and_worktree",
