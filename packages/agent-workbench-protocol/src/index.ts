@@ -1,5 +1,6 @@
 export type WorkbenchTextNodeRecord = {
   id: string
+  name?: string
   type: "text"
   x: number
   y: number
@@ -10,6 +11,7 @@ export type WorkbenchTextNodeRecord = {
 
 export type WorkbenchIntNodeRecord = {
   id: string
+  name?: string
   type: "int"
   x: number
   y: number
@@ -20,6 +22,7 @@ export type WorkbenchIntNodeRecord = {
 
 export type WorkbenchAgentChatNodeRecord = {
   id: string
+  name?: string
   type: "agent-chat"
   x: number
   y: number

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import type { WorkbenchDocumentRecord } from "@agent-infrastructure/agent-workbench-protocol"
@@ -85,5 +85,35 @@ describe("workbench-store", () => {
     )
     expect(summary?.title).toBe("Visible Title")
     expect(summary?.path).toBe(join(dataRoot, "title-check.workbench.ts"))
+  })
+
+  test("renames the persisted workbench file when the id changes", async () => {
+    const { readWorkbench, writeWorkbench } = await loadStore()
+    await writeWorkbench({
+      id: "rename-source",
+      title: "Rename Source",
+      nodes: [],
+      edges: [],
+      handles: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    })
+
+    await writeWorkbench(
+      {
+        id: "rename-target",
+        title: "Rename Target",
+        nodes: [],
+        edges: [],
+        handles: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+      { previousId: "rename-source" },
+    )
+
+    expect(existsSync(join(dataRoot, "rename-source.workbench.ts"))).toBe(false)
+    const snapshot = await readWorkbench("rename-target")
+    expect(snapshot.filePath).toBe(join(dataRoot, "rename-target.workbench.ts"))
+    expect(snapshot.workbench.id).toBe("rename-target")
+    expect(snapshot.workbench.title).toBe("Rename Target")
   })
 })

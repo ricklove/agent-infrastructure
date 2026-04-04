@@ -144,11 +144,15 @@ type DashboardDebugLogWsData = {
   selectedProtocol: string | null
 }
 
+type ProxyMessage = string | ArrayBuffer | Uint8Array
+
 type ViteProxyWsData = {
   kind: "vite-proxy"
   upstreamUrl: string
   upstream: WebSocket | null
-  queue: string[]
+  queue: ProxyMessage[]
+  requestedProtocols: string[]
+  selectedProtocol: string | null
 }
 
 type DashboardWsData =
@@ -675,6 +679,38 @@ function requireDashboardWebSocketSession(request: Request): {
       ],
     }),
   }
+}
+
+function requestedWebSocketProtocols(request: Request): string[] {
+  const header = request.headers.get("sec-websocket-protocol")?.trim() ?? ""
+  if (!header) {
+    return []
+  }
+
+  return header
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+function selectWebSocketProtocol(protocols: string[]): string | null {
+  return protocols[0] ?? null
+}
+
+function proxyMessagePayload(message: string | Buffer | Uint8Array): ProxyMessage {
+  if (typeof message === "string") {
+    return message
+  }
+
+  return message instanceof Uint8Array ? message : new Uint8Array(message)
+}
+
+function proxyEventPayload(data: string | ArrayBuffer | Uint8Array): ProxyMessage {
+  if (typeof data === "string") {
+    return data
+  }
+
+  return data instanceof Uint8Array ? data : data
 }
 
 async function fetchAccessJson<T>(
@@ -1382,6 +1418,8 @@ const server = Bun.serve<DashboardWsData>({
 
     if (requestWantsWebSocket && dashboardDevFrontendUrl) {
       const upstreamUrl = `${wsBaseUrlFromHttpOrigin(dashboardDevFrontendUrl)}${url.pathname}${url.search}`
+      const requestedProtocols = requestedWebSocketProtocols(request)
+      const selectedProtocol = selectWebSocketProtocol(requestedProtocols)
       if (
         server.upgrade(request, {
           data: {
@@ -1389,7 +1427,12 @@ const server = Bun.serve<DashboardWsData>({
             upstreamUrl,
             upstream: null,
             queue: [],
+            requestedProtocols,
+            selectedProtocol,
           },
+          headers: selectedProtocol
+            ? { "Sec-WebSocket-Protocol": selectedProtocol }
+            : undefined,
         })
       ) {
         return undefined
@@ -1422,7 +1465,10 @@ const server = Bun.serve<DashboardWsData>({
 
       if (ws.data.kind === "vite-proxy") {
         const proxyData = ws.data
-        const upstream = new WebSocket(proxyData.upstreamUrl)
+        const upstream =
+          proxyData.requestedProtocols.length > 0
+            ? new WebSocket(proxyData.upstreamUrl, proxyData.requestedProtocols)
+            : new WebSocket(proxyData.upstreamUrl)
         proxyData.upstream = upstream
 
         upstream.addEventListener("open", () => {
@@ -1433,7 +1479,7 @@ const server = Bun.serve<DashboardWsData>({
         })
 
         upstream.addEventListener("message", (event) => {
-          ws.send(String(event.data))
+          ws.send(proxyEventPayload(event.data))
         })
 
         upstream.addEventListener("close", () => {
@@ -1516,7 +1562,7 @@ const server = Bun.serve<DashboardWsData>({
       }
 
       if (ws.data.kind === "vite-proxy") {
-        const payload = String(message)
+        const payload = proxyMessagePayload(message)
         const upstream = ws.data.upstream
         if (upstream && upstream.readyState === WebSocket.OPEN) {
           upstream.send(payload)

@@ -3,6 +3,8 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs"
@@ -69,6 +71,11 @@ function loadWorkbenchModule(filePath: string) {
 
 function normalizeWorkbenchRecord(record: WorkbenchDocumentRecord) {
   const normalizedId = record.id.trim() || defaultWorkbenchId
+  if (!/^[a-zA-Z0-9._-]+$/.test(normalizedId)) {
+    throw new Error(
+      "Workbench file name may only contain letters, numbers, '.', '_' and '-'",
+    )
+  }
   return {
     ...record,
     id: normalizedId,
@@ -190,10 +197,30 @@ export async function readWorkbench(id?: string) {
   }
 }
 
-export async function writeWorkbench(record: WorkbenchDocumentRecord) {
+export async function writeWorkbench(
+  record: WorkbenchDocumentRecord,
+  options?: { previousId?: string },
+) {
   ensureWorkbenchRoot()
   const normalizedRecord = normalizeWorkbenchRecord(record)
+  const previousId = options?.previousId?.trim()
   const filePath = workbenchFilePath(normalizedRecord.id)
+  if (previousId && previousId !== normalizedRecord.id) {
+    const previousPath = workbenchFilePath(previousId)
+    if (existsSync(filePath)) {
+      throw new Error(
+        `Workbench file name already exists: ${normalizedRecord.id}`,
+      )
+    }
+    if (existsSync(previousPath)) {
+      renameSync(previousPath, filePath)
+    }
+    writeWorkbenchFile(filePath, normalizedRecord)
+    if (existsSync(previousPath)) {
+      rmSync(previousPath, { force: true })
+    }
+    return normalizedRecord
+  }
   writeWorkbenchFile(filePath, normalizedRecord)
   return normalizedRecord
 }

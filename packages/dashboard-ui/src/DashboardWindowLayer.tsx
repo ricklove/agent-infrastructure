@@ -27,6 +27,8 @@ const desktopHeaderHeightPx = 40
 const minimizedBodyPaddingPx = 8
 const mobileChromeMinWidthPx = 176
 const desktopChromeMinWidthPx = 176
+const mobileMinimizedIconSizePx = 34
+const desktopMinimizedIconSizePx = 40
 
 type DashboardWindowDefinition = {
   id?: string
@@ -822,6 +824,9 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
         const effectiveScale = effectiveScaleForWindow(entry)
         const autoFitActive = effectiveScale < entry.scale - 0.01
         const titleFontSize = clamp(11 * effectiveScale, 8, 14)
+        const minimizedIconSize = metrics.mobile
+          ? mobileMinimizedIconSizePx
+          : desktopMinimizedIconSizePx
         return (
           <div
             key={entry.windowId}
@@ -836,120 +841,132 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                   ? "none"
                   : "auto",
               top: entry.y,
-              width: entry.width,
-              height: entry.minimized
-                ? headerHeight + minimizedBodyPaddingPx
-                : entry.height,
+              width: entry.minimized ? minimizedIconSize : entry.width,
+              height: entry.minimized ? minimizedIconSize : entry.height,
               zIndex: entry.zIndex,
             }}
             onPointerDown={() => focusWindow(entry.windowId)}
           >
             <div className="flex h-full flex-col overflow-hidden rounded-[1.15rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.97),rgba(2,6,23,0.98))] shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
-              <div
-                className="flex items-center justify-between gap-2 border-b border-white/10 bg-slate-950/88 px-2"
-                style={{ height: `${headerHeight}px` }}
-              >
+              {entry.minimized ? (
                 <button
                   type="button"
-                  className="min-w-0 flex-1 cursor-grab touch-none text-left active:cursor-grabbing"
-                  onPointerDown={(event) =>
-                    beginInteraction("move", event, entry)
+                  className="flex h-full w-full cursor-pointer items-center justify-center rounded-[1.15rem] bg-slate-950/88 text-cyan-100"
+                  onClick={() =>
+                    updateWindow(entry.windowId, {
+                      minimized: false,
+                    })
                   }
-                  title="Drag window"
+                  onPointerDown={(event) => beginInteraction("move", event, entry)}
+                  title={entry.title}
                 >
-                  <div className="flex min-w-0 items-center gap-1.5 text-cyan-100">
-                    {entry.icon ? (
-                      <span className="shrink-0">{entry.icon}</span>
-                    ) : null}
-                    <span
-                      className="truncate uppercase tracking-[0.14em]"
-                      style={{ fontSize: `${titleFontSize}px` }}
-                    >
-                      {entry.title}
-                    </span>
-                  </div>
+                  {entry.icon ? (
+                    <span className="pointer-events-none shrink-0">{entry.icon}</span>
+                  ) : (
+                    <MinimizeIcon className="pointer-events-none h-4 w-4" />
+                  )}
                 </button>
-                <div className="flex items-center gap-1 text-[11px] text-slate-200">
-                  <button
-                    type="button"
-                    onPointerDown={(event) => {
-                      event.stopPropagation()
-                    }}
-                    onClick={() => updateWindow(entry.windowId, { scale: 1 })}
-                    disabled={Math.abs(entry.scale - 1) < 0.01}
-                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)] disabled:opacity-40"
-                    title="Reset zoom"
-                    style={{
-                      width: `${controlButtonSize}px`,
-                      height: `${controlButtonSize}px`,
-                    }}
-                  >
-                    <ResetZoomIcon className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onPointerDown={(event) =>
-                      beginInteraction("zoom", event, entry)
-                    }
-                    className="inline-flex shrink-0 touch-none items-center justify-center rounded-full border border-white/10 bg-slate-950/95 font-medium text-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-                    title={
-                      autoFitActive
-                        ? `Drag left or right to zoom. Requested ${Math.round(entry.scale * 100)} percent, rendering ${Math.round(effectiveScale * 100)} percent.`
-                        : "Drag left or right to zoom"
-                    }
-                    style={{
-                      width: `${controlButtonSize}px`,
-                      height: `${controlButtonSize}px`,
-                    }}
-                  >
-                    <span style={{ fontSize: metrics.mobile ? "7px" : "8px" }}>
-                      {Math.round(effectiveScale * 100)}%
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onPointerDown={(event) => {
-                      event.stopPropagation()
-                    }}
-                    onClick={() =>
-                      updateWindow(entry.windowId, {
-                        minimized: !entry.minimized,
-                      })
-                    }
-                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-                    title={
-                      entry.minimized ? "Restore window" : "Minimize window"
-                    }
-                    style={{
-                      width: `${controlButtonSize}px`,
-                      height: `${controlButtonSize}px`,
-                    }}
-                  >
-                    <MinimizeIcon className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onPointerDown={(event) => {
-                      event.stopPropagation()
-                    }}
-                    onClick={() => closeWindow(entry.windowId)}
-                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-400/25 bg-slate-950/95 text-rose-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
-                    title="Close window"
-                    style={{
-                      width: `${controlButtonSize}px`,
-                      height: `${controlButtonSize}px`,
-                    }}
-                  >
-                    <CloseIcon className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {entry.minimized ? (
-                <div className="flex h-full items-center px-3 text-xs text-slate-300">
-                  {entry.title}
-                </div>
               ) : (
+                <>
+                  <div
+                    className="flex items-center justify-between gap-2 border-b border-white/10 bg-slate-950/88 px-2"
+                    style={{ height: `${headerHeight}px` }}
+                  >
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 cursor-grab touch-none text-left active:cursor-grabbing"
+                      onPointerDown={(event) =>
+                        beginInteraction("move", event, entry)
+                      }
+                      title="Drag window"
+                    >
+                      <div className="flex min-w-0 items-center gap-1.5 text-cyan-100">
+                        {entry.icon ? (
+                          <span className="shrink-0">{entry.icon}</span>
+                        ) : null}
+                        <span
+                          className="truncate uppercase tracking-[0.14em]"
+                          style={{ fontSize: `${titleFontSize}px` }}
+                        >
+                          {entry.title}
+                        </span>
+                      </div>
+                    </button>
+                    <div className="flex items-center gap-1 text-[11px] text-slate-200">
+                      <button
+                        type="button"
+                        onPointerDown={(event) => {
+                          event.stopPropagation()
+                        }}
+                        onClick={() => updateWindow(entry.windowId, { scale: 1 })}
+                        disabled={Math.abs(entry.scale - 1) < 0.01}
+                        className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)] disabled:opacity-40"
+                        title="Reset zoom"
+                        style={{
+                          width: `${controlButtonSize}px`,
+                          height: `${controlButtonSize}px`,
+                        }}
+                      >
+                        <ResetZoomIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onPointerDown={(event) =>
+                          beginInteraction("zoom", event, entry)
+                        }
+                        className="inline-flex shrink-0 touch-none items-center justify-center rounded-full border border-white/10 bg-slate-950/95 font-medium text-slate-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+                        title={
+                          autoFitActive
+                            ? `Drag left or right to zoom. Requested ${Math.round(entry.scale * 100)} percent, rendering ${Math.round(effectiveScale * 100)} percent.`
+                            : "Drag left or right to zoom"
+                        }
+                        style={{
+                          width: `${controlButtonSize}px`,
+                          height: `${controlButtonSize}px`,
+                        }}
+                      >
+                        <span style={{ fontSize: metrics.mobile ? "7px" : "8px" }}>
+                          {Math.round(effectiveScale * 100)}%
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onPointerDown={(event) => {
+                          event.stopPropagation()
+                        }}
+                        onClick={() =>
+                          updateWindow(entry.windowId, {
+                            minimized: !entry.minimized,
+                          })
+                        }
+                        className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-950/95 text-slate-300 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+                        title={
+                          entry.minimized ? "Restore window" : "Minimize window"
+                        }
+                        style={{
+                          width: `${controlButtonSize}px`,
+                          height: `${controlButtonSize}px`,
+                        }}
+                      >
+                        <MinimizeIcon className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onPointerDown={(event) => {
+                          event.stopPropagation()
+                        }}
+                        onClick={() => closeWindow(entry.windowId)}
+                        className="inline-flex shrink-0 items-center justify-center rounded-full border border-rose-400/25 bg-slate-950/95 text-rose-200 shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
+                        title="Close window"
+                        style={{
+                          width: `${controlButtonSize}px`,
+                          height: `${controlButtonSize}px`,
+                        }}
+                      >
+                        <CloseIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 <div
                   data-dashboard-window-viewport={entry.windowId}
                   className="min-h-0 flex-1 overflow-auto p-2 pt-1"
@@ -961,6 +978,7 @@ export function DashboardWindowLayer(props: { children: ReactNode }) {
                     {entry.body}
                   </ScaledWindowContent>
                 </div>
+                </>
               )}
             </div>
 

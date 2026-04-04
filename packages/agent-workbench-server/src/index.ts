@@ -74,7 +74,8 @@ Bun.serve({
     ) {
       try {
         const body = (await request.json()) as WorkbenchDocumentRecord
-        await writeWorkbench(body)
+        const previousId = url.searchParams.get("previousId") ?? undefined
+        await writeWorkbench(body, { previousId })
         const snapshot = await readWorkbench(body.id)
         return jsonResponse({
           ok: true,
