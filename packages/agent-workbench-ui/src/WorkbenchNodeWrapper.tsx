@@ -76,7 +76,8 @@ export function WorkbenchNodeWrapper({
           handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
         />
       ) : null}
-      <div className="group absolute left-2 top-0 z-10 flex -translate-y-1/2 items-center gap-1">
+      <div className="group relative h-full w-full nodrag nopan nowheel">
+        <div className="absolute left-2 top-0 z-10 flex -translate-y-1/2 items-center gap-1">
         {editingLabel ? (
           <input
             value={draftLabel}
@@ -129,31 +130,30 @@ export function WorkbenchNodeWrapper({
             <PencilIcon className="h-3 w-3" />
           </button>
         ) : null}
-      </div>
-      {selected || !editingLabel ? (
-        <button
-          type="button"
-          className={`absolute right-2 top-0 z-10 inline-flex -translate-y-1/2 items-center justify-center rounded-xl border border-cyan-200/80 bg-cyan-300 px-2.5 py-2 text-slate-950 shadow-sm transition hover:bg-cyan-200 ${
-            selected
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-100"
-          }`}
-          onClick={(event) => {
-            event.stopPropagation()
-            const reference = workbenchReferenceSegment
-              ? `/workbench/${workbenchReferenceSegment}/node/${nodeId}`
-              : nodeId
-            void navigator.clipboard.writeText(reference)
-          }}
-          onPointerDown={(event) => {
-            event.stopPropagation()
-          }}
-          title="Copy node reference"
-        >
-          <CopyReferenceIcon className="h-3.5 w-3.5" />
-        </button>
-      ) : null}
-      <div className="relative h-full w-full nodrag nopan nowheel">
+        </div>
+        {selected || !editingLabel ? (
+          <button
+            type="button"
+            className={`absolute right-2 top-0 z-10 inline-flex -translate-y-1/2 items-center justify-center rounded-xl border border-cyan-200/80 bg-cyan-300 px-2.5 py-2 text-slate-950 shadow-sm transition hover:bg-cyan-200 ${
+              selected
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100"
+            }`}
+            onClick={(event) => {
+              event.stopPropagation()
+              const reference = workbenchReferenceSegment
+                ? `/workbench/${workbenchReferenceSegment}/node/${nodeId}`
+                : nodeId
+              void navigator.clipboard.writeText(reference)
+            }}
+            onPointerDown={(event) => {
+              event.stopPropagation()
+            }}
+            title="Copy node reference"
+          >
+            <CopyReferenceIcon className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
         {children}
       </div>
     </>
