@@ -95,6 +95,7 @@ type WorkbenchControlsWindowProps = {
   onSearchChange(value: string): void
   onLoadWorkbench(id: string): void
   onCreateWorkbench(): void
+  onRenameWorkbench(id: string, nextId: string): void
 }
 
 type AddNodeMenuProps = {
@@ -135,28 +136,10 @@ function formatUpdatedAt(updatedAtMs: number) {
   }
 }
 
-function slugifyWorkbenchTitle(title: string): string {
-  return title
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-}
-
 function workbenchReferenceSegment(
-  workbench: Pick<WorkbenchSummary, "id" | "title">,
-  availableWorkbenches: readonly Pick<WorkbenchSummary, "id" | "title">[],
+  workbench: Pick<WorkbenchSummary, "id">,
 ): string {
-  const slug = slugifyWorkbenchTitle(workbench.title)
-  if (!slug) {
-    return workbench.id
-  }
-
-  const duplicateCount = availableWorkbenches.filter(
-    (entry) => slugifyWorkbenchTitle(entry.title) === slug,
-  ).length
-
-  return duplicateCount === 1 ? slug : workbench.id
+  return workbench.id
 }
 
 function WorkbenchIcon(props: { className?: string }) {
@@ -205,7 +188,7 @@ function TextWorkbenchNode({
 
   return (
     <div
-      className={`h-full w-full rounded-2xl border bg-white/95 shadow-lg transition ${
+      className={`h-full w-full overflow-hidden rounded-2xl border bg-white/95 shadow-lg transition ${
         selected ? "border-sky-500 shadow-sky-200/70" : "border-slate-300"
       }`}
     >
@@ -245,7 +228,7 @@ function IntWorkbenchNode({
 
   return (
     <div
-      className={`h-full w-full rounded-2xl border bg-white/95 shadow-lg transition ${
+      className={`h-full w-full overflow-hidden rounded-2xl border bg-white/95 shadow-lg transition ${
         selected ? "border-sky-500 shadow-sky-200/70" : "border-slate-300"
       }`}
     >
@@ -285,6 +268,10 @@ const WorkbenchControlsWindow = memo(function WorkbenchControlsWindow(
   props: WorkbenchControlsWindowProps,
 ) {
   useRenderCounter("AgentWorkbenchScreen.WorkbenchControlsWindow")
+  const [editingWorkbenchId, setEditingWorkbenchId] = useState<string | null>(
+    null,
+  )
+  const [draftWorkbenchId, setDraftWorkbenchId] = useState("")
   const filteredWorkbenches = useMemo(() => {
     const query = props.searchQuery.trim().toLowerCase()
     if (!query) {
@@ -333,28 +320,87 @@ const WorkbenchControlsWindow = memo(function WorkbenchControlsWindow(
         <div className="space-y-2">
           {filteredWorkbenches.map((entry) => {
             const selected = entry.id === props.workbench?.id
+            const editing = editingWorkbenchId === entry.id
             return (
-              <button
+              <div
                 key={entry.id}
-                type="button"
-                onClick={() => props.onLoadWorkbench(entry.id)}
-                disabled={props.loading && selected}
                 className={`w-full rounded-xl border px-3 py-2 text-left transition ${
                   selected
                     ? "border-cyan-300/40 bg-cyan-300/15 text-white"
                     : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"
-                } disabled:cursor-not-allowed disabled:opacity-60`}
+                }`}
               >
-                <div className="truncate text-sm font-medium">
-                  {entry.title || entry.id}
+                <div className="flex items-start gap-2">
+                  <button
+                    type="button"
+                    onClick={() => props.onLoadWorkbench(entry.id)}
+                    disabled={props.loading && selected}
+                    className="min-w-0 flex-1 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {editing ? (
+                      <input
+                        value={draftWorkbenchId}
+                        autoFocus
+                        onChange={(event) => setDraftWorkbenchId(event.target.value)}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                        }}
+                        onPointerDown={(event) => {
+                          event.stopPropagation()
+                        }}
+                        onBlur={() => {
+                          setEditingWorkbenchId(null)
+                          props.onRenameWorkbench(entry.id, draftWorkbenchId)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            setEditingWorkbenchId(null)
+                            props.onRenameWorkbench(entry.id, draftWorkbenchId)
+                          } else if (event.key === "Escape") {
+                            setEditingWorkbenchId(null)
+                            setDraftWorkbenchId(entry.id)
+                          }
+                        }}
+                        className="w-full rounded-lg border border-cyan-300/50 bg-slate-950/70 px-2 py-1 text-sm font-medium text-white outline-none"
+                      />
+                    ) : (
+                      <div className="truncate text-sm font-medium">
+                        {entry.id}
+                      </div>
+                    )}
+                    <div className="mt-1 text-[11px] text-slate-500">
+                      {formatUpdatedAt(entry.updatedAtMs)}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      setEditingWorkbenchId(entry.id)
+                      setDraftWorkbenchId(entry.id)
+                    }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                    }}
+                    className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/10 bg-slate-950/80 p-2 text-slate-300 transition hover:text-white"
+                    title="Edit workbench file name"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-3.5 w-3.5"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 20h9" />
+                      <path d="m16.5 3.5 4 4L8 20l-5 1 1-5 12.5-12.5Z" />
+                    </svg>
+                  </button>
                 </div>
-                <div className="truncate text-[11px] text-slate-400">
-                  {entry.id}
-                </div>
-                <div className="mt-1 text-[11px] text-slate-500">
-                  {formatUpdatedAt(entry.updatedAtMs)}
-                </div>
-              </button>
+              </div>
             )
           })}
           {filteredWorkbenches.length === 0 ? (
@@ -917,10 +963,7 @@ export function AgentWorkbenchScreen({
             : undefined,
         data: {
           workbenchReferenceSegment: workbenchRef.current
-            ? workbenchReferenceSegment(
-                workbenchRef.current,
-                availableWorkbenchesRef.current,
-              )
+            ? workbenchReferenceSegment(workbenchRef.current)
             : null,
           record,
           definition:
@@ -1104,6 +1147,65 @@ export function AgentWorkbenchScreen({
     }
   }, [apiRootUrl, applyLoadedSnapshot, flushAllSaves])
 
+  const renameWorkbench = useCallback(
+    async (id: string, nextId: string) => {
+      const normalizedId = id.trim()
+      const normalizedNextId = nextId.trim()
+      if (!normalizedId) {
+        return
+      }
+      if (!normalizedNextId || normalizedNextId === normalizedId) {
+        return
+      }
+
+      await flushAllSaves()
+      setSaving(true)
+      setError("")
+      try {
+        const loadResponse = (await dashboardSessionFetch(
+          `${apiRootUrl}/workbench?id=${encodeURIComponent(normalizedId)}`,
+        )) as Response
+        if (!loadResponse.ok) {
+          throw new Error(await loadResponse.text())
+        }
+        const loadPayload = (await loadResponse.json()) as WorkbenchSnapshotResponse
+        const nextRecord: WorkbenchDocumentRecord = {
+          ...loadPayload.workbench,
+          id: normalizedNextId,
+          title: normalizedNextId,
+        }
+        const response = (await dashboardSessionFetch(
+          `${apiRootUrl}/workbench?id=${encodeURIComponent(normalizedNextId)}&previousId=${encodeURIComponent(normalizedId)}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(nextRecord),
+          } as RequestInit,
+        )) as Response
+        if (!response.ok) {
+          throw new Error(await response.text())
+        }
+        const payload = (await response.json()) as WorkbenchSnapshotResponse
+        if (workbenchRef.current?.id === normalizedId) {
+          applyLoadedSnapshot(payload)
+        } else {
+          applySavedSnapshot(payload, {
+            allowWorkbenchReplace: false,
+          })
+        }
+      } catch (renameError) {
+        setError(
+          renameError instanceof Error ? renameError.message : String(renameError),
+        )
+      } finally {
+        setSaving(false)
+      }
+    },
+    [apiRootUrl, applyLoadedSnapshot, applySavedSnapshot, flushAllSaves],
+  )
+
   const controlsIcon = useMemo(
     () => <WorkbenchIcon className="h-3.5 w-3.5" />,
     [],
@@ -1130,6 +1232,9 @@ export function AgentWorkbenchScreen({
         onCreateWorkbench={() => {
           void createWorkbench()
         }}
+        onRenameWorkbench={(id, nextId) => {
+          void renameWorkbench(id, nextId)
+        }}
       />
     ),
     [
@@ -1139,6 +1244,7 @@ export function AgentWorkbenchScreen({
       error,
       loadWorkbench,
       loading,
+      renameWorkbench,
       saving,
       searchQuery,
       workbench,
@@ -1575,9 +1681,8 @@ export function AgentWorkbenchScreen({
     }
 
     const currentWorkbench = workbenchRef.current
-    const availableWorkbenches = availableWorkbenchesRef.current
     const workbenchSegment = currentWorkbench
-      ? workbenchReferenceSegment(currentWorkbench, availableWorkbenches)
+      ? workbenchReferenceSegment(currentWorkbench)
       : null
 
     const nodeRefs = selectedNodes.map((node) =>

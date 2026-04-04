@@ -78,7 +78,7 @@ export function WorkbenchNodeWrapper({
           handleClassName="!h-3 !w-3 !rounded-full !border-2 !border-cyan-200 !bg-slate-950"
         />
       ) : null}
-      <div className="group relative h-full w-full nodrag nopan nowheel">
+      <div className="group relative h-full w-full">
         <div className="absolute left-2 top-0 z-10 flex -translate-y-1/2 items-center gap-1">
         {editingLabel ? (
           <input
