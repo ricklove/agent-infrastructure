@@ -208,6 +208,39 @@ export class CdkAdminStack extends Stack {
         resources: ["*"],
       }),
     )
+    adminRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AdminPersistManagedStackCloudflareTunnelSecret",
+        actions: [
+          "secretsmanager:CreateSecret",
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:UpdateSecret",
+        ],
+        resources: [
+          Stack.of(this).formatArn({
+            service: "secretsmanager",
+            resource: "secret",
+            resourceName:
+              "agent-infrastructure/*/cloudflare/tunnel-token*",
+          }),
+        ],
+      }),
+    )
+    adminRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AdminPersistManagedStackCloudflareConfigParameter",
+        actions: ["ssm:GetParameter", "ssm:PutParameter"],
+        resources: [
+          Stack.of(this).formatArn({
+            service: "ssm",
+            resource: "parameter",
+            resourceName: "agent-infrastructure/*/cloudflare/config",
+          }),
+        ],
+      }),
+    )
 
     const adminInstance = new ec2.Instance(this, "AdminInstance", {
       vpc,
