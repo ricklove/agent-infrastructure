@@ -195,6 +195,19 @@
         "typescript": "^5.4.5",
       },
     },
+    "packages/cdk-admin": {
+      "name": "@agent-infrastructure/cdk-admin",
+      "dependencies": {
+        "aws-cdk-lib": "^2.130.0",
+        "constructs": "^10.3.0",
+      },
+      "devDependencies": {
+        "@types/node": "^20.11.30",
+        "aws-cdk": "^2.130.0",
+        "esbuild": "^0.25.2",
+        "typescript": "^5.4.5",
+      },
+    },
     "packages/dashboard": {
       "name": "@agent-infrastructure/dashboard",
       "dependencies": {
@@ -381,6 +394,8 @@
     "@agent-infrastructure/agentish-studio": ["@agent-infrastructure/agentish-studio@workspace:apps/agentish-studio"],
 
     "@agent-infrastructure/aws-setup": ["@agent-infrastructure/aws-setup@workspace:packages/aws-setup"],
+
+    "@agent-infrastructure/cdk-admin": ["@agent-infrastructure/cdk-admin@workspace:packages/cdk-admin"],
 
     "@agent-infrastructure/dashboard": ["@agent-infrastructure/dashboard@workspace:packages/dashboard"],
 
