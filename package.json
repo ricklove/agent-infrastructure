@@ -35,7 +35,11 @@
     "test:swarm-manager": "bun run --filter @agent-infrastructure/swarm-manager test",
     "test:local-swarm": "bash ./tools/test-local-swarm.sh",
     "synth:aws-setup": "bun run --filter @agent-infrastructure/aws-setup synth",
-    "destroy:aws-setup": "bun run --filter @agent-infrastructure/aws-setup destroy"
+    "destroy:aws-setup": "bun run --filter @agent-infrastructure/aws-setup destroy",
+    "synth:cdk-admin": "bun run --filter @agent-infrastructure/cdk-admin synth",
+    "diff:cdk-admin": "bun run --filter @agent-infrastructure/cdk-admin diff",
+    "deploy:cdk-admin": "bun run --filter @agent-infrastructure/cdk-admin deploy",
+    "destroy:cdk-admin": "bun run --filter @agent-infrastructure/cdk-admin destroy"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",

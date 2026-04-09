@@ -4,6 +4,7 @@ import {
   DescribeInstancesCommand,
   EC2Client,
   RebootInstancesCommand,
+  StartInstancesCommand,
 } from "@aws-sdk/client-ec2"
 import {
   GetSecretValueCommand,
@@ -64,13 +65,43 @@ type StateRecord = {
 
 type JsonBody = Record<string, unknown> | null
 
+function parseBooleanEnv(
+  value: string | undefined,
+  fallback: boolean,
+): boolean {
+  if (value == null || value.trim() === "") {
+    return fallback
+  }
+
+  const normalized = value.trim().toLowerCase()
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false
+  }
+  return fallback
+}
+
 const config = {
   passkeyTableName: process.env.DASHBOARD_PASSKEY_TABLE_NAME ?? "",
   stateTableName: process.env.DASHBOARD_ACCESS_STATE_TABLE_NAME ?? "",
   enrollmentSecretSecretName:
     process.env.DASHBOARD_ENROLLMENT_SECRET_SECRET_NAME ?? "",
-  managerSwarmTagValue: process.env.MANAGER_SWARM_TAG_VALUE ?? "",
+  targetInstanceId: process.env.TARGET_INSTANCE_ID ?? "",
+  targetTagKey: process.env.TARGET_TAG_KEY ?? "AgentSwarm",
+  targetTagValue:
+    process.env.TARGET_TAG_VALUE ?? process.env.MANAGER_SWARM_TAG_VALUE ?? "",
+  targetRoleTagKey: process.env.TARGET_ROLE_TAG_KEY ?? "Role",
+  targetRoleTagValue:
+    process.env.TARGET_ROLE_TAG_VALUE ?? "agent-swarm-manager",
+  targetHostRole: process.env.TARGET_HOST_ROLE ?? "manager",
   agentHome: process.env.AGENT_HOME ?? "",
+  targetRuntimeDir: process.env.TARGET_RUNTIME_DIR ?? "",
+  targetStateDir: process.env.TARGET_STATE_DIR ?? "",
+  targetWorkspaceDir: process.env.TARGET_WORKSPACE_DIR ?? "",
+  targetBootstrapContextPath: process.env.TARGET_BOOTSTRAP_CONTEXT_PATH ?? "",
+  targetSessionScriptPath: process.env.TARGET_SESSION_SCRIPT_PATH ?? "",
   dashboardSessionTtlSeconds: Number.parseInt(
     process.env.DASHBOARD_SESSION_TTL_SECONDS ?? "900",
     10,
@@ -81,17 +112,33 @@ if (
   !config.passkeyTableName ||
   !config.stateTableName ||
   !config.enrollmentSecretSecretName ||
-  !config.managerSwarmTagValue ||
-  !config.agentHome
+  !config.agentHome ||
+  (!config.targetInstanceId && !config.targetTagValue)
 ) {
   throw new Error("dashboard access lambda is not fully configured")
 }
+
+const targetRuntimeDir =
+  config.targetRuntimeDir || `${config.agentHome}/runtime`
+const targetStateDir = config.targetStateDir || `${config.agentHome}/state`
+const targetWorkspaceDir =
+  config.targetWorkspaceDir || `${config.agentHome}/workspace`
+const targetBootstrapContextPath =
+  config.targetBootstrapContextPath ||
+  `${targetStateDir}/bootstrap-context.json`
+const targetSessionScriptPath =
+  config.targetSessionScriptPath ||
+  `${targetRuntimeDir}/scripts/issue-dashboard-session.sh`
+const targetReconcileBeforeSession = parseBooleanEnv(
+  process.env.TARGET_RECONCILE_BEFORE_SESSION,
+  config.targetHostRole === "admin",
+)
 
 const ec2 = new EC2Client({})
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({}))
 const ssm = new SSMClient({})
 const secrets = new SecretsManagerClient({})
-let resolvedManagerInstanceId: string | null = null
+let resolvedTargetInstanceId: string | null = null
 let resolvedEnrollmentSecretPromise: Promise<string> | null = null
 
 function logAuthStep(step: string, detail?: Record<string, unknown>): void {
@@ -553,21 +600,26 @@ async function beginAuthentication(
   })
 }
 
-async function resolveManagerInstanceId(): Promise<string> {
-  if (resolvedManagerInstanceId) {
-    return resolvedManagerInstanceId
+async function resolveTargetInstanceId(): Promise<string> {
+  if (resolvedTargetInstanceId) {
+    return resolvedTargetInstanceId
+  }
+
+  if (config.targetInstanceId.trim()) {
+    resolvedTargetInstanceId = config.targetInstanceId.trim()
+    return resolvedTargetInstanceId
   }
 
   const response = await ec2.send(
     new DescribeInstancesCommand({
       Filters: [
         {
-          Name: "tag:AgentSwarm",
-          Values: [config.managerSwarmTagValue],
+          Name: `tag:${config.targetTagKey}`,
+          Values: [config.targetTagValue],
         },
         {
-          Name: "tag:Role",
-          Values: ["agent-swarm-manager"],
+          Name: `tag:${config.targetRoleTagKey}`,
+          Values: [config.targetRoleTagValue],
         },
         {
           Name: "instance-state-name",
@@ -584,21 +636,100 @@ async function resolveManagerInstanceId(): Promise<string> {
     .find((value) => value.length > 0)
 
   if (!instanceId) {
-    throw new Error("manager instance was not found")
+    throw new Error(`${config.targetHostRole} instance was not found`)
   }
 
-  resolvedManagerInstanceId = instanceId
+  resolvedTargetInstanceId = instanceId
+  return instanceId
+}
+
+async function describeTargetInstance(instanceId: string) {
+  const response = await ec2.send(
+    new DescribeInstancesCommand({
+      InstanceIds: [instanceId],
+    }),
+  )
+
+  return (
+    response.Reservations?.flatMap(
+      (reservation) => reservation.Instances ?? [],
+    ).at(0) ?? null
+  )
+}
+
+async function waitForTargetState(
+  instanceId: string,
+  desiredState: string,
+): Promise<void> {
+  const deadline = Date.now() + 120_000
+  while (Date.now() < deadline) {
+    const instance = await describeTargetInstance(instanceId)
+    if (instance?.State?.Name === desiredState) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3_000))
+  }
+
+  throw new Error(
+    `${config.targetHostRole} instance did not reach state ${desiredState}`,
+  )
+}
+
+async function ensureTargetReadyForSsm(): Promise<string> {
+  const instanceId = await resolveTargetInstanceId()
+  const instance = await describeTargetInstance(instanceId)
+  const state = instance?.State?.Name ?? "unknown"
+
+  if (state === "stopping") {
+    await waitForTargetState(instanceId, "stopped")
+  }
+
+  const refreshed = await describeTargetInstance(instanceId)
+  const refreshedState = refreshed?.State?.Name ?? state
+  if (refreshedState === "stopped") {
+    logAuthStep("target.start.requested", {
+      instanceId,
+      hostRole: config.targetHostRole,
+    })
+    await ec2.send(new StartInstancesCommand({ InstanceIds: [instanceId] }))
+    await waitForTargetState(instanceId, "running")
+  } else if (refreshedState === "pending") {
+    await waitForTargetState(instanceId, "running")
+  } else if (refreshedState !== "running") {
+    throw new Error(`${config.targetHostRole} instance is not ready for SSM`)
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 10_000))
   return instanceId
 }
 
 async function issueDashboardAccess(): Promise<string> {
+  if (targetReconcileBeforeSession) {
+    await runTargetShellCommand(
+      "auth.finish.runtime-reconcile",
+      [
+        "bash",
+        `${targetRuntimeDir}/scripts/setup.sh`,
+        "--runtime-dir",
+        targetRuntimeDir,
+        "--state-dir",
+        targetStateDir,
+        "--workspace-dir",
+        targetWorkspaceDir,
+        "--bootstrap-context",
+        targetBootstrapContextPath,
+      ],
+      { hostRole: config.targetHostRole },
+    )
+  }
+
   return runDashboardSessionCommand(
-    "issue-dashboard-session.sh",
+    targetSessionScriptPath,
     "auth.finish.dashboard-session.issue",
   )
 }
 
-async function rebootManager(
+async function rebootTargetHost(
   body: JsonBody,
 ): Promise<APIGatewayProxyStructuredResultV2> {
   const flowId = typeof body?.flowId === "string" ? body.flowId.trim() : ""
@@ -618,33 +749,49 @@ async function rebootManager(
     )
   }
 
-  const managerInstanceId = await resolveManagerInstanceId()
-  logAuthStep("admin.reboot.requested", { flowId, managerInstanceId })
+  const targetInstanceId = await resolveTargetInstanceId()
+  logAuthStep("admin.reboot.requested", {
+    flowId,
+    targetInstanceId,
+    hostRole: config.targetHostRole,
+  })
   await putAuthStatus(flowId, {
     progressStep: "admin.reboot.requested",
-    progressMessage: "Reboot requested for the manager instance.",
-    progressDetail: { flowId, managerInstanceId },
+    progressMessage: `Reboot requested for the ${config.targetHostRole} host.`,
+    progressDetail: {
+      flowId,
+      targetInstanceId,
+      hostRole: config.targetHostRole,
+    },
     error: undefined,
   })
 
   await ec2.send(
     new RebootInstancesCommand({
-      InstanceIds: [managerInstanceId],
+      InstanceIds: [targetInstanceId],
     }),
   )
 
-  logAuthStep("admin.reboot.completed", { flowId, managerInstanceId })
+  logAuthStep("admin.reboot.completed", {
+    flowId,
+    targetInstanceId,
+    hostRole: config.targetHostRole,
+  })
   await putAuthStatus(flowId, {
     progressStep: "admin.reboot.completed",
-    progressMessage:
-      "Manager reboot requested. Wait for recovery, then try again.",
-    progressDetail: { flowId, managerInstanceId },
+    progressMessage: `Reboot requested for the ${config.targetHostRole} host. Wait for recovery, then try again.`,
+    progressDetail: {
+      flowId,
+      targetInstanceId,
+      hostRole: config.targetHostRole,
+    },
   })
 
   return jsonResponse({
     ok: true,
-    managerInstanceId,
-    message: "Manager reboot requested.",
+    targetInstanceId,
+    hostRole: config.targetHostRole,
+    message: `${config.targetHostRole} reboot requested.`,
   })
 }
 
@@ -652,48 +799,70 @@ function shellToken(value: string): string {
   return `'${value.replaceAll("'", "'\"'\"'")}'`
 }
 
-async function runDashboardSessionCommand(
-  scriptName: string,
+async function sendTargetCommand(
+  instanceId: string,
+  commands: string[],
+): Promise<string> {
+  const deadline = Date.now() + 60_000
+  let lastError: unknown = null
+
+  while (Date.now() < deadline) {
+    try {
+      const send = await ssm.send(
+        new SendCommandCommand({
+          InstanceIds: [instanceId],
+          DocumentName: "AWS-RunShellScript",
+          Parameters: { commands },
+        }),
+      )
+      const commandId = send.Command?.CommandId
+      if (!commandId) {
+        throw new Error("failed to create target command")
+      }
+      return commandId
+    } catch (error) {
+      lastError = error
+      const message = error instanceof Error ? error.message : String(error)
+      if (
+        message.includes("InvalidInstanceId") ||
+        message.includes("TargetNotConnected") ||
+        message.includes("ConnectionLost")
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 3_000))
+        continue
+      }
+      throw error
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("timed out waiting for SSM target")
+}
+
+async function runTargetShellCommand(
   logPrefix: string,
-  extraArgs: string[] = [],
+  commandParts: string[],
   extraDetail?: Record<string, unknown>,
 ): Promise<string> {
   logAuthStep(`${logPrefix}.requested`, extraDetail)
-  const managerInstanceId = await resolveManagerInstanceId()
-  logAuthStep(`${logPrefix}.manager.resolved`, {
-    managerInstanceId,
+  const instanceId = await ensureTargetReadyForSsm()
+  logAuthStep(`${logPrefix}.target.resolved`, {
+    instanceId,
+    hostRole: config.targetHostRole,
     ...extraDetail,
   })
-  const send = await ssm.send(
-    new SendCommandCommand({
-      InstanceIds: [managerInstanceId],
-      DocumentName: "AWS-RunShellScript",
-      Parameters: {
-        commands: [
-          "set -euo pipefail",
-          [
-            `bash ${config.agentHome}/runtime/scripts/${scriptName}`,
-            "--ttl-seconds",
-            String(config.dashboardSessionTtlSeconds),
-            ...extraArgs.map((value) =>
-              value.startsWith("--") ? value : shellToken(value),
-            ),
-          ].join(" "),
-        ],
-      },
-    }),
-  )
+  const commandId = await sendTargetCommand(instanceId, [
+    "set -euo pipefail",
+    commandParts.map((value) => shellToken(value)).join(" "),
+  ])
 
-  const commandId = send.Command?.CommandId
-  if (!commandId) {
-    logAuthStep(`${logPrefix}.failed`, {
-      reason: "missing-command-id",
-      ...extraDetail,
-    })
-    throw new Error("failed to create dashboard session command")
-  }
-
-  logAuthStep(`${logPrefix}.command.sent`, { commandId, ...extraDetail })
+  logAuthStep(`${logPrefix}.command.sent`, {
+    commandId,
+    instanceId,
+    hostRole: config.targetHostRole,
+    ...extraDetail,
+  })
 
   const deadline = Date.now() + 30_000
   while (Date.now() < deadline) {
@@ -702,7 +871,7 @@ async function runDashboardSessionCommand(
       invocation = await ssm.send(
         new GetCommandInvocationCommand({
           CommandId: commandId,
-          InstanceId: managerInstanceId,
+          InstanceId: instanceId,
         }),
       )
     } catch (error) {
@@ -712,44 +881,20 @@ async function runDashboardSessionCommand(
         "name" in error &&
         error.name === "InvocationDoesNotExist"
       ) {
-        await new Promise((resolve) => setTimeout(resolve, 1000))
+        await new Promise((resolve) => setTimeout(resolve, 1_000))
         continue
       }
-
       throw error
     }
 
     if (invocation.Status === "Success") {
       const stdout = invocation.StandardOutputContent ?? ""
-      const line = stdout
-        .split("\n")
-        .map((value) => value.trim())
-        .filter((value) => value.startsWith("{") && value.endsWith("}"))
-        .at(-1)
-
-      if (!line) {
-        logAuthStep(`${logPrefix}.failed`, {
-          reason: "missing-json-output",
-          ...extraDetail,
-        })
-        throw new Error("dashboard session command did not return JSON")
-      }
-
-      const payload = JSON.parse(line) as { sessionUrl?: string }
-      if (!payload.sessionUrl) {
-        logAuthStep(`${logPrefix}.failed`, {
-          reason: "missing-session-url",
-          ...extraDetail,
-        })
-        throw new Error("dashboard session URL was missing")
-      }
-
-      logAuthStep(`${logPrefix}.issued`, {
-        sessionUrl: payload.sessionUrl,
+      logAuthStep(`${logPrefix}.completed`, {
+        instanceId,
+        hostRole: config.targetHostRole,
         ...extraDetail,
       })
-
-      return payload.sessionUrl
+      return stdout
     }
 
     if (
@@ -760,19 +905,77 @@ async function runDashboardSessionCommand(
     ) {
       logAuthStep(`${logPrefix}.failed`, {
         reason: invocation.Status ?? "unknown-status",
+        instanceId,
+        hostRole: config.targetHostRole,
         ...extraDetail,
       })
       throw new Error(
         invocation.StandardErrorContent?.trim() ||
-          "dashboard session command failed",
+          `${config.targetHostRole} command failed`,
       )
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
   }
 
-  logAuthStep(`${logPrefix}.failed`, { reason: "timeout", ...extraDetail })
-  throw new Error("dashboard session command timed out")
+  logAuthStep(`${logPrefix}.failed`, {
+    reason: "timeout",
+    hostRole: config.targetHostRole,
+    ...extraDetail,
+  })
+  throw new Error(`${config.targetHostRole} command timed out`)
+}
+
+async function runDashboardSessionCommand(
+  scriptPath: string,
+  logPrefix: string,
+  extraArgs: string[] = [],
+  extraDetail?: Record<string, unknown>,
+): Promise<string> {
+  const stdout = await runTargetShellCommand(
+    logPrefix,
+    [
+      "bash",
+      scriptPath,
+      "--ttl-seconds",
+      String(config.dashboardSessionTtlSeconds),
+      ...extraArgs,
+    ],
+    extraDetail,
+  )
+
+  const line = stdout
+    .split("\n")
+    .map((value) => value.trim())
+    .filter((value) => value.startsWith("{") && value.endsWith("}"))
+    .at(-1)
+
+  if (!line) {
+    logAuthStep(`${logPrefix}.failed`, {
+      reason: "missing-json-output",
+      hostRole: config.targetHostRole,
+      ...extraDetail,
+    })
+    throw new Error("dashboard session command did not return JSON")
+  }
+
+  const payload = JSON.parse(line) as { sessionUrl?: string }
+  if (!payload.sessionUrl) {
+    logAuthStep(`${logPrefix}.failed`, {
+      reason: "missing-session-url",
+      hostRole: config.targetHostRole,
+      ...extraDetail,
+    })
+    throw new Error("dashboard session URL was missing")
+  }
+
+  logAuthStep(`${logPrefix}.issued`, {
+    sessionUrl: payload.sessionUrl,
+    hostRole: config.targetHostRole,
+    ...extraDetail,
+  })
+
+  return payload.sessionUrl
 }
 
 async function waitForDashboardAccessReady(
@@ -979,7 +1182,7 @@ async function finishAuthentication(
     failureStep = "dashboard.session.issue"
     await putAuthStatus(flowId, {
       progressStep: "auth.finish.dashboard-session.started",
-      progressMessage: "Requesting dashboard session from manager.",
+      progressMessage: `Requesting dashboard session from the ${config.targetHostRole} host.`,
       progressDetail: { flowId },
     })
     const dashboardUrl = await issueDashboardAccess()
@@ -1599,7 +1802,7 @@ export async function handler(
   }
 
   if (method === "POST" && path === "/api/admin/reboot-manager") {
-    return rebootManager(await parseJsonBody(event))
+    return rebootTargetHost(await parseJsonBody(event))
   }
 
   if (method === "POST" && path === "/api/passkeys/register/begin") {

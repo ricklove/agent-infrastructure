@@ -1,0 +1,24 @@
+{
+  "name": "@agent-infrastructure/cdk-admin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun x tsgo --project tsconfig.json --noEmit",
+    "check": "bun x tsgo --project tsconfig.json --noEmit",
+    "prepare-dashboard-enrollment-secret": "bash ../aws-setup/scripts/prepare-dashboard-enrollment-secret.sh --stack-name ${STACK_NAME:-AgentAdminCdk}",
+    "synth": "bash ./scripts/run-cdk.sh synth",
+    "diff": "bash ./scripts/run-cdk.sh diff",
+    "deploy": "bash ./scripts/run-cdk.sh deploy",
+    "destroy": "cdk destroy"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.130.0",
+    "constructs": "^10.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "aws-cdk": "^2.130.0",
+    "esbuild": "^0.25.2",
+    "typescript": "^5.4.5"
+  }
+}

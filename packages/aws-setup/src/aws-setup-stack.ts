@@ -386,6 +386,7 @@ export class AwsSetupStack extends Stack {
     )
 
     const bootstrapPayload = {
+      hostRole: "manager",
       region: this.region,
       swarmTagKey,
       swarmTagValue,
@@ -403,11 +404,26 @@ export class AwsSetupStack extends Stack {
       dashboardEnrollmentSecret: props.dashboardEnrollmentSecret,
     }
 
+    const runtimeTarget = {
+      schemaVersion: 1,
+      role: "manager",
+      runtimeSource: {
+        repoUrl: runtimeRepoUrl,
+        refKind: "branch",
+        ref: runtimeRepoRef,
+      },
+    }
+
     managerInstance.userData.addCommands(
       "dnf install -y git",
       `mkdir -p ${runtimeRoot} ${stateRoot} ${workspaceRoot}`,
       `cat > ${stateRoot}/bootstrap-context.json <<'EOF'\n${JSON.stringify(
         bootstrapPayload,
+        null,
+        2,
+      )}\nEOF`,
+      `cat > ${props.agentHome}/runtime-target.json <<'EOF'\n${JSON.stringify(
+        runtimeTarget,
         null,
         2,
       )}\nEOF`,

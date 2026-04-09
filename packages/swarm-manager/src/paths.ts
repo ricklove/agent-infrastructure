@@ -5,6 +5,8 @@ export const DEFAULT_STATE_DIR = `${DEFAULT_AGENT_HOME}/state`
 export const DEFAULT_WORKSPACE_DIR = `${DEFAULT_AGENT_HOME}/workspace`
 
 export const DEFAULT_BOOTSTRAP_CONTEXT_PATH = `${DEFAULT_STATE_DIR}/bootstrap-context.json`
+export const DEFAULT_RUNTIME_TARGET_PATH = `${DEFAULT_AGENT_HOME}/runtime-target.json`
+export const DEFAULT_RESOLVED_RUNTIME_STATE_PATH = `${DEFAULT_STATE_DIR}/runtime-current.json`
 export const DEFAULT_WORKER_RUNTIME_RELEASE_MANIFEST_PATH = `${DEFAULT_STATE_DIR}/worker-runtime-release.json`
 export const DEFAULT_SWARM_SHARED_TOKEN_PATH = `${DEFAULT_STATE_DIR}/swarm-shared-token`
 export const DEFAULT_METRICS_DB_PATH = `${DEFAULT_STATE_DIR}/metrics.sqlite`
