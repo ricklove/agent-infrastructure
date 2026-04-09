@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun x tsc -p tsconfig.json --noEmit",
-    "check": "bun x tsc -p tsconfig.json --noEmit",
+    "build": "bun x tsgo --project tsconfig.json --noEmit",
+    "check": "bun x tsgo --project tsconfig.json --noEmit",
     "prepare-dashboard-enrollment-secret": "bash ../aws-setup/scripts/prepare-dashboard-enrollment-secret.sh --stack-name ${STACK_NAME:-AgentAdminCdk}",
     "synth": "bash ./scripts/run-cdk.sh synth",
     "diff": "bash ./scripts/run-cdk.sh diff",
