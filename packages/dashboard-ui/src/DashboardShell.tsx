@@ -14,12 +14,16 @@ import {
 } from "react"
 import { DashboardWindowLayer } from "./DashboardWindowLayer"
 import { FloatingTicketWindows } from "./FloatingTicketWindows"
-import { dashboardFeaturePlugins } from "./feature-plugins"
+import {
+  getDashboardFeaturePlugins,
+  type DashboardHostRole,
+} from "./feature-plugins"
 
 type DashboardConfig = {
   ok: boolean
   accessAppUrl: string
   requiresSession: boolean
+  hostRole: DashboardHostRole
 }
 
 type SessionExchangeResponse = {
@@ -73,6 +77,25 @@ function SwarmIcon(props: { className?: string }) {
       <rect x="13.5" y="4.5" width="6" height="6" rx="1.5" />
       <rect x="9" y="13.5" width="6" height="6" rx="1.5" />
       <path d="M10.5 7.5h3M12 10.5v3" />
+    </svg>
+  )
+}
+
+function AdminIcon(props: { className?: string }) {
+  useRenderCounter("AdminIcon")
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <path d="M12 3.75 19 6.8v4.8c0 4.2-2.7 8.1-7 9.65-4.3-1.55-7-5.45-7-9.65V6.8Z" />
+      <path d="M9.5 12.25 11.25 14 14.75 10.5" />
     </svg>
   )
 }
@@ -252,10 +275,14 @@ function dashboardSessionWebSocketProtocols(sessionToken: string): string[] {
   return [`${dashboardSessionWebSocketProtocolPrefix}${trimmed}`]
 }
 
-function featureIdFromPath(pathname: string): FeatureId {
+function featureIdFromPath(
+  pathname: string,
+  plugins: DashboardFeatureUiPlugin[],
+): FeatureId {
   return (
-    dashboardFeaturePlugins.find((plugin) => plugin.route === pathname)?.id ??
-    "swarm"
+    plugins.find((plugin) => plugin.route === pathname)?.id ??
+    plugins[0]?.id ??
+    "chat"
   )
 }
 
@@ -263,6 +290,7 @@ const featureIconMap: Record<
   DashboardFeatureIcon,
   (props: { className?: string }) => JSX.Element
 > = {
+  admin: AdminIcon,
   swarm: SwarmIcon,
   design: DesignIcon,
   debug: DebugIcon,
@@ -278,9 +306,29 @@ export function DashboardShell({
   appVersion?: string
 }) {
   useRenderCounter("DashboardShell")
+  const [config, setConfig] = useState<DashboardConfig | null>(null)
+  const [initializing, setInitializing] = useState(true)
+  const [error, setError] = useState("")
+  const [accessMessage, setAccessMessage] = useState("")
+  const [authRequired, setAuthRequired] = useState(false)
+  const [gatewayConnectionStatus, setGatewayConnectionStatus] = useState<
+    "connecting" | "ready" | "error" | "idle"
+  >("idle")
+  const [gatewayBackendVersion, setGatewayBackendVersion] = useState("--")
+  const [copiedStatus, setCopiedStatus] = useState(false)
+  const [versionPopupOpen, setVersionPopupOpen] = useState(false)
+  const [mobileFeatureMenuOpen, setMobileFeatureMenuOpen] = useState(false)
+  const [featureStatuses, setFeatureStatuses] = useState<
+    Partial<Record<FeatureId, FeatureStatusItem[]>>
+  >({})
+  const hostRole = config?.hostRole ?? "manager"
+  const dashboardPlugins = useMemo(
+    () => getDashboardFeaturePlugins(hostRole),
+    [hostRole],
+  )
   const featureDefinitions: FeatureDefinition[] = useMemo(
     () =>
-      dashboardFeaturePlugins.map((plugin) => ({
+      dashboardPlugins.map((plugin) => ({
         ...plugin,
         component: lazy(() =>
           plugin.loadScreen().then((module) => ({
@@ -303,29 +351,14 @@ export function DashboardShell({
         ),
         iconComponent: featureIconMap[plugin.icon],
       })),
-    [appVersion],
+    [appVersion, dashboardPlugins],
   )
   const [activeFeatureId, setActiveFeatureId] = useState<FeatureId>(() =>
-    featureIdFromPath(window.location.pathname),
+    featureIdFromPath(window.location.pathname, getDashboardFeaturePlugins("manager")),
   )
   const [loadedFeatureIds, setLoadedFeatureIds] = useState<FeatureId[]>([
-    featureIdFromPath(window.location.pathname),
+    featureIdFromPath(window.location.pathname, getDashboardFeaturePlugins("manager")),
   ])
-  const [config, setConfig] = useState<DashboardConfig | null>(null)
-  const [initializing, setInitializing] = useState(true)
-  const [error, setError] = useState("")
-  const [accessMessage, setAccessMessage] = useState("")
-  const [authRequired, setAuthRequired] = useState(false)
-  const [gatewayConnectionStatus, setGatewayConnectionStatus] = useState<
-    "connecting" | "ready" | "error" | "idle"
-  >("idle")
-  const [gatewayBackendVersion, setGatewayBackendVersion] = useState("--")
-  const [copiedStatus, setCopiedStatus] = useState(false)
-  const [versionPopupOpen, setVersionPopupOpen] = useState(false)
-  const [mobileFeatureMenuOpen, setMobileFeatureMenuOpen] = useState(false)
-  const [featureStatuses, setFeatureStatuses] = useState<
-    Partial<Record<FeatureId, FeatureStatusItem[]>>
-  >({})
 
   const activeFeature = useMemo(
     () =>
@@ -335,22 +368,37 @@ export function DashboardShell({
   )
 
   useEffect(() => {
-    if (window.location.pathname === "/") {
-      const nextUrl = new URL(window.location.href)
-      nextUrl.pathname = "/swarm"
-      window.history.replaceState({}, "", nextUrl.toString())
-      setActiveFeatureId("swarm")
-    }
-
     function handlePopState() {
-      setActiveFeatureId(featureIdFromPath(window.location.pathname))
+      setActiveFeatureId(featureIdFromPath(window.location.pathname, dashboardPlugins))
     }
 
     window.addEventListener("popstate", handlePopState)
     return () => {
       window.removeEventListener("popstate", handlePopState)
     }
-  }, [])
+  }, [dashboardPlugins])
+
+  useEffect(() => {
+    const defaultFeature = featureDefinitions[0]
+    if (!defaultFeature) {
+      return
+    }
+
+    const currentPath = window.location.pathname
+    const matchedFeature = featureDefinitions.find(
+      (feature) => feature.route === currentPath,
+    )
+
+    if (!matchedFeature || currentPath === "/") {
+      const nextUrl = new URL(window.location.href)
+      nextUrl.pathname = defaultFeature.route
+      window.history.replaceState({}, "", nextUrl.toString())
+      setActiveFeatureId(defaultFeature.id)
+      return
+    }
+
+    setActiveFeatureId(matchedFeature.id)
+  }, [featureDefinitions])
 
   useEffect(() => {
     window.dispatchEvent(

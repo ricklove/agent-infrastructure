@@ -362,6 +362,7 @@ async function main(): Promise<void> {
 AGENT_RUNTIME_DIR=${config.runtimeDir}
 AGENT_STATE_DIR=${config.stateDir}
 AGENT_WORKSPACE_DIR=${config.workspaceDir}
+DASHBOARD_HOST_ROLE=manager
 `) +
       ensureTrailingNewline(`MANAGER_WS_HOST=0.0.0.0
 MANAGER_WS_PORT=${monitorPort}

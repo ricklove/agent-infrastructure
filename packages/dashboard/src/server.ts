@@ -12,7 +12,10 @@ import {
 import { basename, dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { DashboardFeatureBackendDefinition } from "@agent-infrastructure/dashboard-plugin"
-import { dashboardFeaturePlugins } from "./feature-plugins.js"
+import {
+  getDashboardFeaturePlugins,
+  type DashboardHostRole,
+} from "./feature-plugins.js"
 
 type ManagerHealthResponse = {
   ok: boolean
@@ -186,6 +189,8 @@ const systemEventLogPath =
   `${stateRoot}/logs/system-events.log`
 const accessApiBaseUrl = process.env.DASHBOARD_ACCESS_API_BASE_URL?.trim() || ""
 const enrollmentSecret = process.env.DASHBOARD_ENROLLMENT_SECRET?.trim() || ""
+const dashboardHostRole: DashboardHostRole =
+  process.env.DASHBOARD_HOST_ROLE?.trim() === "admin" ? "admin" : "manager"
 const sessionStorePath =
   process.env.DASHBOARD_SESSION_STORE_PATH?.trim() ||
   "/home/ec2-user/state/dashboard-sessions.json"
@@ -314,7 +319,7 @@ function createGatewayBackend(
   }
 }
 
-const gatewayBackends = dashboardFeaturePlugins.flatMap((plugin) =>
+const gatewayBackends = getDashboardFeaturePlugins(dashboardHostRole).flatMap((plugin) =>
   plugin.backend ? [createGatewayBackend(plugin.backend)] : [],
 )
 
@@ -910,6 +915,7 @@ async function handleApi(request: Request): Promise<Response> {
       ok: true,
       accessAppUrl: accessApiBaseUrl,
       requiresSession: !isLoopbackRequest(request),
+      hostRole: dashboardHostRole,
     })
   }
 

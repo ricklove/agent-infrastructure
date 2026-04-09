@@ -18,7 +18,8 @@
     "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
     "@agent-infrastructure/agent-chat-server": "workspace:*",
     "@agent-infrastructure/agent-workbench-server": "workspace:*",
-    "@agent-infrastructure/projects-server": "workspace:*"
+    "@agent-infrastructure/projects-server": "workspace:*",
+    "@agent-infrastructure/stack-admin-server": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

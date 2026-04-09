@@ -1,4 +1,5 @@
 export type DashboardFeatureId =
+  | "admin"
   | "swarm"
   | "workbench"
   | "chat"
@@ -9,6 +10,7 @@ export type DashboardFeatureId =
   | "debug"
 
 export type DashboardFeatureIcon =
+  | "admin"
   | "swarm"
   | "chat"
   | "graph"

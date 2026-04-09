@@ -7,6 +7,7 @@ import type { DashboardFeatureUiPlugin } from "@agent-infrastructure/dashboard-p
 import { dashboardTerminalUiPlugin } from "@agent-infrastructure/dashboard-terminal-ui/ui-plugin"
 import { floatingWindowDebugDashboardUiPlugin } from "@agent-infrastructure/floating-window-debug-ui/ui-plugin"
 import { projectsDashboardUiPlugin } from "@agent-infrastructure/projects-ui/ui-plugin"
+import { stackAdminDashboardUiPlugin } from "@agent-infrastructure/stack-admin-ui/ui-plugin"
 import { uiDesignCanvasDashboardUiPlugin } from "@agent-infrastructure/ui-design-canvas-ui/ui-plugin"
 
 const composedWorkbenchDashboardUiPlugin: DashboardFeatureUiPlugin = {
@@ -22,7 +23,9 @@ const composedWorkbenchDashboardUiPlugin: DashboardFeatureUiPlugin = {
   },
 }
 
-export const dashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
+export type DashboardHostRole = "manager" | "admin"
+
+const managerDashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
   agentSwarmDashboardUiPlugin,
   composedWorkbenchDashboardUiPlugin,
   uiDesignCanvasDashboardUiPlugin,
@@ -32,3 +35,20 @@ export const dashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
   agentGraphDashboardUiPlugin,
   dashboardTerminalUiPlugin,
 ]
+
+const adminDashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
+  stackAdminDashboardUiPlugin,
+  projectsDashboardUiPlugin,
+  agentChatDashboardUiPlugin,
+  dashboardTerminalUiPlugin,
+]
+
+export function getDashboardFeaturePlugins(
+  hostRole: DashboardHostRole,
+): DashboardFeatureUiPlugin[] {
+  return hostRole === "admin"
+    ? adminDashboardFeaturePlugins
+    : managerDashboardFeaturePlugins
+}
+
+export const dashboardFeaturePlugins = getDashboardFeaturePlugins("manager")

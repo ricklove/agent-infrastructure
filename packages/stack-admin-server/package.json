@@ -1,0 +1,21 @@
+{
+  "name": "@agent-infrastructure/stack-admin-server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin": "./src/dashboard-plugin.ts"
+  },
+  "scripts": {
+    "build": "bun x tsgo --project tsconfig.json --noEmit",
+    "check": "bun x tsgo --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agent-infrastructure/dashboard-plugin": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "bun-types": "^1.3.10",
+    "typescript": "^5.4.5"
+  }
+}

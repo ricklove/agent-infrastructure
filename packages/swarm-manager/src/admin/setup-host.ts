@@ -234,6 +234,7 @@ async function main(): Promise<void> {
 AGENT_RUNTIME_DIR=${config.runtimeDir}
 AGENT_STATE_DIR=${config.stateDir}
 AGENT_WORKSPACE_DIR=${config.workspaceDir}
+DASHBOARD_HOST_ROLE=admin
 ADMIN_COMPAT_PORT=${Number.isInteger(adminCompatPort) && adminCompatPort > 0 ? adminCompatPort : 8787}
 DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
 `,
@@ -246,6 +247,7 @@ DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
 AGENT_RUNTIME_DIR=${config.runtimeDir}
 AGENT_STATE_DIR=${config.stateDir}
 AGENT_WORKSPACE_DIR=${config.workspaceDir}
+DASHBOARD_HOST_ROLE=admin
 MANAGER_WS_PORT=${Number.isInteger(adminCompatPort) && adminCompatPort > 0 ? adminCompatPort : 8787}
 SWARM_BOOTSTRAP_CONTEXT_PATH=${config.bootstrapContextPath}
 DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}

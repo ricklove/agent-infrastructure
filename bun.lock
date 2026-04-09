@@ -221,6 +221,7 @@
         "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
         "@agent-infrastructure/projects-server": "workspace:*",
         "@agent-infrastructure/projects-ui": "workspace:*",
+        "@agent-infrastructure/stack-admin-server": "workspace:*",
         "@agent-infrastructure/ui-design-canvas-ui": "workspace:*",
       },
       "devDependencies": {
@@ -285,6 +286,7 @@
         "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
         "@agent-infrastructure/projects-ui": "workspace:*",
         "@agent-infrastructure/render-diagnostics": "workspace:*",
+        "@agent-infrastructure/stack-admin-ui": "workspace:*",
         "@agent-infrastructure/ui-design-canvas-ui": "workspace:*",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
@@ -341,6 +343,32 @@
       "name": "@agent-infrastructure/render-diagnostics",
       "devDependencies": {
         "typescript": "^5.9.2",
+      },
+    },
+    "packages/stack-admin-server": {
+      "name": "@agent-infrastructure/stack-admin-server",
+      "dependencies": {
+        "@agent-infrastructure/dashboard-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^20.11.30",
+        "bun-types": "^1.3.10",
+        "typescript": "^5.4.5",
+      },
+    },
+    "packages/stack-admin-ui": {
+      "name": "@agent-infrastructure/stack-admin-ui",
+      "dependencies": {
+        "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "@agent-infrastructure/render-diagnostics": "workspace:*",
+        "@agent-infrastructure/stack-admin-server": "workspace:*",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+      },
+      "devDependencies": {
+        "@types/react": "^18.3.3",
+        "@types/react-dom": "^18.3.0",
+        "typescript": "^5.4.5",
       },
     },
     "packages/swarm-manager": {
@@ -418,6 +446,10 @@
     "@agent-infrastructure/projects-ui": ["@agent-infrastructure/projects-ui@workspace:packages/projects-ui"],
 
     "@agent-infrastructure/render-diagnostics": ["@agent-infrastructure/render-diagnostics@workspace:packages/render-diagnostics"],
+
+    "@agent-infrastructure/stack-admin-server": ["@agent-infrastructure/stack-admin-server@workspace:packages/stack-admin-server"],
+
+    "@agent-infrastructure/stack-admin-ui": ["@agent-infrastructure/stack-admin-ui@workspace:packages/stack-admin-ui"],
 
     "@agent-infrastructure/swarm-manager": ["@agent-infrastructure/swarm-manager@workspace:packages/swarm-manager"],
 

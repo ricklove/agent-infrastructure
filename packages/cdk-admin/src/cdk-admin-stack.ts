@@ -270,7 +270,7 @@ export class CdkAdminStack extends Stack {
           TARGET_ROLE_TAG_KEY: "Role",
           TARGET_ROLE_TAG_VALUE: "agent-admin-host",
           TARGET_HOST_ROLE: "admin",
-          TARGET_RECONCILE_BEFORE_SESSION: "true",
+          TARGET_RECONCILE_BEFORE_SESSION: "false",
           AGENT_HOME: props.agentHome,
           DASHBOARD_SESSION_TTL_SECONDS: "900",
         },

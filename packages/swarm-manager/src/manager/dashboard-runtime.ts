@@ -1155,6 +1155,8 @@ async function startDashboardServer(
     MANAGER_INTERNAL_URL: config.managerUrl,
     DASHBOARD_ACCESS_API_BASE_URL: accessApiBaseUrl,
     DASHBOARD_ENROLLMENT_SECRET: enrollmentSecret,
+    DASHBOARD_HOST_ROLE:
+      process.env.DASHBOARD_HOST_ROLE?.trim() === "admin" ? "admin" : "manager",
   })
 }
 
