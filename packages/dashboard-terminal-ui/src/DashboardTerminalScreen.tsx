@@ -22,8 +22,6 @@ const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ESC-handling patterns require control characters
 const oscSequencePattern = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ESC-handling patterns require control characters
-const csiSequencePattern = /\u001b\[[0-9;?]*[ -/]*[@-~]/g
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ESC-handling patterns require control characters
 const twoByteEscapePattern = /\u001b[@-_]/g
 
 type SessionSummary = {
@@ -96,36 +94,136 @@ function useTerminalRenderer() {
   const containerRef = useRef<HTMLDivElement>(null)
   const preRef = useRef<HTMLPreElement>(null)
   const cursorRef = useRef<HTMLSpanElement>(null)
-  const contentRef = useRef("")
+  const linesRef = useRef<string[]>([""])
+  const cursorRowRef = useRef(0)
+  const cursorColRef = useRef(0)
 
-  const stripEscapes = useCallback((text: string) => {
-    return (
-      text
-        // Strip OSC sequences (title sets, etc.)
-        .replace(oscSequencePattern, "")
-        // Strip CSI sequences (colors, cursor movement, etc.)
-        .replace(csiSequencePattern, "")
-        // Strip remaining two-byte escape sequences
-        .replace(twoByteEscapePattern, "")
-        // Strip carriage returns that aren't part of \r\n (overwrite-style output)
-        .replace(/\r(?!\n)/g, "")
-    )
-  }, [])
-
-  // Process backspace (\b = \x08) by removing the preceding character.
-  // PTY sends \b \b (back, space, back) to erase visually — we interpret
-  // each \b as "delete last visible char" in our simple text buffer.
-  const processBackspaces = useCallback((buf: string): string => {
-    const out: string[] = []
-    for (let i = 0; i < buf.length; i++) {
-      if (buf[i] === "\x08") {
-        out.pop()
-      } else {
-        out.push(buf[i])
-      }
+  const ensureCursorLine = useCallback(() => {
+    while (linesRef.current.length <= cursorRowRef.current) {
+      linesRef.current.push("")
     }
-    return out.join("")
   }, [])
+
+  const setCursorLine = useCallback(
+    (nextLine: string) => {
+      ensureCursorLine()
+      linesRef.current[cursorRowRef.current] = nextLine
+    },
+    [ensureCursorLine],
+  )
+
+  const writeChar = useCallback(
+    (char: string) => {
+      ensureCursorLine()
+      const line = linesRef.current[cursorRowRef.current] ?? ""
+      const paddedLine =
+        cursorColRef.current > line.length
+          ? line + " ".repeat(cursorColRef.current - line.length)
+          : line
+      const nextLine =
+        cursorColRef.current >= paddedLine.length
+          ? paddedLine + char
+          : `${paddedLine.slice(0, cursorColRef.current)}${char}${paddedLine.slice(cursorColRef.current + 1)}`
+      setCursorLine(nextLine)
+      cursorColRef.current += 1
+    },
+    [ensureCursorLine, setCursorLine],
+  )
+
+  const clearLineFromCursor = useCallback(() => {
+    ensureCursorLine()
+    const line = linesRef.current[cursorRowRef.current] ?? ""
+    setCursorLine(line.slice(0, cursorColRef.current))
+  }, [ensureCursorLine, setCursorLine])
+
+  const clearEntireLine = useCallback(() => {
+    ensureCursorLine()
+    setCursorLine("")
+    cursorColRef.current = 0
+  }, [ensureCursorLine, setCursorLine])
+
+  const renderBuffer = useCallback(
+    (text: string) => {
+      const cleaned = text
+        .replace(oscSequencePattern, "")
+        .replace(twoByteEscapePattern, "")
+
+      for (let i = 0; i < cleaned.length; i++) {
+        const char = cleaned[i]
+
+        if (char === "\u001b" && cleaned[i + 1] === "[") {
+          let j = i + 2
+          while (j < cleaned.length && !/[A-Za-z]/.test(cleaned[j] ?? "")) {
+            j += 1
+          }
+          if (j >= cleaned.length) {
+            break
+          }
+
+          const finalByte = cleaned[j] ?? ""
+          const params = cleaned.slice(i + 2, j)
+          const firstParam = Number.parseInt(params.split(";")[0] || "0", 10) || 0
+
+          if (finalByte === "K") {
+            if (firstParam === 2) {
+              clearEntireLine()
+            } else {
+              clearLineFromCursor()
+            }
+          } else if (finalByte === "G") {
+            cursorColRef.current = Math.max(0, firstParam - 1)
+          } else if (finalByte === "C") {
+            cursorColRef.current += Math.max(1, firstParam)
+          } else if (finalByte === "D") {
+            cursorColRef.current = Math.max(
+              0,
+              cursorColRef.current - Math.max(1, firstParam),
+            )
+          }
+
+          i = j
+          continue
+        }
+
+        if (char === "\r") {
+          cursorColRef.current = 0
+          continue
+        }
+
+        if (char === "\n") {
+          cursorRowRef.current += 1
+          cursorColRef.current = 0
+          ensureCursorLine()
+          continue
+        }
+
+        if (char === "\x08") {
+          cursorColRef.current = Math.max(0, cursorColRef.current - 1)
+          continue
+        }
+
+        if (char < " " && char !== "\t") {
+          continue
+        }
+
+        if (char === "\t") {
+          const tabWidth = 8 - (cursorColRef.current % 8)
+          for (let s = 0; s < tabWidth; s++) {
+            writeChar(" ")
+          }
+          continue
+        }
+
+        writeChar(char)
+      }
+    },
+    [
+      clearEntireLine,
+      clearLineFromCursor,
+      ensureCursorLine,
+      writeChar,
+    ],
+  )
 
   const scrollToBottom = useCallback(() => {
     if (containerRef.current) {
@@ -135,26 +233,28 @@ function useTerminalRenderer() {
 
   const render = useCallback(() => {
     if (preRef.current) {
-      preRef.current.textContent = contentRef.current
+      preRef.current.textContent = linesRef.current.join("\n")
       scrollToBottom()
     }
   }, [scrollToBottom])
 
   const append = useCallback(
     (text: string) => {
-      const cleaned = stripEscapes(text)
-      contentRef.current = processBackspaces(contentRef.current + cleaned)
+      renderBuffer(text)
       render()
     },
-    [stripEscapes, processBackspaces, render],
+    [renderBuffer, render],
   )
 
   const reset = useCallback(
     (text: string) => {
-      contentRef.current = processBackspaces(stripEscapes(text))
+      linesRef.current = [""]
+      cursorRowRef.current = 0
+      cursorColRef.current = 0
+      renderBuffer(text)
       render()
     },
-    [stripEscapes, processBackspaces, render],
+    [renderBuffer, render],
   )
 
   return { containerRef, preRef, cursorRef, append, reset }
