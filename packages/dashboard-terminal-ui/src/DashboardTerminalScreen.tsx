@@ -1,15 +1,14 @@
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
+import { FitAddon } from "@xterm/addon-fit"
+import { Terminal } from "xterm"
+import "xterm/css/xterm.css"
 import {
-  type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react"
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export type DashboardTerminalScreenProps = {
   apiRootUrl: string
@@ -19,10 +18,7 @@ export type DashboardTerminalScreenProps = {
 
 const sessionStorageKey = "agent-infrastructure.dashboard.session"
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ESC-handling patterns require control characters
-const oscSequencePattern = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g
-// biome-ignore lint/suspicious/noControlCharactersInRegex: ESC-handling patterns require control characters
-const twoByteEscapePattern = /\u001b[@-_]/g
+const ctrlCPrimeTimeoutMs = 2000
 
 type SessionSummary = {
   id: string
@@ -81,185 +77,6 @@ function dashboardSessionWebSocketProtocols(): string[] {
   return [`${dashboardSessionWebSocketProtocolPrefix}${sessionToken}`]
 }
 
-// ---------------------------------------------------------------------------
-// ANSI minimal renderer
-// ---------------------------------------------------------------------------
-
-/**
- * Extremely minimal terminal rendering. For V1 this renders raw terminal output
- * into a <pre> element. A proper xterm.js integration is the next step but
- * requires bundler configuration — this gets the interactive PTY working first.
- */
-function useTerminalRenderer() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const preRef = useRef<HTMLPreElement>(null)
-  const cursorRef = useRef<HTMLSpanElement>(null)
-  const linesRef = useRef<string[]>([""])
-  const cursorRowRef = useRef(0)
-  const cursorColRef = useRef(0)
-
-  const ensureCursorLine = useCallback(() => {
-    while (linesRef.current.length <= cursorRowRef.current) {
-      linesRef.current.push("")
-    }
-  }, [])
-
-  const setCursorLine = useCallback(
-    (nextLine: string) => {
-      ensureCursorLine()
-      linesRef.current[cursorRowRef.current] = nextLine
-    },
-    [ensureCursorLine],
-  )
-
-  const writeChar = useCallback(
-    (char: string) => {
-      ensureCursorLine()
-      const line = linesRef.current[cursorRowRef.current] ?? ""
-      const paddedLine =
-        cursorColRef.current > line.length
-          ? line + " ".repeat(cursorColRef.current - line.length)
-          : line
-      const nextLine =
-        cursorColRef.current >= paddedLine.length
-          ? paddedLine + char
-          : `${paddedLine.slice(0, cursorColRef.current)}${char}${paddedLine.slice(cursorColRef.current + 1)}`
-      setCursorLine(nextLine)
-      cursorColRef.current += 1
-    },
-    [ensureCursorLine, setCursorLine],
-  )
-
-  const clearLineFromCursor = useCallback(() => {
-    ensureCursorLine()
-    const line = linesRef.current[cursorRowRef.current] ?? ""
-    setCursorLine(line.slice(0, cursorColRef.current))
-  }, [ensureCursorLine, setCursorLine])
-
-  const clearEntireLine = useCallback(() => {
-    ensureCursorLine()
-    setCursorLine("")
-    cursorColRef.current = 0
-  }, [ensureCursorLine, setCursorLine])
-
-  const renderBuffer = useCallback(
-    (text: string) => {
-      const cleaned = text
-        .replace(oscSequencePattern, "")
-        .replace(twoByteEscapePattern, "")
-
-      for (let i = 0; i < cleaned.length; i++) {
-        const char = cleaned[i]
-
-        if (char === "\u001b" && cleaned[i + 1] === "[") {
-          let j = i + 2
-          while (j < cleaned.length && !/[A-Za-z]/.test(cleaned[j] ?? "")) {
-            j += 1
-          }
-          if (j >= cleaned.length) {
-            break
-          }
-
-          const finalByte = cleaned[j] ?? ""
-          const params = cleaned.slice(i + 2, j)
-          const firstParam = Number.parseInt(params.split(";")[0] || "0", 10) || 0
-
-          if (finalByte === "K") {
-            if (firstParam === 2) {
-              clearEntireLine()
-            } else {
-              clearLineFromCursor()
-            }
-          } else if (finalByte === "G") {
-            cursorColRef.current = Math.max(0, firstParam - 1)
-          } else if (finalByte === "C") {
-            cursorColRef.current += Math.max(1, firstParam)
-          } else if (finalByte === "D") {
-            cursorColRef.current = Math.max(
-              0,
-              cursorColRef.current - Math.max(1, firstParam),
-            )
-          }
-
-          i = j
-          continue
-        }
-
-        if (char === "\r") {
-          cursorColRef.current = 0
-          continue
-        }
-
-        if (char === "\n") {
-          cursorRowRef.current += 1
-          cursorColRef.current = 0
-          ensureCursorLine()
-          continue
-        }
-
-        if (char === "\x08") {
-          cursorColRef.current = Math.max(0, cursorColRef.current - 1)
-          continue
-        }
-
-        if (char < " " && char !== "\t") {
-          continue
-        }
-
-        if (char === "\t") {
-          const tabWidth = 8 - (cursorColRef.current % 8)
-          for (let s = 0; s < tabWidth; s++) {
-            writeChar(" ")
-          }
-          continue
-        }
-
-        writeChar(char)
-      }
-    },
-    [
-      clearEntireLine,
-      clearLineFromCursor,
-      ensureCursorLine,
-      writeChar,
-    ],
-  )
-
-  const scrollToBottom = useCallback(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
-  }, [])
-
-  const render = useCallback(() => {
-    if (preRef.current) {
-      preRef.current.textContent = linesRef.current.join("\n")
-      scrollToBottom()
-    }
-  }, [scrollToBottom])
-
-  const append = useCallback(
-    (text: string) => {
-      renderBuffer(text)
-      render()
-    },
-    [renderBuffer, render],
-  )
-
-  const reset = useCallback(
-    (text: string) => {
-      linesRef.current = [""]
-      cursorRowRef.current = 0
-      cursorColRef.current = 0
-      renderBuffer(text)
-      render()
-    },
-    [renderBuffer, render],
-  )
-
-  return { containerRef, preRef, cursorRef, append, reset }
-}
-
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(path, {
     ...init,
@@ -267,9 +84,155 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   })
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+function isAccelKey(event: KeyboardEvent): boolean {
+  return event.ctrlKey || event.metaKey
+}
+
+function useTerminalRenderer(args: {
+  onInput: (data: string) => void
+  onResize: (cols: number, rows: number) => void
+  onPrimeCtrlC: () => void
+  onClearCtrlCPrime: () => void
+  ctrlCPrimedRef: React.MutableRefObject<boolean>
+}) {
+  const { onInput, onResize, onPrimeCtrlC, onClearCtrlCPrime, ctrlCPrimedRef } =
+    args
+  const containerRef = useRef<HTMLDivElement>(null)
+  const terminalRef = useRef<Terminal | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || terminalRef.current) {
+      return
+    }
+
+    const terminal = new Terminal({
+      allowProposedApi: false,
+      convertEol: false,
+      cursorBlink: true,
+      cursorStyle: "block",
+      fontFamily:
+        "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace",
+      fontSize: 13,
+      lineHeight: 1.35,
+      rows: 24,
+      cols: 80,
+      scrollback: 5000,
+      theme: {
+        background: "#0d1117",
+        foreground: "#c9d1d9",
+        cursor: "#c9d1d9",
+        selectionBackground: "rgba(88, 166, 255, 0.35)",
+      },
+    })
+    const fitAddon = new FitAddon()
+    fitAddonRef.current = fitAddon
+    terminalRef.current = terminal
+    terminal.loadAddon(fitAddon)
+    terminal.open(container)
+    fitAddon.fit()
+
+    const dataDisposable = terminal.onData((data) => {
+      onInput(data)
+    })
+    const resizeDisposable = terminal.onResize(({ cols, rows }) => {
+      onResize(cols, rows)
+    })
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") {
+        return true
+      }
+
+      const lowerKey = event.key.toLowerCase()
+      if (isAccelKey(event) && lowerKey == "c") {
+        event.preventDefault()
+        if (ctrlCPrimedRef.current) {
+          onInput("\u0003")
+          onClearCtrlCPrime()
+        } else {
+          const selectedText = terminal.hasSelection()
+            ? terminal.getSelection()
+            : window.getSelection()?.toString() ?? ""
+          if (selectedText) {
+            navigator.clipboard.writeText(selectedText).catch(() => {})
+          }
+          onPrimeCtrlC()
+        }
+        return false
+      }
+
+      if (isAccelKey(event) && lowerKey == "v") {
+        event.preventDefault()
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) {
+              onInput(text)
+            }
+          })
+          .catch(() => {})
+        return false
+      }
+
+      return true
+    })
+
+    const resizeObserver = new ResizeObserver(() => {
+      fitAddon.fit()
+    })
+    resizeObserver.observe(container)
+
+    return () => {
+      resizeObserver.disconnect()
+      resizeDisposable.dispose()
+      dataDisposable.dispose()
+      fitAddonRef.current = null
+      terminalRef.current = null
+      terminal.dispose()
+    }
+  }, [ctrlCPrimedRef, onClearCtrlCPrime, onInput, onPrimeCtrlC, onResize])
+
+  const write = useCallback((text: string) => {
+    terminalRef.current?.write(text)
+  }, [])
+
+  const reset = useCallback((text: string) => {
+    const terminal = terminalRef.current
+    if (!terminal) {
+      return
+    }
+    terminal.reset()
+    if (text) {
+      terminal.write(text)
+    }
+  }, [])
+
+  const clear = useCallback(() => {
+    terminalRef.current?.clear()
+  }, [])
+
+  const focus = useCallback(() => {
+    terminalRef.current?.focus()
+  }, [])
+
+  const fit = useCallback(() => {
+    fitAddonRef.current?.fit()
+  }, [])
+
+  return useMemo(
+    () => ({
+      clear,
+      containerRef,
+      fit,
+      focus,
+      reset,
+      terminalRef,
+      write,
+    }),
+    [clear, fit, focus, reset, write],
+  )
+}
 
 export function DashboardTerminalScreen({
   apiRootUrl,
@@ -284,17 +247,54 @@ export function DashboardTerminalScreen({
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [ctrlCPrimed, setCtrlCPrimed] = useState(false)
+  const ctrlCPrimedRef = useRef(false)
   const ctrlCTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const { containerRef, preRef, cursorRef, append, reset } =
-    useTerminalRenderer()
+  const clearCtrlCPrime = useCallback(() => {
+    ctrlCPrimedRef.current = false
+    setCtrlCPrimed(false)
+    if (ctrlCTimerRef.current) {
+      clearTimeout(ctrlCTimerRef.current)
+      ctrlCTimerRef.current = null
+    }
+  }, [])
 
-  // -----------------------------------------------------------------------
-  // API helpers
-  // -----------------------------------------------------------------------
+  const primeCtrlC = useCallback(() => {
+    ctrlCPrimedRef.current = true
+    setCtrlCPrimed(true)
+    if (ctrlCTimerRef.current) {
+      clearTimeout(ctrlCTimerRef.current)
+    }
+    ctrlCTimerRef.current = setTimeout(() => {
+      ctrlCPrimedRef.current = false
+      setCtrlCPrimed(false)
+      ctrlCTimerRef.current = null
+    }, ctrlCPrimeTimeoutMs)
+  }, [])
+
+  const sendInput = useCallback((data: string) => {
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN && data) {
+      ws.send(JSON.stringify({ type: "input", data }))
+    }
+  }, [])
+
+  const sendResize = useCallback((cols: number, rows: number) => {
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN && cols > 0 && rows > 0) {
+      ws.send(JSON.stringify({ type: "resize", cols, rows }))
+    }
+  }, [])
+
+  const terminal = useTerminalRenderer({
+    onInput: sendInput,
+    onResize: sendResize,
+    onPrimeCtrlC: primeCtrlC,
+    onClearCtrlCPrime: clearCtrlCPrime,
+    ctrlCPrimedRef,
+  })
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -345,19 +345,13 @@ export function DashboardTerminalScreen({
     }
   }, [apiRootUrl])
 
-  // Load sessions and profiles on mount
   useEffect(() => {
     fetchSessions()
     fetchProfiles()
-  }, [fetchSessions, fetchProfiles])
-
-  // -----------------------------------------------------------------------
-  // WebSocket connection
-  // -----------------------------------------------------------------------
+  }, [fetchProfiles, fetchSessions])
 
   const connectWs = useCallback(
     (sessionId: string) => {
-      // Clean up existing connection
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
@@ -367,21 +361,20 @@ export function DashboardTerminalScreen({
         heartbeatRef.current = null
       }
 
+      clearCtrlCPrime()
       setConnected(false)
       setError(null)
-      reset("")
+      terminal.reset("")
 
-      const wsUrl = wsRootUrl
       const protocols = dashboardSessionWebSocketProtocols()
       const ws =
         protocols.length > 0
-          ? new WebSocket(wsUrl, protocols)
-          : new WebSocket(wsUrl)
+          ? new WebSocket(wsRootUrl, protocols)
+          : new WebSocket(wsRootUrl)
       wsRef.current = ws
 
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "attach", sessionId }))
-        // Start heartbeat
         heartbeatRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "heartbeat" }))
@@ -399,16 +392,18 @@ export function DashboardTerminalScreen({
 
         switch (msg.type) {
           case "snapshot":
-            reset(msg.data)
+            terminal.reset(msg.data)
             break
           case "attached":
             setConnected(true)
             setActiveSessionId(msg.sessionId)
-            // Focus input
-            setTimeout(() => inputRef.current?.focus(), 50)
+            setTimeout(() => {
+              terminal.fit()
+              terminal.focus()
+            }, 50)
             break
           case "output":
-            append(msg.data)
+            terminal.write(msg.data)
             break
           case "session_closed":
             setConnected(false)
@@ -435,20 +430,20 @@ export function DashboardTerminalScreen({
         setError("WebSocket connection error")
       }
     },
-    [wsRootUrl, append, reset, fetchSessions],
+    [clearCtrlCPrime, fetchSessions, terminal, wsRootUrl],
   )
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       wsRef.current?.close()
-      if (heartbeatRef.current) clearInterval(heartbeatRef.current)
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current)
+      }
+      if (ctrlCTimerRef.current) {
+        clearTimeout(ctrlCTimerRef.current)
+      }
     }
   }, [])
-
-  // -----------------------------------------------------------------------
-  // Session actions
-  // -----------------------------------------------------------------------
 
   const createSession = useCallback(async () => {
     setCreating(true)
@@ -486,7 +481,7 @@ export function DashboardTerminalScreen({
     } finally {
       setCreating(false)
     }
-  }, [apiRootUrl, profiles, fetchSessions, connectWs])
+  }, [apiRootUrl, connectWs, fetchSessions, profiles])
 
   const closeSession = useCallback(
     async (sessionId: string) => {
@@ -498,181 +493,15 @@ export function DashboardTerminalScreen({
           wsRef.current?.close()
           setActiveSessionId(null)
           setConnected(false)
-          reset("")
+          terminal.reset("")
         }
         fetchSessions()
-      } catch {}
-    },
-    [apiRootUrl, activeSessionId, fetchSessions, reset],
-  )
-
-  // -----------------------------------------------------------------------
-  // Keyboard handling — Copy-first Ctrl+C, Ctrl+V paste
-  // -----------------------------------------------------------------------
-
-  // Track what the textarea contained before mobile input so we can diff
-  const lastTextareaValue = useRef("")
-
-  const sendInput = useCallback((data: string) => {
-    const ws = wsRef.current
-    if (ws && ws.readyState === WebSocket.OPEN && data) {
-      ws.send(JSON.stringify({ type: "input", data }))
-    }
-  }, [])
-
-  // Desktop keyboard handler — fires reliably on desktop, partially on mobile
-  const handleKeyDown = useCallback(
-    (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-      const ws = wsRef.current
-      if (!ws || ws.readyState !== WebSocket.OPEN) return
-
-      // Ctrl+C — copy-first
-      if (e.ctrlKey && e.key === "c") {
-        e.preventDefault()
-        if (ctrlCPrimed) {
-          ws.send(JSON.stringify({ type: "input", data: "\x03" }))
-          setCtrlCPrimed(false)
-          if (ctrlCTimerRef.current) {
-            clearTimeout(ctrlCTimerRef.current)
-            ctrlCTimerRef.current = null
-          }
-        } else {
-          const selection = window.getSelection()?.toString()
-          if (selection) {
-            navigator.clipboard.writeText(selection).catch(() => {})
-          }
-          setCtrlCPrimed(true)
-          ctrlCTimerRef.current = setTimeout(() => {
-            setCtrlCPrimed(false)
-            ctrlCTimerRef.current = null
-          }, 2000)
-        }
-        return
-      }
-
-      // Ctrl+V — paste into terminal
-      if (e.ctrlKey && e.key === "v") {
-        e.preventDefault()
-        navigator.clipboard
-          .readText()
-          .then((text) => {
-            if (text) sendInput(text)
-          })
-          .catch(() => {})
-        return
-      }
-
-      // Skip if key is Unidentified (mobile) — let beforeinput/input handle it
-      if (e.key === "Unidentified" || e.key === "Process") {
-        return
-      }
-
-      // Regular printable keys — send directly
-      if (!e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
-        e.preventDefault()
-        sendInput(e.key)
-        return
-      }
-
-      // Special keys
-      const keyMap: Record<string, string> = {
-        Enter: "\r",
-        Backspace: "\x7f",
-        Tab: "\t",
-        Escape: "\x1b",
-        ArrowUp: "\x1b[A",
-        ArrowDown: "\x1b[B",
-        ArrowRight: "\x1b[C",
-        ArrowLeft: "\x1b[D",
-        Home: "\x1b[H",
-        End: "\x1b[F",
-        Delete: "\x1b[3~",
-        PageUp: "\x1b[5~",
-        PageDown: "\x1b[6~",
-      }
-
-      if (keyMap[e.key]) {
-        e.preventDefault()
-        sendInput(keyMap[e.key])
-        return
-      }
-
-      // Ctrl+key combos (a-z)
-      if (e.ctrlKey && e.key.length === 1 && e.key >= "a" && e.key <= "z") {
-        e.preventDefault()
-        const code = e.key.charCodeAt(0) - 96
-        sendInput(String.fromCharCode(code))
-        return
+      } catch {
+        // Ignore close failures and let the session list refresh on the next poll.
       }
     },
-    [ctrlCPrimed, sendInput],
+    [activeSessionId, apiRootUrl, fetchSessions, terminal],
   )
-
-  // Mobile beforeinput handler — catches Enter, Go/Check/Done, and Backspace
-  const handleBeforeInput = useCallback(
-    (e: Event) => {
-      const inputEvent = e as InputEvent
-      if (
-        inputEvent.inputType === "insertLineBreak" ||
-        inputEvent.inputType === "insertParagraph"
-      ) {
-        e.preventDefault()
-        sendInput("\r")
-        return
-      }
-      // Mobile "Go" / "Check" / "Done" button sends insertText with "\n"
-      if (inputEvent.inputType === "insertText" && inputEvent.data === "\n") {
-        e.preventDefault()
-        sendInput("\r")
-        return
-      }
-      if (inputEvent.inputType === "deleteContentBackward") {
-        e.preventDefault()
-        sendInput("\x7f")
-        return
-      }
-      if (inputEvent.inputType === "deleteContentForward") {
-        e.preventDefault()
-        sendInput("\x1b[3~")
-        return
-      }
-    },
-    [sendInput],
-  )
-
-  // Mobile input handler — catches text that the mobile keyboard inserts
-  // This fires after the textarea value has changed, so we diff to find new text
-  const handleInput = useCallback(() => {
-    const textarea = inputRef.current
-    if (!textarea) return
-    const current = textarea.value
-    const prev = lastTextareaValue.current
-
-    if (current.length > prev.length) {
-      // New text was inserted
-      const inserted = current.slice(prev.length)
-      sendInput(inserted)
-    }
-    // Always reset the textarea to empty to prevent accumulation
-    textarea.value = ""
-    lastTextareaValue.current = ""
-  }, [sendInput])
-
-  // Attach beforeinput and input listeners (React doesn't support onBeforeInput well)
-  useEffect(() => {
-    const textarea = inputRef.current
-    if (!textarea) return
-    textarea.addEventListener("beforeinput", handleBeforeInput)
-    textarea.addEventListener("input", handleInput)
-    return () => {
-      textarea.removeEventListener("beforeinput", handleBeforeInput)
-      textarea.removeEventListener("input", handleInput)
-    }
-  }, [handleBeforeInput, handleInput])
-
-  // -----------------------------------------------------------------------
-  // Render
-  // -----------------------------------------------------------------------
 
   return (
     <div
@@ -685,7 +514,6 @@ export function DashboardTerminalScreen({
         fontFamily: "system-ui, -apple-system, sans-serif",
       }}
     >
-      {/* Tab bar / session list */}
       <div
         style={{
           display: "flex",
@@ -699,7 +527,6 @@ export function DashboardTerminalScreen({
         }}
       >
         {sessions.map((s) => (
-          // biome-ignore lint/a11y/useSemanticElements: session row needs full-row interactive behavior with nested close control
           <div
             key={s.id}
             role="button"
@@ -768,7 +595,6 @@ export function DashboardTerminalScreen({
           {creating ? "..." : "+ New"}
         </button>
       </div>
-      {/* Ctrl+C hint toast */}
       {ctrlCPrimed && (
         <div
           style={{
@@ -784,7 +610,6 @@ export function DashboardTerminalScreen({
           Press Ctrl+C again to send Ctrl+C to the terminal
         </div>
       )}
-      {/* Error banner */}
       {error && (
         <div
           style={{
@@ -800,7 +625,6 @@ export function DashboardTerminalScreen({
           {error}
         </div>
       )}
-      {/* Terminal viewport */}
       <div
         style={{
           flex: 1,
@@ -808,90 +632,34 @@ export function DashboardTerminalScreen({
           overflow: "hidden",
         }}
         role="application"
-        onClick={() => inputRef.current?.focus()}
+        onClick={() => terminal.focus()}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault()
-            inputRef.current?.focus()
+            terminal.focus()
           }
         }}
       >
-        {activeSessionId && connected ? (
-          <>
-            <div
-              ref={containerRef}
-              style={{
-                overflowY: "auto",
-                height: "100%",
-                padding: "8px 12px",
-                backgroundColor: "#0d1117",
-              }}
-            >
-              <pre
-                ref={preRef}
-                style={{
-                  margin: 0,
-                  padding: 0,
-                  fontFamily:
-                    "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace",
-                  fontSize: "13px",
-                  lineHeight: "1.4",
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-all",
-                  color: "#c9d1d9",
-                  backgroundColor: "transparent",
-                  display: "inline",
-                }}
-              />
-              <span
-                ref={cursorRef}
-                style={{
-                  display: "inline-block",
-                  width: "7.8px",
-                  height: "1.15em",
-                  backgroundColor: "#c9d1d9",
-                  verticalAlign: "text-bottom",
-                  animation: "terminal-blink 1s step-end infinite",
-                }}
-              />
-              <style>{`@keyframes terminal-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }`}</style>
-            </div>
-            {/* Input capture — visible enough for mobile to show keyboard */}
-            <textarea
-              ref={inputRef}
-              onKeyDown={handleKeyDown}
-              autoCapitalize="off"
-              autoCorrect="off"
-              autoComplete="off"
-              spellCheck={false}
-              style={{
-                position: "absolute",
-                bottom: 0,
-                left: 0,
-                width: "100%",
-                height: "1px",
-                opacity: 0.01,
-                caretColor: "transparent",
-                border: "none",
-                outline: "none",
-                resize: "none",
-                padding: 0,
-                margin: 0,
-                fontSize: "16px",
-                backgroundColor: "transparent",
-                color: "transparent",
-              }}
-              aria-label="Terminal input"
-            />
-          </>
-        ) : (
+        <div
+          ref={terminal.containerRef}
+          style={{
+            display: activeSessionId && connected ? "block" : "none",
+            height: "100%",
+            width: "100%",
+            padding: "8px 12px",
+            backgroundColor: "#0d1117",
+            overflow: "hidden",
+          }}
+        />
+        {!(activeSessionId && connected) && (
           <div
             style={{
+              position: "absolute",
+              inset: 0,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              height: "100%",
               gap: "16px",
               color: "#8b949e",
             }}
@@ -921,7 +689,6 @@ export function DashboardTerminalScreen({
           </div>
         )}
       </div>
-      {/* Status bar */}
       <div
         style={{
           display: "flex",

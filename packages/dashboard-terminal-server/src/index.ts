@@ -33,6 +33,7 @@ const maxScrollback = Number.parseInt(
   10,
 )
 const defaultShell = process.env.SHELL || "/bin/bash"
+const scriptPath = existsSync("/usr/bin/script") ? "/usr/bin/script" : null
 const reconnectWindowMs = Number.parseInt(
   process.env.DASHBOARD_TERMINAL_RECONNECT_MS ?? String(5 * 60 * 1000),
   10,
@@ -122,6 +123,22 @@ function filteredEnv(): Record<string, string> {
   return out
 }
 
+function shellCommand(shell: string): string[] {
+  if (scriptPath) {
+    return [
+      scriptPath,
+      "-q",
+      "-f",
+      "-e",
+      "-c",
+      `/bin/sh -lc 'exec "$0" -il' ${shell}`,
+      "/dev/null",
+    ]
+  }
+
+  return [shell, "-il"]
+}
+
 function createSession(opts: {
   cwd?: string
   shell?: string
@@ -197,7 +214,7 @@ function createSession(opts: {
     },
   })
 
-  const proc = Bun.spawn([shell, "-l"], {
+  const proc = Bun.spawn(shellCommand(shell), {
     cwd,
     env: filteredEnv(),
     terminal,
