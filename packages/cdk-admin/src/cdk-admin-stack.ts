@@ -4,7 +4,6 @@ import {
   CfnOutput,
   Duration,
   RemovalPolicy,
-  SecretValue,
   Stack,
   type StackProps,
   Tags,
@@ -22,7 +21,6 @@ const sourceDir = dirname(fileURLToPath(import.meta.url))
 export interface CdkAdminStackProps extends StackProps {
   agentHome: string
   adminInstanceType: string
-  dashboardEnrollmentSecret: string
   runtimeRepoUrl: string
   runtimeRepoRef: string
 }
@@ -35,21 +33,16 @@ export class CdkAdminStack extends Stack {
     const stateRoot = `${props.agentHome}/state`
     const workspaceRoot = `${props.agentHome}/workspace`
     const adminScopeTagValue = `${this.stackName}-admin`
-    const dashboardEnrollmentSecretSecret = new secretsmanager.Secret(
-      this,
-      "DashboardEnrollmentSecret",
-      {
-        secretStringValue: SecretValue.unsafePlainText(
-          props.dashboardEnrollmentSecret,
-        ),
-      },
-    )
     const dashboardEnrollmentRuntimeSecret =
       secretsmanager.Secret.fromSecretNameV2(
         this,
         "DashboardEnrollmentRuntimeSecret",
         `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
       )
+    const cdkBootstrapBucketArns = [
+      `arn:${this.partition}:s3:::cdk-*`,
+      `arn:${this.partition}:s3:::cdk-*/*`,
+    ]
 
     const vpc = new ec2.Vpc(this, "AdminVpc", {
       maxAzs: 1,
@@ -83,7 +76,7 @@ export class CdkAdminStack extends Stack {
         "AmazonSSMManagedInstanceCore",
       ),
     )
-    dashboardEnrollmentSecretSecret.grantRead(adminRole)
+    dashboardEnrollmentRuntimeSecret.grantRead(adminRole)
     adminRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "AdminReadInventory",
@@ -107,9 +100,15 @@ export class CdkAdminStack extends Stack {
     )
     adminRole.addToPolicy(
       new iam.PolicyStatement({
-        sid: "AdminCrossStackDeployAndRepair",
+        sid: "AdminCloudFormationDeploy",
+        actions: ["cloudformation:*"],
+        resources: ["*"],
+      }),
+    )
+    adminRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AdminProvisioningViaCloudFormationOnly",
         actions: [
-          "cloudformation:*",
           "ec2:*",
           "iam:*",
           "lambda:*",
@@ -119,7 +118,67 @@ export class CdkAdminStack extends Stack {
           "secretsmanager:*",
           "logs:*",
           "cloudwatch:*",
-          "sts:AssumeRole",
+        ],
+        resources: ["*"],
+        conditions: {
+          "ForAnyValue:StringEquals": {
+            "aws:CalledVia": "cloudformation.amazonaws.com",
+          },
+        },
+      }),
+    )
+    adminRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AdminPublishCdkAssets",
+        actions: [
+          "s3:GetBucketLocation",
+          "s3:GetBucketVersioning",
+          "s3:ListBucket",
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:AbortMultipartUpload",
+        ],
+        resources: cdkBootstrapBucketArns,
+      }),
+    )
+    adminRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AdminReadCdkBootstrapMetadata",
+        actions: ["ssm:GetParameter", "ssm:GetParameters"],
+        resources: [
+          Stack.of(this).formatArn({
+            service: "ssm",
+            resource: "parameter",
+            resourceName: "cdk-bootstrap/*",
+          }),
+        ],
+      }),
+    )
+    adminRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AdminAssumeCdkBootstrapRoles",
+        actions: ["sts:AssumeRole"],
+        resources: [
+          `arn:${this.partition}:iam::${this.account}:role/cdk-*`,
+        ],
+      }),
+    )
+    adminRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AdminRepairManagedHosts",
+        actions: [
+          "ec2:RebootInstances",
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "ssm:DescribeInstanceInformation",
+          "ssm:GetCommandInvocation",
+          "ssm:ListCommandInvocations",
+          "ssm:ListCommands",
+          "ssm:SendCommand",
+          "ssm:StartSession",
+          "ssm:ResumeSession",
+          "ssm:TerminateSession",
         ],
         resources: ["*"],
       }),
@@ -180,7 +239,6 @@ export class CdkAdminStack extends Stack {
           DASHBOARD_PASSKEY_TABLE_NAME: dashboardPasskeyTable.tableName,
           DASHBOARD_ACCESS_STATE_TABLE_NAME:
             dashboardAccessStateTable.tableName,
-          DASHBOARD_ENROLLMENT_SECRET: props.dashboardEnrollmentSecret,
           DASHBOARD_ENROLLMENT_SECRET_SECRET_NAME: `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
           TARGET_TAG_KEY: "AgentSwarm",
           TARGET_TAG_VALUE: adminScopeTagValue,
@@ -218,7 +276,6 @@ export class CdkAdminStack extends Stack {
       runtimeRepoRef: props.runtimeRepoRef,
       agentHome: props.agentHome,
       dashboardAccessApiBaseUrl: dashboardAccessUrl.url.replace(/\/$/, ""),
-      dashboardEnrollmentSecret: props.dashboardEnrollmentSecret,
       dashboardEnrollmentSecretSecretName: `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
       adminCompatPort: 8787,
     }
