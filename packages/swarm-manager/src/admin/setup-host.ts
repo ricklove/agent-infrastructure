@@ -22,6 +22,11 @@ type BootstrapContext = Record<string, unknown> & {
   adminCompatPort?: number
   dashboardEnrollmentSecret?: string
   dashboardEnrollmentSecretSecretName?: string
+  dashboardAccessApiBaseUrl?: string
+  cloudflareZoneName?: string
+  cloudflareTunnelId?: string
+  cloudflareTunnelName?: string
+  cloudflareHostnameBase?: string
 }
 
 type SetupHostConfig = {
@@ -139,6 +144,24 @@ WantedBy=multi-user.target
 `
 }
 
+function adminControllerServiceUnit(hostRoot: string): string {
+  return `[Unit]
+Description=Agent admin dashboard controller
+After=network-online.target agent-admin-compat.service
+Wants=network-online.target agent-admin-compat.service
+
+[Service]
+Type=simple
+User=ec2-user
+ExecStart=/usr/bin/env bash ${hostRoot}/scripts/run-manager-controller.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+`
+}
+
 async function main(): Promise<void> {
   const config = parseArgs(process.argv.slice(2))
   logStep(
@@ -156,6 +179,7 @@ async function main(): Promise<void> {
   const bootstrapContext = readBootstrapContext(config.bootstrapContextPath)
   const dashboardEnrollmentSecretPath = `${config.stateDir}/dashboard-enrollment-secret`
   const adminEnvPath = `${config.stateDir}/agent-admin.env`
+  const dashboardControllerEnvPath = `${config.stateDir}/agent-swarm-monitor.env`
   const adminCompatPort = Number(bootstrapContext.adminCompatPort ?? 8787)
   const dashboardEnrollmentSecret =
     (typeof bootstrapContext.dashboardEnrollmentSecret === "string"
@@ -188,10 +212,33 @@ DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
   )
 
   writeFileSync(
+    dashboardControllerEnvPath,
+    `AGENT_HOME=${process.env.AGENT_HOME}
+AGENT_RUNTIME_DIR=${config.runtimeDir}
+AGENT_STATE_DIR=${config.stateDir}
+AGENT_WORKSPACE_DIR=${config.workspaceDir}
+MANAGER_WS_PORT=${Number.isInteger(adminCompatPort) && adminCompatPort > 0 ? adminCompatPort : 8787}
+SWARM_BOOTSTRAP_CONTEXT_PATH=${config.bootstrapContextPath}
+DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
+DASHBOARD_ACCESS_API_BASE_URL=${typeof bootstrapContext.dashboardAccessApiBaseUrl === "string" ? bootstrapContext.dashboardAccessApiBaseUrl : ""}
+CLOUDFLARED_ZONE_NAME=${typeof bootstrapContext.cloudflareZoneName === "string" ? bootstrapContext.cloudflareZoneName : ""}
+CLOUDFLARED_TUNNEL_ID=${typeof bootstrapContext.cloudflareTunnelId === "string" ? bootstrapContext.cloudflareTunnelId : ""}
+CLOUDFLARED_TUNNEL_NAME=${typeof bootstrapContext.cloudflareTunnelName === "string" ? bootstrapContext.cloudflareTunnelName : ""}
+CLOUDFLARED_HOSTNAME_BASE=${typeof bootstrapContext.cloudflareHostnameBase === "string" ? bootstrapContext.cloudflareHostnameBase : ""}
+`,
+    { mode: 0o600 },
+  )
+
+  writeFileSync(
     "/etc/systemd/system/agent-admin-compat.service",
     adminCompatServiceUnit(config.hostRoot),
   )
   logStep("wrote /etc/systemd/system/agent-admin-compat.service")
+  writeFileSync(
+    "/etc/systemd/system/agent-manager-controller.service",
+    adminControllerServiceUnit(config.hostRoot),
+  )
+  logStep("wrote /etc/systemd/system/agent-manager-controller.service")
 
   runChecked([
     "chown",
@@ -203,6 +250,7 @@ DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
   ])
   runChecked(["systemctl", "daemon-reload"])
   runChecked(["systemctl", "enable", "--now", "agent-admin-compat.service"])
+  runChecked(["systemctl", "enable", "--now", "agent-manager-controller.service"])
   writeResolvedRuntimeState({
     runtimeDir: config.runtimeDir,
     stateDir: config.stateDir,
