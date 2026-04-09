@@ -6,6 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs"
+import { writeResolvedRuntimeState } from "../host-runtime-target/write-runtime-current.js"
 import {
   DEFAULT_AGENT_HOME,
   DEFAULT_BOOTSTRAP_CONTEXT_PATH,
@@ -455,6 +456,13 @@ DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
     "--now",
     "agent-manager-controller.service",
   ])
+  writeResolvedRuntimeState({
+    runtimeDir: config.runtimeDir,
+    stateDir: config.stateDir,
+    requestedRole: "manager",
+    bootstrapContextPath: config.bootstrapContextPath,
+    setupStatus: "succeeded",
+  })
   logStep("setup.complete")
 
   console.log(
