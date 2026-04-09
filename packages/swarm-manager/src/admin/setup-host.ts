@@ -23,6 +23,8 @@ type BootstrapContext = Record<string, unknown> & {
   dashboardEnrollmentSecret?: string
   dashboardEnrollmentSecretSecretName?: string
   dashboardAccessApiBaseUrl?: string
+  cloudflareTunnelConfigParameterName?: string
+  cloudflareTunnelTokenSecretName?: string
   cloudflareZoneName?: string
   cloudflareTunnelId?: string
   cloudflareTunnelName?: string
@@ -190,6 +192,33 @@ async function main(): Promise<void> {
         ? bootstrapContext.dashboardEnrollmentSecretSecretName
         : "",
     )
+  const cloudflareConfigJson =
+    (typeof bootstrapContext.cloudflareTunnelConfigParameterName === "string"
+      ? commandOutput([
+          "aws",
+          "ssm",
+          "get-parameter",
+          "--name",
+          bootstrapContext.cloudflareTunnelConfigParameterName,
+          "--query",
+          "Parameter.Value",
+          "--output",
+          "text",
+        ])
+      : "") || ""
+  const cloudflareConfig = cloudflareConfigJson
+    ? (JSON.parse(cloudflareConfigJson) as {
+        zoneName?: string
+        tunnelId?: string
+        tunnelName?: string
+        hostnameBase?: string
+      })
+    : {}
+  const cloudflareTunnelToken = getSecretString(
+    typeof bootstrapContext.cloudflareTunnelTokenSecretName === "string"
+      ? bootstrapContext.cloudflareTunnelTokenSecretName
+      : "",
+  )
 
   writeFileSync(
     dashboardEnrollmentSecretPath,
@@ -221,10 +250,11 @@ MANAGER_WS_PORT=${Number.isInteger(adminCompatPort) && adminCompatPort > 0 ? adm
 SWARM_BOOTSTRAP_CONTEXT_PATH=${config.bootstrapContextPath}
 DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
 DASHBOARD_ACCESS_API_BASE_URL=${typeof bootstrapContext.dashboardAccessApiBaseUrl === "string" ? bootstrapContext.dashboardAccessApiBaseUrl : ""}
-CLOUDFLARED_ZONE_NAME=${typeof bootstrapContext.cloudflareZoneName === "string" ? bootstrapContext.cloudflareZoneName : ""}
-CLOUDFLARED_TUNNEL_ID=${typeof bootstrapContext.cloudflareTunnelId === "string" ? bootstrapContext.cloudflareTunnelId : ""}
-CLOUDFLARED_TUNNEL_NAME=${typeof bootstrapContext.cloudflareTunnelName === "string" ? bootstrapContext.cloudflareTunnelName : ""}
-CLOUDFLARED_HOSTNAME_BASE=${typeof bootstrapContext.cloudflareHostnameBase === "string" ? bootstrapContext.cloudflareHostnameBase : ""}
+CLOUDFLARED_ZONE_NAME=${typeof cloudflareConfig.zoneName === "string" ? cloudflareConfig.zoneName : typeof bootstrapContext.cloudflareZoneName === "string" ? bootstrapContext.cloudflareZoneName : ""}
+CLOUDFLARED_TUNNEL_ID=${typeof cloudflareConfig.tunnelId === "string" ? cloudflareConfig.tunnelId : typeof bootstrapContext.cloudflareTunnelId === "string" ? bootstrapContext.cloudflareTunnelId : ""}
+CLOUDFLARED_TUNNEL_NAME=${typeof cloudflareConfig.tunnelName === "string" ? cloudflareConfig.tunnelName : typeof bootstrapContext.cloudflareTunnelName === "string" ? bootstrapContext.cloudflareTunnelName : ""}
+CLOUDFLARED_HOSTNAME_BASE=${typeof cloudflareConfig.hostnameBase === "string" ? cloudflareConfig.hostnameBase : typeof bootstrapContext.cloudflareHostnameBase === "string" ? bootstrapContext.cloudflareHostnameBase : ""}
+CLOUDFLARED_TUNNEL_TOKEN=${cloudflareTunnelToken}
 `,
     { mode: 0o600 },
   )

@@ -37,5 +37,10 @@ fi
 
 bash "$(dirname "${BASH_SOURCE[0]}")/../../aws-setup/scripts/prepare-dashboard-enrollment-secret.sh" --stack-name "${stack_name}" >/dev/null
 
+zone_config_path="${HOME}/.cloudflared/zone-config.json"
+if [[ -f "${zone_config_path}" ]]; then
+  bash "$(dirname "${BASH_SOURCE[0]}")/../../aws-setup/scripts/prepare-cloudflare-tunnel.sh" --stack-name "${stack_name}" >/dev/null
+fi
+
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 exec cdk "${subcommand}" "$@"

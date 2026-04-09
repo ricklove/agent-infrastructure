@@ -21,6 +21,7 @@ const sourceDir = dirname(fileURLToPath(import.meta.url))
 export interface CdkAdminStackProps extends StackProps {
   agentHome: string
   adminInstanceType: string
+  cloudflareTunnelConfigParameterName?: string
   runtimeRepoUrl: string
   runtimeRepoRef: string
 }
@@ -39,6 +40,11 @@ export class CdkAdminStack extends Stack {
         "DashboardEnrollmentRuntimeSecret",
         `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
       )
+    const cloudflareTunnelTokenSecret = secretsmanager.Secret.fromSecretNameV2(
+      this,
+      "CloudflareTunnelToken",
+      `/agent-infrastructure/${this.stackName}/cloudflare/tunnel-token`,
+    )
     const cdkBootstrapBucketArns = [
       `arn:${this.partition}:s3:::cdk-*`,
       `arn:${this.partition}:s3:::cdk-*/*`,
@@ -77,6 +83,25 @@ export class CdkAdminStack extends Stack {
       ),
     )
     dashboardEnrollmentRuntimeSecret.grantRead(adminRole)
+    if (props.cloudflareTunnelConfigParameterName?.trim()) {
+      cloudflareTunnelTokenSecret.grantRead(adminRole)
+      adminRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "ReadCloudflareTunnelConfig",
+          actions: ["ssm:GetParameter"],
+          resources: [
+            Stack.of(this).formatArn({
+              service: "ssm",
+              resource: "parameter",
+              resourceName: props.cloudflareTunnelConfigParameterName.replace(
+                /^\//,
+                "",
+              ),
+            }),
+          ],
+        }),
+      )
+    }
     adminRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "AdminReadInventory",
@@ -277,6 +302,12 @@ export class CdkAdminStack extends Stack {
       agentHome: props.agentHome,
       dashboardAccessApiBaseUrl: dashboardAccessUrl.url.replace(/\/$/, ""),
       dashboardEnrollmentSecretSecretName: `/agent-infrastructure/${this.stackName}/dashboard/enrollment-secret`,
+      cloudflareTunnelConfigParameterName:
+        props.cloudflareTunnelConfigParameterName ?? "",
+      cloudflareTunnelTokenSecretName:
+        props.cloudflareTunnelConfigParameterName?.trim()
+          ? `/agent-infrastructure/${this.stackName}/cloudflare/tunnel-token`
+          : "",
       adminCompatPort: 8787,
     }
 
