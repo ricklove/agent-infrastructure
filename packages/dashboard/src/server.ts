@@ -109,6 +109,55 @@ type AccessEnrollmentResponse = {
   expiresAtMs: number
 }
 
+type StackOutput = {
+  OutputKey?: string
+  OutputValue?: string
+}
+
+type StackSummary = {
+  StackName?: string
+  StackStatus?: string
+  Outputs?: StackOutput[]
+}
+
+type Ec2InstanceSummary = {
+  InstanceId?: string
+  PrivateIpAddress?: string
+  State?: { Name?: string }
+}
+
+type Ec2InstanceStatusSummary = {
+  InstanceId?: string
+  InstanceStatus?: { Status?: string }
+  SystemStatus?: { Status?: string }
+}
+
+type SsmInstanceSummary = {
+  InstanceId?: string
+  PingStatus?: string
+  LastPingDateTime?: string
+}
+
+type StackAdminRecord = {
+  stackName: string
+  stackStatus: string
+  managerInstanceId: string
+  managerPrivateIp: string
+  dashboardAccessUrl: string
+  dashboardHostname: string | null
+  manager: {
+    instanceState: string
+    systemStatus: string | null
+    instanceStatus: string | null
+    ssmPingStatus: string | null
+    lastSsmPingAt: string | null
+  }
+  dashboard: {
+    reachable: boolean
+    httpStatus: number | null
+  }
+}
+
 type SessionExchangeBody = {
   sessionKey: string
 }
@@ -698,6 +747,15 @@ function requestedWebSocketProtocols(request: Request): string[] {
     .filter(Boolean)
 }
 
+function execJson<T>(command: string, args: string[]): T {
+  const stdout = execFileSync(command, args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: process.env,
+  }).trim()
+  return JSON.parse(stdout) as T
+}
+
 function selectWebSocketProtocol(protocols: string[]): string | null {
   return protocols[0] ?? null
 }
@@ -752,6 +810,186 @@ async function fetchManagerJson<T>(path: string): Promise<T> {
   }
 
   return (await response.json()) as T
+}
+
+function stackOutputValue(
+  outputs: StackOutput[] | undefined,
+  key: string,
+): string {
+  return (
+    outputs?.find((output) => output.OutputKey === key)?.OutputValue?.trim() || ""
+  )
+}
+
+async function readDashboardHostnameFromParameter(
+  parameterName: string,
+): Promise<string | null> {
+  const trimmed = parameterName.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  try {
+    const parameter = execJson<{ Parameter?: { Value?: string } }>("aws", [
+      "ssm",
+      "get-parameter",
+      "--name",
+      trimmed,
+      "--output",
+      "json",
+    ])
+    const rawValue = parameter.Parameter?.Value?.trim() || ""
+    if (!rawValue) {
+      return null
+    }
+    const parsed = JSON.parse(rawValue) as { hostnameBase?: string }
+    return parsed.hostnameBase?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+async function checkDashboardReachability(
+  hostname: string | null,
+): Promise<{ reachable: boolean; httpStatus: number | null }> {
+  const trimmed = hostname?.trim() || ""
+  if (!trimmed) {
+    return { reachable: false, httpStatus: null }
+  }
+
+  try {
+    const response = await fetch(`https://${trimmed}/api/config`, {
+      signal: AbortSignal.timeout(4000),
+    })
+    return {
+      reachable: response.ok,
+      httpStatus: response.status,
+    }
+  } catch {
+    return { reachable: false, httpStatus: null }
+  }
+}
+
+async function listManagedStacks(): Promise<StackAdminRecord[]> {
+  const described = execJson<{ Stacks?: StackSummary[] }>("aws", [
+    "cloudformation",
+    "describe-stacks",
+    "--output",
+    "json",
+  ])
+  const candidateStacks = (described.Stacks ?? [])
+    .map((stack) => ({
+      stackName: stack.StackName?.trim() || "",
+      stackStatus: stack.StackStatus?.trim() || "",
+      outputs: stack.Outputs ?? [],
+    }))
+    .filter(
+      (stack) =>
+        stack.stackName !== "AgentAdminCdk" &&
+        Boolean(stackOutputValue(stack.outputs, "ManagerInstanceId")),
+    )
+
+  const instanceIds = candidateStacks
+    .map((stack) => stackOutputValue(stack.outputs, "ManagerInstanceId"))
+    .filter(Boolean)
+
+  const ec2Instances = instanceIds.length
+    ? execJson<{ Reservations?: Array<{ Instances?: Ec2InstanceSummary[] }> }>(
+        "aws",
+        [
+          "ec2",
+          "describe-instances",
+          "--instance-ids",
+          ...instanceIds,
+          "--output",
+          "json",
+        ],
+      )
+    : { Reservations: [] }
+  const instanceMap = new Map<string, Ec2InstanceSummary>()
+  for (const reservation of ec2Instances.Reservations ?? []) {
+    for (const instance of reservation.Instances ?? []) {
+      const instanceId = instance.InstanceId?.trim()
+      if (instanceId) {
+        instanceMap.set(instanceId, instance)
+      }
+    }
+  }
+
+  const ec2Statuses = instanceIds.length
+    ? execJson<{ InstanceStatuses?: Ec2InstanceStatusSummary[] }>("aws", [
+        "ec2",
+        "describe-instance-status",
+        "--include-all-instances",
+        "--instance-ids",
+        ...instanceIds,
+        "--output",
+        "json",
+      ])
+    : { InstanceStatuses: [] }
+  const statusMap = new Map<string, Ec2InstanceStatusSummary>()
+  for (const status of ec2Statuses.InstanceStatuses ?? []) {
+    const instanceId = status.InstanceId?.trim()
+    if (instanceId) {
+      statusMap.set(instanceId, status)
+    }
+  }
+
+  const ssmInfo = execJson<{ InstanceInformationList?: SsmInstanceSummary[] }>(
+    "aws",
+    ["ssm", "describe-instance-information", "--output", "json"],
+  )
+  const ssmMap = new Map<string, SsmInstanceSummary>()
+  for (const instance of ssmInfo.InstanceInformationList ?? []) {
+    const instanceId = instance.InstanceId?.trim()
+    if (instanceId) {
+      ssmMap.set(instanceId, instance)
+    }
+  }
+
+  const records = await Promise.all(
+    candidateStacks.map(async (stack) => {
+      const managerInstanceId = stackOutputValue(stack.outputs, "ManagerInstanceId")
+      const privateIp =
+        stackOutputValue(stack.outputs, "ManagerPrivateIp") ||
+        instanceMap.get(managerInstanceId)?.PrivateIpAddress?.trim() ||
+        ""
+      const dashboardAccessUrl = stackOutputValue(
+        stack.outputs,
+        "DashboardAccessUrl",
+      )
+      const cloudflareConfigParameterName = stackOutputValue(
+        stack.outputs,
+        "CloudflareTunnelConfigParameterName",
+      )
+      const dashboardHostname = await readDashboardHostnameFromParameter(
+        cloudflareConfigParameterName,
+      )
+      const dashboard = await checkDashboardReachability(dashboardHostname)
+      const instance = instanceMap.get(managerInstanceId)
+      const instanceStatus = statusMap.get(managerInstanceId)
+      const ssm = ssmMap.get(managerInstanceId)
+
+      return {
+        stackName: stack.stackName,
+        stackStatus: stack.stackStatus,
+        managerInstanceId,
+        managerPrivateIp: privateIp,
+        dashboardAccessUrl,
+        dashboardHostname,
+        manager: {
+          instanceState: instance?.State?.Name?.trim() || "unknown",
+          systemStatus: instanceStatus?.SystemStatus?.Status?.trim() || null,
+          instanceStatus: instanceStatus?.InstanceStatus?.Status?.trim() || null,
+          ssmPingStatus: ssm?.PingStatus?.trim() || null,
+          lastSsmPingAt: ssm?.LastPingDateTime?.trim() || null,
+        },
+        dashboard,
+      } satisfies StackAdminRecord
+    }),
+  )
+
+  return records.sort((left, right) => left.stackName.localeCompare(right.stackName))
 }
 
 async function isBackendHealthy(
@@ -976,6 +1214,35 @@ async function handleApi(request: Request): Promise<Response> {
               : "failed to create enrollment ticket",
         },
         502,
+      )
+    }
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/stack-admin/stacks") {
+    const unauthorized = requireDashboardSession(request)
+    if (unauthorized) {
+      return unauthorized
+    }
+    if (dashboardHostRole !== "admin") {
+      return jsonResponse({ ok: false, error: "stack admin is not enabled" }, 404)
+    }
+
+    try {
+      const stacks = await listManagedStacks()
+      return jsonResponse({
+        ok: true,
+        stacks,
+      })
+    } catch (error) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "failed to load managed stacks",
+        },
+        500,
       )
     }
   }

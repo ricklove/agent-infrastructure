@@ -6,4 +6,9 @@ export const stackAdminDashboardPlugin: DashboardFeaturePlugin = {
   route: "/admin",
   description: "Cross-stack administration surface for stack discovery and repair.",
   icon: "admin",
+  screen: {
+    getProps: ({ windowOrigin }) => ({
+      apiRootUrl: `${windowOrigin}/api/stack-admin`,
+    }),
+  },
 }
