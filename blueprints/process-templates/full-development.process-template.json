@@ -1,0 +1,125 @@
+{
+  "id": "full_development_template",
+  "title": "Full Development",
+  "variables": ["targetProject", "workLocation", "previewSteps", "mergeSteps"],
+  "blueprint": {
+    "expectation": "Use the configured work location as the only mutable implementation surface for {{targetProject}} development work. Never edit from a shared checkout or any unapproved worktree. Before implementation, read the relevant blueprint and blueprint-state, complete the current bounded revision, then follow the configured merge and preview steps to finish the process.",
+    "idlePrompt": "If you fully completed the development process, reply only with 'done: full development process complete'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: full development process blocked'. Otherwise resume the work immediately and perform the next required implementation, verification, release, deploy, or validation step instead of giving only a status update.",
+    "completionMode": "exact_reply",
+    "completionToken": "done: full development process complete",
+    "blockedToken": "blocked: full development process blocked",
+    "stopConditions": [
+      "full development process complete",
+      "blocked on user or environment dependency"
+    ],
+    "steps": [
+      {
+        "id": "worker_development_surface",
+        "title": "Prepare the worker development surface",
+        "steps": [{ "use": "{{workLocation}}" }]
+      },
+      {
+        "id": "worker_revision_cycle",
+        "title": "Complete the worker revision",
+        "steps": [
+          {
+            "id": "read_relevant_blueprint",
+            "title": "Read the relevant blueprint"
+          },
+          {
+            "id": "update_relevant_blueprint_if_needed",
+            "title": "Update the relevant blueprint if implementation intent or ideal structure changed"
+          },
+          {
+            "id": "read_relevant_blueprint_state",
+            "title": "Read the relevant blueprint-state"
+          },
+          {
+            "id": "update_relevant_blueprint_state_if_needed",
+            "title": "Update the relevant blueprint-state if the recorded current reality, current files, or planned files are stale before implementation"
+          },
+          {
+            "id": "confirm_current_revision_scope",
+            "title": "Confirm the current bounded implementation scope from the blueprint and blueprint-state"
+          },
+          {
+            "id": "implement_revision",
+            "title": "Implement the current revision on the worker branch",
+            "steps": [
+              {
+                "id": "make_bounded_code_change",
+                "title": "Make the next bounded code change on the worker branch"
+              },
+              {
+                "id": "run_stable_change_lint",
+                "title": "Run `bun lint` after each stable code change unless an explicit hotfix exception is recorded"
+              },
+              {
+                "id": "run_stable_change_build",
+                "title": "Run `bun build` after each stable code change before that change can be treated as stable"
+              },
+              {
+                "id": "revise_until_stable_checks_pass",
+                "title": "Revise the current change until the required stable-change verification passes"
+              }
+            ]
+          },
+          { "use": "worker_local_verification" },
+          {
+            "id": "update_blueprint_state_after_implementation",
+            "title": "Update the relevant blueprint-state to reflect the latest implementation reality"
+          },
+          {
+            "id": "collect_team_blueprint_state_review",
+            "title": "Ask each team profile sub agent to review the updated blueprint-state against the blueprint and current implementation and report correctness plus any remaining required changes"
+          },
+          {
+            "id": "decide_blueprint_state_and_remaining_work",
+            "title": "Is the blueprint-state correct and does the team agree that no more implementation changes are required for the current scope?",
+            "kind": "decision",
+            "decision": {
+              "prompt": "Is the blueprint-state correct and does the team agree that no more implementation changes are required for the current scope?",
+              "options": [
+                {
+                  "id": "blueprint_state_or_implementation_needs_more_changes",
+                  "title": "The blueprint-state is incorrect, incomplete, or shows more implementation changes are required",
+                  "goto": "implement_revision"
+                },
+                {
+                  "id": "blueprint_state_correct_and_scope_complete",
+                  "title": "The blueprint-state is correct and the current implementation scope is complete",
+                  "next": true
+                }
+              ]
+            }
+          },
+          {
+            "id": "commit_milestone",
+            "title": "Commit the stable milestone on the feature branch"
+          },
+          { "use": "{{mergeSteps}}" }
+        ]
+      },
+      {
+        "id": "preview_and_finish",
+        "title": "Preview and finish the development process",
+        "steps": [
+          { "use": "{{previewSteps}}" },
+          {
+            "id": "cleanup_feature_branch_and_worktree",
+            "title": "Clean up the feature branch and worktree"
+          },
+          {
+            "id": "summarize_changes",
+            "title": "Summarize changes"
+          }
+        ]
+      }
+    ],
+    "watchdog": {
+      "enabled": true,
+      "idleTimeoutSeconds": 120,
+      "maxNudgesPerIdleEpisode": 0
+    }
+  }
+}

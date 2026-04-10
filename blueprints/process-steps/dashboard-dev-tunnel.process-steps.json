@@ -1,0 +1,5 @@
+{
+  "id": "dashboard_dev_tunnel",
+  "title": "Dashboard dev tunnel preview steps",
+  "steps": [{ "use": "manager_dashboard_verification" }]
+}

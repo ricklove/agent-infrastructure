@@ -1,0 +1,10 @@
+{
+  "id": "merge_development",
+  "title": "Merge into development steps",
+  "steps": [
+    {
+      "id": "merge_into_development",
+      "title": "Run `bun run agent:merge-manager-feature -- <feature-branch-name>` to merge the local feature branch from its manager worktree and push `development` to origin"
+    }
+  ]
+}

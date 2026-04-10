@@ -78,7 +78,7 @@ export {
   nextCanonicalDashboardReleaseTag,
   parseCanonicalDashboardReleaseTag,
   type CanonicalDashboardReleaseParts,
-} from "./release-version.js"
+} from "./release-version.ts"
 
 export {
   dashboardBasicFeatureIds,
@@ -94,7 +94,7 @@ export {
   type DashboardEnterStyle,
   type DashboardPreferences,
   type DashboardVisibilityMode,
-} from "./preferences.js"
+} from "./preferences.ts"
 
 export {
   createDashboardSessionHeaders,
@@ -103,4 +103,4 @@ export {
   dashboardSessionFetch,
   dashboardSessionWebSocketProtocols,
   readDashboardSessionToken,
-} from "./session-client.js"
+} from "./session-client.ts"

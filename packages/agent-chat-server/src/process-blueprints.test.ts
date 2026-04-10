@@ -135,4 +135,74 @@ describe("loadProcessBlueprintCatalog", () => {
     }
     expect(processBlueprint.steps[0]?.id).toBe("workspace_step")
   })
+
+  test("template-backed process blueprints resolve variables and step bundles", () => {
+    const projectRoot = createTempCatalogRoot()
+    const projectBlueprintDir = join(projectRoot, "process-blueprints")
+    const projectTemplateDir = join(projectRoot, "process-templates")
+    const projectStepDir = join(projectRoot, "process-steps")
+
+    writeJson(join(projectStepDir, "manager-worktree.process-steps.json"), {
+      id: "manager_worktree",
+      title: "Manager worktree",
+      steps: [
+        { id: "prepare_manager_worktree", title: "Prepare manager worktree" },
+      ],
+    })
+    writeJson(join(projectStepDir, "merge-development.process-steps.json"), {
+      id: "merge_development",
+      title: "Merge development",
+      steps: [
+        { id: "merge_into_development", title: "Merge into development" },
+      ],
+    })
+    writeJson(join(projectTemplateDir, "define-process.process-template.json"), {
+      id: "define_process_template",
+      title: "Define Process",
+      variables: ["targetProject", "workLocation", "mergeSteps"],
+      blueprint: {
+        expectation:
+          "Use the configured work location for {{targetProject}} process definition work.",
+        idlePrompt: "idle",
+        completionMode: "exact_reply",
+        completionToken: "done: process defined",
+        blockedToken: "blocked: process definition requires clarification",
+        stopConditions: ["process-definition work complete"],
+        watchdog: {
+          enabled: true,
+          idleTimeoutSeconds: 90,
+          maxNudgesPerIdleEpisode: 0,
+        },
+        steps: [{ use: "{{workLocation}}" }, { use: "{{mergeSteps}}" }],
+      },
+    })
+    writeJson(join(projectBlueprintDir, "define-process-t.process-blueprint.json"), {
+      id: "define_process_t",
+      title: "Define Process (T)",
+      catalogOrder: 99,
+      template: "define_process_template",
+      variables: {
+        targetProject: "agent-infrastructure",
+        workLocation: "manager_worktree",
+        mergeSteps: "merge_development",
+      },
+    })
+
+    const [processBlueprint] = loadProcessBlueprintCatalog({
+      processBlueprintDirs: [projectBlueprintDir],
+      processTemplateDirs: [projectTemplateDir],
+      processStepDirs: [projectStepDir],
+    })
+
+    expect(processBlueprint).toBeDefined()
+    expect(isProceduralProcessBlueprint(processBlueprint)).toBe(true)
+    if (!isProceduralProcessBlueprint(processBlueprint)) {
+      throw new Error("expected a procedural process blueprint")
+    }
+    expect(processBlueprint.expectation).toContain("agent-infrastructure")
+    expect(processBlueprint.steps.map((step) => step.id)).toEqual([
+      "prepare_manager_worktree",
+      "merge_into_development",
+    ])
+  })
 })

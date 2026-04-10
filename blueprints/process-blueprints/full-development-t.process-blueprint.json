@@ -1,0 +1,12 @@
+{
+  "id": "full_development_t",
+  "title": "Full Development (T)",
+  "catalogOrder": 52,
+  "template": "full_development_template",
+  "variables": {
+    "targetProject": "agent-infrastructure",
+    "workLocation": "worker_16gb",
+    "previewSteps": "dashboard_dev_tunnel",
+    "mergeSteps": "merge_deploy"
+  }
+}
