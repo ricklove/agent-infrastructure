@@ -1,3 +1,10 @@
+import {
+  dashboardEnterStyleHint,
+  dashboardEnterStyleShortLabel,
+  isDashboardSendShortcut,
+  readDashboardPreferences,
+  subscribeDashboardPreferences,
+} from "@agent-infrastructure/dashboard-plugin"
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import ReactFlow, {
   addEdge,
@@ -436,6 +443,9 @@ function DraftPromptCard({
   data: DraftPromptNodeData
   selected: boolean
 }) {
+  const [enterStyle, setEnterStyle] = useState(
+    () => readDashboardPreferences().enterStyle,
+  )
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const dragStateRef = useRef<{ x: number; y: number } | null>(null)
 
@@ -490,7 +500,7 @@ function DraftPromptCard({
             ? "Starting chat"
             : data.sessionStatus === "failed"
               ? "Chat failed"
-              : "Enter submits"}
+              : dashboardEnterStyleShortLabel(enterStyle)}
         </span>
       </div>
       <textarea
@@ -498,7 +508,7 @@ function DraftPromptCard({
         value={data.text}
         onChange={(event) => data.onChange(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
+          if (isDashboardSendShortcut(event, enterStyle)) {
             event.preventDefault()
             data.onSubmit()
           }
@@ -513,7 +523,7 @@ function DraftPromptCard({
       <div className="mt-3 flex items-center justify-between text-xs text-stone-400">
         <span>
           {data.sessionStatus === "ready"
-            ? "Shift+Enter for newline"
+            ? dashboardEnterStyleHint(enterStyle)
             : "Preparing session"}
         </span>
         <button
@@ -737,10 +747,19 @@ export function UiDesignCanvasScreen({
   defaultSessionDirectory: sessionDirectory = defaultSessionDirectory,
   defaultProcessBlueprintId = defaultSessionProcessBlueprintId,
 }: UiDesignCanvasScreenProps) {
+  const [enterStyle, setEnterStyle] = useState(
+    () => readDashboardPreferences().enterStyle,
+  )
   const reactFlowRef = useRef<ReactFlowInstance<CanvasNodeData, Edge> | null>(
     null,
   )
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 })
+
+  useEffect(() => {
+    return subscribeDashboardPreferences(() => {
+      setEnterStyle(readDashboardPreferences().enterStyle)
+    })
+  }, [])
   const strokeCounterRef = useRef(0)
   const nodeCounterRef = useRef(2)
   const edgeCounterRef = useRef(1)
@@ -1807,7 +1826,7 @@ export function UiDesignCanvasScreen({
                 value={chatDraft}
                 onChange={(event) => setChatDraft(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
+                  if (isDashboardSendShortcut(event, enterStyle)) {
                     event.preventDefault()
                     void submitChatDraft()
                   }
@@ -1816,7 +1835,7 @@ export function UiDesignCanvasScreen({
                 placeholder="Continue the linked agent-chat session."
               />
               <div className="mt-3 flex items-center justify-between text-xs text-stone-400">
-                <span>Each prompt node gets its own backing chat session.</span>
+                <span>{dashboardEnterStyleHint(enterStyle)}</span>
                 <button
                   type="button"
                   onClick={() => void submitChatDraft()}
