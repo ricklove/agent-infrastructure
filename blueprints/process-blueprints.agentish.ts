@@ -12,10 +12,12 @@ const ProcessBlueprints = define.system("ProcessBlueprints", {
 const Artifact = {
   catalog: define.workspace("BlueprintCatalog"),
   processBlueprint: define.document("ProcessBlueprintJson"),
+  processTemplate: define.document("ProcessTemplateJson"),
   processStepBundle: define.document("ProcessStepBundleJson"),
   companionGuide: define.document("ProcessBlueprintGuide"),
   sessionAssignment: define.document("SessionProcessBlueprintAssignment"),
   catalogOrder: define.document("ProcessBlueprintCatalogOrder"),
+  ticketProcessConfig: define.document("TicketOwnedProcessConfig"),
 };
 
 const Actor = {
@@ -31,18 +33,27 @@ const Policy = {
   sessionScoped: define.concept("SessionScopedExpectation"),
   expectationDrivenIdleWatchdog: define.concept("ExpectationDrivenIdleWatchdog"),
   progressiveCatalogOrder: define.concept("ProgressiveProcessCatalogOrder"),
+  templateAuthoringSource: define.concept("TemplateAuthoringSource"),
+  ticketOwnedConfig: define.concept("TicketOwnedProcessConfigAuthority"),
+  preConfirmationGate: define.concept("ProcessConfigPreConfirmationGate"),
 };
 
 ProcessBlueprints.enforces(`
 - Process blueprints live under blueprints/ as first-class blueprint artifacts.
 - Shared workspace process blueprints and process-step bundles may also load from `/home/ec2-user/workspace/blueprints/` as a common overlay surface.
+- Shared workspace process templates may also load from `/home/ec2-user/workspace/blueprints/` as a common overlay surface.
 - A process blueprint must be machine-readable without requiring prose parsing.
+- A process template must be machine-readable without requiring prose parsing.
 - A process blueprint may optionally have an Agentish companion guide with the same basename.
 - The JSON process blueprint is the primary system contract for discovery, assignment, and ticket-owned continuation behavior.
+- Process templates are authoring inputs that must resolve into ordinary process blueprints before runtime execution begins.
 - Process blueprint is legacy naming for what is conceptually an agent-process definition rather than a live process-state holder.
 - The JSON process blueprint should carry an explicit catalog order so the process list is presented in a stable progressive sequence rather than inferred from title sorting.
 - A session may select one process blueprint as its active expectation contract.
 - Session selection should resolve into a ticket-pinned process snapshot before long-running runtime work depends on that process.
+- When a selected process blueprint was instantiated from a template, the ticket must own the effective process config, override set, and confirmation state.
+- Template-backed process execution must pass through a pre-confirmation gate before ordinary ticket steps begin.
+- Only template variables explicitly declared overridable may be changed after process selection.
 - Starting a process should emit one canonical expectation event that includes the expectation message and the full process outline for the newly focused ticket.
 - Process steps may represent ordinary work, waiting states, or constrained decision points.
 - Process steps may also contain nested substeps that remain hierarchical in the outline while executing depth-first like ordinary steps.
@@ -73,8 +84,12 @@ ProcessBlueprints.defines(`
 - ExpectationStartEvent means process start should surface one initial canonical event that shows both the selected expectation and the full step outline.
 - ProcessDecisionStep means one named step whose allowed outcomes are explicitly enumerated in the machine contract rather than improvised from transcript prose.
 - ProcessStepBundleJson means one reusable machine-readable step bundle that may be imported into one or more process definitions.
+- ProcessTemplateJson means one reusable machine-readable template source that resolves into an ordinary process blueprint after bindings and validation.
 - CanonicalNestedProcessBlueprint means one repository-defined process blueprint that keeps the user-visible structured workflow in a nested step tree rather than maintaining a parallel flat duplicate.
 - ExplicitMutableSurfaceExpectation means a mutable process expectation opens by naming the one allowed editing surface and by forbidding edits from the shared repository checkout.
+- TemplateAuthoringSource means templates are source artifacts for authoring reusable process shapes rather than a separate runtime process class.
+- TicketOwnedProcessConfig means the ticket record owns the confirmed effective config, accepted override set, and confirmation state for template-backed processes.
+- ProcessConfigPreConfirmationGate means a template-backed process may not begin ordinary ticket-step execution until its ticket-owned effective config has been confirmed or corrected and revalidated.
 - ProcessWaitStep means one named step whose purpose is to remain in a waiting state until an external event or user response arrives.
 - ProcessDecisionNextOutcome means a decision option that advances to the immediately following step without naming a separate target id.
 - ProcessDecisionBlockOutcome means a decision option that blocks the process instead of advancing.
@@ -86,22 +101,31 @@ ProcessBlueprints.defines(`
 ProcessBlueprints.contains(
   Artifact.catalog,
   Artifact.processBlueprint,
+  Artifact.processTemplate,
   Artifact.processStepBundle,
   Artifact.companionGuide,
   Artifact.sessionAssignment,
   Artifact.catalogOrder,
+  Artifact.ticketProcessConfig,
   Policy.jsonPrimary,
   Policy.optionalGuide,
   Policy.sharedCatalog,
   Policy.sessionScoped,
   Policy.expectationDrivenIdleWatchdog,
   Policy.progressiveCatalogOrder,
+  Policy.templateAuthoringSource,
+  Policy.ticketOwnedConfig,
+  Policy.preConfirmationGate,
 );
 
 when(Artifact.catalog.contains(Artifact.processBlueprint))
   .then(ProcessBlueprints.requires(Policy.jsonPrimary))
   .and(ProcessBlueprints.requires(Policy.sharedCatalog))
   .and(ProcessBlueprints.requires(Policy.progressiveCatalogOrder));
+
+when(Artifact.catalog.contains(Artifact.processTemplate))
+  .then(ProcessBlueprints.requires(Policy.templateAuthoringSource))
+  .and(ProcessBlueprints.expects("templates to resolve into ordinary process blueprints before catalog-driven execution"));
 
 when(Artifact.processBlueprint.pairsWith("an optional companion guide"))
   .then(ProcessBlueprints.requires(Policy.optionalGuide))
@@ -110,7 +134,13 @@ when(Artifact.processBlueprint.pairsWith("an optional companion guide"))
 when(Actor.operator.assigns(Artifact.processBlueprint).to(Artifact.sessionAssignment))
   .then(ProcessBlueprints.requires(Policy.sessionScoped))
   .and(ProcessBlueprints.expects("the assigned process blueprint id to be durable session metadata"))
-  .and(ProcessBlueprints.prefers("ticket runtime state to pin an immutable snapshot of the selected process definition"));
+  .and(ProcessBlueprints.prefers("ticket runtime state to pin an immutable snapshot of the selected process definition"))
+  .and(ProcessBlueprints.expects("template-backed process config to become ticket-owned runtime state before execution begins"));
+
+when(Artifact.processTemplate.exists())
+  .then(ProcessBlueprints.requires(Policy.ticketOwnedConfig))
+  .and(ProcessBlueprints.requires(Policy.preConfirmationGate))
+  .and(ProcessBlueprints.expects("runtime execution to read the ticket-owned effective config rather than hidden loader-only defaults"));
 
 when(Actor.system.observes("a session idle transition while expectation work remains unresolved"))
   .then(ProcessBlueprints.requires(Policy.expectationDrivenIdleWatchdog))

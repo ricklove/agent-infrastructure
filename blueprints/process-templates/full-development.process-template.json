@@ -1,7 +1,12 @@
 {
   "id": "full_development_template",
   "title": "Full Development",
-  "variables": ["targetProject", "workLocation", "previewSteps", "mergeSteps"],
+  "variables": {
+    "targetProject": { "overridable": false, "required": true },
+    "workLocation": { "overridable": true, "required": true },
+    "previewSteps": { "overridable": false, "required": true },
+    "mergeSteps": { "overridable": false, "required": true }
+  },
   "blueprint": {
     "expectation": "Use the configured work location as the only mutable implementation surface for {{targetProject}} development work. Never edit from a shared checkout or any unapproved worktree. Before implementation, read the relevant blueprint and blueprint-state, complete the current bounded revision, then follow the configured merge and preview steps to finish the process.",
     "idlePrompt": "If you fully completed the development process, reply only with 'done: full development process complete'. If you are truly blocked on a user or environment dependency, reply only with 'blocked: full development process blocked'. Otherwise resume the work immediately and perform the next required implementation, verification, release, deploy, or validation step instead of giving only a status update.",

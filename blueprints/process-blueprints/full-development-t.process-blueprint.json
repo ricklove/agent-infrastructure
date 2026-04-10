@@ -3,7 +3,7 @@
   "title": "Full Development (T)",
   "catalogOrder": 52,
   "template": "full_development_template",
-  "variables": {
+  "bindings": {
     "targetProject": "agent-infrastructure",
     "workLocation": "worker_16gb",
     "previewSteps": "dashboard_dev_tunnel",

@@ -1,7 +1,11 @@
 {
   "id": "define_process_template",
   "title": "Define Process",
-  "variables": ["targetProject", "workLocation", "mergeSteps"],
+  "variables": {
+    "targetProject": { "overridable": false, "required": true },
+    "workLocation": { "overridable": true, "required": true },
+    "mergeSteps": { "overridable": false, "required": true }
+  },
   "blueprint": {
     "expectation": "Use the configured work location as the only mutable surface for {{targetProject}} process-definition work. Never edit process definition files from the shared repository checkout. Create or update the needed process definition layer from that configured surface, then finalize using the configured merge steps.",
     "idlePrompt": "If the process-definition work is complete, reply only with 'done: process defined'. If you are truly blocked on missing user information or an environment dependency, reply only with 'blocked: process definition requires clarification'. Otherwise resume the process-definition work immediately and perform the next required blueprint, integration, deploy, or validation step instead of giving only a status update.",

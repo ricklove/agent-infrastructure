@@ -156,37 +156,47 @@ describe("loadProcessBlueprintCatalog", () => {
         { id: "merge_into_development", title: "Merge into development" },
       ],
     })
-    writeJson(join(projectTemplateDir, "define-process.process-template.json"), {
-      id: "define_process_template",
-      title: "Define Process",
-      variables: ["targetProject", "workLocation", "mergeSteps"],
-      blueprint: {
-        expectation:
-          "Use the configured work location for {{targetProject}} process definition work.",
-        idlePrompt: "idle",
-        completionMode: "exact_reply",
-        completionToken: "done: process defined",
-        blockedToken: "blocked: process definition requires clarification",
-        stopConditions: ["process-definition work complete"],
-        watchdog: {
-          enabled: true,
-          idleTimeoutSeconds: 90,
-          maxNudgesPerIdleEpisode: 0,
+    writeJson(
+      join(projectTemplateDir, "define-process.process-template.json"),
+      {
+        id: "define_process_template",
+        title: "Define Process",
+        variables: {
+          targetProject: { overridable: false, required: true },
+          workLocation: { overridable: true, required: true },
+          mergeSteps: { overridable: false, required: true },
         },
-        steps: [{ use: "{{workLocation}}" }, { use: "{{mergeSteps}}" }],
+        blueprint: {
+          expectation:
+            "Use the configured work location for {{targetProject}} process definition work.",
+          idlePrompt: "idle",
+          completionMode: "exact_reply",
+          completionToken: "done: process defined",
+          blockedToken: "blocked: process definition requires clarification",
+          stopConditions: ["process-definition work complete"],
+          watchdog: {
+            enabled: true,
+            idleTimeoutSeconds: 90,
+            maxNudgesPerIdleEpisode: 0,
+          },
+          steps: [{ use: "{{workLocation}}" }, { use: "{{mergeSteps}}" }],
+        },
       },
-    })
-    writeJson(join(projectBlueprintDir, "define-process-t.process-blueprint.json"), {
-      id: "define_process_t",
-      title: "Define Process (T)",
-      catalogOrder: 99,
-      template: "define_process_template",
-      variables: {
-        targetProject: "agent-infrastructure",
-        workLocation: "manager_worktree",
-        mergeSteps: "merge_development",
+    )
+    writeJson(
+      join(projectBlueprintDir, "define-process-t.process-blueprint.json"),
+      {
+        id: "define_process_t",
+        title: "Define Process (T)",
+        catalogOrder: 99,
+        template: "define_process_template",
+        bindings: {
+          targetProject: "agent-infrastructure",
+          workLocation: "manager_worktree",
+          mergeSteps: "merge_development",
+        },
       },
-    })
+    )
 
     const [processBlueprint] = loadProcessBlueprintCatalog({
       processBlueprintDirs: [projectBlueprintDir],
@@ -200,6 +210,13 @@ describe("loadProcessBlueprintCatalog", () => {
       throw new Error("expected a procedural process blueprint")
     }
     expect(processBlueprint.expectation).toContain("agent-infrastructure")
+    expect(processBlueprint.processConfig?.bindings.workLocation).toBe(
+      "manager_worktree",
+    )
+    expect(
+      processBlueprint.processConfig?.variableDeclarations.workLocation
+        ?.overridable,
+    ).toBe(true)
     expect(processBlueprint.steps.map((step) => step.id)).toEqual([
       "prepare_manager_worktree",
       "merge_into_development",
