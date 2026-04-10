@@ -1,4 +1,5 @@
 import {
+  dashboardSessionFetch,
   dashboardEnterStyleHint,
   readDashboardPreferences,
   subscribeDashboardPreferences,
@@ -7,6 +8,21 @@ import {
   type DashboardVisibilityMode,
 } from "@agent-infrastructure/dashboard-plugin"
 import { type ReactNode, useEffect, useState } from "react"
+
+type RuntimeReleaseRecord = {
+  tag: string
+  version: string | null
+}
+
+type RuntimeReleaseStatus = {
+  ok: true
+  currentVersion: string
+  currentReleaseTag: string | null
+  latestReleaseTag: string | null
+  latestVersion: string | null
+  updateAvailable: boolean
+  recentReleaseTags: RuntimeReleaseRecord[]
+}
 
 function SettingsCard(props: {
   eyebrow: string
@@ -69,11 +85,56 @@ function OptionButton<T extends string>(props: {
 
 export function DashboardSettingsScreen() {
   const [preferences, setPreferences] = useState(() => readDashboardPreferences())
+  const [runtimeReleaseStatus, setRuntimeReleaseStatus] =
+    useState<RuntimeReleaseStatus | null>(null)
+  const [runtimeReleaseError, setRuntimeReleaseError] = useState("")
+  const [runtimeActionMessage, setRuntimeActionMessage] = useState("")
+  const [selectedReleaseTag, setSelectedReleaseTag] = useState("")
+  const [runtimeActionPending, setRuntimeActionPending] = useState(false)
 
   useEffect(() => {
     return subscribeDashboardPreferences(() => {
       setPreferences(readDashboardPreferences())
     })
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadRuntimeReleaseStatus() {
+      try {
+        setRuntimeReleaseError("")
+        const response = (await dashboardSessionFetch(
+          "/api/runtime-release",
+        )) as Response
+        if (!response.ok) {
+          throw new Error("failed to load runtime release status")
+        }
+
+        const payload = (await response.json()) as RuntimeReleaseStatus
+        if (cancelled) {
+          return
+        }
+
+        setRuntimeReleaseStatus(payload)
+        setSelectedReleaseTag((currentValue) =>
+          currentValue || payload.latestReleaseTag || payload.recentReleaseTags[0]?.tag || "",
+        )
+      } catch (nextError) {
+        if (!cancelled) {
+          setRuntimeReleaseError(
+            nextError instanceof Error
+              ? nextError.message
+              : "failed to load runtime release status",
+          )
+        }
+      }
+    }
+
+    void loadRuntimeReleaseStatus()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   function updateDashboardMode(dashboardMode: DashboardVisibilityMode) {
@@ -82,6 +143,43 @@ export function DashboardSettingsScreen() {
 
   function updateEnterStyle(enterStyle: DashboardEnterStyle) {
     setPreferences(writeDashboardPreferences({ enterStyle }))
+  }
+
+  async function requestRuntimeDeploy(
+    payload: { target: "latest" } | { target: "tag"; tag: string },
+  ) {
+    try {
+      setRuntimeActionPending(true)
+      setRuntimeActionMessage("")
+      setRuntimeReleaseError("")
+      const response = (await dashboardSessionFetch(
+        "/api/runtime-release/deploy",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+          },
+          body: JSON.stringify(payload),
+        },
+      )) as Response
+      if (!response.ok && response.status !== 202) {
+        throw new Error("failed to request deploy")
+      }
+
+      setRuntimeActionMessage(
+        payload.target === "latest"
+          ? "Latest release deploy requested. The dashboard may reconnect while the manager restarts."
+          : `Deploy requested for ${payload.tag}. The dashboard may reconnect while the manager restarts.`,
+      )
+    } catch (nextError) {
+      setRuntimeReleaseError(
+        nextError instanceof Error
+          ? nextError.message
+          : "failed to request deploy",
+      )
+    } finally {
+      setRuntimeActionPending(false)
+    }
   }
 
   return (
@@ -152,6 +250,102 @@ export function DashboardSettingsScreen() {
             <p className="mt-4 text-sm text-slate-400">
               Current behavior: {dashboardEnterStyleHint(preferences.enterStyle)}
             </p>
+          </SettingsCard>
+
+          <SettingsCard
+            eyebrow="Release"
+            title="Runtime Release"
+            description="Check the deployed dashboard release, compare it with the latest visible release tag, and deploy the latest release or a specific existing release tag."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-3xl border border-white/10 bg-slate-950/70 px-4 py-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Current
+                </div>
+                <div className="mt-2 text-sm font-semibold text-white">
+                  {runtimeReleaseStatus?.currentReleaseTag ?? "Untagged runtime"}
+                </div>
+                <div className="mt-2 text-sm text-slate-400">
+                  {runtimeReleaseStatus?.currentVersion ?? "Loading version..."}
+                </div>
+              </div>
+              <div className="rounded-3xl border border-white/10 bg-slate-950/70 px-4 py-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                  Latest
+                </div>
+                <div className="mt-2 text-sm font-semibold text-white">
+                  {runtimeReleaseStatus?.latestReleaseTag ?? "No release tags found"}
+                </div>
+                <div className="mt-2 text-sm text-slate-400">
+                  {runtimeReleaseStatus?.latestVersion ?? "No canonical release version yet"}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void requestRuntimeDeploy({ target: "latest" })}
+                disabled={runtimeActionPending}
+                className="inline-flex items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-300/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Deploy Latest
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+              <label className="block">
+                <span className="mb-2 block text-sm text-slate-300">
+                  Specific release tag
+                </span>
+                <select
+                  value={selectedReleaseTag}
+                  onChange={(event) => setSelectedReleaseTag(event.target.value)}
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-300/50"
+                >
+                  {runtimeReleaseStatus?.recentReleaseTags.length ? (
+                    runtimeReleaseStatus.recentReleaseTags.map((release) => (
+                      <option key={release.tag} value={release.tag}>
+                        {release.tag}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No release tags available</option>
+                  )}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  selectedReleaseTag
+                    ? void requestRuntimeDeploy({
+                        target: "tag",
+                        tag: selectedReleaseTag,
+                      })
+                    : undefined
+                }
+                disabled={runtimeActionPending || !selectedReleaseTag}
+                className="self-end inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Deploy Selected
+              </button>
+            </div>
+
+            {runtimeReleaseStatus?.updateAvailable ? (
+              <p className="mt-4 text-sm text-amber-200">
+                A newer visible release tag is available than the one currently deployed.
+              </p>
+            ) : null}
+            {runtimeActionMessage ? (
+              <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm leading-6 text-cyan-100">
+                {runtimeActionMessage}
+              </div>
+            ) : null}
+            {runtimeReleaseError ? (
+              <div className="mt-4 rounded-2xl border border-rose-400/25 bg-rose-400/10 px-4 py-3 text-sm leading-6 text-rose-100">
+                {runtimeReleaseError}
+              </div>
+            ) : null}
           </SettingsCard>
         </div>
       </div>

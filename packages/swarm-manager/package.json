@@ -11,6 +11,7 @@
     "run:issue-dashboard-session": "bun run src/manager/issue-dashboard-session.ts",
     "run:open-dashboard": "bun run src/manager/open-dashboard.ts",
     "run:request-workspace-persistence": "bun run src/manager/request-workspace-persistence.ts",
+    "run:next-release-tag": "bun run src/manager/next-release-tag.ts",
     "run:update-runtime": "bun run src/manager/update-runtime.ts",
     "run:setup-manager-host": "bun run src/manager/setup-host.ts",
     "run:setup-host": "bun run src/manager/setup-host.ts",
@@ -35,6 +36,7 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "@agent-infrastructure/dashboard-app": "workspace:*"
+    "@agent-infrastructure/dashboard-app": "workspace:*",
+    "@agent-infrastructure/dashboard-plugin": "workspace:*"
   }
 }
