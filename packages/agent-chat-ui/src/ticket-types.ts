@@ -32,6 +32,11 @@ export type AgentTicket = {
   processBlueprintId: string
   processSnapshotId?: string | null
   processTitle: string
+  templateId?: string | null
+  templateBindings?: Record<string, string> | null
+  templateOverrides?: Record<string, string> | null
+  effectiveProcessConfig?: Record<string, string> | null
+  confirmationState?: "pending" | "confirmed" | "rejected"
   status: "active" | "completed" | "blocked"
   currentStepId: string | null
   nextStepId: string | null

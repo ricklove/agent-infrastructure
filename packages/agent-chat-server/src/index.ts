@@ -33,6 +33,7 @@ import {
   isProceduralProcessBlueprint,
   loadProcessBlueprintCatalog,
   type ProcessBlueprint,
+  resolveProcessBlueprintById,
 } from "./process-blueprints.js"
 import { findStandaloneSignalLine } from "./process-signals.js"
 import {
@@ -81,9 +82,16 @@ const processBlueprintsDir =
 const processStepsDir =
   process.env.AGENT_PROCESS_STEPS_DIR?.trim() ||
   resolve(import.meta.dir, "../../../blueprints/process-steps")
+const processTemplatesDir =
+  process.env.AGENT_PROCESS_TEMPLATES_DIR?.trim() ||
+  resolve(import.meta.dir, "../../../blueprints/process-templates")
 const workspaceProcessBlueprintsDir = resolve(
   workspaceBlueprintRoot,
   "process-blueprints",
+)
+const workspaceProcessTemplatesDir = resolve(
+  workspaceBlueprintRoot,
+  "process-templates",
 )
 const workspaceProcessStepsDir = resolve(
   workspaceBlueprintRoot,
@@ -228,6 +236,7 @@ const ticketStore = new AgentTicketStore({
 })
 const processBlueprintCatalog = loadProcessBlueprintCatalog({
   processBlueprintDirs: [processBlueprintsDir, workspaceProcessBlueprintsDir],
+  processTemplateDirs: [processTemplatesDir, workspaceProcessTemplatesDir],
   processStepDirs: [processStepsDir, workspaceProcessStepsDir],
 })
 const processBlueprintById = new Map(
@@ -606,6 +615,7 @@ function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
             maxNudgesPerIdleEpisode: entry.watchdog.maxNudgesPerIdleEpisode,
           },
           companionPath: entry.companionPath,
+          processConfig: entry.processConfig,
         }
       : {
           kind: "mode",
@@ -614,6 +624,7 @@ function listProcessBlueprints(): ProcessBlueprintResponseItem[] {
           catalogOrder: entry.catalogOrder,
           expectation: entry.expectation,
           companionPath: entry.companionPath,
+          processConfig: entry.processConfig,
         },
   )
 }
@@ -711,6 +722,144 @@ function currentDecisionOptionHint(ticket: StoredAgentTicket | null) {
   return `\n\nIf you resolve the current decision in this reply, include one of these on its own line anywhere in the message: ${currentStep.decision.options.map((option) => option.id).join(" | ")}`
 }
 
+function formatTicketProcessConfig(ticket: StoredAgentTicket | null) {
+  if (!ticket?.effectiveProcessConfig) {
+    return ""
+  }
+  return JSON.stringify(ticket.effectiveProcessConfig, null, 2)
+}
+
+function processConfigConfirmationHint(ticket: StoredAgentTicket | null) {
+  if (!ticket?.templateId || ticket.confirmationState === "confirmed") {
+    return ""
+  }
+  const configJson = formatTicketProcessConfig(ticket)
+  if (!configJson) {
+    return ""
+  }
+  return (
+    "\n\nThis is going to start this process with these settings:\n\n```json\n" +
+    `${configJson}\n` +
+    "```\n\nReply only with `confirm_process_config` if these values are correct, or reply with corrected JSON containing only allowed override keys."
+  )
+}
+
+function parseProcessConfigPatchFromText(assistantText: string) {
+  const trimmed = assistantText.trim()
+  if (!trimmed) {
+    return {
+      kind: "none" as const,
+      patch: null as Record<string, string> | null,
+    }
+  }
+  const fencedMatch = /```(?:json)?\s*([\s\S]+?)```/u.exec(trimmed)
+  const candidate = fencedMatch?.[1]?.trim() || trimmed
+  if (!candidate.startsWith("{")) {
+    return {
+      kind: "none" as const,
+      patch: null as Record<string, string> | null,
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(candidate) as Record<string, unknown>
+    const entries = Object.entries(parsed)
+      .map(
+        ([key, value]) =>
+          [key.trim(), typeof value === "string" ? value.trim() : ""] as const,
+      )
+      .filter(([key, value]) => key && value)
+    return {
+      kind: "patch" as const,
+      patch: entries.length > 0 ? Object.fromEntries(entries) : {},
+    }
+  } catch {
+    return {
+      kind: "invalid" as const,
+      patch: null as Record<string, string> | null,
+    }
+  }
+}
+
+function resolveConfiguredProcessBlueprint(
+  processBlueprintId: string,
+  overrides: Record<string, string> | null = null,
+) {
+  return resolveProcessBlueprintById(processBlueprintId, overrides, {
+    processBlueprintDirs: [processBlueprintsDir, workspaceProcessBlueprintsDir],
+    processTemplateDirs: [processTemplatesDir, workspaceProcessTemplatesDir],
+    processStepDirs: [processStepsDir, workspaceProcessStepsDir],
+  })
+}
+
+function applyTicketProcessConfigOverrides(
+  ticket: StoredAgentTicket,
+  overridesPatch: Record<string, string>,
+  confirmationState: StoredAgentTicket["confirmationState"],
+) {
+  if (!ticket.templateId) {
+    return {
+      ok: false as const,
+      error: "ticket has no overridable process config",
+    }
+  }
+
+  const sessionBlueprint = processBlueprintById.get(ticket.processBlueprintId)
+  const declarations =
+    sessionBlueprint?.processConfig?.variableDeclarations ?? {}
+  const nextOverrides = {
+    ...(ticket.templateOverrides ?? {}),
+    ...overridesPatch,
+  }
+
+  for (const [key, value] of Object.entries(overridesPatch)) {
+    const declaration = declarations[key]
+    if (!declaration) {
+      return {
+        ok: false as const,
+        error: `Unknown process config override: ${key}`,
+      }
+    }
+    if (!declaration.overridable) {
+      return {
+        ok: false as const,
+        error: `Process config override is not allowed: ${key}`,
+      }
+    }
+    if (!value.trim()) {
+      return {
+        ok: false as const,
+        error: `Process config override must be a non-empty string: ${key}`,
+      }
+    }
+  }
+
+  const resolved = resolveConfiguredProcessBlueprint(
+    ticket.processBlueprintId,
+    nextOverrides,
+  )
+  if (!resolved) {
+    return {
+      ok: false as const,
+      error: "unable to resolve configured process blueprint",
+    }
+  }
+
+  const updated = ticketStore.updateTicketProcessConfig(
+    ticket.id,
+    resolved,
+    nextOverrides,
+    confirmationState,
+  )
+  if (!updated) {
+    return {
+      ok: false as const,
+      error: "unable to update ticket process config",
+    }
+  }
+  return { ok: true as const, ticket: updated }
+}
+
 function buildProcessExpectationInstruction(
   processBlueprint: ProcessBlueprint | null,
   ticket: StoredAgentTicket | null,
@@ -729,7 +878,7 @@ function buildProcessExpectationInstruction(
     ? `\n\nProcess outline:
 ${outline}`
     : ""
-  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${outlineBlock}${initialTicketMetadataHint(ticket)}`
+  return `${PROCESS_INSTRUCTION_PREFIX}${processBlueprint.title}. ${processBlueprint.expectation}${outlineBlock}${processConfigConfirmationHint(ticket)}${initialTicketMetadataHint(ticket)}`
 }
 
 function buildWatchdogPrompt(
@@ -738,6 +887,9 @@ function buildWatchdogPrompt(
 ) {
   if (!isProceduralProcessBlueprint(processBlueprint)) {
     return null
+  }
+  if (ticket?.confirmationState === "pending") {
+    return `Confirm process config${processConfigConfirmationHint(ticket)}`
   }
   if (!ticket?.nextStepLabel) {
     return processBlueprint.idlePrompt
@@ -802,7 +954,10 @@ function maybeMarkProcessBlueprintTerminal(
   }
 
   const activeTicket = ticketStore.getActiveTicketForSession(sessionId)
-  if (activeTicket?.status === "active" && activeTicket.currentStepId) {
+  if (
+    activeTicket?.status === "active" &&
+    (activeTicket.currentStepId || activeTicket.confirmationState === "pending")
+  ) {
     return null
   }
 
@@ -946,6 +1101,9 @@ function findCurrentTicketStep(ticket: StoredAgentTicket | null) {
 }
 
 function buildStartedStepEventText(ticket: StoredAgentTicket) {
+  if (ticket.confirmationState === "pending") {
+    return `Started process config confirmation\n- reply with: confirm_process_config${ticket.effectiveProcessConfig ? "\n- or reply with corrected JSON containing only allowed override keys" : ""}`
+  }
   const currentStep = findCurrentTicketStep(ticket)
   if (!currentStep) {
     return `Ticket started: ${ticket.processTitle}`
@@ -1097,6 +1255,28 @@ function buildTicketTransitionEventText(
   previousTicket: StoredAgentTicket | null,
   transition: StoredAgentTicketTransition,
 ) {
+  if (transition.kind === "configUpdated") {
+    return [
+      "Ticket process config updated",
+      buildStartedStepEventText(transition.ticket),
+    ].join("\n\n")
+  }
+
+  if (transition.kind === "configConfirmed") {
+    return [
+      "Ticket process config confirmed",
+      buildStartedStepEventText(transition.ticket),
+    ].join("\n\n")
+  }
+
+  if (transition.kind === "configRejected") {
+    return [
+      "Ticket process config rejected",
+      transition.detail ??
+        "Provide corrected JSON containing only allowed override keys.",
+    ].join("\n\n")
+  }
+
   const previousStep = findCurrentTicketStep(previousTicket)
   const detail = normalizeTransitionDetail(previousStep, transition.detail)
   const stepTitle =
@@ -1136,6 +1316,91 @@ function maybeApplyTicketStepTransition(
   assistantText: string,
 ): { status: "completed" | "blocked" | null; messages: StoredMessage[] } {
   const previousTicket = ticketStore.getActiveTicketForSession(sessionId)
+  if (
+    previousTicket?.status === "active" &&
+    previousTicket.confirmationState === "pending"
+  ) {
+    const trimmed = assistantText.trim()
+    if (trimmed === "confirm_process_config") {
+      const confirmed = ticketStore.confirmActiveTicketProcessConfig(sessionId)
+      if (!confirmed) {
+        return { status: null, messages: [] }
+      }
+      const messages = [
+        appendTicketEventMessage(
+          sessionId,
+          buildTicketTransitionEventText(previousTicket, {
+            ticket: confirmed,
+            kind: "configConfirmed",
+            stepTitle: confirmed.nextStepLabel,
+            detail: "confirm_process_config",
+          }),
+        ),
+      ]
+      if (confirmed.nextStepLabel) {
+        markSessionWatchdogStepPrompted(sessionId)
+      }
+      return { status: null, messages }
+    }
+
+    const configPatch = parseProcessConfigPatchFromText(assistantText)
+    if (configPatch.kind === "invalid") {
+      return {
+        status: null,
+        messages: [
+          appendTicketEventMessage(
+            sessionId,
+            buildTicketTransitionEventText(previousTicket, {
+              ticket: {
+                ...previousTicket,
+                confirmationState: "rejected",
+                updatedAtMs: Date.now(),
+              },
+              kind: "configRejected",
+              stepTitle: null,
+              detail:
+                "Malformed process config JSON. Reply with valid JSON or `confirm_process_config`.",
+            }),
+          ),
+        ],
+      }
+    }
+
+    if (configPatch.kind === "patch") {
+      const result = applyTicketProcessConfigOverrides(
+        previousTicket,
+        configPatch.patch ?? {},
+        "pending",
+      )
+      const transition = result.ok
+        ? {
+            ticket: result.ticket,
+            kind: "configUpdated" as const,
+            stepTitle: null,
+            detail: null,
+          }
+        : {
+            ticket: {
+              ...previousTicket,
+              confirmationState: "rejected" as const,
+              updatedAtMs: Date.now(),
+            },
+            kind: "configRejected" as const,
+            stepTitle: null,
+            detail: result.error,
+          }
+      return {
+        status: null,
+        messages: [
+          appendTicketEventMessage(
+            sessionId,
+            buildTicketTransitionEventText(previousTicket, transition),
+          ),
+        ],
+      }
+    }
+  }
+
   const transition = ticketStore.resolveStepFromAssistantText(
     sessionId,
     assistantText,
@@ -2528,6 +2793,125 @@ const server = Bun.serve<ChatSocketData>({
       const ticketId = decodeMatchGroup(ticketMatch, 1)
       const ticket = ticketStore.getTicket(ticketId)
       return ticket ? jsonResponse({ ok: true, ticket }) : notFound()
+    }
+
+    const ticketProcessConfigMatch =
+      /^\/api\/agent-chat\/tickets\/([^/]+)\/process-config$/.exec(url.pathname)
+    if (ticketProcessConfigMatch && request.method === "PATCH") {
+      const ticketId = decodeMatchGroup(ticketProcessConfigMatch, 1)
+      const ticket = ticketStore.getTicket(ticketId)
+      if (!ticket) {
+        return notFound()
+      }
+
+      return request.json().then((body: unknown) => {
+        const payload = body as {
+          overrides?: Record<string, string> | null
+          confirm?: boolean
+        }
+        const patchEntries = payload.overrides
+          ? Object.entries(payload.overrides)
+              .map(
+                ([key, value]) =>
+                  [
+                    key.trim(),
+                    typeof value === "string" ? value.trim() : "",
+                  ] as const,
+              )
+              .filter(([key, value]) => key && value)
+          : []
+        const overridesPatch =
+          patchEntries.length > 0 ? Object.fromEntries(patchEntries) : null
+        const wantsConfirm = payload.confirm === true
+
+        if (!overridesPatch && !wantsConfirm) {
+          return jsonResponse(
+            { ok: false, error: "overrides or confirm required" },
+            400,
+          )
+        }
+
+        let updatedTicket = ticket
+        const eventMessages: StoredMessage[] = []
+
+        if (overridesPatch) {
+          const updateResult = applyTicketProcessConfigOverrides(
+            updatedTicket,
+            overridesPatch,
+            updatedTicket.confirmationState === "pending"
+              ? "pending"
+              : "confirmed",
+          )
+          if (!updateResult.ok) {
+            return jsonResponse({ ok: false, error: updateResult.error }, 400)
+          }
+          eventMessages.push(
+            appendTicketEventMessage(
+              updatedTicket.sessionId,
+              buildTicketTransitionEventText(updatedTicket, {
+                ticket: updateResult.ticket,
+                kind: "configUpdated",
+                stepTitle: null,
+                detail: null,
+              }),
+            ),
+          )
+          updatedTicket = updateResult.ticket
+        }
+
+        if (wantsConfirm) {
+          if (updatedTicket.confirmationState !== "pending") {
+            return jsonResponse(
+              {
+                ok: false,
+                error: "ticket process config is not pending confirmation",
+              },
+              400,
+            )
+          }
+          const confirmed = ticketStore.confirmActiveTicketProcessConfig(
+            updatedTicket.sessionId,
+          )
+          if (!confirmed || confirmed.id !== updatedTicket.id) {
+            return jsonResponse(
+              { ok: false, error: "unable to confirm ticket process config" },
+              400,
+            )
+          }
+          eventMessages.push(
+            appendTicketEventMessage(
+              updatedTicket.sessionId,
+              buildTicketTransitionEventText(updatedTicket, {
+                ticket: confirmed,
+                kind: "configConfirmed",
+                stepTitle: confirmed.nextStepLabel,
+                detail: "confirm_process_config",
+              }),
+            ),
+          )
+          updatedTicket = confirmed
+          if (confirmed.nextStepLabel) {
+            markSessionWatchdogStepPrompted(updatedTicket.sessionId)
+          }
+        }
+
+        const snapshot = buildSessionSnapshot(updatedTicket.sessionId)
+        if (snapshot) {
+          broadcastSession(updatedTicket.sessionId, {
+            type: "session.snapshot",
+            session: snapshot.session,
+            messages: snapshot.messages,
+            queuedMessages: snapshot.queuedMessages,
+            activity: snapshot.activity,
+          })
+        }
+
+        return jsonResponse({
+          ok: true,
+          ticket: updatedTicket,
+          messages: eventMessages,
+        })
+      })
     }
 
     const ticketStepSelectionMatch = matchTicketStepSelectionRoute(url.pathname)

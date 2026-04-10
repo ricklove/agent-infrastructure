@@ -7,6 +7,19 @@ export type ProcessStepBundle = {
   steps: ProcessBlueprintStep[]
 }
 
+export type ProcessTemplateVariableDeclaration = {
+  overridable: boolean
+  required: boolean
+  defaultValue: string | null
+}
+
+export type ProcessBlueprintConfigMetadata = {
+  templateId: string
+  templateTitle: string
+  variableDeclarations: Record<string, ProcessTemplateVariableDeclaration>
+  bindings: Record<string, string>
+}
+
 export type ProcessBlueprintDecisionOption = {
   id: string
   title: string
@@ -36,6 +49,7 @@ type BaseProcessBlueprint = {
   catalogOrder: number
   expectation: string
   companionPath: string | null
+  processConfig: ProcessBlueprintConfigMetadata | null
 }
 
 export type ModeProcessBlueprint = BaseProcessBlueprint & {
@@ -95,6 +109,7 @@ type RawProcessBlueprint = {
   catalogOrder?: unknown
   expectation?: unknown
   template?: unknown
+  bindings?: unknown
   variables?: unknown
   idlePrompt?: unknown
   completionMode?: unknown
@@ -114,6 +129,21 @@ type RawProcessTemplate = {
   title?: unknown
   variables?: unknown
   blueprint?: unknown
+}
+
+type TemplateResolution = {
+  raw: RawProcessBlueprint
+  processConfig: ProcessBlueprintConfigMetadata | null
+}
+
+type LoadedRawProcessBlueprint = {
+  raw: RawProcessBlueprint
+  path: string
+}
+
+type LoadedRawProcessTemplate = {
+  raw: RawProcessTemplate
+  path: string
 }
 
 export type ProcessBlueprintCatalogLoadOptions = {
@@ -181,10 +211,7 @@ function loadRawProcessBlueprints(processBlueprintDirs?: string[]) {
     processBlueprintDirs,
     defaultBlueprintsDir(),
   )
-  const blueprintMap = new Map<
-    string,
-    { raw: RawProcessBlueprint; path: string }
-  >()
+  const blueprintMap = new Map<string, LoadedRawProcessBlueprint>()
 
   for (const processBlueprintDir of blueprintDirs) {
     if (!existsSync(processBlueprintDir)) {
@@ -213,7 +240,7 @@ function loadRawProcessTemplates(processTemplateDirs?: string[]) {
     processTemplateDirs,
     defaultProcessTemplatesDir(),
   )
-  const templateMap = new Map<string, { raw: RawProcessTemplate; path: string }>()
+  const templateMap = new Map<string, LoadedRawProcessTemplate>()
 
   for (const processTemplateDir of templateDirs) {
     if (!existsSync(processTemplateDir)) {
@@ -258,34 +285,67 @@ function deepMerge<T>(base: T, overlay: unknown): T {
   return merged as T
 }
 
-function normalizeTemplateVariables(rawVariables: unknown, contextPath: string) {
-  if (!isPlainObject(rawVariables)) {
+function normalizeTemplateBindings(rawBindings: unknown, contextPath: string) {
+  if (!isPlainObject(rawBindings)) {
     return new Map<string, string>()
   }
 
-  const variables = new Map<string, string>()
-  for (const [key, value] of Object.entries(rawVariables)) {
+  const bindings = new Map<string, string>()
+  for (const [key, value] of Object.entries(rawBindings)) {
     const normalizedKey = key.trim()
     const normalizedValue = typeof value === "string" ? value.trim() : ""
     if (!normalizedKey || !normalizedValue) {
-      throw new Error(`Invalid process template variable in ${contextPath}`)
+      throw new Error(`Invalid process template binding in ${contextPath}`)
     }
-    variables.set(normalizedKey, normalizedValue)
+    bindings.set(normalizedKey, normalizedValue)
   }
-  return variables
+  return bindings
+}
+
+function normalizeTemplateVariableDeclarations(
+  rawTemplate: RawProcessTemplate,
+  templatePath: string,
+) {
+  if (rawTemplate.variables === undefined) {
+    return {} as Record<string, ProcessTemplateVariableDeclaration>
+  }
+  if (!isPlainObject(rawTemplate.variables)) {
+    throw new Error(`Invalid process template variables: ${templatePath}`)
+  }
+
+  const declarations: Record<string, ProcessTemplateVariableDeclaration> = {}
+  for (const [rawKey, rawValue] of Object.entries(rawTemplate.variables)) {
+    const key = rawKey.trim()
+    if (!key || !isPlainObject(rawValue)) {
+      throw new Error(
+        `Invalid process template variable declaration: ${templatePath}`,
+      )
+    }
+    const defaultValue =
+      typeof rawValue.defaultValue === "string" && rawValue.defaultValue.trim()
+        ? rawValue.defaultValue.trim()
+        : null
+    declarations[key] = {
+      overridable: rawValue.overridable === true,
+      required: rawValue.required === true,
+      defaultValue,
+    }
+  }
+
+  return declarations
 }
 
 function substituteTemplateVariables<T>(
   value: T,
-  variables: Map<string, string>,
+  bindings: Map<string, string>,
   contextPath: string,
 ): T {
   if (typeof value === "string") {
     return value.replace(/\{\{([a-zA-Z0-9_]+)\}\}/gu, (_match, key) => {
-      const replacement = variables.get(key)
+      const replacement = bindings.get(key)
       if (!replacement) {
         throw new Error(
-          `Missing process template variable '${key}' in ${contextPath}`,
+          `Missing process template binding '${key}' in ${contextPath}`,
         )
       }
       return replacement
@@ -294,14 +354,14 @@ function substituteTemplateVariables<T>(
 
   if (Array.isArray(value)) {
     return value.map((entry) =>
-      substituteTemplateVariables(entry, variables, contextPath),
+      substituteTemplateVariables(entry, bindings, contextPath),
     ) as T
   }
 
   if (isPlainObject(value)) {
     const substitutedEntries = Object.entries(value).map(([key, entry]) => [
       key,
-      substituteTemplateVariables(entry, variables, contextPath),
+      substituteTemplateVariables(entry, bindings, contextPath),
     ])
     return Object.fromEntries(substitutedEntries) as T
   }
@@ -309,30 +369,63 @@ function substituteTemplateVariables<T>(
   return value
 }
 
-function normalizeRequiredTemplateVariableNames(
-  rawTemplate: RawProcessTemplate,
-  templatePath: string,
+function normalizeRawProcessBindings(raw: RawProcessBlueprint) {
+  return normalizeTemplateBindings(raw.bindings ?? raw.variables, "process")
+}
+
+function materializeTemplateBindings(
+  declarations: Record<string, ProcessTemplateVariableDeclaration>,
+  rawBindings: Map<string, string>,
+  contextPath: string,
 ) {
-  if (rawTemplate.variables === undefined) {
-    return []
+  const declarationNames = new Set(Object.keys(declarations))
+  for (const bindingKey of rawBindings.keys()) {
+    if (!declarationNames.has(bindingKey)) {
+      throw new Error(
+        `Unknown process template binding '${bindingKey}' in ${contextPath}`,
+      )
+    }
   }
-  if (!Array.isArray(rawTemplate.variables)) {
-    throw new Error(`Invalid process template variables: ${templatePath}`)
+
+  const materialized = new Map<string, string>()
+  for (const [key, declaration] of Object.entries(declarations)) {
+    const value = rawBindings.get(key) ?? declaration.defaultValue
+    if (!value) {
+      if (declaration.required) {
+        throw new Error(
+          `Missing required process template binding '${key}' in ${contextPath}`,
+        )
+      }
+      continue
+    }
+    materialized.set(key, value)
   }
-  return rawTemplate.variables
-    .map((value) => (typeof value === "string" ? value.trim() : ""))
-    .filter(Boolean)
+  return materialized
+}
+
+function hasUnresolvedTemplatePlaceholders(value: unknown): boolean {
+  if (typeof value === "string") {
+    return /\{\{[a-zA-Z0-9_]+\}\}/u.test(value)
+  }
+  if (Array.isArray(value)) {
+    return value.some((entry) => hasUnresolvedTemplatePlaceholders(entry))
+  }
+  if (isPlainObject(value)) {
+    return Object.values(value).some((entry) =>
+      hasUnresolvedTemplatePlaceholders(entry),
+    )
+  }
+  return false
 }
 
 function resolveTemplateBlueprint(
   raw: RawProcessBlueprint,
   jsonPath: string,
-  templates: Map<string, { raw: RawProcessTemplate; path: string }>,
-) {
-  const templateId =
-    typeof raw.template === "string" ? raw.template.trim() : ""
+  templates: Map<string, LoadedRawProcessTemplate>,
+): TemplateResolution {
+  const templateId = typeof raw.template === "string" ? raw.template.trim() : ""
   if (!templateId) {
-    return raw
+    return { raw, processConfig: null }
   }
 
   const templateEntry = templates.get(templateId)
@@ -343,33 +436,51 @@ function resolveTemplateBlueprint(
     throw new Error(`Invalid process template blueprint: ${templateEntry.path}`)
   }
 
-  const requiredVariables = normalizeRequiredTemplateVariableNames(
+  const declarations = normalizeTemplateVariableDeclarations(
     templateEntry.raw,
     templateEntry.path,
   )
-  const variables = normalizeTemplateVariables(raw.variables, jsonPath)
-  for (const variableName of requiredVariables) {
-    if (!variables.has(variableName)) {
-      throw new Error(
-        `Missing required process template variable '${variableName}' in ${jsonPath}`,
-      )
-    }
-  }
-
+  const rawBindings = normalizeTemplateBindings(
+    raw.bindings ?? raw.variables,
+    jsonPath,
+  )
+  const materializedBindings = materializeTemplateBindings(
+    declarations,
+    rawBindings,
+    jsonPath,
+  )
   const instantiatedTemplate = substituteTemplateVariables(
     templateEntry.raw.blueprint,
-    variables,
+    materializedBindings,
     templateEntry.path,
   ) as RawProcessBlueprint
   const instanceOverrides = { ...raw }
   delete instanceOverrides.template
+  delete instanceOverrides.bindings
   delete instanceOverrides.variables
 
-  return substituteTemplateVariables(
+  const resolvedRaw = substituteTemplateVariables(
     deepMerge(instantiatedTemplate, instanceOverrides),
-    variables,
+    materializedBindings,
     jsonPath,
   )
+  if (hasUnresolvedTemplatePlaceholders(resolvedRaw)) {
+    throw new Error(`Unresolved process template placeholder in ${jsonPath}`)
+  }
+
+  return {
+    raw: resolvedRaw,
+    processConfig: {
+      templateId,
+      templateTitle:
+        typeof templateEntry.raw.title === "string" &&
+        templateEntry.raw.title.trim()
+          ? templateEntry.raw.title.trim()
+          : templateId,
+      variableDeclarations: declarations,
+      bindings: Object.fromEntries(materializedBindings.entries()),
+    },
+  }
 }
 
 function normalizeProcessBlueprintDecisionOptions(
@@ -493,40 +604,54 @@ function hasProceduralFields(raw: RawProcessBlueprint) {
   )
 }
 
+function normalizeProcessBlueprintCompanionPath(jsonPath: string) {
+  const basePath = jsonPath.replace(/\.process-blueprint\.json$/u, "")
+  const companionPath = `${basePath}.agentish.ts`
+  return existsSync(companionPath) ? companionPath : null
+}
+
+function normalizeProcessBlueprintCatalogOrder(rawCatalogOrder: unknown) {
+  const catalogOrder = Number(rawCatalogOrder)
+  return Number.isFinite(catalogOrder) && catalogOrder >= 0
+    ? catalogOrder
+    : Number.MAX_SAFE_INTEGER
+}
+
 function normalizeProcessBlueprint(
   raw: RawProcessBlueprint,
   jsonPath: string,
-  templates: Map<string, { raw: RawProcessTemplate; path: string }>,
+  templates: Map<string, LoadedRawProcessTemplate>,
   bundles: Map<string, RawProcessStepBundle>,
 ): ProcessBlueprint {
-  const resolvedRaw = resolveTemplateBlueprint(raw, jsonPath, templates)
+  const resolution = resolveTemplateBlueprint(raw, jsonPath, templates)
+  const resolvedRaw = resolution.raw
   const id = typeof resolvedRaw.id === "string" ? resolvedRaw.id.trim() : ""
   const title =
     typeof resolvedRaw.title === "string" ? resolvedRaw.title.trim() : ""
-  const catalogOrder = Number(resolvedRaw.catalogOrder)
   const expectation =
     typeof resolvedRaw.expectation === "string"
       ? resolvedRaw.expectation.trim()
       : ""
-  const basePath = jsonPath.replace(/\.process-blueprint\.json$/u, "")
-  const companionPath = `${basePath}.agentish.ts`
-  const normalizedCatalogOrder =
-    Number.isFinite(catalogOrder) && catalogOrder >= 0
-      ? catalogOrder
-      : Number.MAX_SAFE_INTEGER
 
   if (!id || !title || !expectation) {
     throw new Error(`Invalid process blueprint: ${jsonPath}`)
   }
 
+  const baseBlueprint = {
+    id,
+    title,
+    catalogOrder: normalizeProcessBlueprintCatalogOrder(
+      resolvedRaw.catalogOrder,
+    ),
+    expectation,
+    companionPath: normalizeProcessBlueprintCompanionPath(jsonPath),
+    processConfig: resolution.processConfig,
+  }
+
   if (!hasProceduralFields(resolvedRaw)) {
     return {
       kind: "mode",
-      id,
-      title,
-      catalogOrder: normalizedCatalogOrder,
-      expectation,
-      companionPath: existsSync(companionPath) ? companionPath : null,
+      ...baseBlueprint,
     }
   }
 
@@ -565,10 +690,7 @@ function normalizeProcessBlueprint(
 
   return {
     kind: "procedural",
-    id,
-    title,
-    catalogOrder: normalizedCatalogOrder,
-    expectation,
+    ...baseBlueprint,
     idlePrompt,
     completionMode,
     completionToken,
@@ -590,8 +712,24 @@ function normalizeProcessBlueprint(
           ? maxNudgesPerIdleEpisode
           : 1,
     },
-    companionPath: existsSync(companionPath) ? companionPath : null,
   }
+}
+
+function applyProcessBlueprintBindingOverrides(
+  raw: RawProcessBlueprint,
+  bindingOverrides: Record<string, string> | null | undefined,
+) {
+  if (!bindingOverrides || Object.keys(bindingOverrides).length === 0) {
+    return raw
+  }
+  const currentBindings = Object.fromEntries(normalizeRawProcessBindings(raw))
+  return {
+    ...raw,
+    bindings: {
+      ...currentBindings,
+      ...bindingOverrides,
+    },
+  } satisfies RawProcessBlueprint
 }
 
 export function isProceduralProcessBlueprint(
@@ -616,6 +754,28 @@ export function loadProcessBlueprintCatalog(
       }
       return left.title.localeCompare(right.title)
     })
+}
+
+export function resolveProcessBlueprintById(
+  processBlueprintId: string,
+  bindingOverrides: Record<string, string> | null = null,
+  options: ProcessBlueprintCatalogLoadOptions = {},
+) {
+  const bundles = normalizeProcessStepBundles(options.processStepDirs)
+  const templates = loadRawProcessTemplates(options.processTemplateDirs)
+  const entry = loadRawProcessBlueprints(options.processBlueprintDirs).find(
+    ({ raw }) =>
+      typeof raw.id === "string" && raw.id.trim() === processBlueprintId.trim(),
+  )
+  if (!entry) {
+    return null
+  }
+  return normalizeProcessBlueprint(
+    applyProcessBlueprintBindingOverrides(entry.raw, bindingOverrides),
+    entry.path,
+    templates,
+    bundles,
+  )
 }
 
 export function processBlueprintLabel(

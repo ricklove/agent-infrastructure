@@ -6,7 +6,10 @@ import {
   AgentTicketStore,
   type StoredAgentTicketStep,
 } from "./agent-tickets.js"
-import type { ProceduralProcessBlueprint } from "./process-blueprints.js"
+import type {
+  ProceduralProcessBlueprint,
+  ProcessBlueprintConfigMetadata,
+} from "./process-blueprints.js"
 
 const createdDirs: string[] = []
 
@@ -26,7 +29,9 @@ function createStore() {
 }
 
 function createBlueprint(
-  overrides: Partial<Pick<ProceduralProcessBlueprint, "id" | "title">> = {},
+  overrides: Partial<
+    Pick<ProceduralProcessBlueprint, "id" | "title" | "processConfig">
+  > = {},
 ): ProceduralProcessBlueprint {
   return {
     id: overrides.id ?? "test-blueprint",
@@ -34,6 +39,7 @@ function createBlueprint(
     catalogOrder: 1,
     expectation: "Do the current step.",
     companionPath: null,
+    processConfig: overrides.processConfig ?? null,
     kind: "procedural",
     idlePrompt: "resume",
     completionMode: "exact_reply",
@@ -56,6 +62,25 @@ function createBlueprint(
         decision: null,
       },
     ],
+  }
+}
+
+function createProcessConfig(
+  overrides: Partial<ProcessBlueprintConfigMetadata> = {},
+): ProcessBlueprintConfigMetadata {
+  return {
+    templateId: overrides.templateId ?? "full_development_template",
+    templateTitle: overrides.templateTitle ?? "Full Development",
+    variableDeclarations: overrides.variableDeclarations ?? {
+      workLocation: {
+        overridable: true,
+        required: true,
+        defaultValue: null,
+      },
+    },
+    bindings: overrides.bindings ?? {
+      workLocation: "worker_16gb",
+    },
   }
 }
 
@@ -335,6 +360,31 @@ describe("AgentTicketStore", () => {
     expect(transition?.ticket.blockedSource).toBe("agent")
     expect(transition?.ticket.sameStepAttemptCount).toBe(0)
     expect(transition?.ticket.currentStepId).toBe(ticket.currentStepId)
+  })
+
+  test("template-backed tickets start pending config confirmation and activate on confirm", () => {
+    const store = createStore()
+    const ticket = store.createOrReplaceSessionTicket(
+      "session-1",
+      createBlueprint({
+        processConfig: createProcessConfig(),
+      }),
+    )
+
+    expect(ticket.confirmationState).toBe("pending")
+    expect(ticket.currentStepId).toBeNull()
+    expect(ticket.effectiveProcessConfig).toEqual({
+      workLocation: "worker_16gb",
+    })
+
+    const transition = store.resolveStepFromAssistantText(
+      "session-1",
+      "confirm_process_config",
+    )
+
+    expect(transition?.kind).toBe("configConfirmed")
+    expect(transition?.ticket.confirmationState).toBe("confirmed")
+    expect(transition?.ticket.currentStepId).toBe("prepare")
   })
 
   test("resumes the same blocked ticket and clears blocked bookkeeping on the next user turn", () => {

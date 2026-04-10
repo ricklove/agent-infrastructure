@@ -10,6 +10,7 @@ import { join } from "node:path"
 import {
   isProceduralProcessBlueprint,
   type ProcessBlueprint,
+  type ProcessBlueprintConfigMetadata,
   type ProcessBlueprintDecisionOption,
   type ProcessBlueprintStep,
 } from "./process-blueprints.js"
@@ -22,6 +23,10 @@ export type StoredAgentTicketStepStatus =
   | "completed"
   | "blocked"
 export type StoredAgentTicketBlockedSource = "agent" | "system"
+export type StoredAgentTicketConfirmationState =
+  | "pending"
+  | "confirmed"
+  | "rejected"
 
 export type StoredAgentTicketDecisionOption = {
   id: string
@@ -57,6 +62,11 @@ export type StoredAgentTicket = {
   processBlueprintId: string
   processSnapshotId: string | null
   processTitle: string
+  templateId: string | null
+  templateBindings: Record<string, string> | null
+  templateOverrides: Record<string, string> | null
+  effectiveProcessConfig: Record<string, string> | null
+  confirmationState: StoredAgentTicketConfirmationState
   status: StoredAgentTicketStatus
   currentStepId: string | null
   nextStepId: string | null
@@ -91,7 +101,13 @@ export type StoredAgentProcessSnapshot = {
 
 export type StoredAgentTicketTransition = {
   ticket: StoredAgentTicket
-  kind: "stepCompleted" | "stepBlocked" | "ticketCompleted"
+  kind:
+    | "stepCompleted"
+    | "stepBlocked"
+    | "ticketCompleted"
+    | "configUpdated"
+    | "configConfirmed"
+    | "configRejected"
   stepTitle: string | null
   detail: string | null
 }
@@ -114,6 +130,82 @@ const defaultIndex = (): TicketIndex => ({
 
 function safeJsonParse<T>(raw: string): T {
   return JSON.parse(raw) as T
+}
+
+function normalizeStringRecord(value: unknown): Record<string, string> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null
+  }
+  const entries = Object.entries(value)
+    .map(
+      ([key, entry]) =>
+        [key.trim(), typeof entry === "string" ? entry.trim() : ""] as const,
+    )
+    .filter(([key, entry]) => key && entry)
+  return entries.length > 0 ? Object.fromEntries(entries) : {}
+}
+
+function cloneProcessConfig(
+  value: Record<string, string> | null | undefined,
+): Record<string, string> | null {
+  if (!value) {
+    return null
+  }
+  return { ...value }
+}
+
+function buildTemplateBindings(
+  processConfig: ProcessBlueprintConfigMetadata | null,
+) {
+  return processConfig ? { ...processConfig.bindings } : null
+}
+
+function buildInitialTicketChecklist(
+  processBlueprint: ProcessBlueprint,
+  confirmationState: StoredAgentTicketConfirmationState,
+) {
+  if (!isProceduralProcessBlueprint(processBlueprint)) {
+    return []
+  }
+  return buildChecklist(
+    processBlueprint.steps,
+    [],
+    confirmationState === "pending" ? { claimed: true } : { claimed: false },
+  )
+}
+
+function firstExecutableStepId(checklist: StoredAgentTicketStep[]) {
+  return (
+    flattenExecutableSteps(checklist).find((step) => step.status === "active")
+      ?.id ?? null
+  )
+}
+
+function cloneProcessSnapshotSteps(
+  processSnapshot: StoredAgentProcessSnapshot | null,
+) {
+  return Array.isArray(processSnapshot?.steps)
+    ? JSON.parse(JSON.stringify(processSnapshot.steps))
+    : []
+}
+
+function parseProcessConfigPatch(assistantText: string) {
+  const trimmed = assistantText.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const fencedMatch = /```(?:json)?\s*([\s\S]+?)```/u.exec(trimmed)
+  const candidate = fencedMatch?.[1]?.trim() || trimmed
+  if (!candidate.startsWith("{")) {
+    return null
+  }
+
+  try {
+    return normalizeStringRecord(JSON.parse(candidate))
+  } catch {
+    return null
+  }
 }
 
 function buildDecisionOptions(
@@ -687,14 +779,22 @@ export class AgentTicketStore {
   ): StoredAgentTicket {
     const now = Date.now()
     const processSnapshot = this.createOrReadProcessSnapshot(processBlueprint)
-    const checklist =
-      processSnapshot.kind === "procedural"
-        ? buildChecklist(processSnapshot.steps)
-        : []
-    const firstActiveStep =
-      flattenExecutableSteps(checklist).find(
-        (step) => step.status === "active",
-      ) ?? null
+    const confirmationState: StoredAgentTicketConfirmationState =
+      processBlueprint.processConfig ? "pending" : "confirmed"
+    const templateBindings = buildTemplateBindings(
+      processBlueprint.processConfig,
+    )
+    const templateOverrides: Record<string, string> | null =
+      processBlueprint.processConfig ? {} : null
+    const effectiveProcessConfig = cloneProcessConfig(templateBindings)
+    const checklist = buildInitialTicketChecklist(
+      processBlueprint,
+      confirmationState,
+    )
+    const firstActiveStepId =
+      confirmationState === "confirmed"
+        ? firstExecutableStepId(checklist)
+        : null
     const ticket: StoredAgentTicket = {
       id: randomUUID(),
       sessionId,
@@ -703,10 +803,18 @@ export class AgentTicketStore {
       processBlueprintId: processBlueprint.id,
       processSnapshotId: processSnapshot.id,
       processTitle: processBlueprint.title,
+      templateId: processBlueprint.processConfig?.templateId ?? null,
+      templateBindings,
+      templateOverrides,
+      effectiveProcessConfig,
+      confirmationState,
       status: "active",
-      currentStepId: firstActiveStep?.id ?? null,
-      nextStepId: firstActiveStep?.id ?? null,
-      nextStepLabel: firstActiveStep?.title ?? null,
+      currentStepId: firstActiveStepId,
+      nextStepId: firstActiveStepId,
+      nextStepLabel:
+        firstActiveStepId && confirmationState === "confirmed"
+          ? (findStepById(checklist, firstActiveStepId)?.title ?? null)
+          : null,
       checklist,
       resolution: null,
       blockedSource: null,
@@ -723,12 +831,122 @@ export class AgentTicketStore {
     return ticket
   }
 
+  confirmActiveTicketProcessConfig(sessionId: string) {
+    const current = this.getActiveTicketForSession(sessionId)
+    if (!current || current.confirmationState !== "pending") {
+      return null
+    }
+
+    const activatedChecklist = buildChecklist(
+      cloneProcessSnapshotSteps(
+        this.getProcessSnapshot(current.processSnapshotId),
+      ),
+    )
+    const currentStepId = firstExecutableStepId(activatedChecklist)
+    const updated: StoredAgentTicket = {
+      ...current,
+      confirmationState: "confirmed",
+      checklist: activatedChecklist,
+      currentStepId,
+      nextStepId: currentStepId,
+      nextStepLabel: currentStepId
+        ? (findStepById(activatedChecklist, currentStepId)?.title ?? null)
+        : null,
+      resolution: null,
+      blockedSource: null,
+      sameStepAttemptCount: 0,
+      updatedAtMs: Date.now(),
+    }
+    this.persistTicket(updated)
+    return updated
+  }
+
+  updateTicketProcessConfig(
+    ticketId: string,
+    processBlueprint: ProcessBlueprint,
+    templateOverrides: Record<string, string>,
+    confirmationState: StoredAgentTicketConfirmationState,
+  ) {
+    const current = this.getTicket(ticketId)
+    if (!current || current.status === "completed") {
+      return null
+    }
+
+    const processSnapshot = this.createOrReadProcessSnapshot(processBlueprint)
+    const nextChecklist = buildInitialTicketChecklist(
+      processBlueprint,
+      confirmationState,
+    )
+    const nextCurrentStepId =
+      confirmationState === "confirmed"
+        ? firstExecutableStepId(nextChecklist)
+        : null
+    const updated: StoredAgentTicket = {
+      ...current,
+      processSnapshotId: processSnapshot.id,
+      processTitle: processBlueprint.title,
+      description: processBlueprint.expectation,
+      templateId: processBlueprint.processConfig?.templateId ?? null,
+      templateBindings: buildTemplateBindings(processBlueprint.processConfig),
+      templateOverrides: { ...templateOverrides },
+      effectiveProcessConfig: buildTemplateBindings(
+        processBlueprint.processConfig,
+      ),
+      confirmationState,
+      checklist: nextChecklist,
+      currentStepId: nextCurrentStepId,
+      nextStepId: nextCurrentStepId,
+      nextStepLabel: nextCurrentStepId
+        ? (findStepById(nextChecklist, nextCurrentStepId)?.title ?? null)
+        : null,
+      resolution: null,
+      blockedSource: null,
+      sameStepAttemptCount: 0,
+      updatedAtMs: Date.now(),
+    }
+    this.persistTicket(updated)
+    return updated
+  }
+
   resolveStepFromAssistantText(
     sessionId: string,
     assistantText: string,
   ): StoredAgentTicketTransition | null {
     const current = this.getActiveTicketForSession(sessionId)
-    if (!current || current.status !== "active" || !current.currentStepId) {
+    if (!current || current.status !== "active") {
+      return null
+    }
+
+    if (current.confirmationState === "pending") {
+      if (assistantText.trim() === "confirm_process_config") {
+        const updated = this.confirmActiveTicketProcessConfig(sessionId)
+        return updated
+          ? {
+              ticket: updated,
+              kind: "configConfirmed",
+              stepTitle: updated.nextStepLabel,
+              detail: "confirm_process_config",
+            }
+          : null
+      }
+
+      const patch = parseProcessConfigPatch(assistantText)
+      if (patch !== null) {
+        return {
+          ticket: {
+            ...current,
+            confirmationState: "rejected",
+            updatedAtMs: Date.now(),
+          },
+          kind: "configRejected",
+          stepTitle: null,
+          detail: "process config update requires explicit runtime validation",
+        }
+      }
+      return null
+    }
+
+    if (!current.currentStepId) {
       return null
     }
 
@@ -1599,6 +1817,20 @@ export class AgentTicketStore {
             ? parsed.processSnapshotId
             : null,
         processTitle: String(parsed.processTitle),
+        templateId:
+          typeof parsed.templateId === "string" && parsed.templateId.trim()
+            ? parsed.templateId
+            : null,
+        templateBindings: normalizeStringRecord(parsed.templateBindings),
+        templateOverrides: normalizeStringRecord(parsed.templateOverrides),
+        effectiveProcessConfig: normalizeStringRecord(
+          parsed.effectiveProcessConfig,
+        ),
+        confirmationState:
+          parsed.confirmationState === "pending" ||
+          parsed.confirmationState === "rejected"
+            ? parsed.confirmationState
+            : "confirmed",
         status:
           parsed.status === "completed" || parsed.status === "blocked"
             ? parsed.status

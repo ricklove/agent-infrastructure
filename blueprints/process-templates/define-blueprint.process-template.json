@@ -1,7 +1,11 @@
 {
   "id": "define_blueprint_template",
   "title": "Define Blueprint",
-  "variables": ["targetProject", "workLocation", "mergeSteps"],
+  "variables": {
+    "targetProject": { "overridable": false, "required": true },
+    "workLocation": { "overridable": true, "required": true },
+    "mergeSteps": { "overridable": false, "required": true }
+  },
   "blueprint": {
     "expectation": "Use the configured work location as the only mutable surface for {{targetProject}} blueprint-definition work. Never edit blueprint files from the shared repository checkout. Create or update the needed blueprint layer from that configured surface, then finalize using the configured merge steps.",
     "idlePrompt": "If the blueprint work is complete, reply only with 'done: blueprint defined'. If you are truly blocked on missing user information, reply only with 'blocked: blueprint clarification required'. Otherwise resume the blueprint work immediately and make real progress instead of giving only a status update.",

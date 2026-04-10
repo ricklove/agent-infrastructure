@@ -3,7 +3,7 @@
   "title": "Define Blueprint (T)",
   "catalogOrder": 23,
   "template": "define_blueprint_template",
-  "variables": {
+  "bindings": {
     "targetProject": "agent-infrastructure",
     "workLocation": "manager_worktree",
     "mergeSteps": "merge_development"
