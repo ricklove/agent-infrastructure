@@ -4,6 +4,7 @@ import type {
   DashboardFeatureUiPlugin,
 } from "@agent-infrastructure/dashboard-plugin"
 import {
+  dashboardSessionFetch,
   isDashboardFeatureVisible,
   readDashboardPreferences,
   subscribeDashboardPreferences,
@@ -42,6 +43,21 @@ type DashboardGatewayStatusMessage = {
   ok: boolean
   backendVersion: string
   timestamp: string
+}
+
+type RuntimeReleaseRecord = {
+  tag: string
+  version: string | null
+}
+
+type RuntimeReleaseStatus = {
+  ok: true
+  currentVersion: string
+  currentReleaseTag: string | null
+  latestReleaseTag: string | null
+  latestVersion: string | null
+  updateAvailable: boolean
+  recentReleaseTags: RuntimeReleaseRecord[]
 }
 
 type FeatureId = DashboardFeatureId
@@ -342,6 +358,11 @@ export function DashboardShell({
   const [gatewayBackendVersion, setGatewayBackendVersion] = useState("--")
   const [copiedStatus, setCopiedStatus] = useState(false)
   const [versionPopupOpen, setVersionPopupOpen] = useState(false)
+  const [runtimeReleaseStatus, setRuntimeReleaseStatus] =
+    useState<RuntimeReleaseStatus | null>(null)
+  const [runtimeReleaseError, setRuntimeReleaseError] = useState("")
+  const [runtimeDeployNotice, setRuntimeDeployNotice] = useState("")
+  const [runtimeDeployPending, setRuntimeDeployPending] = useState(false)
   const [mobileFeatureMenuOpen, setMobileFeatureMenuOpen] = useState(false)
   const [featureStatuses, setFeatureStatuses] = useState<
     Partial<Record<FeatureId, FeatureStatusItem[]>>
@@ -583,6 +604,9 @@ export function DashboardShell({
     if (backendVersionMismatch) {
       parts.push(`Backend: ${gatewayBackendVersion}`)
     }
+    if (runtimeReleaseStatus?.latestReleaseTag) {
+      parts.push(`Latest: ${runtimeReleaseStatus.latestReleaseTag}`)
+    }
     parts.push(`WS: ${gatewayConnectionStatus}`)
     for (const item of activeFeatureStatusItems) {
       parts.push(`${activeFeature.label} ${item.label}: ${item.value}`)
@@ -606,6 +630,77 @@ export function DashboardShell({
       setVersionPopupOpen(false)
     }
   }, [mobileFeatureMenuOpen])
+
+  useEffect(() => {
+    if (!versionPopupOpen) {
+      return
+    }
+
+    let cancelled = false
+
+    async function loadRuntimeReleaseStatus() {
+      try {
+        setRuntimeReleaseError("")
+        const response = (await dashboardSessionFetch(
+          "/api/runtime-release",
+        )) as Response
+        if (!response.ok) {
+          throw new Error("failed to load runtime release status")
+        }
+
+        const payload = (await response.json()) as RuntimeReleaseStatus
+        if (!cancelled) {
+          setRuntimeReleaseStatus(payload)
+        }
+      } catch (nextError) {
+        if (!cancelled) {
+          setRuntimeReleaseError(
+            nextError instanceof Error
+              ? nextError.message
+              : "failed to load runtime release status",
+          )
+        }
+      }
+    }
+
+    void loadRuntimeReleaseStatus()
+    return () => {
+      cancelled = true
+    }
+  }, [versionPopupOpen])
+
+  async function deployLatestRelease() {
+    try {
+      setRuntimeDeployPending(true)
+      setRuntimeDeployNotice("")
+      setRuntimeReleaseError("")
+      const response = (await dashboardSessionFetch(
+        "/api/runtime-release/deploy",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+          },
+          body: JSON.stringify({ target: "latest" }),
+        },
+      )) as Response
+      if (!response.ok && response.status !== 202) {
+        throw new Error("failed to request latest release deploy")
+      }
+
+      setRuntimeDeployNotice(
+        "Latest release deploy requested. The dashboard may disconnect while the manager restarts.",
+      )
+    } catch (nextError) {
+      setRuntimeReleaseError(
+        nextError instanceof Error
+          ? nextError.message
+          : "failed to request latest release deploy",
+      )
+    } finally {
+      setRuntimeDeployPending(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -781,12 +876,48 @@ export function DashboardShell({
                     </span>
                   </div>
                 ) : null}
+                {runtimeReleaseStatus?.currentReleaseTag ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-stone-500">Release</span>
+                    <span className="font-medium text-stone-100">
+                      {runtimeReleaseStatus.currentReleaseTag}
+                    </span>
+                  </div>
+                ) : null}
+                {runtimeReleaseStatus?.latestReleaseTag ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-stone-500">Latest</span>
+                    <span className="font-medium text-stone-100">
+                      {runtimeReleaseStatus.latestReleaseTag}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-stone-500">WS</span>
                   <span className={gatewayConnectionTone}>
                     {gatewayConnectionStatus}
                   </span>
                 </div>
+                {runtimeReleaseStatus?.updateAvailable ? (
+                  <button
+                    type="button"
+                    onClick={() => void deployLatestRelease()}
+                    disabled={runtimeDeployPending}
+                    className="mt-1 inline-flex items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-300/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {runtimeDeployPending ? "Updating..." : "Update"}
+                  </button>
+                ) : null}
+                {runtimeDeployNotice ? (
+                  <div className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-[11px] leading-5 text-cyan-100">
+                    {runtimeDeployNotice}
+                  </div>
+                ) : null}
+                {runtimeReleaseError ? (
+                  <div className="rounded-xl border border-rose-400/25 bg-rose-400/10 px-3 py-2 text-[11px] leading-5 text-rose-100">
+                    {runtimeReleaseError}
+                  </div>
+                ) : null}
                 {activeFeatureStatusItems.length > 0 ? (
                   <div className="border-t border-stone-800 pt-1.5">
                     <div className="mb-1 text-[10px] uppercase tracking-[0.18em] text-stone-500">

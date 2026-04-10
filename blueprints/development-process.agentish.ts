@@ -144,6 +144,9 @@ DevelopmentProcess.enforces(`
 - A merged worktree that still contains local changes must be reconciled deliberately or explicitly recorded as preserved unfinished work rather than being left behind silently.
 - Release rollout should start only after the shared base-branch checkout is clean.
 - Release rollout should promote the intended integrated commit onto `main` on the authoritative worker surface, create a release git tag from that exact commit, and deploy runtime from that promoted target.
+- Release tags should use the canonical format `release-YYYY.MM.DD.INC.HASH`, where `INC` starts at `1000` for a given day and increments from the latest visible release tag for that same day.
+- The canonical dashboard release version should use the format `dashboard-YYYY.MM.DD.INC.HASH` when the runtime is deployed from an exact release tag.
+- If the runtime is not deployed from an exact release tag, the dashboard version may fall back to a clearly non-release version string derived from the deployed revision.
 - Runtime is a deployed checkout and not an editing surface.
 - state/ is only for temporary runtime state and recoverable operational artifacts.
 - Durable app data must live outside state/.
@@ -155,6 +158,8 @@ DevelopmentProcess.enforces(`
 - Local verification should prove that any touched runtime or server entrypoint parses and starts cleanly on the worker surface rather than relying only on unrelated narrow scripts.
 - Local verification should include worker-local browser verification and a saved worker-local screenshot before a revision is described as verified.
 - Post-deploy verification should record runtime checkout revision match, frontend-backend version match, a successful check of `http://127.0.0.1:3000/api/health`, issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`, real browser verification using the issued manager-dashboard session URL, navigation to a screen that shows modified behavior or chat when there were no UI changes, and a screenshot posted into the chat as a markdown image from `~/temp`.
+- Manager-host dashboard controls may expose release-management actions that deploy either the latest promoted `main` revision or a specific existing release tag, but branch-name deploy targets are not part of the canonical operator flow.
+- Manager-host dashboard release-management controls may list recent release tags and compare the current deployed release with the latest visible release tag to surface update availability.
 - If the operator cannot post a manager-dashboard screenshot into the chat as a markdown image from the approved temporary image space under `~/temp` for the new release, the rollout should be treated as failed, rolled back to an earlier known-good release tag, and kept in screenshot verification until a stable working release is found; the failed release tag should then be deleted locally and on the remote after recovery.
 - A rollout is not complete until post-deploy behavior has been verified from the issued manager-dashboard session URL and the screenshot evidence has been reviewed.
 `);
@@ -189,12 +194,15 @@ DevelopmentProcess.defines(`
 - FeatureBranchRefreshByMerge means an active feature branch should be updated from `origin/development`, `origin/main`, or both with normal merge commits when it falls behind those branches, and the process does not require rebasing for that refresh.
 - ReleaseBranch means `main` is the canonical release branch for runtime deployment.
 - ReleaseGitTag means an immutable git tag created from the promoted release commit and used as the runtime deploy target.
+- ReleaseGitTag should use the canonical format `release-YYYY.MM.DD.INC.HASH`, where `INC` is allocated from the latest visible release tag for the same UTC day.
 - TemporaryStateOnly means logs, pids, sockets, caches, and controller metadata may live under state/, but durable user or app content may not.
 - DeployByRuntimeCheckout means runtime is updated by checking out a release tag that points at a committed source revision.
 - VersionMatchVerification means the served frontend version and running backend version must match exactly after rollout.
+- VersionMatchVerification expects the deployed frontend and backend to report the same canonical dashboard version string, normally `dashboard-YYYY.MM.DD.INC.HASH` for tagged releases.
 - TicketSystemOwnsImplementationPlan means active work sequencing, task breakdown, and unfinished implementation routing belong in tickets rather than in long-lived blueprint companion files.
 - StandardRuntimeDeployBlueprint means runtime rollout uses the repository's canonical deploy-manager-runtime path and deploys `origin/main` by default or an explicit release tag for rollback or pinning.
 - `bun run deploy-manager-runtime` means the standard repository entrypoint for the canonical runtime rollout path after release promotion; with no argument it deploys `origin/main`, and with `<release-tag>` it deploys that specific release tag.
+- Canonical dashboard release-management UX may offer `deploy latest` and `deploy release tag` actions, but those actions should resolve to the same canonical deploy-manager-runtime contract rather than inventing a separate branch-deploy workflow.
 `);
 
 DevelopmentProcess.contains(

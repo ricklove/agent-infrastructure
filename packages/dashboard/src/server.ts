@@ -11,7 +11,11 @@ import {
 } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import type { DashboardFeatureBackendDefinition } from "@agent-infrastructure/dashboard-plugin"
+import {
+  canonicalDashboardVersionFromTag,
+  fallbackDashboardVersion,
+  type DashboardFeatureBackendDefinition,
+} from "@agent-infrastructure/dashboard-plugin"
 import {
   getDashboardFeaturePlugins,
   type DashboardHostRole,
@@ -108,6 +112,30 @@ type AccessEnrollmentResponse = {
   registrationUrl: string
   expiresAtMs: number
 }
+
+type RuntimeReleaseRecord = {
+  tag: string
+  version: string | null
+}
+
+type RuntimeReleaseStatusResponse = {
+  ok: true
+  currentVersion: string
+  currentReleaseTag: string | null
+  latestReleaseTag: string | null
+  latestVersion: string | null
+  updateAvailable: boolean
+  recentReleaseTags: RuntimeReleaseRecord[]
+}
+
+type RuntimeDeployRequest =
+  | {
+      target: "latest"
+    }
+  | {
+      target: "tag"
+      tag: string
+    }
 
 type StackOutput = {
   OutputKey?: string
@@ -269,6 +297,7 @@ const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
 const browserDebugLogPath =
   process.env.DASHBOARD_BROWSER_DEBUG_LOG_PATH?.trim() ||
   `${stateRoot}/logs/browser-debug.log`
+const runtimeDeployLogPath = `${stateRoot}/logs/dashboard-runtime-deploy.log`
 
 if (!Number.isInteger(port) || port <= 0) {
   throw new Error("DASHBOARD_PORT must be a positive integer")
@@ -292,12 +321,30 @@ function collectFiles(root: string): string[] {
 
 function computeDashboardBackendVersion(): string {
   try {
+    const exactTags = execFileSync(
+      "git",
+      ["tag", "--points-at", "HEAD", "--sort=-creatordate"],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+      },
+    )
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+    for (const tag of exactTags) {
+      const exactReleaseVersion = canonicalDashboardVersionFromTag(tag)
+      if (exactReleaseVersion) {
+        return exactReleaseVersion
+      }
+    }
+
     const gitHead = execFileSync("git", ["rev-parse", "--short=10", "HEAD"], {
       cwd: repoRoot,
       encoding: "utf8",
     }).trim()
     if (gitHead) {
-      return `dashboard-${gitHead}`
+      return fallbackDashboardVersion(gitHead)
     }
   } catch {}
 
@@ -310,11 +357,102 @@ function computeDashboardBackendVersion(): string {
     hash.update(readFileSync(file))
     hash.update("\n")
   }
-  return `dashboard-${hash.digest("hex").slice(0, 10)}`
+  return fallbackDashboardVersion(hash.digest("hex").slice(0, 10))
 }
 
 const dashboardBackendVersion = computeDashboardBackendVersion()
 const backendEnsurePromises = new Map<string, Promise<void>>()
+
+function gitOutput(args: string[]): string {
+  return execFileSync("git", args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).trim()
+}
+
+function listVisibleReleaseTags(): string[] {
+  try {
+    return gitOutput(["tag", "--list", "release-*", "--sort=-creatordate"])
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+function currentExactReleaseTag(): string | null {
+  try {
+    const tags = gitOutput(["tag", "--points-at", "HEAD", "--sort=-creatordate"])
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter((value) => value.startsWith("release-"))
+    return tags[0] ?? null
+  } catch {
+    return null
+  }
+}
+
+function readRuntimeReleaseStatus(): RuntimeReleaseStatusResponse {
+  const currentReleaseTag = currentExactReleaseTag()
+  const recentReleaseTags = listVisibleReleaseTags().slice(0, 12)
+  const latestReleaseTag = recentReleaseTags[0] ?? null
+
+  return {
+    ok: true,
+    currentVersion: dashboardBackendVersion,
+    currentReleaseTag,
+    latestReleaseTag,
+    latestVersion: latestReleaseTag
+      ? canonicalDashboardVersionFromTag(latestReleaseTag)
+      : null,
+    updateAvailable:
+      latestReleaseTag !== null && currentReleaseTag !== latestReleaseTag,
+    recentReleaseTags: recentReleaseTags.map((tag) => ({
+      tag,
+      version: canonicalDashboardVersionFromTag(tag),
+    })),
+  }
+}
+
+async function startRuntimeDeploy(targetTag?: string): Promise<{
+  pid: number
+  logPath: string
+}> {
+  mkdirSync(dirname(runtimeDeployLogPath), { recursive: true })
+
+  const deployCommand = targetTag
+    ? `nohup bun run deploy-manager-runtime ${shellQuote(targetTag)} >> ${shellQuote(runtimeDeployLogPath)} 2>&1 < /dev/null & echo $!`
+    : `nohup bun run deploy-manager-runtime >> ${shellQuote(runtimeDeployLogPath)} 2>&1 < /dev/null & echo $!`
+
+  const processHandle = Bun.spawn(
+    ["bash", "-lc", deployCommand],
+    {
+      cwd: repoRoot,
+      env: process.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  )
+
+  const stdout = await new Response(processHandle.stdout).text()
+  const stderr = await new Response(processHandle.stderr).text()
+  await processHandle.exited
+
+  if (processHandle.exitCode !== 0) {
+    throw new Error(stderr.trim() || "failed to start runtime deploy")
+  }
+
+  const pid = Number.parseInt(stdout.trim(), 10)
+  if (!Number.isInteger(pid) || pid <= 0) {
+    throw new Error("failed to capture runtime deploy pid")
+  }
+
+  return {
+    pid,
+    logPath: runtimeDeployLogPath,
+  }
+}
 
 function logSystemStep(source: string, message: string): void {
   const line = `[${new Date().toISOString()}:${source}] ${message}`
@@ -1155,6 +1293,74 @@ async function handleApi(request: Request): Promise<Response> {
       requiresSession: !isLoopbackRequest(request),
       hostRole: dashboardHostRole,
     })
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/runtime-release") {
+    const unauthorized = requireDashboardSession(request)
+    if (unauthorized) {
+      return unauthorized
+    }
+
+    return jsonResponse(readRuntimeReleaseStatus())
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === "/api/runtime-release/deploy"
+  ) {
+    const unauthorized = requireDashboardSession(request)
+    if (unauthorized) {
+      return unauthorized
+    }
+
+    const body = await parseJsonBody<RuntimeDeployRequest>(request)
+    if (!body || (body.target !== "latest" && body.target !== "tag")) {
+      return jsonResponse(
+        { ok: false, error: "target must be latest or tag" },
+        400,
+      )
+    }
+
+    const requestedTag =
+      body.target === "tag" ? body.tag.trim() : ""
+    if (body.target === "tag" && !requestedTag) {
+      return jsonResponse({ ok: false, error: "tag is required" }, 400)
+    }
+
+    if (body.target === "tag") {
+      const visibleTags = new Set(listVisibleReleaseTags())
+      if (!visibleTags.has(requestedTag)) {
+        return jsonResponse(
+          { ok: false, error: "unknown release tag" },
+          404,
+        )
+      }
+    }
+
+    try {
+      const deploy = await startRuntimeDeploy(
+        body.target === "tag" ? requestedTag : undefined,
+      )
+      return jsonResponse(
+        {
+          ok: true,
+          target: body.target,
+          ...(body.target === "tag" ? { tag: requestedTag } : {}),
+          pid: deploy.pid,
+          logPath: deploy.logPath,
+        },
+        202,
+      )
+    } catch (error) {
+      return jsonResponse(
+        {
+          ok: false,
+          error:
+            error instanceof Error ? error.message : "failed to start deploy",
+        },
+        500,
+      )
+    }
   }
 
   if (request.method === "POST" && url.pathname === "/api/session/exchange") {

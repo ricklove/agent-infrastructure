@@ -39,9 +39,12 @@ const Policy = {
 DeployManagerRuntime.enforces(`
 - Deploy starts only after the intended revision has already been promoted to `main` or identified by an explicit release tag.
 - Deploy targets `origin/main` by default and may instead target a specific release git tag for rollback or pinning.
+- Deploy does not accept an arbitrary branch name as a standard operator target.
 - Deploy updates the runtime checkout to the intended branch or tag target.
 - Deploy rebuilds frontend assets from the runtime checkout after that checkout update.
 - Deploy may terminate local backend server processes so normal runtime supervision can restart them.
+- When the selected target is an exact release tag, the deployed frontend and backend version should report the canonical release version `dashboard-YYYY.MM.DD.INC.HASH` derived from that release tag.
+- Release tags should use the canonical format `release-YYYY.MM.DD.INC.HASH`, where `INC` starts at `1000` for a given UTC day and increments from the latest visible release tag for that day.
 - Deploy does not manage dashboard tunnel lifecycle.
 - Deploy does not replace, rotate, or reissue the dashboard public URL.
 - In named tunnel mode, deploy does not recreate the named tunnel and does not rotate the stable stack-owned hostname as part of rollout.
@@ -57,9 +60,11 @@ DeployManagerRuntime.enforces(`
 DeployManagerRuntime.defines(`
 - ReleasePromotionFromMain means the release commit is promoted onto `main` before a runtime deploy is allowed.
 - BranchOrTagDeployTarget means runtime checkout targets `origin/main` by default or an immutable release git tag when an explicit tag is supplied.
+- BranchOrTagDeployTarget excludes arbitrary branch-name deploy targets from the canonical operator path.
 - RuntimeCheckoutDeploy means the deployed tree is advanced by git checkout of the selected branch or tag target in the runtime checkout.
 - FrontendBuildRequired means frontend assets are rebuilt from the runtime checkout after the target revision is selected.
 - BackendRestartOnly means deploy restarts local backend server processes and relies on normal runtime supervision for recovery.
+- When the runtime is deployed from an exact release tag, the canonical runtime version is the tag-derived value `dashboard-YYYY.MM.DD.INC.HASH`; when no exact release tag identifies the deploy target, the runtime may expose a clearly non-release fallback version string.
 - TunnelUntouchedByDeploy means deploy never kills, replaces, rotates, or otherwise manages the dashboard tunnel.
 - In named tunnel mode, TunnelUntouchedByDeploy also means deploy does not recreate the persistent named tunnel connector; only the controller manages connector health for the stable stack-owned hostname path.
 - ControllerOwnsTunnelLifecycle means only the dashboard controller or its recovery policy decides tunnel repair or replacement.
@@ -101,7 +106,8 @@ when(Artifact.runtimeCheckout.receives("the selected deploy target"))
 
 when(Artifact.releaseTag.identifies("the deploy target"))
   .then(DeployManagerRuntime.expects(Artifact.releaseBranch))
-  .and(DeployManagerRuntime.expects("the release tag to point at a commit on main"));
+  .and(DeployManagerRuntime.expects("the release tag to point at a commit on main"))
+  .and(DeployManagerRuntime.expects("the release tag to use the format `release-YYYY.MM.DD.INC.HASH`"));
 
 when(Actor.operator.restarts("runtime backend processes during deploy"))
   .then(DeployManagerRuntime.keeps(Artifact.tunnel))
@@ -115,6 +121,7 @@ when(Actor.controller.owns("dashboard lifecycle and recovery"))
 when(Artifact.verification.records("post-deploy outcome"))
   .then(DeployManagerRuntime.expects("runtime checkout revision match"))
   .and(DeployManagerRuntime.expects("frontend and backend version match"))
+  .and(DeployManagerRuntime.expects("release-tag deploys to report the canonical version format `dashboard-YYYY.MM.DD.INC.HASH`"))
   .and(DeployManagerRuntime.expects("live health verification"))
   .and(DeployManagerRuntime.expects("issuance of a manager-dashboard session URL with `bun run issue:dashboard-session`"))
   .and(DeployManagerRuntime.expects("real browser verification using the issued manager-dashboard session URL"))

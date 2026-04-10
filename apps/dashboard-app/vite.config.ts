@@ -2,6 +2,10 @@ import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { relative, resolve } from "node:path"
+import {
+  canonicalDashboardVersionFromTag,
+  fallbackDashboardVersion,
+} from "@agent-infrastructure/dashboard-plugin"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, type HmrContext, type Plugin } from "vite"
@@ -34,12 +38,30 @@ function collectFiles(root: string): string[] {
 
 function computeFrontendVersion(): string {
   try {
+    const exactTags = execFileSync(
+      "git",
+      ["tag", "--points-at", "HEAD", "--sort=-creatordate"],
+      {
+        cwd: resolve(__dirname, "../.."),
+        encoding: "utf8",
+      },
+    )
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+    for (const tag of exactTags) {
+      const exactReleaseVersion = canonicalDashboardVersionFromTag(tag)
+      if (exactReleaseVersion) {
+        return exactReleaseVersion
+      }
+    }
+
     const gitHead = execFileSync("git", ["rev-parse", "--short=10", "HEAD"], {
       cwd: resolve(__dirname, "../.."),
       encoding: "utf8",
     }).trim()
     if (gitHead) {
-      return `dashboard-${gitHead}`
+      return fallbackDashboardVersion(gitHead)
     }
   } catch {}
 
@@ -53,7 +75,7 @@ function computeFrontendVersion(): string {
     hash.update("\n")
   }
 
-  return `dashboard-${hash.digest("hex").slice(0, 10)}`
+  return fallbackDashboardVersion(hash.digest("hex").slice(0, 10))
 }
 
 function versionPlugin(): Plugin {
