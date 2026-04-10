@@ -43,6 +43,8 @@ type HeadersForEachLike = {
 }
 
 type DashboardSessionFetchInit = {
+  method?: string
+  body?: unknown
   headers?: unknown
 }
 
@@ -194,10 +196,6 @@ export function dashboardSessionDebugLog(
   message: string,
   detail?: unknown,
 ): void {
-  try {
-    console.log("[dashboard-debug]", message, detail ?? null)
-  } catch {}
-
   const payload = JSON.stringify({
     ts: new Date().toISOString(),
     message,

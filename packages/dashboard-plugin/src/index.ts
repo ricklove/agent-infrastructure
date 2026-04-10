@@ -70,6 +70,17 @@ export type DashboardFeatureUiPlugin = DashboardFeaturePlugin & {
 }
 
 export {
+  buildCanonicalDashboardReleaseTag,
+  buildCanonicalDashboardVersion,
+  canonicalDashboardVersionFromTag,
+  fallbackDashboardVersion,
+  formatUtcDashboardReleaseDate,
+  nextCanonicalDashboardReleaseTag,
+  parseCanonicalDashboardReleaseTag,
+  type CanonicalDashboardReleaseParts,
+} from "./release-version.js"
+
+export {
   dashboardBasicFeatureIds,
   dashboardEnterStyleHint,
   dashboardEnterStyleShortLabel,
