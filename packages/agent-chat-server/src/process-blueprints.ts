@@ -94,6 +94,8 @@ type RawProcessBlueprint = {
   title?: unknown
   catalogOrder?: unknown
   expectation?: unknown
+  template?: unknown
+  variables?: unknown
   idlePrompt?: unknown
   completionMode?: unknown
   completionToken?: unknown
@@ -107,13 +109,25 @@ type RawProcessBlueprint = {
   }
 }
 
+type RawProcessTemplate = {
+  id?: unknown
+  title?: unknown
+  variables?: unknown
+  blueprint?: unknown
+}
+
 export type ProcessBlueprintCatalogLoadOptions = {
   processBlueprintDirs?: string[]
+  processTemplateDirs?: string[]
   processStepDirs?: string[]
 }
 
 function defaultBlueprintsDir() {
   return resolve(import.meta.dir, "../../../blueprints/process-blueprints")
+}
+
+function defaultProcessTemplatesDir() {
+  return resolve(import.meta.dir, "../../../blueprints/process-templates")
 }
 
 function defaultProcessStepsDir() {
@@ -192,6 +206,170 @@ function loadRawProcessBlueprints(processBlueprintDirs?: string[]) {
   }
 
   return [...blueprintMap.values()]
+}
+
+function loadRawProcessTemplates(processTemplateDirs?: string[]) {
+  const templateDirs = normalizeDirectoryList(
+    processTemplateDirs,
+    defaultProcessTemplatesDir(),
+  )
+  const templateMap = new Map<string, { raw: RawProcessTemplate; path: string }>()
+
+  for (const processTemplateDir of templateDirs) {
+    if (!existsSync(processTemplateDir)) {
+      continue
+    }
+
+    for (const entry of readdirSync(processTemplateDir).sort()) {
+      if (!entry.endsWith(".process-template.json")) {
+        continue
+      }
+      const path = join(processTemplateDir, entry)
+      const raw = JSON.parse(readFileSync(path, "utf8")) as RawProcessTemplate
+      const id = typeof raw.id === "string" ? raw.id.trim() : ""
+      if (!id) {
+        throw new Error(`Invalid process template: ${path}`)
+      }
+      templateMap.set(id, { raw, path })
+    }
+  }
+
+  return templateMap
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function deepMerge<T>(base: T, overlay: unknown): T {
+  if (!isPlainObject(base) || !isPlainObject(overlay)) {
+    return (overlay as T) ?? base
+  }
+
+  const merged: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(overlay)) {
+    const current = merged[key]
+    if (isPlainObject(current) && isPlainObject(value)) {
+      merged[key] = deepMerge(current, value)
+      continue
+    }
+    merged[key] = value
+  }
+  return merged as T
+}
+
+function normalizeTemplateVariables(rawVariables: unknown, contextPath: string) {
+  if (!isPlainObject(rawVariables)) {
+    return new Map<string, string>()
+  }
+
+  const variables = new Map<string, string>()
+  for (const [key, value] of Object.entries(rawVariables)) {
+    const normalizedKey = key.trim()
+    const normalizedValue = typeof value === "string" ? value.trim() : ""
+    if (!normalizedKey || !normalizedValue) {
+      throw new Error(`Invalid process template variable in ${contextPath}`)
+    }
+    variables.set(normalizedKey, normalizedValue)
+  }
+  return variables
+}
+
+function substituteTemplateVariables<T>(
+  value: T,
+  variables: Map<string, string>,
+  contextPath: string,
+): T {
+  if (typeof value === "string") {
+    return value.replace(/\{\{([a-zA-Z0-9_]+)\}\}/gu, (_match, key) => {
+      const replacement = variables.get(key)
+      if (!replacement) {
+        throw new Error(
+          `Missing process template variable '${key}' in ${contextPath}`,
+        )
+      }
+      return replacement
+    }) as T
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) =>
+      substituteTemplateVariables(entry, variables, contextPath),
+    ) as T
+  }
+
+  if (isPlainObject(value)) {
+    const substitutedEntries = Object.entries(value).map(([key, entry]) => [
+      key,
+      substituteTemplateVariables(entry, variables, contextPath),
+    ])
+    return Object.fromEntries(substitutedEntries) as T
+  }
+
+  return value
+}
+
+function normalizeRequiredTemplateVariableNames(
+  rawTemplate: RawProcessTemplate,
+  templatePath: string,
+) {
+  if (rawTemplate.variables === undefined) {
+    return []
+  }
+  if (!Array.isArray(rawTemplate.variables)) {
+    throw new Error(`Invalid process template variables: ${templatePath}`)
+  }
+  return rawTemplate.variables
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter(Boolean)
+}
+
+function resolveTemplateBlueprint(
+  raw: RawProcessBlueprint,
+  jsonPath: string,
+  templates: Map<string, { raw: RawProcessTemplate; path: string }>,
+) {
+  const templateId =
+    typeof raw.template === "string" ? raw.template.trim() : ""
+  if (!templateId) {
+    return raw
+  }
+
+  const templateEntry = templates.get(templateId)
+  if (!templateEntry) {
+    throw new Error(`Unknown process template: ${templateId}`)
+  }
+  if (!isPlainObject(templateEntry.raw.blueprint)) {
+    throw new Error(`Invalid process template blueprint: ${templateEntry.path}`)
+  }
+
+  const requiredVariables = normalizeRequiredTemplateVariableNames(
+    templateEntry.raw,
+    templateEntry.path,
+  )
+  const variables = normalizeTemplateVariables(raw.variables, jsonPath)
+  for (const variableName of requiredVariables) {
+    if (!variables.has(variableName)) {
+      throw new Error(
+        `Missing required process template variable '${variableName}' in ${jsonPath}`,
+      )
+    }
+  }
+
+  const instantiatedTemplate = substituteTemplateVariables(
+    templateEntry.raw.blueprint,
+    variables,
+    templateEntry.path,
+  ) as RawProcessBlueprint
+  const instanceOverrides = { ...raw }
+  delete instanceOverrides.template
+  delete instanceOverrides.variables
+
+  return substituteTemplateVariables(
+    deepMerge(instantiatedTemplate, instanceOverrides),
+    variables,
+    jsonPath,
+  )
 }
 
 function normalizeProcessBlueprintDecisionOptions(
@@ -318,13 +496,18 @@ function hasProceduralFields(raw: RawProcessBlueprint) {
 function normalizeProcessBlueprint(
   raw: RawProcessBlueprint,
   jsonPath: string,
+  templates: Map<string, { raw: RawProcessTemplate; path: string }>,
   bundles: Map<string, RawProcessStepBundle>,
 ): ProcessBlueprint {
-  const id = typeof raw.id === "string" ? raw.id.trim() : ""
-  const title = typeof raw.title === "string" ? raw.title.trim() : ""
-  const catalogOrder = Number(raw.catalogOrder)
+  const resolvedRaw = resolveTemplateBlueprint(raw, jsonPath, templates)
+  const id = typeof resolvedRaw.id === "string" ? resolvedRaw.id.trim() : ""
+  const title =
+    typeof resolvedRaw.title === "string" ? resolvedRaw.title.trim() : ""
+  const catalogOrder = Number(resolvedRaw.catalogOrder)
   const expectation =
-    typeof raw.expectation === "string" ? raw.expectation.trim() : ""
+    typeof resolvedRaw.expectation === "string"
+      ? resolvedRaw.expectation.trim()
+      : ""
   const basePath = jsonPath.replace(/\.process-blueprint\.json$/u, "")
   const companionPath = `${basePath}.agentish.ts`
   const normalizedCatalogOrder =
@@ -336,7 +519,7 @@ function normalizeProcessBlueprint(
     throw new Error(`Invalid process blueprint: ${jsonPath}`)
   }
 
-  if (!hasProceduralFields(raw)) {
+  if (!hasProceduralFields(resolvedRaw)) {
     return {
       kind: "mode",
       id,
@@ -348,29 +531,37 @@ function normalizeProcessBlueprint(
   }
 
   const idlePrompt =
-    typeof raw.idlePrompt === "string" ? raw.idlePrompt.trim() : ""
+    typeof resolvedRaw.idlePrompt === "string"
+      ? resolvedRaw.idlePrompt.trim()
+      : ""
   const completionToken =
-    typeof raw.completionToken === "string" ? raw.completionToken.trim() : ""
+    typeof resolvedRaw.completionToken === "string"
+      ? resolvedRaw.completionToken.trim()
+      : ""
   const blockedToken =
-    typeof raw.blockedToken === "string" ? raw.blockedToken.trim() : ""
+    typeof resolvedRaw.blockedToken === "string"
+      ? resolvedRaw.blockedToken.trim()
+      : ""
   const completionMode =
-    raw.completionMode === "exact_reply" ? "exact_reply" : null
+    resolvedRaw.completionMode === "exact_reply" ? "exact_reply" : null
 
   if (
     !idlePrompt ||
     !completionToken ||
     !blockedToken ||
     !completionMode ||
-    raw.steps === undefined ||
-    raw.watchdog === undefined
+    resolvedRaw.steps === undefined ||
+    resolvedRaw.watchdog === undefined
   ) {
     throw new Error(`Invalid procedural process blueprint: ${jsonPath}`)
   }
 
-  const steps = normalizeProcessBlueprintSteps(raw.steps, bundles)
-  const watchDogEnabled = raw.watchdog?.enabled !== false
-  const idleTimeoutSeconds = Number(raw.watchdog?.idleTimeoutSeconds)
-  const maxNudgesPerIdleEpisode = Number(raw.watchdog?.maxNudgesPerIdleEpisode)
+  const steps = normalizeProcessBlueprintSteps(resolvedRaw.steps, bundles)
+  const watchDogEnabled = resolvedRaw.watchdog?.enabled !== false
+  const idleTimeoutSeconds = Number(resolvedRaw.watchdog?.idleTimeoutSeconds)
+  const maxNudgesPerIdleEpisode = Number(
+    resolvedRaw.watchdog?.maxNudgesPerIdleEpisode,
+  )
 
   return {
     kind: "procedural",
@@ -382,8 +573,8 @@ function normalizeProcessBlueprint(
     completionMode,
     completionToken,
     blockedToken,
-    stopConditions: Array.isArray(raw.stopConditions)
-      ? raw.stopConditions
+    stopConditions: Array.isArray(resolvedRaw.stopConditions)
+      ? resolvedRaw.stopConditions
           .map((value) => (typeof value === "string" ? value.trim() : ""))
           .filter(Boolean)
       : [],
@@ -413,9 +604,12 @@ export function loadProcessBlueprintCatalog(
   options: ProcessBlueprintCatalogLoadOptions = {},
 ): ProcessBlueprint[] {
   const bundles = normalizeProcessStepBundles(options.processStepDirs)
+  const templates = loadRawProcessTemplates(options.processTemplateDirs)
 
   return loadRawProcessBlueprints(options.processBlueprintDirs)
-    .map(({ raw, path }) => normalizeProcessBlueprint(raw, path, bundles))
+    .map(({ raw, path }) =>
+      normalizeProcessBlueprint(raw, path, templates, bundles),
+    )
     .sort((left, right) => {
       if (left.catalogOrder !== right.catalogOrder) {
         return left.catalogOrder - right.catalogOrder

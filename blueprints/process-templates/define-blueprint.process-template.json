@@ -1,0 +1,44 @@
+{
+  "id": "define_blueprint_template",
+  "title": "Define Blueprint",
+  "variables": ["targetProject", "workLocation", "mergeSteps"],
+  "blueprint": {
+    "expectation": "Use the configured work location as the only mutable surface for {{targetProject}} blueprint-definition work. Never edit blueprint files from the shared repository checkout. Create or update the needed blueprint layer from that configured surface, then finalize using the configured merge steps.",
+    "idlePrompt": "If the blueprint work is complete, reply only with 'done: blueprint defined'. If you are truly blocked on missing user information, reply only with 'blocked: blueprint clarification required'. Otherwise resume the blueprint work immediately and make real progress instead of giving only a status update.",
+    "completionMode": "exact_reply",
+    "completionToken": "done: blueprint defined",
+    "blockedToken": "blocked: blueprint clarification required",
+    "stopConditions": ["blueprint work complete", "missing information from the user"],
+    "steps": [
+      {
+        "id": "blueprint_worktree_surface",
+        "title": "Prepare the blueprint worktree",
+        "steps": [{ "use": "{{workLocation}}" }]
+      },
+      {
+        "id": "blueprint_revision_cycle",
+        "title": "Define and integrate the blueprint changes",
+        "steps": [
+          {
+            "id": "review_existing_blueprints",
+            "title": "Review relevant existing blueprints and Agentish sections"
+          },
+          {
+            "id": "update_blueprint_layer",
+            "title": "Create or update the needed blueprint layer"
+          },
+          {
+            "id": "commit_blueprint_changes",
+            "title": "Commit the blueprint changes"
+          },
+          { "use": "{{mergeSteps}}" }
+        ]
+      }
+    ],
+    "watchdog": {
+      "enabled": true,
+      "idleTimeoutSeconds": 90,
+      "maxNudgesPerIdleEpisode": 0
+    }
+  }
+}
