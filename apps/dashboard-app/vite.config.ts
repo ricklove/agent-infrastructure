@@ -5,7 +5,7 @@ import { relative, resolve } from "node:path"
 import {
   canonicalDashboardVersionFromTag,
   fallbackDashboardVersion,
-} from "@agent-infrastructure/dashboard-plugin"
+} from "../../packages/dashboard-plugin/src/release-version"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, type HmrContext, type Plugin } from "vite"
