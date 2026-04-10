@@ -4,7 +4,7 @@
   "steps": [
     {
       "id": "promote_release",
-      "title": "On the worker, merge the finished feature branch into `development`, push `development`, merge `development` into `main`, push `main`, and create and push a release tag from that exact promoted commit"
+      "title": "On the worker, merge the finished feature branch into `development`, push `development`, merge `development` into `main`, push `main`, and create and push a release tag from that exact promoted commit using the canonical format `release-YYYY.MM.DD.INC.HASH`"
     },
     {
       "id": "deploy_runtime",
@@ -12,7 +12,7 @@
     },
     {
       "id": "verify_runtime_revision_and_versions",
-      "title": "Verify the runtime checkout revision match and frontend-backend version match"
+      "title": "Verify the runtime checkout revision match and frontend-backend version match, including canonical `dashboard-YYYY.MM.DD.INC.HASH` reporting for exact release-tag deploys"
     },
     {
       "id": "perform_live_health_verification",
