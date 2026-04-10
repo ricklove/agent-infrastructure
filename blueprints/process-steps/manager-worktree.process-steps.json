@@ -1,0 +1,5 @@
+{
+  "id": "manager_worktree",
+  "title": "Manager worktree surface setup",
+  "steps": [{ "use": "feature_worktree_setup" }]
+}

@@ -1,0 +1,11 @@
+{
+  "id": "define_process_t",
+  "title": "Define Process (T)",
+  "catalogOrder": 28,
+  "template": "define_process_template",
+  "variables": {
+    "targetProject": "agent-infrastructure",
+    "workLocation": "manager_worktree",
+    "mergeSteps": "merge_development"
+  }
+}

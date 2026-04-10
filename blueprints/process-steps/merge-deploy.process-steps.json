@@ -1,0 +1,31 @@
+{
+  "id": "merge_deploy",
+  "title": "Merge, deploy, and validate steps",
+  "steps": [
+    {
+      "id": "promote_feature_branch_on_worker",
+      "title": "On the worker, use trusted `git` and `gh` authority to merge the finished feature branch into `development`, push `development`, merge `development` into `main`, push `main`, and create and push the release tag"
+    },
+    {
+      "id": "assess_worker_repository_promotion",
+      "title": "What is the worker repository promotion outcome?",
+      "kind": "decision",
+      "decision": {
+        "prompt": "What is the worker repository promotion outcome?",
+        "options": [
+          {
+            "id": "worker_repository_promotion_completed",
+            "title": "Worker repository promotion completed successfully",
+            "next": true
+          },
+          {
+            "id": "worker_repository_promotion_requires_resolution",
+            "title": "Worker repository promotion requires worker-side resolution",
+            "goto": "implement_revision"
+          }
+        ]
+      }
+    },
+    { "use": "release_deploy_runtime_validation" }
+  ]
+}

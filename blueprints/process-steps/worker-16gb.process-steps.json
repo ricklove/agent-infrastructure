@@ -1,0 +1,5 @@
+{
+  "id": "worker_16gb",
+  "title": "16 GB worker surface setup",
+  "steps": [{ "use": "worker_surface_setup" }]
+}
