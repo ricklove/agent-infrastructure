@@ -217,6 +217,7 @@
         "@agent-infrastructure/agent-swarm-ui": "workspace:*",
         "@agent-infrastructure/agent-workbench-server": "workspace:*",
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "@agent-infrastructure/dashboard-settings-ui": "workspace:*",
         "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
         "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
         "@agent-infrastructure/projects-server": "workspace:*",
@@ -252,6 +253,19 @@
         "typescript": "^5.4.5",
       },
     },
+    "packages/dashboard-settings-ui": {
+      "name": "@agent-infrastructure/dashboard-settings-ui",
+      "dependencies": {
+        "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+      },
+      "devDependencies": {
+        "@types/react": "^18.3.3",
+        "@types/react-dom": "^18.3.0",
+        "typescript": "^5.4.5",
+      },
+    },
     "packages/dashboard-terminal-server": {
       "name": "@agent-infrastructure/dashboard-terminal-server",
       "devDependencies": {
@@ -284,6 +298,7 @@
         "@agent-infrastructure/agent-swarm-ui": "workspace:*",
         "@agent-infrastructure/agent-workbench-ui": "workspace:*",
         "@agent-infrastructure/dashboard-plugin": "workspace:*",
+        "@agent-infrastructure/dashboard-settings-ui": "workspace:*",
         "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
         "@agent-infrastructure/floating-window-debug-ui": "workspace:*",
         "@agent-infrastructure/projects-ui": "workspace:*",
@@ -434,6 +449,8 @@
     "@agent-infrastructure/dashboard-app": ["@agent-infrastructure/dashboard-app@workspace:apps/dashboard-app"],
 
     "@agent-infrastructure/dashboard-plugin": ["@agent-infrastructure/dashboard-plugin@workspace:packages/dashboard-plugin"],
+
+    "@agent-infrastructure/dashboard-settings-ui": ["@agent-infrastructure/dashboard-settings-ui@workspace:packages/dashboard-settings-ui"],
 
     "@agent-infrastructure/dashboard-terminal-server": ["@agent-infrastructure/dashboard-terminal-server@workspace:packages/dashboard-terminal-server"],
 

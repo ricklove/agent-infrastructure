@@ -8,6 +8,7 @@ export type DashboardFeatureId =
   | "projects"
   | "design"
   | "debug"
+  | "settings"
 
 export type DashboardFeatureIcon =
   | "admin"
@@ -18,6 +19,7 @@ export type DashboardFeatureIcon =
   | "projects"
   | "design"
   | "debug"
+  | "settings"
 
 export type DashboardScreenModule = {
   default: unknown
@@ -66,6 +68,22 @@ export type DashboardFeaturePlugin = {
 export type DashboardFeatureUiPlugin = DashboardFeaturePlugin & {
   loadScreen: () => Promise<DashboardScreenModule>
 }
+
+export {
+  dashboardBasicFeatureIds,
+  dashboardEnterStyleHint,
+  dashboardEnterStyleShortLabel,
+  dashboardFeatureOrder,
+  isDashboardFeatureVisible,
+  isDashboardSendShortcut,
+  readDashboardPreferences,
+  subscribeDashboardPreferences,
+  writeDashboardPreferences,
+  type DashboardComposerKeyEvent,
+  type DashboardEnterStyle,
+  type DashboardPreferences,
+  type DashboardVisibilityMode,
+} from "./preferences.js"
 
 export {
   createDashboardSessionHeaders,

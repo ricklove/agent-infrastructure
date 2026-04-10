@@ -1,6 +1,9 @@
 import {
   dashboardSessionWebSocketProtocols as buildDashboardSessionWebSocketProtocols,
   dashboardSessionFetch,
+  isDashboardSendShortcut,
+  readDashboardPreferences,
+  subscribeDashboardPreferences,
 } from "@agent-infrastructure/dashboard-plugin"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
@@ -2274,6 +2277,9 @@ const ComposerPanel = memo(
     const [composerImages, setComposerImages] = useState<
       ComposerImageAttachment[]
     >([])
+    const [enterStyle, setEnterStyle] = useState(
+      () => readDashboardPreferences().enterStyle,
+    )
 
     useEffect(() => {
       if (!props.activeSession?.id) {
@@ -2382,6 +2388,12 @@ const ComposerPanel = memo(
 
     const hasComposerContent = hasComposerText || composerImages.length > 0
 
+    useEffect(() => {
+      return subscribeDashboardPreferences(() => {
+        setEnterStyle(readDashboardPreferences().enterStyle)
+      })
+    }, [])
+
     const submitComposer = useCallback(async () => {
       if (!props.activeSession || !hasComposerContent) {
         return
@@ -2422,7 +2434,7 @@ const ComposerPanel = memo(
 
     const handleComposerKeyDown = useCallback(
       (event: KeyboardEvent<HTMLTextAreaElement>) => {
-        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        if (isDashboardSendShortcut(event, enterStyle)) {
           event.preventDefault()
           void submitComposer()
           return
@@ -2441,6 +2453,7 @@ const ComposerPanel = memo(
       [
         props.activity.canInterrupt,
         props.activity.status,
+        enterStyle,
         props.interrupting,
         props.onInterrupt,
         submitComposer,

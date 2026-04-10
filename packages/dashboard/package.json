@@ -12,6 +12,7 @@
     "@agent-infrastructure/agent-graph-ui": "workspace:*",
     "@agent-infrastructure/agent-swarm-ui": "workspace:*",
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
+    "@agent-infrastructure/dashboard-settings-ui": "workspace:*",
     "@agent-infrastructure/projects-ui": "workspace:*",
     "@agent-infrastructure/dashboard-terminal-ui": "workspace:*",
     "@agent-infrastructure/ui-design-canvas-ui": "workspace:*",

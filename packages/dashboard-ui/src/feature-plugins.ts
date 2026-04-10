@@ -4,6 +4,7 @@ import { agentGraphDashboardUiPlugin } from "@agent-infrastructure/agent-graph-u
 import { agentSwarmDashboardUiPlugin } from "@agent-infrastructure/agent-swarm-ui/ui-plugin"
 import { agentWorkbenchDashboardUiPlugin } from "@agent-infrastructure/agent-workbench-ui/ui-plugin"
 import type { DashboardFeatureUiPlugin } from "@agent-infrastructure/dashboard-plugin"
+import { dashboardSettingsDashboardUiPlugin } from "@agent-infrastructure/dashboard-settings-ui/ui-plugin"
 import { dashboardTerminalUiPlugin } from "@agent-infrastructure/dashboard-terminal-ui/ui-plugin"
 import { floatingWindowDebugDashboardUiPlugin } from "@agent-infrastructure/floating-window-debug-ui/ui-plugin"
 import { projectsDashboardUiPlugin } from "@agent-infrastructure/projects-ui/ui-plugin"
@@ -26,14 +27,15 @@ const composedWorkbenchDashboardUiPlugin: DashboardFeatureUiPlugin = {
 export type DashboardHostRole = "manager" | "admin"
 
 const managerDashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
+  agentChatDashboardUiPlugin,
   agentSwarmDashboardUiPlugin,
   composedWorkbenchDashboardUiPlugin,
   uiDesignCanvasDashboardUiPlugin,
   floatingWindowDebugDashboardUiPlugin,
-  projectsDashboardUiPlugin,
-  agentChatDashboardUiPlugin,
   agentGraphDashboardUiPlugin,
   dashboardTerminalUiPlugin,
+  projectsDashboardUiPlugin,
+  dashboardSettingsDashboardUiPlugin,
 ]
 
 const adminDashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [

@@ -3,6 +3,11 @@ import type {
   DashboardFeatureId,
   DashboardFeatureUiPlugin,
 } from "@agent-infrastructure/dashboard-plugin"
+import {
+  isDashboardFeatureVisible,
+  readDashboardPreferences,
+  subscribeDashboardPreferences,
+} from "@agent-infrastructure/dashboard-plugin"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
   type ComponentType,
@@ -223,6 +228,25 @@ function DebugIcon(props: { className?: string }) {
   )
 }
 
+function SettingsIcon(props: { className?: string }) {
+  useRenderCounter("SettingsIcon")
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="2.75" />
+      <path d="M19.1 15a1 1 0 0 0 .2 1.1l.1.1a1.25 1.25 0 0 1 0 1.8l-.6.6a1.25 1.25 0 0 1-1.8 0l-.1-.1a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.9V20a1.25 1.25 0 0 1-1.25 1.25h-.9A1.25 1.25 0 0 1 10.9 20v-.2a1 1 0 0 0-.6-.9 1 1 0 0 0-1.1.2l-.1.1a1.25 1.25 0 0 1-1.8 0l-.6-.6a1.25 1.25 0 0 1 0-1.8l.1-.1a1 1 0 0 0 .2-1.1 1 1 0 0 0-.9-.6H4A1.25 1.25 0 0 1 2.75 13.9V13A1.25 1.25 0 0 1 4 11.75h.2a1 1 0 0 0 .9-.6 1 1 0 0 0-.2-1.1l-.1-.1a1.25 1.25 0 0 1 0-1.8l.6-.6a1.25 1.25 0 0 1 1.8 0l.1.1a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.9V4A1.25 1.25 0 0 1 10.1 2.75H11A1.25 1.25 0 0 1 12.25 4v.2a1 1 0 0 0 .6.9 1 1 0 0 0 1.1-.2l.1-.1a1.25 1.25 0 0 1 1.8 0l.6.6a1.25 1.25 0 0 1 0 1.8l-.1.1a1 1 0 0 0-.2 1.1 1 1 0 0 0 .9.6H20A1.25 1.25 0 0 1 21.25 10v.9A1.25 1.25 0 0 1 20 12.15h-.2a1 1 0 0 0-.9.6" />
+    </svg>
+  )
+}
+
 function CopyIcon(props: { className?: string }) {
   useRenderCounter("CopyIcon")
   return (
@@ -298,6 +322,7 @@ const featureIconMap: Record<
   chat: ChatIcon,
   graph: GraphIcon,
   terminal: TerminalIcon,
+  settings: SettingsIcon,
 }
 
 export function DashboardShell({
@@ -321,6 +346,9 @@ export function DashboardShell({
   const [featureStatuses, setFeatureStatuses] = useState<
     Partial<Record<FeatureId, FeatureStatusItem[]>>
   >({})
+  const [dashboardPreferences, setDashboardPreferences] = useState(() =>
+    readDashboardPreferences(),
+  )
   const hostRole = config?.hostRole ?? "manager"
   const dashboardPlugins = useMemo(
     () => getDashboardFeaturePlugins(hostRole),
@@ -359,33 +387,51 @@ export function DashboardShell({
   const [loadedFeatureIds, setLoadedFeatureIds] = useState<FeatureId[]>([
     featureIdFromPath(window.location.pathname, getDashboardFeaturePlugins("manager")),
   ])
+  const visibilityMode =
+    hostRole === "manager" ? dashboardPreferences.dashboardMode : "advanced"
+  const visibleFeatureDefinitions = useMemo(
+    () =>
+      featureDefinitions.filter((feature) =>
+        isDashboardFeatureVisible(feature.id, visibilityMode),
+      ),
+    [featureDefinitions, visibilityMode],
+  )
 
   const activeFeature = useMemo(
     () =>
-      featureDefinitions.find((feature) => feature.id === activeFeatureId) ??
+      visibleFeatureDefinitions.find((feature) => feature.id === activeFeatureId) ??
+      visibleFeatureDefinitions[0] ??
       featureDefinitions[0],
-    [activeFeatureId, featureDefinitions],
+    [activeFeatureId, featureDefinitions, visibleFeatureDefinitions],
   )
 
   useEffect(() => {
+    return subscribeDashboardPreferences(() => {
+      setDashboardPreferences(readDashboardPreferences())
+    })
+  }, [])
+
+  useEffect(() => {
     function handlePopState() {
-      setActiveFeatureId(featureIdFromPath(window.location.pathname, dashboardPlugins))
+      setActiveFeatureId(
+        featureIdFromPath(window.location.pathname, visibleFeatureDefinitions),
+      )
     }
 
     window.addEventListener("popstate", handlePopState)
     return () => {
       window.removeEventListener("popstate", handlePopState)
     }
-  }, [dashboardPlugins])
+  }, [visibleFeatureDefinitions])
 
   useEffect(() => {
-    const defaultFeature = featureDefinitions[0]
+    const defaultFeature = visibleFeatureDefinitions[0] ?? featureDefinitions[0]
     if (!defaultFeature) {
       return
     }
 
     const currentPath = window.location.pathname
-    const matchedFeature = featureDefinitions.find(
+    const matchedFeature = visibleFeatureDefinitions.find(
       (feature) => feature.route === currentPath,
     )
 
@@ -398,7 +444,7 @@ export function DashboardShell({
     }
 
     setActiveFeatureId(matchedFeature.id)
-  }, [featureDefinitions])
+  }, [featureDefinitions, visibleFeatureDefinitions])
 
   useEffect(() => {
     window.dispatchEvent(
@@ -406,7 +452,7 @@ export function DashboardShell({
         detail: { featureId: activeFeatureId },
       }),
     )
-  }, [activeFeatureId])
+  }, [activeFeatureId, visibleFeatureDefinitions])
 
   useEffect(() => {
     function handleFeatureStatus(event: Event) {
@@ -548,7 +594,8 @@ export function DashboardShell({
 
   useEffect(() => {
     setLoadedFeatureIds((currentValue) =>
-      currentValue.includes(activeFeatureId)
+      currentValue.includes(activeFeatureId) ||
+      !visibleFeatureDefinitions.some((feature) => feature.id === activeFeatureId)
         ? currentValue
         : [...currentValue, activeFeatureId],
     )
@@ -630,18 +677,41 @@ export function DashboardShell({
     }
   }, [])
 
-  function navigateToFeature(featureId: FeatureId) {
+  function navigateToFeature(featureId: FeatureId, replace = false) {
     const nextFeature =
+      visibleFeatureDefinitions.find((feature) => feature.id === featureId) ??
       featureDefinitions.find((feature) => feature.id === featureId) ??
+      visibleFeatureDefinitions[0] ??
       featureDefinitions[0]
 
+    if (!nextFeature) {
+      return
+    }
+
     if (window.location.pathname !== nextFeature.route) {
-      window.history.pushState({}, "", nextFeature.route)
+      if (replace) {
+        window.history.replaceState({}, "", nextFeature.route)
+      } else {
+        window.history.pushState({}, "", nextFeature.route)
+      }
     }
 
     setActiveFeatureId(nextFeature.id)
     setMobileFeatureMenuOpen(false)
   }
+
+  useEffect(() => {
+    if (visibleFeatureDefinitions.some((feature) => feature.id === activeFeatureId)) {
+      return
+    }
+
+    const fallbackFeature = visibleFeatureDefinitions[0] ?? featureDefinitions[0]
+    if (!fallbackFeature) {
+      return
+    }
+
+    navigateToFeature(fallbackFeature.id, true)
+  }, [activeFeatureId, featureDefinitions, visibleFeatureDefinitions])
 
   const canRenderFeatures =
     !initializing &&
@@ -743,7 +813,7 @@ export function DashboardShell({
             </div>
           </div>
           <nav className="mt-1 flex w-full flex-1 flex-col items-center gap-1.5">
-            {featureDefinitions.map((feature) => {
+            {visibleFeatureDefinitions.map((feature) => {
               const isActive = feature.id === activeFeatureId
               const Icon = feature.iconComponent
 
@@ -796,9 +866,11 @@ export function DashboardShell({
               {canRenderFeatures
                 ? loadedFeatureIds.map((featureId) => {
                     const feature =
-                      featureDefinitions.find(
+                      visibleFeatureDefinitions.find(
                         (candidate) => candidate.id === featureId,
-                      ) ?? featureDefinitions[0]
+                      ) ?? featureDefinitions.find(
+                        (candidate) => candidate.id === featureId,
+                      ) ?? visibleFeatureDefinitions[0] ?? featureDefinitions[0]
                     const FeatureComponent = feature.component
 
                     return (
