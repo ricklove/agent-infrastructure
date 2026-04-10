@@ -604,7 +604,10 @@ export function DashboardShell({
     if (backendVersionMismatch) {
       parts.push(`Backend: ${gatewayBackendVersion}`)
     }
-    if (runtimeReleaseStatus?.latestReleaseTag) {
+    if (
+      runtimeReleaseStatus?.updateAvailable &&
+      runtimeReleaseStatus.latestReleaseTag
+    ) {
       parts.push(`Latest: ${runtimeReleaseStatus.latestReleaseTag}`)
     }
     parts.push(`WS: ${gatewayConnectionStatus}`)
@@ -876,18 +879,11 @@ export function DashboardShell({
                     </span>
                   </div>
                 ) : null}
-                {runtimeReleaseStatus?.currentReleaseTag ? (
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-stone-500">Release</span>
-                    <span className="font-medium text-stone-100">
-                      {runtimeReleaseStatus.currentReleaseTag}
-                    </span>
-                  </div>
-                ) : null}
-                {runtimeReleaseStatus?.latestReleaseTag ? (
+                {runtimeReleaseStatus?.updateAvailable &&
+                runtimeReleaseStatus.latestReleaseTag ? (
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-stone-500">Latest</span>
-                    <span className="font-medium text-stone-100">
+                    <span className="font-medium text-amber-100">
                       {runtimeReleaseStatus.latestReleaseTag}
                     </span>
                   </div>
