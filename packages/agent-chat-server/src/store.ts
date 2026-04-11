@@ -1661,9 +1661,10 @@ export class AgentChatStore {
             rowObject.provider_seen_at_ms === undefined
               ? null
               : Number(rowObject.provider_seen_at_ms)
-          const content = safeJsonParse<StoredMessage["content"]>(
-            String(rowObject.content_json),
-          ) ?? []
+          const content =
+            safeJsonParse<StoredMessage["content"]>(
+              String(rowObject.content_json),
+            ) ?? []
           const authorParticipantId = normalizeAuthorParticipantId(
             null,
             role,
