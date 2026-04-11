@@ -975,6 +975,7 @@ function maybeMarkProcessBlueprintTerminal(
       appendTicketEventMessage(
         sessionId,
         buildTicketStateEventText(ticket, "completed"),
+        { queueForProvider: false },
       )
     }
     setSessionWatchdogState(sessionId, {
@@ -996,6 +997,7 @@ function maybeMarkProcessBlueprintTerminal(
       appendTicketEventMessage(
         sessionId,
         buildTicketStateEventText(ticket, "blocked"),
+        { queueForProvider: false },
       )
     }
     setSessionWatchdogState(sessionId, {
@@ -1065,12 +1067,16 @@ function appendActivityMessage(sessionId: string, text: string) {
   })
 }
 
-function appendTicketEventMessage(sessionId: string, text: string) {
+function appendTicketEventMessage(
+  sessionId: string,
+  text: string,
+  options: { queueForProvider?: boolean } = {},
+) {
   return store.appendMessage(sessionId, {
     role: "system",
     kind: "ticketEvent",
     ticketId: ticketStore.getActiveTicketForSession(sessionId)?.id ?? null,
-    providerSeenAtMs: null,
+    providerSeenAtMs: options.queueForProvider === false ? Date.now() : null,
     content: [{ type: "text", text }],
   })
 }
@@ -1409,10 +1415,14 @@ function maybeApplyTicketStepTransition(
     return { status: null, messages: [] }
   }
 
+  const queuesFollowupStep =
+    transition.kind === "stepCompleted" &&
+    Boolean(transition.ticket.nextStepLabel)
   const messages = [
     appendTicketEventMessage(
       sessionId,
       buildTicketTransitionEventText(previousTicket, transition),
+      { queueForProvider: queuesFollowupStep },
     ),
   ]
 
@@ -1602,6 +1612,7 @@ function maybeTriggerSessionWatchdog(sessionId: string) {
         const blockedMessage = appendTicketEventMessage(
           sessionId,
           buildTicketStateEventText(blockedTicket, "blocked"),
+          { queueForProvider: false },
         )
         setSessionWatchdogState(sessionId, {
           status: "blocked",
