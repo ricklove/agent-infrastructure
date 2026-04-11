@@ -149,6 +149,55 @@ describe("AgentChatStore multi-agent delivery", () => {
     ).toEqual([userMessage.id, peerMessage.id])
   })
 
+  test("queues unseen ticket events for provider work", () => {
+    const store = createStore()
+    const session = store.createSession({
+      title: "Ticket event queue routing",
+      providerKind: "codex-app-server",
+      modelRef: "openai-codex/gpt-5.4",
+      cwd: "/home/ec2-user/workspace",
+      authProfile: "chatgpt",
+    })
+
+    const ticketEvent = store.appendMessage(session.id, {
+      role: "system",
+      kind: "ticketEvent",
+      providerSeenAtMs: null,
+      content: [{ type: "text", text: "Ticket step completed: Final" }],
+    })
+
+    expect(
+      store.listQueuedMessages(session.id).map((message) => message.id),
+    ).toEqual([ticketEvent.id])
+    expect(
+      store.listQueuedUserMessages(session.id).map((message) => message.id),
+    ).toEqual([ticketEvent.id])
+  })
+
+  test("keeps seen ticket events out of provider work queue", () => {
+    const store = createStore()
+    const session = store.createSession({
+      title: "Terminal ticket event queue routing",
+      providerKind: "codex-app-server",
+      modelRef: "openai-codex/gpt-5.4",
+      cwd: "/home/ec2-user/workspace",
+      authProfile: "chatgpt",
+    })
+
+    const ticketEvent = store.appendMessage(session.id, {
+      role: "system",
+      kind: "ticketEvent",
+      providerSeenAtMs: Date.now(),
+      content: [{ type: "text", text: "Ticket completed" }],
+    })
+
+    expect(store.listMessages(session.id).map((message) => message.id)).toEqual(
+      [ticketEvent.id],
+    )
+    expect(store.listQueuedMessages(session.id)).toHaveLength(0)
+    expect(store.listQueuedUserMessages(session.id)).toHaveLength(0)
+  })
+
   test("ignores corrupt message lines instead of failing session load", () => {
     const consoleError = spyOn(console, "error").mockImplementation(() => {})
     const { dataDir, store } = createStoreContext()
@@ -169,7 +218,7 @@ describe("AgentChatStore multi-agent delivery", () => {
       content: [{ type: "text", text: "second" }],
     })
     const messagesPath = join(dataDir, "sessions", session.id, "messages.jsonl")
-    appendFileSync(messagesPath, "{\"id\":\"broken\"\n")
+    appendFileSync(messagesPath, '{"id":"broken"\n')
 
     const reloadedStore = new AgentChatStore({ dataDir })
 
