@@ -1,5 +1,5 @@
 import { observer, useValue } from "@legendapp/state/react"
-import { type FormEvent, useEffect, useMemo, useState } from "react"
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react"
 import {
   type AgentChatV2Message,
   type AgentChatV2Session,
@@ -49,6 +49,8 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const wsRootUrl = props.wsRootUrl ?? "/ws/agent-chat"
   const [store] = useState(() => createAgentChatV2Store(apiRootUrl, wsRootUrl))
   const [actions] = useState(() => createAgentChatV2Actions(store))
+  const sessionsLoaderRef = useRef<HTMLDivElement | null>(null)
+  const sessionsPageLoadingRef = useRef(false)
 
   useEffect(() => {
     void actions.loadSessions()
@@ -74,6 +76,33 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const hasOlderMessages = activeSession
     ? (state.hasOlderMessagesBySessionId[activeSession.id] ?? false)
     : false
+
+  useEffect(() => {
+    const loader = sessionsLoaderRef.current
+    if (!loader || !state.nextSessionsCursor) {
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          sessionsPageLoadingRef.current ||
+          !entries.some((entry) => entry.isIntersecting)
+        ) {
+          return
+        }
+
+        sessionsPageLoadingRef.current = true
+        void actions.loadSessions(true).finally(() => {
+          sessionsPageLoadingRef.current = false
+        })
+      },
+      { rootMargin: "160px 0px" },
+    )
+
+    observer.observe(loader)
+    return () => observer.disconnect()
+  }, [actions, state.nextSessionsCursor])
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -149,17 +178,17 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
               </p>
             </button>
           ))}
+          {state.nextSessionsCursor ? (
+            <div
+              ref={sessionsLoaderRef}
+              aria-label="Loading more sessions"
+              className="border-t border-zinc-800 px-4 py-4 text-center text-sm text-cyan-200"
+            >
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-cyan-200 border-t-transparent align-[-2px]" />
+              <span className="ml-2">Loading more sessions</span>
+            </div>
+          ) : null}
         </div>
-
-        {state.nextSessionsCursor ? (
-          <button
-            type="button"
-            onClick={() => void actions.loadSessions(true)}
-            className="border-t border-zinc-800 px-4 py-3 text-sm font-medium text-cyan-200 hover:bg-zinc-800"
-          >
-            Load more sessions
-          </button>
-        ) : null}
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
