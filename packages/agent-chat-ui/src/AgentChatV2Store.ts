@@ -175,6 +175,7 @@ type AgentChatV2StoreState = {
   streamingAssistantText: string
   composerText: string
   sending: boolean
+  interrupting: boolean
 }
 
 export type AgentChatV2Store = ReturnType<typeof createAgentChatV2Store>
@@ -201,6 +202,7 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
     streamingAssistantText: "",
     composerText: "",
     sending: false,
+    interrupting: false,
   })
   return { state$ }
 }
@@ -385,11 +387,25 @@ function setSessionSnapshot(
 
 export function createAgentChatV2Actions(store: AgentChatV2Store) {
   let socket: WebSocket | null = null
+  let openSessionRequestId = 0
 
   function closeSocket() {
     socket?.close()
     socket = null
     store.state$.connection.wsStatus.set("idle")
+  }
+
+  function clearActiveSessionState(sessionId: string) {
+    store.state$.messagesBySessionId[sessionId].set([])
+    store.state$.queuedMessagesBySessionId[sessionId].set([])
+    store.state$.pendingMessagesBySessionId[sessionId].set([])
+    store.state$.hasOlderMessagesBySessionId[sessionId].set(false)
+    store.state$.nextBeforeMessageIdBySessionId[sessionId].set(null)
+    store.state$.sessionVersionBySessionId[sessionId].set("")
+    store.state$.streamingAssistantText.set("")
+    store.state$.composerText.set("")
+    store.state$.sending.set(false)
+    store.state$.interrupting.set(false)
   }
 
   function connectSocket(sessionId: string) {
@@ -398,14 +414,24 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     const protocols = dashboardSessionWebSocketProtocols(
       dashboardSessionWebSocketProtocolPrefix,
     )
-    socket =
+    const nextSocket =
       protocols.length > 0
         ? new WebSocket(wsUrl(store, sessionId), protocols)
         : new WebSocket(wsUrl(store, sessionId))
-    socket.addEventListener("open", () => {
+    socket = nextSocket
+    nextSocket.addEventListener("open", () => {
+      if (socket !== nextSocket) {
+        return
+      }
       store.state$.connection.wsStatus.set("ready")
     })
-    socket.addEventListener("message", (event) => {
+    nextSocket.addEventListener("message", (event) => {
+      if (
+        socket !== nextSocket ||
+        store.state$.activeSessionId.get() !== sessionId
+      ) {
+        return
+      }
       const payload = JSON.parse(String(event.data)) as
         | SessionWindowEvent
         | SessionUpdatedEvent
@@ -433,22 +459,33 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         )
       }
     })
-    socket.addEventListener("close", () => {
-      if (store.state$.connection.wsStatus.get() !== "idle") {
+    nextSocket.addEventListener("close", () => {
+      if (socket === nextSocket && store.state$.connection.wsStatus.get() !== "idle") {
         store.state$.connection.wsStatus.set("error")
       }
     })
-    socket.addEventListener("error", () => {
+    nextSocket.addEventListener("error", () => {
+      if (socket !== nextSocket) {
+        return
+      }
       store.state$.connection.wsStatus.set("error")
     })
   }
 
   async function openSession(sessionId: string): Promise<void> {
+    const requestId = ++openSessionRequestId
+    closeSocket()
     store.state$.activeSessionId.set(sessionId)
-    store.state$.streamingAssistantText.set("")
+    clearActiveSessionState(sessionId)
     const payload = await readJson<SessionWindowResponse>(
       apiPath(store, `/v2/sessions/${encodeURIComponent(sessionId)}/window`),
     )
+    if (
+      requestId !== openSessionRequestId ||
+      store.state$.activeSessionId.get() !== sessionId
+    ) {
+      return
+    }
     setSessionWindow(store, payload, "replace")
     connectSocket(sessionId)
   }
@@ -627,21 +664,37 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       if (!sessionId) {
         return
       }
-      const payload = await readJson<{
-        ok: true
-        activity: SessionActivity
-      }>(
-        apiPath(store, `/sessions/${encodeURIComponent(sessionId)}/interrupt`),
-        {
-          method: "POST",
-        },
-      )
-      updateActiveSessionActivity(
-        store,
-        sessionId,
-        payload.activity,
-        store.state$.queuedMessagesBySessionId[sessionId].get() ?? [],
-      )
+      if (store.state$.interrupting.get()) {
+        return
+      }
+      store.state$.interrupting.set(true)
+      store.state$.connection.error.set("")
+      try {
+        const payload = await readJson<{
+          ok: true
+          activity: SessionActivity
+        }>(
+          apiPath(
+            store,
+            `/sessions/${encodeURIComponent(sessionId)}/interrupt`,
+          ),
+          {
+            method: "POST",
+          },
+        )
+        updateActiveSessionActivity(
+          store,
+          sessionId,
+          payload.activity,
+          store.state$.queuedMessagesBySessionId[sessionId].get() ?? [],
+        )
+      } catch (error) {
+        store.state$.connection.error.set(
+          error instanceof Error ? error.message : "Interrupt failed.",
+        )
+      } finally {
+        store.state$.interrupting.set(false)
+      }
     },
 
     close(): void {

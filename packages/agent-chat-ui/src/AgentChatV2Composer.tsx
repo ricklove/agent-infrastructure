@@ -21,6 +21,7 @@ type AgentChatV2ComposerProps = {
   composerImages: AgentChatV2ComposerImage[]
   composerImageError: string
   sending: boolean
+  interrupting: boolean
   enterStyle: DashboardEnterStyle
   queuedMessages: AgentChatV2Message[]
   onComposerTextChange: (value: string) => void
@@ -136,8 +137,8 @@ export function AgentChatV2Composer(props: AgentChatV2ComposerProps) {
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (
       event.key === "Escape" &&
-      props.activeSession.activity.canInterrupt &&
-      props.activeSession.activity.status === "running"
+      props.activeSession.activity.status === "running" &&
+      !props.interrupting
     ) {
       event.preventDefault()
       void props.onInterruptSession()

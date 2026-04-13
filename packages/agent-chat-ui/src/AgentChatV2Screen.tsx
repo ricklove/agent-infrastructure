@@ -163,6 +163,25 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         : null,
     [state.activeSessionId, state.sessions],
   )
+  const canInterruptActiveSession =
+    activeSession?.activity.status === "running" && !state.interrupting
+
+  useEffect(() => {
+    function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented) {
+        return
+      }
+      if (!canInterruptActiveSession) {
+        return
+      }
+      event.preventDefault()
+      void actions.interruptSession()
+    }
+
+    window.addEventListener("keydown", handleWindowKeyDown)
+    return () => window.removeEventListener("keydown", handleWindowKeyDown)
+  }, [actions, canInterruptActiveSession])
+
   const filteredSessions = useMemo(() => {
     const query = sessionSearchQuery.trim().toLowerCase()
     return state.sessions.filter((session) => {
@@ -184,10 +203,6 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         .includes(query)
     })
   }, [sessionSearchQuery, showArchivedSessions, state.sessions])
-  const archivedSessionCount = useMemo(
-    () => state.sessions.filter((session) => session.archived).length,
-    [state.sessions],
-  )
   const activeMessages = activeSession
     ? (state.messagesBySessionId[activeSession.id] ?? [])
     : []
@@ -456,7 +471,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                   : "Show archived chats"
               }
             >
-              {archivedSessionCount}
+              <span className="h-3 w-4 rounded-sm border border-current border-t-2" />
             </button>
           </div>
         </div>
@@ -564,13 +579,14 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                     window {activeMessages.length.toLocaleString()} /{" "}
                     {activeSession.messageCount.toLocaleString()}
                   </p>
-                  {activeSession.activity.canInterrupt ? (
+                  {activeSession.activity.status === "running" ? (
                     <button
                       type="button"
+                      disabled={state.interrupting}
                       onClick={() => void actions.interruptSession()}
-                      className="mt-2 rounded border border-red-400/40 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-950"
+                      className="mt-2 rounded border border-red-400/40 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-950 disabled:cursor-wait disabled:opacity-60"
                     >
-                      Stop
+                      {state.interrupting ? "Stopping" : "Stop"}
                     </button>
                   ) : null}
                 </div>
@@ -647,6 +663,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
               composerImages={composerImages}
               composerImageError={composerImageError}
               sending={state.sending}
+              interrupting={state.interrupting}
               enterStyle={enterStyle}
               queuedMessages={queuedMessages}
               onComposerTextChange={(value) =>
