@@ -343,7 +343,6 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     AgentChatV2ComposerImage[]
   >([])
   const [composerImageError, setComposerImageError] = useState("")
-  const [queuedDetailsOpen, setQueuedDetailsOpen] = useState(false)
   const [transcriptPinnedToBottom, setTranscriptPinnedToBottom] = useState(true)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
@@ -684,6 +683,14 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                     {streamingAssistantText}
                   </div>
                 ) : null}
+                {queuedMessages.map((message, index) => (
+                  <QueuedMessageBubble
+                    key={message.id}
+                    message={message}
+                    index={index}
+                    apiRootUrl={apiRootUrl}
+                  />
+                ))}
                 <div ref={transcriptEndRef} aria-hidden="true" />
               </div>
               {!transcriptPinnedToBottom ? (
@@ -698,13 +705,6 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                 </button>
               ) : null}
             </div>
-
-            {queuedMessages.length > 0 ? (
-              <div className="sr-only" aria-live="polite">
-                {queuedMessages.length} queued message
-                {queuedMessages.length === 1 ? "" : "s"}
-              </div>
-            ) : null}
 
             <form
               onSubmit={(event) => void submitMessage(event)}
@@ -777,57 +777,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                       </span>
                     ) : null}
                   </span>
-                  {queuedMessages.length > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setQueuedDetailsOpen((current) => !current)
-                      }
-                      className="rounded-full border border-amber-300/25 bg-zinc-950 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-100 backdrop-blur hover:bg-amber-950"
-                      title="Show queued messages"
-                    >
-                      Queue {queuedMessages.length}
-                    </button>
-                  ) : null}
                 </div>
-                {queuedDetailsOpen && queuedMessages.length > 0 ? (
-                  <div className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-[40vh] overflow-y-auto rounded border border-amber-300/25 bg-zinc-950/98 p-2 text-xs text-amber-100 shadow-2xl">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="font-semibold uppercase tracking-[0.16em]">
-                        Queued messages
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setQueuedDetailsOpen(false)}
-                        className="rounded border border-zinc-700 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-zinc-300 hover:border-amber-300/40"
-                      >
-                        Close
-                      </button>
-                    </div>
-                    <div className="space-y-1.5">
-                      {queuedMessages.map((message, index) => {
-                        const preview = queuedMessagePreview(message)
-                        return (
-                          <div
-                            key={message.id}
-                            className="flex min-w-0 items-center gap-2 rounded border border-amber-300/15 bg-zinc-900/80 px-2 py-1.5"
-                            title={preview}
-                          >
-                            <span className="shrink-0 rounded border border-amber-300/20 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-amber-200">
-                              {index + 1}
-                            </span>
-                            <span className="shrink-0 text-[11px] uppercase tracking-[0.12em] text-amber-200/80">
-                              {queuedMessageLabel(message)}
-                            </span>
-                            <span className="min-w-0 truncate text-zinc-200">
-                              {preview}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
                 <textarea
                   value={state.composerText}
                   onChange={(event) =>
@@ -1150,6 +1100,40 @@ function MessageBubble(props: {
         >
           {formatTime(props.message.createdAtMs)}
         </button>
+      </div>
+      <MessageContent message={props.message} apiRootUrl={props.apiRootUrl} />
+    </article>
+  )
+}
+
+function QueuedMessageBubble(props: {
+  message: AgentChatV2Message
+  index: number
+  apiRootUrl: string
+}) {
+  const tone =
+    props.message.role === "user"
+      ? "ml-auto border-amber-300/40 bg-amber-950/20"
+      : "border-amber-300/30 bg-zinc-900/80"
+  const preview = queuedMessagePreview(props.message)
+
+  return (
+    <article
+      className={`max-w-3xl rounded border border-dashed px-4 py-3 opacity-90 ${tone}`}
+      title={preview}
+    >
+      <div className="mb-2 flex items-center justify-between gap-3 text-[11px] uppercase text-amber-200/80">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-amber-300/30 bg-amber-300/10 text-[10px] font-semibold">
+            Q
+          </span>
+          <span className="truncate">
+            Queued {props.index + 1} · {queuedMessageLabel(props.message)}
+          </span>
+        </span>
+        <span className="shrink-0">
+          {formatTime(props.message.createdAtMs)}
+        </span>
       </div>
       <MessageContent message={props.message} apiRootUrl={props.apiRootUrl} />
     </article>
