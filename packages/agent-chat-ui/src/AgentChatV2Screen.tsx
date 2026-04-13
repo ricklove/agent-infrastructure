@@ -20,6 +20,7 @@ import {
 import {
   type AgentChatV2ComposerImage,
   type AgentChatV2Message,
+  type AgentChatV2PendingMessage,
   type AgentChatV2Session,
   createAgentChatV2Actions,
   createAgentChatV2Store,
@@ -297,6 +298,14 @@ function queuedMessagePreview(message: AgentChatV2Message): string {
   return text
 }
 
+function messageDisplayKey(message: AgentChatV2Message): string {
+  return `${message.role}:${JSON.stringify(message.content)}`
+}
+
+function queuedMessageKeys(messages: AgentChatV2Message[]): Set<string> {
+  return new Set(messages.map((message) => messageDisplayKey(message)))
+}
+
 type TranscriptItem =
   | { type: "message"; message: AgentChatV2Message }
   | { type: "actions"; messages: AgentChatV2Message[] }
@@ -383,21 +392,51 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const queuedMessages = activeSession
     ? (state.queuedMessagesBySessionId[activeSession.id] ?? [])
     : []
+  const pendingMessages = activeSession
+    ? (state.pendingMessagesBySessionId[activeSession.id] ?? [])
+    : []
   const hasOlderMessages = activeSession
     ? (state.hasOlderMessagesBySessionId[activeSession.id] ?? false)
     : false
+  const queuedDisplayKeys = useMemo(
+    () => queuedMessageKeys(queuedMessages),
+    [queuedMessages],
+  )
+  const transcriptMessages = useMemo(
+    () =>
+      activeMessages.filter(
+        (message) =>
+          !queuedDisplayKeys.has(messageDisplayKey(message)) &&
+          !queuedMessages.some(
+            (queuedMessage) => queuedMessage.id === message.id,
+          ),
+      ),
+    [activeMessages, queuedDisplayKeys, queuedMessages],
+  )
+  const displayPendingMessages = useMemo(
+    () =>
+      pendingMessages.filter(
+        (message) =>
+          !queuedDisplayKeys.has(messageDisplayKey(message)) &&
+          !queuedMessages.some(
+            (queuedMessage) => queuedMessage.id === message.id,
+          ),
+      ),
+    [pendingMessages, queuedDisplayKeys, queuedMessages],
+  )
   const activeTranscriptItems = useMemo(
-    () => transcriptItems(activeMessages),
-    [activeMessages],
+    () => transcriptItems(transcriptMessages),
+    [transcriptMessages],
   )
   const composerStatus = activeSession
     ? composerStatusItems(activeSession, queuedMessages)
     : []
-  const lastMessage = activeMessages.at(-1) ?? null
+  const lastMessage = transcriptMessages.at(-1) ?? null
   const lastMessageTextLength = lastMessage
     ? messageText(lastMessage).length
     : 0
-  const autoScrollKey = `${activeSession?.id ?? ""}:${lastMessage?.id ?? ""}:${lastMessageTextLength}:${streamingAssistantText.length}:${queuedMessages.length}`
+  const lastPendingMessage = displayPendingMessages.at(-1) ?? null
+  const autoScrollKey = `${activeSession?.id ?? ""}:${lastMessage?.id ?? ""}:${lastMessageTextLength}:${streamingAssistantText.length}:${queuedMessages.length}:${lastPendingMessage?.id ?? ""}:${lastPendingMessage?.pendingStatus ?? ""}`
 
   const updateTranscriptPinnedToBottom = useCallback(() => {
     const scrollElement = transcriptScrollRef.current
@@ -443,7 +482,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   }, [activeSession?.id, autoScrollKey, scheduleTranscriptScrollToBottom])
 
   useEffect(() => {
-    void activeMessages.length
+    void transcriptMessages.length
     const targetId = readRequestedMessageHashFromLocation()
     if (!targetId) {
       return
@@ -454,7 +493,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         behavior: "smooth",
       })
     })
-  }, [activeMessages])
+  }, [transcriptMessages])
 
   const copyMessageLink = useCallback(
     async (sessionId: string, messageId: string) => {
@@ -683,6 +722,14 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                     {streamingAssistantText}
                   </div>
                 ) : null}
+                {displayPendingMessages.map((message, index) => (
+                  <PendingMessageBubble
+                    key={message.id}
+                    message={message}
+                    index={index}
+                    apiRootUrl={apiRootUrl}
+                  />
+                ))}
                 {queuedMessages.map((message, index) => (
                   <QueuedMessageBubble
                     key={message.id}
@@ -952,6 +999,11 @@ function MessageImagePreview(props: {
 
     async function loadImage() {
       try {
+        if (/^data:image\//iu.test(normalizedSourceUrl)) {
+          setAssetUrl(normalizedSourceUrl)
+          setError("")
+          return
+        }
         const apiRootUrl = props.apiRootUrl.replace(/\/+$/u, "")
         const response = (await dashboardSessionFetch(
           `${apiRootUrl}/sessions/${encodeURIComponent(props.sessionId)}/media?source=${encodeURIComponent(normalizedSourceUrl)}`,
@@ -1125,10 +1177,45 @@ function QueuedMessageBubble(props: {
       <div className="mb-2 flex items-center justify-between gap-3 text-[11px] uppercase text-amber-200/80">
         <span className="flex min-w-0 items-center gap-2">
           <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-amber-300/30 bg-amber-300/10 text-[10px] font-semibold">
-            Q
+            ⏳
           </span>
           <span className="truncate">
             Queued {props.index + 1} · {queuedMessageLabel(props.message)}
+          </span>
+        </span>
+        <span className="shrink-0">
+          {formatTime(props.message.createdAtMs)}
+        </span>
+      </div>
+      <MessageContent message={props.message} apiRootUrl={props.apiRootUrl} />
+    </article>
+  )
+}
+
+function PendingMessageBubble(props: {
+  message: AgentChatV2PendingMessage
+  index: number
+  apiRootUrl: string
+}) {
+  const statusLabel =
+    props.message.pendingStatus === "pending" ? "Pending" : "Queued"
+  const statusIcon = "⏳"
+  const tone = "ml-auto border-amber-300/40 bg-amber-950/20"
+  const preview = queuedMessagePreview(props.message)
+
+  return (
+    <article
+      className={`max-w-3xl rounded border border-dashed px-4 py-3 opacity-90 ${tone}`}
+      title={preview}
+    >
+      <div className="mb-2 flex items-center justify-between gap-3 text-[11px] uppercase text-cyan-100/80">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-current/30 bg-white/5 text-[10px] font-semibold">
+            {statusIcon}
+          </span>
+          <span className="truncate">
+            {statusLabel} {props.index + 1} ·{" "}
+            {queuedMessageLabel(props.message)}
           </span>
         </span>
         <span className="shrink-0">

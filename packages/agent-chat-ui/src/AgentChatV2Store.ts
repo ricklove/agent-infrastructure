@@ -91,6 +91,10 @@ export type AgentChatV2Message = {
   createdAtMs: number
 }
 
+export type AgentChatV2PendingMessage = AgentChatV2Message & {
+  pendingStatus: "pending" | "queued"
+}
+
 export type AgentChatV2ComposerImage = {
   id: string
   dataUrl: string
@@ -154,6 +158,7 @@ type AgentChatV2StoreState = {
   activeSessionId: string | null
   messagesBySessionId: Record<string, AgentChatV2Message[]>
   queuedMessagesBySessionId: Record<string, AgentChatV2Message[]>
+  pendingMessagesBySessionId: Record<string, AgentChatV2PendingMessage[]>
   hasOlderMessagesBySessionId: Record<string, boolean>
   nextBeforeMessageIdBySessionId: Record<string, string | null>
   sessionVersionBySessionId: Record<string, string>
@@ -179,6 +184,7 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
     activeSessionId: null,
     messagesBySessionId: {},
     queuedMessagesBySessionId: {},
+    pendingMessagesBySessionId: {},
     hasOlderMessagesBySessionId: {},
     nextBeforeMessageIdBySessionId: {},
     sessionVersionBySessionId: {},
@@ -233,6 +239,45 @@ function mergeMessages(
   )
 }
 
+function messageContentKey(message: AgentChatV2Message): string {
+  return JSON.stringify(message.content)
+}
+
+function removePendingMessagesMatching(
+  pendingMessages: AgentChatV2PendingMessage[],
+  resolvedMessages: AgentChatV2Message[],
+): AgentChatV2PendingMessage[] {
+  if (pendingMessages.length === 0 || resolvedMessages.length === 0) {
+    return pendingMessages
+  }
+  const resolvedCounts = new Map<string, number>()
+  for (const message of resolvedMessages) {
+    const key = `${message.role}:${messageContentKey(message)}`
+    resolvedCounts.set(key, (resolvedCounts.get(key) ?? 0) + 1)
+  }
+  return pendingMessages.filter((message) => {
+    const key = `${message.role}:${messageContentKey(message)}`
+    const count = resolvedCounts.get(key) ?? 0
+    if (count === 0) {
+      return true
+    }
+    resolvedCounts.set(key, count - 1)
+    return false
+  })
+}
+
+function reconcilePendingMessages(
+  store: AgentChatV2Store,
+  sessionId: string,
+  resolvedMessages: AgentChatV2Message[],
+): void {
+  const currentPending =
+    store.state$.pendingMessagesBySessionId[sessionId].get() ?? []
+  store.state$.pendingMessagesBySessionId[sessionId].set(
+    removePendingMessagesMatching(currentPending, resolvedMessages),
+  )
+}
+
 function setSessionWindow(
   store: AgentChatV2Store,
   payload: SessionWindowResponse,
@@ -251,6 +296,10 @@ function setSessionWindow(
   store.state$.queuedMessagesBySessionId[payload.session.id].set(
     payload.queuedMessages,
   )
+  reconcilePendingMessages(store, payload.session.id, [
+    ...payload.messages,
+    ...payload.queuedMessages,
+  ])
   store.state$.hasOlderMessagesBySessionId[payload.session.id].set(
     payload.hasOlderMessages,
   )
@@ -278,6 +327,10 @@ function applySessionUpdate(
     store.state$.queuedMessagesBySessionId[payload.session.id].set(
       payload.queuedMessages,
     )
+    reconcilePendingMessages(store, payload.session.id, [
+      ...payload.messages,
+      ...payload.queuedMessages,
+    ])
   }
 }
 
@@ -299,6 +352,7 @@ function updateActiveSessionActivity(
     ),
   )
   store.state$.queuedMessagesBySessionId[sessionId].set(queuedMessages)
+  reconcilePendingMessages(store, sessionId, queuedMessages)
 }
 
 export function createAgentChatV2Actions(store: AgentChatV2Store) {
@@ -434,9 +488,36 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       if (!sessionId || (!text && images.length === 0)) {
         return
       }
+      const content: AgentChatV2Message["content"] = [
+        ...(text ? [{ type: "text" as const, text }] : []),
+        ...images.map((image) => ({
+          type: "image" as const,
+          url: image.dataUrl,
+        })),
+      ]
+      const pendingMessage: AgentChatV2PendingMessage = {
+        id: `pending-${crypto.randomUUID()}`,
+        sessionId,
+        role: "user",
+        kind: "chat",
+        replyToMessageId: null,
+        ticketId: null,
+        providerSeenAtMs: null,
+        content,
+        createdAtMs: Date.now(),
+        pendingStatus: "pending",
+      }
+      store.state$.pendingMessagesBySessionId[sessionId].set([
+        ...(store.state$.pendingMessagesBySessionId[sessionId].get() ?? []),
+        pendingMessage,
+      ])
+      store.state$.composerText.set("")
       store.state$.sending.set(true)
       try {
-        await readJson<{ ok: true }>(
+        const payload = await readJson<{
+          ok: true
+          queuedMessages?: AgentChatV2Message[]
+        }>(
           apiPath(store, `/sessions/${encodeURIComponent(sessionId)}/messages`),
           {
             method: "POST",
@@ -453,7 +534,29 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
             }),
           },
         )
-        store.state$.composerText.set("")
+        if (payload.queuedMessages) {
+          store.state$.queuedMessagesBySessionId[sessionId].set(
+            payload.queuedMessages,
+          )
+          reconcilePendingMessages(store, sessionId, payload.queuedMessages)
+          const pendingMessages =
+            store.state$.pendingMessagesBySessionId[sessionId].get() ?? []
+          store.state$.pendingMessagesBySessionId[sessionId].set(
+            pendingMessages.map((message) =>
+              message.id === pendingMessage.id
+                ? { ...message, pendingStatus: "queued" as const }
+                : message,
+            ),
+          )
+        }
+      } catch (error) {
+        const pendingMessages =
+          store.state$.pendingMessagesBySessionId[sessionId].get() ?? []
+        store.state$.pendingMessagesBySessionId[sessionId].set(
+          pendingMessages.filter((message) => message.id !== pendingMessage.id),
+        )
+        store.state$.composerText.set(text)
+        throw error
       } finally {
         store.state$.sending.set(false)
       }
