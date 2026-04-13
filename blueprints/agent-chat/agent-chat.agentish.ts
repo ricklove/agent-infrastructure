@@ -454,6 +454,7 @@ Verification.deferredBrowserE2E.means(`
 Verification.managerWorktreePreview.means(`
 - Chat v2 dashboard work should be developed and verified from a manager worktree dev dashboard so the v2 tab runs against real manager Agent Chat data, gateway routing, websocket behavior, dashboard session auth, and large-session performance characteristics
 - early Chat v2 verification should keep mutation actions disabled until bounded read APIs, websocket delta merge, and Legend store recovery are proven against real data
+- after bounded reads and the Legend store are proven in the manager worktree preview, v2 mutation actions should call the existing canonical Agent Chat mutation routes rather than introducing a second write path
 - the manager worktree preview should expose a separate v2 dashboard tab while leaving the current v1 chat tab available as the fallback control surface
 `);
 
@@ -467,6 +468,7 @@ ClientArchitecture.v2Surface.means(`
 - a separate Agent Chat v2 dashboard tab may stage replacement browser architecture without replacing v1 in place
 - v2 uses the existing canonical backend data and should not fork session storage, transcript storage, attachment storage, ticket state, or provider binding state
 - v2 should start read-only, then add mutations only after the bounded read path, websocket merge path, and Legend store recovery path are verified
+- when v2 mutations are enabled, new session, send, interrupt, process, ticket, and settings actions should delegate to the same canonical server contracts used by v1 unless a bounded v2-specific projection is needed for efficient loading
 `);
 
 ClientArchitecture.legendStore.means(`
