@@ -91,6 +91,11 @@ export type AgentChatV2Message = {
   createdAtMs: number
 }
 
+export type AgentChatV2ComposerImage = {
+  id: string
+  dataUrl: string
+}
+
 type SessionsResponse = {
   ok: boolean
   sessions: AgentChatV2Session[]
@@ -423,10 +428,10 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       setSessionWindow(store, payload, "prepend")
     },
 
-    async sendMessage(): Promise<void> {
+    async sendMessage(images: AgentChatV2ComposerImage[] = []): Promise<void> {
       const sessionId = store.state$.activeSessionId.get()
       const text = store.state$.composerText.get().trim()
-      if (!sessionId || !text) {
+      if (!sessionId || (!text && images.length === 0)) {
         return
       }
       store.state$.sending.set(true)
@@ -436,7 +441,16 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
           {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ text }),
+            body: JSON.stringify({
+              text,
+              content: [
+                ...(text ? [{ type: "text" as const, text }] : []),
+                ...images.map((image) => ({
+                  type: "image" as const,
+                  dataUrl: image.dataUrl,
+                })),
+              ],
+            }),
           },
         )
         store.state$.composerText.set("")

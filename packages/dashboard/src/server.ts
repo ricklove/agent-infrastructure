@@ -13,12 +13,12 @@ import { basename, dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
   canonicalDashboardVersionFromTag,
-  fallbackDashboardVersion,
   type DashboardFeatureBackendDefinition,
+  fallbackDashboardVersion,
 } from "@agent-infrastructure/dashboard-plugin"
 import {
-  getDashboardFeaturePlugins,
   type DashboardHostRole,
+  getDashboardFeaturePlugins,
 } from "./feature-plugins.js"
 
 type ManagerHealthResponse = {
@@ -235,11 +235,21 @@ type ViteProxyWsData = {
   selectedProtocol: string | null
 }
 
+type MainDashboardProxyWsData = {
+  kind: "main-dashboard-proxy"
+  upstreamUrl: string
+  upstream: WebSocket | null
+  queue: ProxyMessage[]
+  requestedProtocols: string[]
+  selectedProtocol: string | null
+}
+
 type DashboardWsData =
   | ProxyWsData
   | DashboardStatusWsData
   | DashboardDebugLogWsData
   | ViteProxyWsData
+  | MainDashboardProxyWsData
 
 type GatewayBackendDefinition = {
   id: string
@@ -258,8 +268,34 @@ const repoRoot = resolve(sourceDir, "../../..")
 const dashboardDistDir = resolve(repoRoot, "apps/dashboard-app/dist")
 const managerBaseUrl =
   process.env.MANAGER_INTERNAL_URL?.trim() || "http://127.0.0.1:8787"
+const dashboardDevFrontendManaged =
+  process.env.DASHBOARD_DEV_FRONTEND?.trim() === "1" ||
+  process.env.DASHBOARD_DEV_FRONTEND?.trim().toLowerCase() === "true"
+const dashboardDevFrontendPort = Number.parseInt(
+  process.env.DASHBOARD_DEV_FRONTEND_PORT?.trim() || "5173",
+  10,
+)
+const dashboardDevFrontendHost =
+  process.env.DASHBOARD_DEV_FRONTEND_HOST?.trim() || "127.0.0.1"
 const dashboardDevFrontendUrl =
-  process.env.DASHBOARD_DEV_FRONTEND_URL?.trim() || ""
+  process.env.DASHBOARD_DEV_FRONTEND_URL?.trim() ||
+  (dashboardDevFrontendManaged
+    ? `http://${dashboardDevFrontendHost}:${dashboardDevFrontendPort}`
+    : "")
+const dashboardDevMainDashboardProxyEnabled =
+  process.env.DASHBOARD_DEV_MAIN_DASHBOARD_PROXY?.trim() === "1" ||
+  process.env.DASHBOARD_DEV_MAIN_DASHBOARD_PROXY?.trim().toLowerCase() ===
+    "true"
+const dashboardDevMainDashboardUrl =
+  process.env.DASHBOARD_DEV_MAIN_DASHBOARD_URL?.trim() ||
+  "http://127.0.0.1:3000"
+const dashboardDevMainDashboardProxyPaths = (
+  process.env.DASHBOARD_DEV_MAIN_DASHBOARD_PROXY_PATHS?.trim() ||
+  "/api/agent-chat,/ws/agent-chat"
+)
+  .split(",")
+  .map((path) => path.trim().replace(/\/+$/u, ""))
+  .filter(Boolean)
 const stateRoot = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
 const systemEventLogPath =
   process.env.SYSTEM_EVENT_LOG_PATH?.trim() ||
@@ -298,9 +334,19 @@ const browserDebugLogPath =
   process.env.DASHBOARD_BROWSER_DEBUG_LOG_PATH?.trim() ||
   `${stateRoot}/logs/browser-debug.log`
 const runtimeDeployLogPath = `${stateRoot}/logs/dashboard-runtime-deploy.log`
+const dashboardDevFrontendLogPath =
+  process.env.DASHBOARD_DEV_FRONTEND_LOG_PATH?.trim() ||
+  `${stateRoot}/logs/dashboard-dev-frontend-${dashboardDevFrontendPort}.log`
 
 if (!Number.isInteger(port) || port <= 0) {
   throw new Error("DASHBOARD_PORT must be a positive integer")
+}
+
+if (
+  dashboardDevFrontendManaged &&
+  (!Number.isInteger(dashboardDevFrontendPort) || dashboardDevFrontendPort <= 0)
+) {
+  throw new Error("DASHBOARD_DEV_FRONTEND_PORT must be a positive integer")
 }
 
 const dashboardBackendRoots = [
@@ -383,7 +429,12 @@ function listVisibleReleaseTags(): string[] {
 
 function currentExactReleaseTag(): string | null {
   try {
-    const tags = gitOutput(["tag", "--points-at", "HEAD", "--sort=-creatordate"])
+    const tags = gitOutput([
+      "tag",
+      "--points-at",
+      "HEAD",
+      "--sort=-creatordate",
+    ])
       .split(/\r?\n/)
       .map((value) => value.trim())
       .filter((value) => value.startsWith("release-"))
@@ -425,15 +476,12 @@ async function startRuntimeDeploy(targetTag?: string): Promise<{
     ? `nohup bun run deploy-manager-runtime ${shellQuote(targetTag)} >> ${shellQuote(runtimeDeployLogPath)} 2>&1 < /dev/null & echo $!`
     : `nohup bun run deploy-manager-runtime >> ${shellQuote(runtimeDeployLogPath)} 2>&1 < /dev/null & echo $!`
 
-  const processHandle = Bun.spawn(
-    ["bash", "-lc", deployCommand],
-    {
-      cwd: repoRoot,
-      env: process.env,
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  )
+  const processHandle = Bun.spawn(["bash", "-lc", deployCommand], {
+    cwd: repoRoot,
+    env: process.env,
+    stdout: "pipe",
+    stderr: "pipe",
+  })
 
   const stdout = await new Response(processHandle.stdout).text()
   const stderr = await new Response(processHandle.stderr).text()
@@ -506,9 +554,10 @@ function createGatewayBackend(
   }
 }
 
-const gatewayBackends = getDashboardFeaturePlugins(dashboardHostRole).flatMap((plugin) =>
-  plugin.backend ? [createGatewayBackend(plugin.backend)] : [],
+const gatewayBackends = getDashboardFeaturePlugins(dashboardHostRole).flatMap(
+  (plugin) => (plugin.backend ? [createGatewayBackend(plugin.backend)] : []),
 )
+const viteDevFrontendEnsurePromises = new Map<string, Promise<void>>()
 
 function dashboardStatusPayload() {
   return {
@@ -546,10 +595,50 @@ function copyResponseHeaders(headers: Headers): Record<string, string> {
   return copied
 }
 
-function proxiedRequestHeaders(request: Request): Record<string, string> {
+function proxiedRequestHeaders(request: Request): Headers {
   const headers = new Headers(request.headers)
   headers.delete("host")
-  return copyResponseHeaders(headers)
+  headers.delete("content-length")
+  return headers
+}
+
+function pathMatchesProxyPrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`)
+}
+
+function shouldProxyToMainDashboard(pathname: string): boolean {
+  return (
+    dashboardDevMainDashboardProxyEnabled &&
+    dashboardDevMainDashboardProxyPaths.some((prefix) =>
+      pathMatchesProxyPrefix(pathname, prefix),
+    )
+  )
+}
+
+function mainDashboardHttpUrl(url: URL): string {
+  return `${dashboardDevMainDashboardUrl.replace(/\/+$/u, "")}${url.pathname}${url.search}`
+}
+
+function mainDashboardWebSocketUrl(url: URL): string {
+  return `${wsBaseUrlFromHttpOrigin(dashboardDevMainDashboardUrl).replace(/\/+$/u, "")}${url.pathname}${url.search}`
+}
+
+async function proxyRequestToMainDashboard(
+  request: Request,
+): Promise<Response> {
+  const url = new URL(request.url)
+  const response = await fetch(mainDashboardHttpUrl(url), {
+    method: request.method,
+    headers: proxiedRequestHeaders(request),
+    body:
+      request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : await request.arrayBuffer(),
+  })
+  return new Response(response.body, {
+    status: response.status,
+    headers: copyResponseHeaders(response.headers),
+  })
 }
 
 function hashSessionToken(token: string): string {
@@ -898,7 +987,9 @@ function selectWebSocketProtocol(protocols: string[]): string | null {
   return protocols[0] ?? null
 }
 
-function proxyMessagePayload(message: string | Buffer | Uint8Array): ProxyMessage {
+function proxyMessagePayload(
+  message: string | Buffer | Uint8Array,
+): ProxyMessage {
   if (typeof message === "string") {
     return message
   }
@@ -906,7 +997,9 @@ function proxyMessagePayload(message: string | Buffer | Uint8Array): ProxyMessag
   return message instanceof Uint8Array ? message : new Uint8Array(message)
 }
 
-function proxyEventPayload(data: string | ArrayBuffer | Uint8Array): ProxyMessage {
+function proxyEventPayload(
+  data: string | ArrayBuffer | Uint8Array,
+): ProxyMessage {
   if (typeof data === "string") {
     return data
   }
@@ -955,7 +1048,8 @@ function stackOutputValue(
   key: string,
 ): string {
   return (
-    outputs?.find((output) => output.OutputKey === key)?.OutputValue?.trim() || ""
+    outputs?.find((output) => output.OutputKey === key)?.OutputValue?.trim() ||
+    ""
   )
 }
 
@@ -1087,7 +1181,10 @@ async function listManagedStacks(): Promise<StackAdminRecord[]> {
 
   const records = await Promise.all(
     candidateStacks.map(async (stack) => {
-      const managerInstanceId = stackOutputValue(stack.outputs, "ManagerInstanceId")
+      const managerInstanceId = stackOutputValue(
+        stack.outputs,
+        "ManagerInstanceId",
+      )
       const privateIp =
         stackOutputValue(stack.outputs, "ManagerPrivateIp") ||
         instanceMap.get(managerInstanceId)?.PrivateIpAddress?.trim() ||
@@ -1118,7 +1215,8 @@ async function listManagedStacks(): Promise<StackAdminRecord[]> {
         manager: {
           instanceState: instance?.State?.Name?.trim() || "unknown",
           systemStatus: instanceStatus?.SystemStatus?.Status?.trim() || null,
-          instanceStatus: instanceStatus?.InstanceStatus?.Status?.trim() || null,
+          instanceStatus:
+            instanceStatus?.InstanceStatus?.Status?.trim() || null,
           ssmPingStatus: ssm?.PingStatus?.trim() || null,
           lastSsmPingAt: ssm?.LastPingDateTime?.trim() || null,
         },
@@ -1127,7 +1225,9 @@ async function listManagedStacks(): Promise<StackAdminRecord[]> {
     }),
   )
 
-  return records.sort((left, right) => left.stackName.localeCompare(right.stackName))
+  return records.sort((left, right) =>
+    left.stackName.localeCompare(right.stackName),
+  )
 }
 
 async function isBackendHealthy(
@@ -1153,6 +1253,154 @@ async function waitForBackendHealthy(
   }
 
   throw new Error(`${backend.id} did not become healthy in time`)
+}
+
+async function isManagedViteDevFrontendHealthy(): Promise<boolean> {
+  if (!dashboardDevFrontendManaged || !dashboardDevFrontendUrl) {
+    return true
+  }
+
+  try {
+    const response = await fetch(dashboardDevFrontendUrl, {
+      headers: {
+        accept: "text/html,*/*",
+      },
+    })
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
+async function waitForManagedViteDevFrontendHealthy(
+  maxAttempts = 40,
+): Promise<void> {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (await isManagedViteDevFrontendHealthy()) {
+      return
+    }
+    await Bun.sleep(250)
+  }
+
+  throw new Error("dashboard dev frontend did not become healthy in time")
+}
+
+async function startManagedViteDevFrontend(): Promise<void> {
+  if (!dashboardDevFrontendManaged || !dashboardDevFrontendUrl) {
+    return
+  }
+
+  mkdirSync(dirname(dashboardDevFrontendLogPath), { recursive: true })
+  const command = [
+    "bun",
+    "run",
+    "--filter",
+    "@agent-infrastructure/dashboard-app",
+    "dev",
+    "--",
+    "--host",
+    dashboardDevFrontendHost,
+    "--port",
+    String(dashboardDevFrontendPort),
+  ]
+  logSystemStep(
+    "dashboard-server",
+    `start dashboard-dev-frontend command=${command.map(shellQuote).join(" ")}`,
+  )
+
+  const processHandle = Bun.spawn(
+    [
+      "bash",
+      "-lc",
+      `nohup ${command.map(shellQuote).join(" ")} >> ${shellQuote(dashboardDevFrontendLogPath)} 2>&1 < /dev/null & echo $!`,
+    ],
+    {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        DASHBOARD_DEV_SERVER_PORT: String(port),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  )
+
+  const stdout = await new Response(processHandle.stdout).text()
+  const stderr = await new Response(processHandle.stderr).text()
+  await processHandle.exited
+
+  if (processHandle.exitCode !== 0) {
+    logSystemStep(
+      "dashboard-server",
+      `error dashboard-dev-frontend launch_failed=${stderr.trim()}`,
+    )
+    throw new Error(stderr.trim() || "failed to launch dashboard dev frontend")
+  }
+
+  const pid = Number.parseInt(stdout.trim(), 10)
+  if (!Number.isInteger(pid) || pid <= 0) {
+    logSystemStep(
+      "dashboard-server",
+      "error dashboard-dev-frontend invalid_pid",
+    )
+    throw new Error("failed to capture dashboard dev frontend pid")
+  }
+
+  logSystemStep("dashboard-server", `exit dashboard-dev-frontend pid=${pid}`)
+}
+
+async function ensureManagedViteDevFrontend(): Promise<void> {
+  if (!dashboardDevFrontendManaged || !dashboardDevFrontendUrl) {
+    return
+  }
+
+  if (await isManagedViteDevFrontendHealthy()) {
+    return
+  }
+
+  const key = dashboardDevFrontendUrl
+  const currentPromise = viteDevFrontendEnsurePromises.get(key)
+  if (!currentPromise) {
+    const nextPromise = (async () => {
+      if (await isManagedViteDevFrontendHealthy()) {
+        return
+      }
+      await startManagedViteDevFrontend()
+      await waitForManagedViteDevFrontendHealthy()
+    })().finally(() => {
+      viteDevFrontendEnsurePromises.delete(key)
+    })
+
+    viteDevFrontendEnsurePromises.set(key, nextPromise)
+  }
+
+  await viteDevFrontendEnsurePromises.get(key)
+}
+
+function startManagedViteDevFrontendWatchdog(): void {
+  if (!dashboardDevFrontendManaged || !dashboardDevFrontendUrl) {
+    return
+  }
+
+  void ensureManagedViteDevFrontend().catch((error) => {
+    logSystemStep(
+      "dashboard-server",
+      `error dashboard-dev-frontend ensure_failed=${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
+  })
+
+  setInterval(() => {
+    void ensureManagedViteDevFrontend().catch((error) => {
+      logSystemStep(
+        "dashboard-server",
+        `error dashboard-dev-frontend ensure_failed=${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    })
+  }, 3000)
 }
 
 async function startBackend(backend: GatewayBackendDefinition): Promise<void> {
@@ -1321,8 +1569,7 @@ async function handleApi(request: Request): Promise<Response> {
       )
     }
 
-    const requestedTag =
-      body.target === "tag" ? body.tag.trim() : ""
+    const requestedTag = body.target === "tag" ? body.tag.trim() : ""
     if (body.target === "tag" && !requestedTag) {
       return jsonResponse({ ok: false, error: "tag is required" }, 400)
     }
@@ -1330,10 +1577,7 @@ async function handleApi(request: Request): Promise<Response> {
     if (body.target === "tag") {
       const visibleTags = new Set(listVisibleReleaseTags())
       if (!visibleTags.has(requestedTag)) {
-        return jsonResponse(
-          { ok: false, error: "unknown release tag" },
-          404,
-        )
+        return jsonResponse({ ok: false, error: "unknown release tag" }, 404)
       }
     }
 
@@ -1430,7 +1674,10 @@ async function handleApi(request: Request): Promise<Response> {
       return unauthorized
     }
     if (dashboardHostRole !== "admin") {
-      return jsonResponse({ ok: false, error: "stack admin is not enabled" }, 404)
+      return jsonResponse(
+        { ok: false, error: "stack admin is not enabled" },
+        404,
+      )
     }
 
     try {
@@ -1766,6 +2013,23 @@ function isAllowedLocalFilePreviewPath(pathname: string): boolean {
 
 async function serveStatic(url: URL): Promise<Response> {
   if (dashboardDevFrontendUrl) {
+    try {
+      await ensureManagedViteDevFrontend()
+    } catch (error) {
+      return new Response(
+        `Dashboard dev frontend is unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        {
+          status: 503,
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            "cache-control": "no-store",
+          },
+        },
+      )
+    }
+
     const upstreamUrl = `${dashboardDevFrontendUrl}${url.pathname}${url.search}`
     const response = await fetch(upstreamUrl, {
       method: "GET",
@@ -1817,6 +2081,34 @@ const server = Bun.serve<DashboardWsData>({
     const wsBackend = findWsBackend(url.pathname)
     const requestWantsWebSocket =
       request.headers.get("upgrade")?.toLowerCase() === "websocket"
+
+    if (shouldProxyToMainDashboard(url.pathname)) {
+      if (requestWantsWebSocket) {
+        const requestedProtocols = requestedWebSocketProtocols(request)
+        const selectedProtocol = selectWebSocketProtocol(requestedProtocols)
+        if (
+          server.upgrade(request, {
+            data: {
+              kind: "main-dashboard-proxy",
+              upstreamUrl: mainDashboardWebSocketUrl(url),
+              upstream: null,
+              queue: [],
+              requestedProtocols,
+              selectedProtocol,
+            },
+            headers: selectedProtocol
+              ? { "Sec-WebSocket-Protocol": selectedProtocol }
+              : undefined,
+          })
+        ) {
+          return undefined
+        }
+
+        return new Response("upgrade failed", { status: 500 })
+      }
+
+      return proxyRequestToMainDashboard(request)
+    }
 
     if (wsBackend) {
       const wsSession = requireDashboardWebSocketSession(request)
@@ -1896,6 +2188,14 @@ const server = Bun.serve<DashboardWsData>({
     }
 
     if (requestWantsWebSocket && dashboardDevFrontendUrl) {
+      try {
+        await ensureManagedViteDevFrontend()
+      } catch {
+        return new Response("dashboard dev frontend unavailable", {
+          status: 503,
+        })
+      }
+
       const upstreamUrl = `${wsBaseUrlFromHttpOrigin(dashboardDevFrontendUrl)}${url.pathname}${url.search}`
       const requestedProtocols = requestedWebSocketProtocols(request)
       const selectedProtocol = selectWebSocketProtocol(requestedProtocols)
@@ -1943,6 +2243,39 @@ const server = Bun.serve<DashboardWsData>({
       }
 
       if (ws.data.kind === "vite-proxy") {
+        const proxyData = ws.data
+        const upstream =
+          proxyData.requestedProtocols.length > 0
+            ? new WebSocket(proxyData.upstreamUrl, proxyData.requestedProtocols)
+            : new WebSocket(proxyData.upstreamUrl)
+        proxyData.upstream = upstream
+
+        upstream.addEventListener("open", () => {
+          for (const message of proxyData.queue) {
+            upstream.send(message)
+          }
+          proxyData.queue = []
+        })
+
+        upstream.addEventListener("message", (event) => {
+          ws.send(proxyEventPayload(event.data))
+        })
+
+        upstream.addEventListener("close", () => {
+          try {
+            ws.close()
+          } catch {}
+        })
+
+        upstream.addEventListener("error", () => {
+          try {
+            ws.close()
+          } catch {}
+        })
+        return
+      }
+
+      if (ws.data.kind === "main-dashboard-proxy") {
         const proxyData = ws.data
         const upstream =
           proxyData.requestedProtocols.length > 0
@@ -2051,6 +2384,17 @@ const server = Bun.serve<DashboardWsData>({
         return
       }
 
+      if (ws.data.kind === "main-dashboard-proxy") {
+        const payload = proxyMessagePayload(message)
+        const upstream = ws.data.upstream
+        if (upstream && upstream.readyState === WebSocket.OPEN) {
+          upstream.send(payload)
+          return
+        }
+        ws.data.queue.push(payload)
+        return
+      }
+
       const payload = String(message)
       const upstream = ws.data.upstream
       if (upstream && upstream.readyState === WebSocket.OPEN) {
@@ -2080,6 +2424,13 @@ const server = Bun.serve<DashboardWsData>({
         return
       }
 
+      if (ws.data.kind === "main-dashboard-proxy") {
+        try {
+          ws.data.upstream?.close()
+        } catch {}
+        return
+      }
+
       try {
         ws.data.upstream?.close()
       } catch {}
@@ -2088,6 +2439,7 @@ const server = Bun.serve<DashboardWsData>({
 })
 
 void ensureAlwaysBackends()
+startManagedViteDevFrontendWatchdog()
 
 console.log(
   JSON.stringify({
@@ -2097,6 +2449,11 @@ console.log(
     backendVersion: dashboardBackendVersion,
     managerBaseUrl,
     dashboardDistDir,
+    dashboardDevFrontendManaged,
+    dashboardDevFrontendUrl,
+    dashboardDevMainDashboardProxyEnabled,
+    dashboardDevMainDashboardUrl,
+    dashboardDevMainDashboardProxyPaths,
     accessApiBaseUrl,
   }),
 )

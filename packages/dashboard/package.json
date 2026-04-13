@@ -5,6 +5,7 @@
   "scripts": {
     "build": "bun x tsgo --project tsconfig.json --noEmit",
     "check": "bun x tsgo --project tsconfig.json --noEmit",
+    "dev": "DASHBOARD_DEV_FRONTEND=1 bun run src/server.ts",
     "start": "bun run src/server.ts"
   },
   "dependencies": {
