@@ -109,6 +109,22 @@ function activityLabel(session: AgentChatV2Session): string {
   return "Idle"
 }
 
+function activityDotClass(session: AgentChatV2Session): string {
+  if (session.archived) {
+    return "border-zinc-500 bg-zinc-700"
+  }
+  if (session.activity.status === "running") {
+    return "border-emerald-300 bg-emerald-400"
+  }
+  if (session.activity.status === "queued") {
+    return "border-amber-300 bg-amber-400"
+  }
+  if (session.activity.status === "error") {
+    return "border-rose-300 bg-rose-400"
+  }
+  return "border-zinc-600 bg-zinc-800"
+}
+
 export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   props: AgentChatV2ScreenProps,
 ) {
@@ -130,6 +146,11 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const [archivingSessionId, setArchivingSessionId] = useState<string | null>(
     null,
   )
+  const [sessionMenuOpenId, setSessionMenuOpenId] = useState<string | null>(
+    null,
+  )
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
+  const [editingSessionTitle, setEditingSessionTitle] = useState("")
   const [transcriptPinnedToBottom, setTranscriptPinnedToBottom] = useState(true)
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
@@ -389,6 +410,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const setSessionArchived = useCallback(
     async (sessionId: string, archived: boolean) => {
       setArchivingSessionId(sessionId)
+      setSessionMenuOpenId(null)
       try {
         await actions.setSessionArchived(sessionId, archived)
         if (!archived) {
@@ -400,6 +422,23 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     },
     [actions],
   )
+
+  const beginEditSession = useCallback((session: AgentChatV2Session) => {
+    setEditingSessionId(session.id)
+    setEditingSessionTitle(session.title)
+    setSessionMenuOpenId(null)
+  }, [])
+
+  const saveSessionTitle = useCallback(async () => {
+    const sessionId = editingSessionId
+    const title = editingSessionTitle.trim()
+    if (!sessionId || !title) {
+      return
+    }
+    await actions.updateSession(sessionId, { title })
+    setEditingSessionId(null)
+    setEditingSessionTitle("")
+  }, [actions, editingSessionId, editingSessionTitle])
 
   return (
     <main className="flex h-screen min-h-0 bg-zinc-950 text-zinc-100">
@@ -494,50 +533,129 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {filteredSessions.map((session) => (
-            <div
-              key={session.id}
-              className={`flex border-b border-zinc-800 transition ${
-                session.id === state.activeSessionId
-                  ? "bg-cyan-950/40"
-                  : "hover:bg-zinc-800"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => void actions.openSession(session.id)}
-                className="min-w-0 flex-1 px-4 py-3 text-left"
+          {filteredSessions.map((session) => {
+            const menuOpen = sessionMenuOpenId === session.id
+            const editing = editingSessionId === session.id
+            return (
+              <div
+                key={session.id}
+                className={`relative border-b border-zinc-800 transition ${
+                  session.id === state.activeSessionId
+                    ? "bg-cyan-950/40"
+                    : "hover:bg-zinc-800"
+                }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <span className="min-w-0 truncate text-sm font-semibold text-zinc-100">
-                    {session.title}
-                  </span>
-                  <span className="shrink-0 rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">
-                    {session.archived ? "Archived" : activityLabel(session)}
-                  </span>
-                </div>
-                <p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-400">
-                  {session.preview ?? "No messages yet"}
-                </p>
-                <p className="mt-2 text-[11px] text-zinc-500">
-                  {session.messageCount.toLocaleString()} messages ·{" "}
-                  {formatTime(session.updatedAtMs)}
-                </p>
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  void setSessionArchived(session.id, !session.archived)
-                }
-                disabled={archivingSessionId === session.id}
-                className="my-3 mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded border border-zinc-700 text-xs text-zinc-300 hover:border-amber-500 disabled:opacity-50"
-                title={session.archived ? "Restore chat" : "Archive chat"}
-                aria-label={session.archived ? "Restore chat" : "Archive chat"}
-              >
-                {session.archived ? "↺" : "×"}
-              </button>
-            </div>
-          ))}
+                <button
+                  type="button"
+                  onClick={() => void actions.openSession(session.id)}
+                  className="w-full min-w-0 px-4 py-3 pr-12 text-left"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={`h-2.5 w-2.5 shrink-0 rounded-full border ${activityDotClass(
+                        session,
+                      )}`}
+                      title={
+                        session.archived ? "Archived" : activityLabel(session)
+                      }
+                    />
+                    <span className="min-w-0 truncate text-sm font-semibold text-zinc-100">
+                      {session.title}
+                    </span>
+                  </div>
+                  {editing ? null : (
+                    <>
+                      <p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-400">
+                        {session.preview ?? "No messages yet"}
+                      </p>
+                      <p className="mt-2 text-[11px] text-zinc-500">
+                        {session.messageCount.toLocaleString()} messages ·{" "}
+                        {formatTime(session.updatedAtMs)}
+                      </p>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setSessionMenuOpenId((current) =>
+                      current === session.id ? null : session.id,
+                    )
+                  }}
+                  className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded border border-zinc-700 text-sm text-zinc-300 hover:border-cyan-400 hover:text-cyan-100"
+                  title="Chat menu"
+                  aria-label="Chat menu"
+                >
+                  ⋯
+                </button>
+
+                {menuOpen ? (
+                  <div className="absolute right-3 top-12 z-20 w-36 rounded border border-zinc-700 bg-zinc-950 py-1 text-sm shadow-xl">
+                    <button
+                      type="button"
+                      onClick={() => beginEditSession(session)}
+                      className="block w-full px-3 py-2 text-left text-zinc-200 hover:bg-zinc-800"
+                    >
+                      Edit chat
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void setSessionArchived(session.id, !session.archived)
+                      }
+                      disabled={archivingSessionId === session.id}
+                      className="block w-full px-3 py-2 text-left text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+                    >
+                      {session.archived ? "Restore chat" : "Archive chat"}
+                    </button>
+                  </div>
+                ) : null}
+
+                {editing ? (
+                  <form
+                    className="px-4 pb-3 pr-12"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      void saveSessionTitle()
+                    }}
+                  >
+                    <input
+                      value={editingSessionTitle}
+                      onChange={(event) =>
+                        setEditingSessionTitle(event.target.value)
+                      }
+                      className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                      aria-label="Chat title"
+                    />
+                    <div className="mt-2 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingSessionId(null)
+                          setEditingSessionTitle("")
+                        }}
+                        className="rounded border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={
+                          !editingSessionTitle.trim() ||
+                          editingSessionTitle.trim() === session.title
+                        }
+                        className="rounded border border-cyan-400/40 px-3 py-1 text-xs font-semibold text-cyan-100 hover:bg-cyan-950 disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
+              </div>
+            )
+          })}
           {filteredSessions.length === 0 ? (
             <div className="m-3 rounded border border-dashed border-zinc-700 px-3 py-4 text-sm text-zinc-400">
               {sessionSearchQuery.trim()

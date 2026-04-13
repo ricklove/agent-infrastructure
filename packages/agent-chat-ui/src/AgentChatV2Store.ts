@@ -648,12 +648,19 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       sessionId: string,
       archived: boolean,
     ): Promise<void> {
+      await actions.updateSession(sessionId, { archived })
+    },
+
+    async updateSession(
+      sessionId: string,
+      update: { title?: string; archived?: boolean },
+    ): Promise<void> {
       const payload = await readJson<SessionSnapshotResponse>(
         apiPath(store, `/sessions/${encodeURIComponent(sessionId)}`),
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ archived }),
+          body: JSON.stringify(update),
         },
       )
       setSessionSnapshot(store, payload)
