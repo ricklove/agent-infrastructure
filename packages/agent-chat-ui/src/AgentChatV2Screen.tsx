@@ -124,6 +124,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   >([])
   const [composerImageError, setComposerImageError] = useState("")
   const [newChatTitle, setNewChatTitle] = useState("")
+  const [newChatOpen, setNewChatOpen] = useState(false)
   const [transcriptPinnedToBottom, setTranscriptPinnedToBottom] = useState(true)
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
@@ -329,36 +330,52 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const createTitledSession = useCallback(async () => {
     await actions.createSession(newChatTitle)
     setNewChatTitle("")
+    setNewChatOpen(false)
   }, [actions, newChatTitle])
 
   return (
     <main className="flex h-screen min-h-0 bg-zinc-950 text-zinc-100">
       <aside className="flex w-[340px] shrink-0 flex-col border-r border-zinc-800 bg-zinc-900">
         <div className="border-b border-zinc-800 px-4 py-3">
-          <p className="text-xs font-semibold uppercase text-cyan-300">
-            Agent Chat v2
-          </p>
-          <form
-            className="mt-2 space-y-2"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void createTitledSession()
-            }}
-          >
-            <input
-              value={newChatTitle}
-              onChange={(event) => setNewChatTitle(event.target.value)}
-              className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-400"
-              placeholder="Chat title"
-              aria-label="Chat title"
-            />
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase text-cyan-300">
+              Agent Chat v2
+            </p>
             <button
-              type="submit"
-              className="w-full rounded bg-cyan-500 px-3 py-2 text-sm font-semibold text-zinc-950"
+              type="button"
+              onClick={() => setNewChatOpen((current) => !current)}
+              className="flex h-8 w-8 items-center justify-center rounded border border-cyan-400/40 bg-zinc-950 text-lg font-semibold text-cyan-100 hover:bg-cyan-950"
+              aria-label="New chat"
+              title="New chat"
             >
-              New chat
+              +
             </button>
-          </form>
+          </div>
+          {newChatOpen ? (
+            <form
+              className="mt-3 flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void createTitledSession()
+              }}
+            >
+              <input
+                value={newChatTitle}
+                onChange={(event) => setNewChatTitle(event.target.value)}
+                className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                placeholder="Chat title"
+                aria-label="Chat title"
+              />
+              <button
+                type="submit"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-cyan-500 text-base font-semibold text-zinc-950 disabled:opacity-50"
+                aria-label="Create chat"
+                title="Create chat"
+              >
+                ↑
+              </button>
+            </form>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2 text-xs text-zinc-400">
