@@ -123,6 +123,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     AgentChatV2ComposerImage[]
   >([])
   const [composerImageError, setComposerImageError] = useState("")
+  const [newChatTitle, setNewChatTitle] = useState("")
   const [transcriptPinnedToBottom, setTranscriptPinnedToBottom] = useState(true)
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
@@ -325,6 +326,11 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     [],
   )
 
+  const createTitledSession = useCallback(async () => {
+    await actions.createSession(newChatTitle)
+    setNewChatTitle("")
+  }, [actions, newChatTitle])
+
   return (
     <main className="flex h-screen min-h-0 bg-zinc-950 text-zinc-100">
       <aside className="flex w-[340px] shrink-0 flex-col border-r border-zinc-800 bg-zinc-900">
@@ -332,13 +338,27 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
           <p className="text-xs font-semibold uppercase text-cyan-300">
             Agent Chat v2
           </p>
-          <button
-            type="button"
-            onClick={() => void actions.createSession()}
-            className="mt-2 w-full rounded bg-cyan-500 px-3 py-2 text-sm font-semibold text-zinc-950"
+          <form
+            className="mt-2 space-y-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void createTitledSession()
+            }}
           >
-            New chat
-          </button>
+            <input
+              value={newChatTitle}
+              onChange={(event) => setNewChatTitle(event.target.value)}
+              className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+              placeholder="Chat title"
+              aria-label="Chat title"
+            />
+            <button
+              type="submit"
+              className="w-full rounded bg-cyan-500 px-3 py-2 text-sm font-semibold text-zinc-950"
+            >
+              New chat
+            </button>
+          </form>
         </div>
 
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2 text-xs text-zinc-400">

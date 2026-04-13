@@ -562,13 +562,16 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       }
     },
 
-    async createSession(): Promise<void> {
+    async createSession(title?: string): Promise<void> {
       const payload = await readJson<SessionWindowResponse>(
         apiPath(store, "/sessions"),
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ providerKind: "codex-app-server" }),
+          body: JSON.stringify({
+            providerKind: "codex-app-server",
+            title: title?.trim() || undefined,
+          }),
         },
       )
       setSessionWindow(store, payload, "replace")
