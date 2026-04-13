@@ -1,7 +1,9 @@
+/// <reference path="./xterm-css.d.ts" />
+
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "xterm"
-import "xterm/css/xterm.css"
+import xtermCssUrl from "xterm/css/xterm.css"
 import {
   useCallback,
   useEffect,
@@ -9,6 +11,8 @@ import {
   useRef,
   useState,
 } from "react"
+
+void xtermCssUrl
 
 export type DashboardTerminalScreenProps = {
   apiRootUrl: string

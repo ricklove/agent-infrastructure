@@ -110,6 +110,7 @@ const markdownImagePattern = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
 type ChatSocketData = {
   socketId: string
   sessionId: string | null
+  clientMode: "v1" | "v2"
 }
 
 type SessionActivity = {
@@ -156,6 +157,18 @@ type SessionSnapshotPayload = {
   queuedMessages: StoredMessage[]
   activity: SessionActivity
   providerUsage: SessionProviderUsage | null
+}
+
+type SessionWindowPayload = {
+  ok: true
+  session: SessionSummaryResponseItem
+  messages: StoredMessage[]
+  queuedMessages: StoredMessage[]
+  activity: SessionActivity
+  providerUsage: SessionProviderUsage | null
+  hasOlderMessages: boolean
+  nextBeforeMessageId: string | null
+  sessionVersion: string
 }
 
 type SessionRuntimeState = SessionActivity & {
@@ -358,6 +371,57 @@ function buildSessionSnapshot(
     activity,
     providerUsage: ensureRuntimeState(sessionId).providerUsage,
   }
+}
+
+function buildSessionVersion(
+  session: StoredSession,
+  messages: StoredMessage[],
+): string {
+  const lastMessage = messages.at(-1)
+  return [
+    session.updatedAtMs,
+    session.messageCount,
+    lastMessage?.id ?? "none",
+    lastMessage?.createdAtMs ?? 0,
+  ].join(":")
+}
+
+function buildSessionWindow(
+  sessionId: string,
+  input?: {
+    beforeMessageId?: string | null
+    limit?: number | null
+  },
+): SessionWindowPayload | null {
+  const session = store.getSession(sessionId)
+  if (!session) {
+    return null
+  }
+  const page = store.listMessagesPage(sessionId, {
+    beforeMessageId: input?.beforeMessageId ?? null,
+    limit: input?.limit ?? 50,
+  })
+  const allMessages = store.listMessages(sessionId)
+  const activity = toSessionActivity(sessionId)
+  return {
+    ok: true,
+    session: buildSessionSummary(session),
+    messages: page.messages,
+    queuedMessages: store.listQueuedMessages(sessionId),
+    activity,
+    providerUsage: ensureRuntimeState(sessionId).providerUsage,
+    hasOlderMessages: page.hasOlderMessages,
+    nextBeforeMessageId: page.messages[0]?.id ?? null,
+    sessionVersion: buildSessionVersion(session, allMessages),
+  }
+}
+
+function normalizeV2Limit(value: string | null, fallback: number): number {
+  const parsed = value ? Number.parseInt(value, 10) : fallback
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+  return Math.max(1, Math.min(200, parsed))
 }
 
 function numberFromUnknown(value: unknown) {
@@ -2764,12 +2828,14 @@ const server = Bun.serve<ChatSocketData>({
       if (!sessionId || !store.getSession(sessionId)) {
         return jsonResponse({ ok: false, error: "sessionId required" }, 400)
       }
+      const clientMode = url.searchParams.get("mode") === "v2" ? "v2" : "v1"
 
       if (
         serverInstance.upgrade(request, {
           data: {
             socketId: randomUUID(),
             sessionId,
+            clientMode,
           },
         })
       ) {
@@ -3099,6 +3165,42 @@ const server = Bun.serve<ChatSocketData>({
         ok: true,
         sessions: store.listSessions().map(buildSessionSummary),
       })
+    }
+
+    if (
+      url.pathname === "/api/agent-chat/v2/sessions" &&
+      request.method === "GET"
+    ) {
+      const limit = normalizeV2Limit(url.searchParams.get("limit"), 40)
+      const cursor = url.searchParams.get("cursor")?.trim() || ""
+      const sessions = store.listSessions().map(buildSessionSummary)
+      const startIndex = cursor
+        ? Math.max(
+            0,
+            sessions.findIndex((session) => session.id === cursor) + 1,
+          )
+        : 0
+      const boundedSessions = sessions.slice(startIndex, startIndex + limit)
+      return jsonResponse({
+        ok: true,
+        sessions: boundedSessions,
+        nextCursor:
+          startIndex + limit < sessions.length
+            ? (boundedSessions.at(-1)?.id ?? null)
+            : null,
+        totalKnownSessions: sessions.length,
+      })
+    }
+
+    const sessionWindowMatch =
+      /^\/api\/agent-chat\/v2\/sessions\/([^/]+)\/window$/.exec(url.pathname)
+    if (sessionWindowMatch && request.method === "GET") {
+      const sessionId = decodeMatchGroup(sessionWindowMatch, 1)
+      const payload = buildSessionWindow(sessionId, {
+        beforeMessageId: url.searchParams.get("beforeMessageId"),
+        limit: normalizeV2Limit(url.searchParams.get("limit"), 80),
+      })
+      return payload ? jsonResponse(payload) : notFound()
     }
 
     if (
@@ -3786,6 +3888,18 @@ const server = Bun.serve<ChatSocketData>({
         return
       }
       getSessionSockets(ws.data.sessionId).add(ws)
+      if (ws.data.clientMode === "v2") {
+        const payload = buildSessionWindow(ws.data.sessionId, { limit: 80 })
+        if (payload) {
+          ws.send(
+            JSON.stringify({
+              type: "session.window",
+              ...payload,
+            }),
+          )
+        }
+        return
+      }
       const payload = buildSessionSnapshot(ws.data.sessionId)
       if (payload) {
         ws.send(
