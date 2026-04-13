@@ -20,7 +20,6 @@ import {
 import {
   type AgentChatV2ComposerImage,
   type AgentChatV2Message,
-  type AgentChatV2PendingMessage,
   type AgentChatV2Session,
   createAgentChatV2Actions,
   createAgentChatV2Store,
@@ -310,6 +309,10 @@ type TranscriptItem =
   | { type: "message"; message: AgentChatV2Message }
   | { type: "actions"; messages: AgentChatV2Message[] }
 
+type OutboxMessage = AgentChatV2Message & {
+  pendingStatus: "pending" | "queued"
+}
+
 function isActionMessage(message: AgentChatV2Message): boolean {
   return message.role === "system" || message.kind !== "chat"
 }
@@ -424,6 +427,19 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       ),
     [pendingMessages, queuedDisplayKeys, queuedMessages],
   )
+  const outboxMessages = useMemo(
+    () =>
+      [
+        ...displayPendingMessages,
+        ...queuedMessages.map(
+          (message): OutboxMessage => ({
+            ...message,
+            pendingStatus: "queued",
+          }),
+        ),
+      ].sort((left, right) => left.createdAtMs - right.createdAtMs),
+    [displayPendingMessages, queuedMessages],
+  )
   const activeTranscriptItems = useMemo(
     () => transcriptItems(transcriptMessages),
     [transcriptMessages],
@@ -435,7 +451,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const lastMessageTextLength = lastMessage
     ? messageText(lastMessage).length
     : 0
-  const lastPendingMessage = displayPendingMessages.at(-1) ?? null
+  const lastPendingMessage = outboxMessages.at(-1) ?? null
   const autoScrollKey = `${activeSession?.id ?? ""}:${lastMessage?.id ?? ""}:${lastMessageTextLength}:${streamingAssistantText.length}:${queuedMessages.length}:${lastPendingMessage?.id ?? ""}:${lastPendingMessage?.pendingStatus ?? ""}`
 
   const updateTranscriptPinnedToBottom = useCallback(() => {
@@ -722,16 +738,8 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                     {streamingAssistantText}
                   </div>
                 ) : null}
-                {displayPendingMessages.map((message, index) => (
-                  <PendingMessageBubble
-                    key={message.id}
-                    message={message}
-                    index={index}
-                    apiRootUrl={apiRootUrl}
-                  />
-                ))}
-                {queuedMessages.map((message, index) => (
-                  <QueuedMessageBubble
+                {outboxMessages.map((message, index) => (
+                  <OutboxMessageBubble
                     key={message.id}
                     message={message}
                     index={index}
@@ -1158,42 +1166,8 @@ function MessageBubble(props: {
   )
 }
 
-function QueuedMessageBubble(props: {
-  message: AgentChatV2Message
-  index: number
-  apiRootUrl: string
-}) {
-  const tone =
-    props.message.role === "user"
-      ? "ml-auto border-amber-300/40 bg-amber-950/20"
-      : "border-amber-300/30 bg-zinc-900/80"
-  const preview = queuedMessagePreview(props.message)
-
-  return (
-    <article
-      className={`max-w-3xl rounded border border-dashed px-4 py-3 opacity-90 ${tone}`}
-      title={preview}
-    >
-      <div className="mb-2 flex items-center justify-between gap-3 text-[11px] uppercase text-amber-200/80">
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-amber-300/30 bg-amber-300/10 text-[10px] font-semibold">
-            ⏳
-          </span>
-          <span className="truncate">
-            Queued {props.index + 1} · {queuedMessageLabel(props.message)}
-          </span>
-        </span>
-        <span className="shrink-0">
-          {formatTime(props.message.createdAtMs)}
-        </span>
-      </div>
-      <MessageContent message={props.message} apiRootUrl={props.apiRootUrl} />
-    </article>
-  )
-}
-
-function PendingMessageBubble(props: {
-  message: AgentChatV2PendingMessage
+function OutboxMessageBubble(props: {
+  message: OutboxMessage
   index: number
   apiRootUrl: string
 }) {
