@@ -273,6 +273,14 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
   const scheduleTranscriptScrollToBottom = useCallback(
     (options?: { force?: boolean }) => {
+      const scrollElement = transcriptScrollRef.current
+      const nearBottom = scrollElement
+        ? isScrolledNearBottom(scrollElement)
+        : true
+      if (nearBottom) {
+        transcriptPinnedToBottomRef.current = true
+        setTranscriptPinnedToBottom(true)
+      }
       if (!options?.force && !transcriptPinnedToBottomRef.current) {
         return
       }
