@@ -1,4 +1,7 @@
-import { agentChatDashboardUiPlugin } from "@agent-infrastructure/agent-chat-ui/ui-plugin"
+import {
+  agentChatDashboardUiPlugin,
+  agentChatV2DashboardUiPlugin,
+} from "@agent-infrastructure/agent-chat-ui/ui-plugin"
 import { agentChatWorkbenchNodeType } from "@agent-infrastructure/agent-chat-ui/workbench-node"
 import { agentGraphDashboardUiPlugin } from "@agent-infrastructure/agent-graph-ui/ui-plugin"
 import { agentSwarmDashboardUiPlugin } from "@agent-infrastructure/agent-swarm-ui/ui-plugin"
@@ -28,6 +31,7 @@ export type DashboardHostRole = "manager" | "admin"
 
 const managerDashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
   agentChatDashboardUiPlugin,
+  agentChatV2DashboardUiPlugin,
   agentSwarmDashboardUiPlugin,
   composedWorkbenchDashboardUiPlugin,
   uiDesignCanvasDashboardUiPlugin,
@@ -42,6 +46,7 @@ const adminDashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
   stackAdminDashboardUiPlugin,
   projectsDashboardUiPlugin,
   agentChatDashboardUiPlugin,
+  agentChatV2DashboardUiPlugin,
   dashboardTerminalUiPlugin,
 ]
 

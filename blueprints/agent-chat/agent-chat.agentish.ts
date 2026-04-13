@@ -116,7 +116,18 @@ const Verification = {
   serverProcessLifecycle: define.concept("ServerProcessLifecycleVerification"),
   headlessStateStore: define.concept("HeadlessStateStoreVerification"),
   deterministicProviderFixture: define.concept("DeterministicProviderFixture"),
+  managerWorktreePreview: define.concept("ManagerWorktreePreviewVerification"),
   deferredBrowserE2E: define.concept("DeferredBrowserProcessE2E"),
+};
+
+const ClientArchitecture = {
+  v1Surface: define.concept("AgentChatV1Surface"),
+  v2Surface: define.concept("AgentChatV2Surface"),
+  legendStore: define.system("AgentChatLegendStateStore"),
+  efficientLoading: define.concept("EfficientSessionLoading"),
+  boundedRead: define.concept("BoundedSessionRead"),
+  websocketDelta: define.concept("SessionWebsocketDelta"),
+  versionGap: define.concept("SessionVersionGapRecovery"),
 };
 
 const AgentChatImplementationPlan = define.section("AgentChatImplementationPlanSection");
@@ -137,6 +148,12 @@ AgentChat.enforces(`
 - Provider bindings may change without rewriting canonical session history.
 - Agent Chat process behavior should be verified primarily through Bun server integration tests that exercise the real server HTTP and websocket surfaces.
 - Agent Chat client process behavior should also be verified through headless state-store tests that exercise the same state projection, queue handling, and selector logic used by the UI without requiring DOM rendering.
+- Agent Chat v2 may replace the browser and client-store architecture while preserving the existing canonical Agent Chat session ids, transcript records, attachments, tickets, provider bindings, and process state.
+- Agent Chat v2 must run side by side with the current chat UI until it proves session list loading, transcript hydration, websocket deltas, sending, interruption, queued messages, process selection, ticket state, and reload recovery against the same canonical data.
+- Agent Chat v2 must not introduce a second canonical chat data model. Any new API shape should be a bounded projection or mutation contract over the existing canonical session store.
+- The current Agent Chat UI remains the fallback control surface while v2 is built, verified, and gradually promoted.
+- Agent Chat browser state should be owned by a feature-owned Legend State store rather than by a monolithic React screen component.
+- Chat session loading must use bounded API reads plus websocket deltas rather than full-session snapshot fetches for normal navigation.
 - Process-lifecycle verification should cover session creation, process reassignment, interruption, resumed work on the same active ticket, completion-token handling, blocked-token handling, queued human follow-up, and idle continuation edge cases.
 - Deterministic provider fixtures should be preferred over live provider credentials for process-lifecycle verification so streamed deltas, waiting flags, retries, interruption, blocked outcomes, and completion outcomes remain reproducible.
 - Full browser process end-to-end coverage may be added later, but it is deferred verification rather than the primary requirement for initial process-lifecycle completeness.
@@ -190,13 +207,13 @@ AgentChat.enforces(`
 - Transcript markdown should render common operator-facing structures, including links, inline code, fenced code blocks, and markdown image references, as visible content rather than raw markdown syntax.
 - Rendered markdown should remain switchable back to the canonical raw message text for any individual transcript item so the operator can inspect the original provider-emitted formatting when needed.
 - Each canonical chat message should have a stable direct-link address that the operator can copy and later reopen to the same session and message anchor.
-- Copied chat-message permalinks should avoid embedding known-ephemeral tunnel origins such as temporary preview domains and should fall back to an app-relative `/chat?...#message-...` address when the current host is not stable.
+- Copied chat-message permalinks should avoid embedding known-ephemeral tunnel origins such as temporary preview domains and should fall back to an app-relative \`/chat?...#message-...\` address when the current host is not stable.
 - Opening a direct-linked chat message should restore the owning session, scroll that message into view, and make the target message visually discoverable instead of dropping the operator at an unrelated point in the thread.
 - Agent-authored generated images should be referenced as markdown image URLs that point at the approved temporary image space under ~/temp until the operator explicitly keeps them.
 - Temporary image paths under ~/temp are acceptable transient transcript media and should render inline with a clear temporary indicator.
 - Any markdown image reference that is neither a canonical chat attachment nor an approved temporary image path should render with a clear external-source warning indicator.
 - Ordinary markdown links whose targets resolve to image media should remain visible as links but should also render the target image inline with the same provenance and Keep image behavior as explicit markdown image syntax.
-- Markdown links that point at in-app chat message references such as `/chat?sessionId=...#message-...` should remain visible as links and should also render a compact chat-reference preview that shows the referenced chat and message context when that target is locally resolvable.
+- Markdown links that point at in-app chat message references such as \`/chat?sessionId=...#message-...\` should remain visible as links and should also render a compact chat-reference preview that shows the referenced chat and message context when that target is locally resolvable.
 - Standalone local file references and markdown links that target allowed local workspace files should remain visible as links and should also render a compact file-reference preview with an authenticated open-in-browser action.
 - Agent Chat local file references should open a root-level modal viewer inside Agent Chat rather than navigating away to a standalone browser route.
 - The file viewer modal should show the full referenced path, expose one-click copy actions for the path and raw file contents, and render supported text files with readable colorized formatting.
@@ -318,7 +335,15 @@ AgentChat.contains(
   Verification.serverProcessLifecycle,
   Verification.headlessStateStore,
   Verification.deterministicProviderFixture,
+  Verification.managerWorktreePreview,
   Verification.deferredBrowserE2E,
+  ClientArchitecture.v1Surface,
+  ClientArchitecture.v2Surface,
+  ClientArchitecture.legendStore,
+  ClientArchitecture.efficientLoading,
+  ClientArchitecture.boundedRead,
+  ClientArchitecture.websocketDelta,
+  ClientArchitecture.versionGap,
 );
 
 Session.conversation.means(`
@@ -410,6 +435,7 @@ Verification.serverProcessLifecycle.means(`
 
 Verification.headlessStateStore.means(`
 - tests exercise the same client state machinery used by the Agent Chat UI without mounting the browser DOM
+- for v2, the client state machinery is the feature-owned Legend State store rather than local state hidden inside a React screen component
 - assertions focus on local interpretation of snapshots, incremental websocket events, optimistic session patches, process selector states, blocked-send behavior, and queued-message presentation
 - this is the primary client-side verification layer for process-aware operator workflows
 `);
@@ -423,6 +449,53 @@ Verification.deterministicProviderFixture.means(`
 Verification.deferredBrowserE2E.means(`
 - browser-driven end-to-end coverage is deferred until the server and headless client verification layers are in place
 - later browser coverage should validate only a narrow set of operator-critical workflows rather than re-proving every backend edge case
+`);
+
+Verification.managerWorktreePreview.means(`
+- Chat v2 dashboard work should be developed and verified from a manager worktree dev dashboard so the v2 tab runs against real manager Agent Chat data, gateway routing, websocket behavior, dashboard session auth, and large-session performance characteristics
+- early Chat v2 verification should keep mutation actions disabled until bounded read APIs, websocket delta merge, and Legend store recovery are proven against real data
+- the manager worktree preview should expose a separate v2 dashboard tab while leaving the current v1 chat tab available as the fallback control surface
+`);
+
+ClientArchitecture.v1Surface.means(`
+- the existing Agent Chat dashboard tab remains the operational fallback while v2 is under construction
+- v1 may continue to use legacy full-session snapshot routes until the replacement path is proven
+- v1 and v2 both address the same canonical session ids and transcript records
+`);
+
+ClientArchitecture.v2Surface.means(`
+- a separate Agent Chat v2 dashboard tab may stage replacement browser architecture without replacing v1 in place
+- v2 uses the existing canonical backend data and should not fork session storage, transcript storage, attachment storage, ticket state, or provider binding state
+- v2 should start read-only, then add mutations only after the bounded read path, websocket merge path, and Legend store recovery path are verified
+`);
+
+ClientArchitecture.legendStore.means(`
+- owns normalized session summaries, selected session id, hydrated transcript windows, message entities by id, ordered message ranges, pending pagination cursors, websocket connection state, optimistic composer and send state, queued-message projection, active ticket and process projection, provider telemetry, and version-gap recovery state
+- exposes explicit actions for loading the session list, hydrating a session window, loading older messages, loading a message range, applying websocket events, recovering from version gaps, sending messages, interrupting runs, updating process selection, and updating provider settings
+- React components should subscribe to narrow Legend selectors and render projections from the store rather than owning canonical session loading, websocket merge logic, pagination state, or whole-session snapshots
+`);
+
+ClientArchitecture.efficientLoading.means(`
+- session list APIs return compact summaries only: identity, title, status, timestamps, unread or activity indicators, active ticket and process state, and small preview fields
+- session list APIs must not embed full transcripts, large activity payloads, provider logs, or full ticket trees
+- opening a session hydrates only the visible transcript window, recent activity, and required runtime state
+- older messages, expanded activity clusters, attachments, ticket detail, and historical context load on demand through paginated or ranged API calls
+`);
+
+ClientArchitecture.boundedRead.means(`
+- API reads for normal navigation accept cursor, range, since-version, and limit parameters where the result can otherwise grow with transcript length
+- bounded reads preserve canonical transcript ordering while preventing long-lived sessions from requiring multi-megabyte snapshots during ordinary dashboard use
+- full-session reads may exist for compatibility, export, or recovery, but they should not be the default browser navigation path for v2
+`);
+
+ClientArchitecture.websocketDelta.means(`
+- the websocket session stream is the live-update source for appended messages, activity deltas, run state, queue state, ticket state, and provider telemetry after initial hydration
+- the client store merges websocket deltas into bounded hydrated windows without refetching the entire session unless explicitly recovering from a version gap
+`);
+
+ClientArchitecture.versionGap.means(`
+- each bounded snapshot and websocket delta should carry enough ordering or version information for the client store to detect missed events
+- when a version gap is detected, v2 should recover through a bounded refetch of the affected session window or status slice rather than by fetching the full session by default
 `);
 
 AgentChatImplementationPlan.prescribes(`
@@ -660,8 +733,8 @@ AgentChat.prescribes(`
 AgentChat.contains(AgentChatImplementationPlan);
 
 AgentChatImplementationPlan.defines(`
-- Agent Chat ships as a real dashboard feature with a feature-owned backend, browser-owned UI state, gateway-proxied transport, and canonical app-owned persistence.
-- The browser owns session list rendering, transcript rendering, composer state, reconnect behavior, queued-message visibility, waiting-state chrome, and provider-setting forms.
+- Agent Chat ships as a real dashboard feature with a feature-owned backend, feature-owned Legend State client store, thin React rendering surfaces, gateway-proxied transport, and canonical app-owned persistence.
+- The browser owns rendering and local interaction, while the Legend State store owns session list projection, transcript-window projection, composer state, reconnect behavior, queued-message visibility, waiting-state chrome, provider-setting form state, websocket merge state, and bounded-loading cursors.
 - Agent Chat browser session auth for HTTP and dashboard-session websocket transport should be consumed through shared dashboard package helpers rather than feature-local sessionStorage utilities.
 - The backend owns canonical transcript history, provider adapter orchestration, websocket fanout, retry policy, process-blueprint expectation handling, watchdog eligibility, and provider-state normalization into canonical activity.
 - Canonical storage is file-backed durable app data outside state/, with in-memory caches treated as derived and disposable.
@@ -669,9 +742,27 @@ AgentChatImplementationPlan.defines(`
 - Provider capability tracking includes multimodal input, image input, native context caching, native thread reuse, and qualified model catalogs.
 - Session configuration owns provider selection, model selection, process-blueprint selection, and workspace-root selection without rewriting canonical session identity.
 - Claude Agent SDK sessions use plan mode for Discuss or no explicit process blueprint, and writable execution mode for blueprint-authoring or implementation-oriented processes.
-- Transport uses HTTP for mutation and query surfaces, websocket streaming for live session updates, and gateway proxying as the browser-facing boundary.
+- Transport uses HTTP for mutation and bounded query surfaces, websocket streaming for live session deltas, and gateway proxying as the browser-facing boundary.
 - The transcript surface keeps assistant prose, canonical system history, and execution activity visually distinct while preserving one canonical ordered history.
 - Image paste is first-class canonical content, unsent drafts are preserved per session, and queued user messages batch into the next provider turn together.
+`);
+
+const Package = {
+  ui: define.package("AgentChatUi"),
+  store: define.package("AgentChatStore"),
+  protocol: define.package("AgentChatProtocol"),
+  server: define.package("AgentChatServer"),
+};
+
+Package.ui.dependsOn(Package.store, Package.protocol);
+Package.store.dependsOn(Package.protocol);
+Package.server.dependsOn(Package.protocol);
+
+AgentChat.implementsThrough(`
+- packages/agent-chat-ui owns React rendering, layout, accessibility, dashboard plugin registration, v1 fallback surface, v2 preview surface, and view composition
+- packages/agent-chat-store should own Legend State client session, transcript-window, websocket-merge, optimistic action, pagination, reconnect, and version-gap recovery state
+- packages/agent-chat-protocol should own shared HTTP, websocket, cursor, bounded snapshot, delta, and version-gap contracts
+- packages/agent-chat-server owns canonical transcript persistence, bounded query APIs, websocket fanout, provider orchestration, process handling, and watchdog runtime behavior
 `);
 
 AgentChat.usesFiles(`
