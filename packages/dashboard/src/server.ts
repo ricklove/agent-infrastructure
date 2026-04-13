@@ -240,6 +240,7 @@ type MainDashboardProxyWsData = {
   upstreamUrl: string
   upstream: WebSocket | null
   queue: ProxyMessage[]
+  upstreamProtocols: string[]
   requestedProtocols: string[]
   selectedProtocol: string | null
 }
@@ -289,6 +290,8 @@ const dashboardDevMainDashboardProxyEnabled =
 const dashboardDevMainDashboardUrl =
   process.env.DASHBOARD_DEV_MAIN_DASHBOARD_URL?.trim() ||
   "http://127.0.0.1:3000"
+const dashboardDevMainDashboardAuthorization =
+  process.env.DASHBOARD_DEV_MAIN_DASHBOARD_AUTHORIZATION?.trim() || ""
 const dashboardDevMainDashboardProxyPaths = (
   process.env.DASHBOARD_DEV_MAIN_DASHBOARD_PROXY_PATHS?.trim() ||
   "/api/agent-chat,/ws/agent-chat"
@@ -602,6 +605,14 @@ function proxiedRequestHeaders(request: Request): Headers {
   return headers
 }
 
+function mainDashboardProxyRequestHeaders(request: Request): Headers {
+  const headers = proxiedRequestHeaders(request)
+  if (dashboardDevMainDashboardAuthorization) {
+    headers.set("authorization", dashboardDevMainDashboardAuthorization)
+  }
+  return headers
+}
+
 function pathMatchesProxyPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`)
 }
@@ -623,13 +634,26 @@ function mainDashboardWebSocketUrl(url: URL): string {
   return `${wsBaseUrlFromHttpOrigin(dashboardDevMainDashboardUrl).replace(/\/+$/u, "")}${url.pathname}${url.search}`
 }
 
+function mainDashboardProxyWebSocketProtocols(
+  requestedProtocols: string[],
+): string[] {
+  if (!dashboardDevMainDashboardAuthorization) {
+    return requestedProtocols
+  }
+  const match = /^Bearer\s+(.+)$/i.exec(dashboardDevMainDashboardAuthorization)
+  if (!match) {
+    return requestedProtocols
+  }
+  return [`${dashboardSessionWebSocketProtocolPrefix}${match[1]}`]
+}
+
 async function proxyRequestToMainDashboard(
   request: Request,
 ): Promise<Response> {
   const url = new URL(request.url)
   const response = await fetch(mainDashboardHttpUrl(url), {
     method: request.method,
-    headers: proxiedRequestHeaders(request),
+    headers: mainDashboardProxyRequestHeaders(request),
     body:
       request.method === "GET" || request.method === "HEAD"
         ? undefined
@@ -2086,6 +2110,8 @@ const server = Bun.serve<DashboardWsData>({
       if (requestWantsWebSocket) {
         const requestedProtocols = requestedWebSocketProtocols(request)
         const selectedProtocol = selectWebSocketProtocol(requestedProtocols)
+        const upstreamProtocols =
+          mainDashboardProxyWebSocketProtocols(requestedProtocols)
         if (
           server.upgrade(request, {
             data: {
@@ -2093,6 +2119,7 @@ const server = Bun.serve<DashboardWsData>({
               upstreamUrl: mainDashboardWebSocketUrl(url),
               upstream: null,
               queue: [],
+              upstreamProtocols,
               requestedProtocols,
               selectedProtocol,
             },
@@ -2278,8 +2305,8 @@ const server = Bun.serve<DashboardWsData>({
       if (ws.data.kind === "main-dashboard-proxy") {
         const proxyData = ws.data
         const upstream =
-          proxyData.requestedProtocols.length > 0
-            ? new WebSocket(proxyData.upstreamUrl, proxyData.requestedProtocols)
+          proxyData.upstreamProtocols.length > 0
+            ? new WebSocket(proxyData.upstreamUrl, proxyData.upstreamProtocols)
             : new WebSocket(proxyData.upstreamUrl)
         proxyData.upstream = upstream
 
