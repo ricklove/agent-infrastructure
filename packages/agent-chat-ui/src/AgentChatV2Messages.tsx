@@ -1,5 +1,5 @@
 import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
-import { useEffect, useState } from "react"
+import { Fragment, type ReactNode, useEffect, useState } from "react"
 import type { AgentChatV2Message } from "./AgentChatV2Store"
 
 type ImageReference = {
@@ -97,6 +97,316 @@ function textImageReferences(text: string): ImageReference[] {
         parseRawImageReferenceLine(line),
     )
     .filter((entry): entry is ImageReference => entry !== null)
+}
+
+function isLikelyLocalFileReferenceTarget(value: string): boolean {
+  const normalized = normalizeImageSource(value).split(/[?#]/u)[0] ?? ""
+  return (
+    normalized.startsWith("/home/ec2-user/") ||
+    normalized.startsWith("~/") ||
+    /^\.[./]/u.test(normalized)
+  )
+}
+
+function parseStandaloneLocalFileLine(line: string): string | null {
+  const trimmed = line.trim()
+  if (!trimmed || /\s/u.test(trimmed)) {
+    return null
+  }
+  return isLikelyLocalFileReferenceTarget(trimmed) ? trimmed : null
+}
+
+function FileReferenceLink(props: { pathname: string; label?: string }) {
+  const [copied, setCopied] = useState(false)
+  const label = props.label || props.pathname
+
+  async function copyPath() {
+    await navigator.clipboard.writeText(normalizeImageSource(props.pathname))
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1200)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copyPath()}
+      className="break-all rounded border border-cyan-400/25 bg-cyan-950/30 px-1.5 py-0.5 font-mono text-[0.92em] text-cyan-100 hover:border-cyan-300"
+      title={copied ? "Copied path" : "Copy path"}
+    >
+      {label}
+    </button>
+  )
+}
+
+function CodeBlock(props: { language: string; code: string }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copyCode() {
+    await navigator.clipboard.writeText(props.code)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1200)
+  }
+
+  return (
+    <div className="overflow-hidden rounded border border-zinc-700 bg-zinc-950">
+      <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-3 py-2 text-[11px] uppercase text-zinc-500">
+        <span className="truncate">{props.language || "code"}</span>
+        <button
+          type="button"
+          onClick={() => void copyCode()}
+          className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 hover:border-cyan-500 hover:text-cyan-100"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="overflow-x-auto px-3 py-3 text-[13px] leading-6 text-zinc-100">
+        <code className="font-mono">{props.code}</code>
+      </pre>
+    </div>
+  )
+}
+
+function renderStyledInlineMarkdown(
+  text: string,
+  keyPrefix: string,
+): ReactNode[] {
+  const occurrences = new Map<string, number>()
+  return text
+    .split(/(\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*)/gu)
+    .filter(Boolean)
+    .map((segment) => {
+      const occurrence = occurrences.get(segment) ?? 0
+      occurrences.set(segment, occurrence + 1)
+      const key = `${keyPrefix}-styled-${occurrence}-${segment}`
+      const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/u.exec(segment)
+      if (linkMatch) {
+        const label = linkMatch[1] ?? ""
+        const target = linkMatch[2] ?? ""
+        if (isLikelyLocalFileReferenceTarget(target)) {
+          return <FileReferenceLink key={key} pathname={target} label={label} />
+        }
+        return (
+          <a
+            key={key}
+            href={target}
+            target="_blank"
+            rel="noreferrer"
+            className="text-cyan-200 underline decoration-cyan-400/50 underline-offset-2 hover:text-cyan-100"
+          >
+            {label}
+          </a>
+        )
+      }
+      if (segment.startsWith("**") && segment.endsWith("**")) {
+        return (
+          <strong key={key} className="font-semibold text-white">
+            {segment.slice(2, -2)}
+          </strong>
+        )
+      }
+      if (
+        segment.startsWith("*") &&
+        segment.endsWith("*") &&
+        segment.length > 2
+      ) {
+        return (
+          <em key={key} className="italic text-zinc-50">
+            {segment.slice(1, -1)}
+          </em>
+        )
+      }
+      return <Fragment key={key}>{segment}</Fragment>
+    })
+}
+
+function renderInlineMarkdown(text: string, keyPrefix: string): ReactNode[] {
+  const occurrences = new Map<string, number>()
+  return text
+    .split(/(`[^`]+`)/gu)
+    .filter(Boolean)
+    .map((segment) => {
+      const occurrence = occurrences.get(segment) ?? 0
+      occurrences.set(segment, occurrence + 1)
+      const key = `${keyPrefix}-inline-${occurrence}-${segment}`
+      if (
+        segment.startsWith("`") &&
+        segment.endsWith("`") &&
+        segment.length >= 2
+      ) {
+        return (
+          <code
+            key={key}
+            className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-[0.92em] text-cyan-100"
+          >
+            {segment.slice(1, -1)}
+          </code>
+        )
+      }
+      return (
+        <Fragment key={key}>
+          {renderStyledInlineMarkdown(segment, key)}
+        </Fragment>
+      )
+    })
+}
+
+function renderMarkdownParagraph(
+  lines: string[],
+  keyPrefix: string,
+): ReactNode {
+  const lineOccurrences = new Map<string, number>()
+  return lines.map((line, index) => {
+    const occurrence = lineOccurrences.get(line) ?? 0
+    lineOccurrences.set(line, occurrence + 1)
+    return (
+      <Fragment key={`${keyPrefix}-line-${occurrence}-${line}`}>
+        {index > 0 ? <br /> : null}
+        {renderInlineMarkdown(line, `${keyPrefix}-${occurrence}`)}
+      </Fragment>
+    )
+  })
+}
+
+function renderStructuredTextBlock(
+  lines: string[],
+  keyPrefix: string,
+): ReactNode {
+  const headingMatch = /^(#{1,3})\s+(.*)$/u.exec(lines[0] ?? "")
+  if (headingMatch && lines.length === 1) {
+    const level = headingMatch[1]?.length ?? 1
+    const headingClass =
+      level === 1
+        ? "text-lg font-semibold text-white"
+        : level === 2
+          ? "text-base font-semibold text-zinc-100"
+          : "text-sm font-semibold uppercase text-zinc-300"
+    return (
+      <p className={headingClass}>
+        {renderInlineMarkdown(headingMatch[2] ?? "", `${keyPrefix}-heading`)}
+      </p>
+    )
+  }
+
+  if (lines.every((line) => /^[-*]\s+/u.test(line))) {
+    const lineOccurrences = new Map<string, number>()
+    return (
+      <ul className="list-disc space-y-1 pl-5 text-sm leading-6 text-zinc-100">
+        {lines.map((line) => {
+          const occurrence = lineOccurrences.get(line) ?? 0
+          lineOccurrences.set(line, occurrence + 1)
+          return (
+            <li key={`${keyPrefix}-ul-${occurrence}-${line}`}>
+              {renderInlineMarkdown(
+                line.replace(/^[-*]\s+/u, ""),
+                `${keyPrefix}-ul-${occurrence}-${line}`,
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    )
+  }
+
+  if (lines.every((line) => /^\d+\.\s+/u.test(line))) {
+    const lineOccurrences = new Map<string, number>()
+    return (
+      <ol className="list-decimal space-y-1 pl-5 text-sm leading-6 text-zinc-100">
+        {lines.map((line) => {
+          const occurrence = lineOccurrences.get(line) ?? 0
+          lineOccurrences.set(line, occurrence + 1)
+          return (
+            <li key={`${keyPrefix}-ol-${occurrence}-${line}`}>
+              {renderInlineMarkdown(
+                line.replace(/^\d+\.\s+/u, ""),
+                `${keyPrefix}-ol-${occurrence}-${line}`,
+              )}
+            </li>
+          )
+        })}
+      </ol>
+    )
+  }
+
+  const localFileReference =
+    lines.length === 1 ? parseStandaloneLocalFileLine(lines[0] ?? "") : null
+  if (localFileReference) {
+    return (
+      <p className="break-words whitespace-pre-wrap text-sm leading-6 text-zinc-100">
+        <FileReferenceLink pathname={localFileReference} />
+      </p>
+    )
+  }
+
+  return (
+    <p className="break-words whitespace-pre-wrap text-sm leading-6 text-zinc-100">
+      {renderMarkdownParagraph(lines, keyPrefix)}
+    </p>
+  )
+}
+
+function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
+  const normalized = text.replace(/\r\n/gu, "\n").trim()
+  if (!normalized) {
+    return []
+  }
+
+  const nodes: ReactNode[] = []
+  const codeBlockPattern = /```([a-zA-Z0-9_-]+)?\n([\s\S]*?)```/gu
+  let lastIndex = 0
+  let match: RegExpExecArray | null = codeBlockPattern.exec(normalized)
+  let blockIndex = 0
+
+  const pushTextBlocks = (chunk: string) => {
+    const trimmed = chunk.trim()
+    if (!trimmed) {
+      return
+    }
+    for (const block of trimmed.split(/\n\s*\n/gu).filter(Boolean)) {
+      const lines = block.split("\n")
+      const pendingLines: string[] = []
+      const flushPendingLines = () => {
+        if (pendingLines.length === 0) {
+          return
+        }
+        nodes.push(
+          <Fragment key={`${keyPrefix}-text-${blockIndex}`}>
+            {renderStructuredTextBlock(
+              [...pendingLines],
+              `${keyPrefix}-text-${blockIndex}`,
+            )}
+          </Fragment>,
+        )
+        blockIndex += 1
+        pendingLines.length = 0
+      }
+
+      for (const line of lines) {
+        const markdownImage = parseMarkdownImageLine(line)
+        if (markdownImage) {
+          flushPendingLines()
+          continue
+        }
+        pendingLines.push(line)
+      }
+      flushPendingLines()
+    }
+  }
+
+  while (match) {
+    pushTextBlocks(normalized.slice(lastIndex, match.index))
+    nodes.push(
+      <CodeBlock
+        key={`${keyPrefix}-code-${blockIndex}`}
+        language={match[1]?.trim() ?? ""}
+        code={match[2]?.replace(/\n$/u, "") ?? ""}
+      />,
+    )
+    blockIndex += 1
+    lastIndex = codeBlockPattern.lastIndex
+    match = codeBlockPattern.exec(normalized)
+  }
+  pushTextBlocks(normalized.slice(lastIndex))
+  return nodes
 }
 
 export function queuedMessageLabel(message: AgentChatV2Message): string {
@@ -366,14 +676,9 @@ function MessageContent(props: {
 
   return (
     <div className="space-y-3">
-      {textBlocks.map((block) => (
-        <p
-          key={`${props.message.id}-text-${block.text}`}
-          className="whitespace-pre-wrap text-sm leading-6 text-zinc-100"
-        >
-          {block.text}
-        </p>
-      ))}
+      {textBlocks.flatMap((block, index) =>
+        renderMarkdownBlocks(block.text, `${props.message.id}-text-${index}`),
+      )}
       {imageReferences.map((image) => (
         <MessageImagePreview
           key={`${props.message.id}-image-${image.sourceUrl}-${image.altText}`}
@@ -390,11 +695,33 @@ function MessageContent(props: {
   )
 }
 
+function RawMessageContent(props: { message: AgentChatV2Message }) {
+  return (
+    <div className="space-y-2">
+      {props.message.content.map((block) => {
+        const value = block.type === "text" ? block.text : block.url
+        return (
+          <pre
+            key={`${props.message.id}-raw-${block.type}-${value}`}
+            className="overflow-x-auto rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-200"
+          >
+            <code className="font-mono">{value}</code>
+          </pre>
+        )
+      })}
+      {props.message.content.length === 0 ? (
+        <p className="text-sm leading-6 text-zinc-100">(empty message)</p>
+      ) : null}
+    </div>
+  )
+}
+
 export function MessageBubble(props: {
   message: AgentChatV2Message
   apiRootUrl: string
   onCopyMessageLink: (sessionId: string, messageId: string) => Promise<void>
 }) {
+  const [raw, setRaw] = useState(false)
   const tone =
     props.message.role === "user"
       ? "ml-auto border-cyan-500/30 bg-cyan-950/30"
@@ -408,21 +735,36 @@ export function MessageBubble(props: {
     >
       <div className="mb-2 flex items-center justify-between gap-3 text-[11px] uppercase text-zinc-500">
         <span>{props.message.role}</span>
-        <button
-          type="button"
-          onClick={() =>
-            void props.onCopyMessageLink(
-              props.message.sessionId,
-              props.message.id,
-            )
-          }
-          className="rounded px-1 text-[11px] uppercase text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-cyan-400"
-          title="Copy message link"
-        >
-          {formatTime(props.message.createdAtMs)}
-        </button>
+        <span className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setRaw((current) => !current)}
+            className="flex h-6 w-6 items-center justify-center rounded border border-zinc-800 text-[11px] text-zinc-400 hover:border-cyan-500 hover:text-cyan-100"
+            title={raw ? "Show rendered message" : "Show raw message"}
+            aria-label={raw ? "Show rendered message" : "Show raw message"}
+          >
+            {raw ? "R" : "{}"}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              void props.onCopyMessageLink(
+                props.message.sessionId,
+                props.message.id,
+              )
+            }
+            className="rounded px-1 text-[11px] uppercase text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+            title="Copy message link"
+          >
+            {formatTime(props.message.createdAtMs)}
+          </button>
+        </span>
       </div>
-      <MessageContent message={props.message} apiRootUrl={props.apiRootUrl} />
+      {raw ? (
+        <RawMessageContent message={props.message} />
+      ) : (
+        <MessageContent message={props.message} apiRootUrl={props.apiRootUrl} />
+      )}
     </article>
   )
 }

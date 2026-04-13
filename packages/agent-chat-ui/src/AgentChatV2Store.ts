@@ -121,6 +121,16 @@ type SessionWindowResponse = {
   error?: string
 }
 
+type SessionSnapshotResponse = {
+  ok: boolean
+  session: AgentChatV2Session
+  messages: AgentChatV2Message[]
+  queuedMessages: AgentChatV2Message[]
+  activity: SessionActivity
+  providerUsage: SessionProviderUsage | null
+  error?: string
+}
+
 type SessionUpdatedEvent = {
   type: "session.updated"
   session: AgentChatV2Session | null
@@ -355,6 +365,24 @@ function updateActiveSessionActivity(
   reconcilePendingMessages(store, sessionId, queuedMessages)
 }
 
+function setSessionSnapshot(
+  store: AgentChatV2Store,
+  payload: SessionSnapshotResponse,
+) {
+  store.state$.sessions.set(
+    upsertSession(store.state$.sessions.get(), payload.session),
+  )
+  store.state$.messagesBySessionId[payload.session.id].set(
+    mergeMessages([], payload.messages),
+  )
+  store.state$.queuedMessagesBySessionId[payload.session.id].set(
+    payload.queuedMessages,
+  )
+  store.state$.hasOlderMessagesBySessionId[payload.session.id].set(false)
+  store.state$.nextBeforeMessageIdBySessionId[payload.session.id].set(null)
+  store.state$.sessionVersionBySessionId[payload.session.id].set("")
+}
+
 export function createAgentChatV2Actions(store: AgentChatV2Store) {
   let socket: WebSocket | null = null
 
@@ -577,6 +605,21 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       setSessionWindow(store, payload, "replace")
       store.state$.activeSessionId.set(payload.session.id)
       connectSocket(payload.session.id)
+    },
+
+    async setSessionArchived(
+      sessionId: string,
+      archived: boolean,
+    ): Promise<void> {
+      const payload = await readJson<SessionSnapshotResponse>(
+        apiPath(store, `/sessions/${encodeURIComponent(sessionId)}`),
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ archived }),
+        },
+      )
+      setSessionSnapshot(store, payload)
     },
 
     async interruptSession(): Promise<void> {

@@ -125,6 +125,11 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const [composerImageError, setComposerImageError] = useState("")
   const [newChatTitle, setNewChatTitle] = useState("")
   const [newChatOpen, setNewChatOpen] = useState(false)
+  const [sessionSearchQuery, setSessionSearchQuery] = useState("")
+  const [showArchivedSessions, setShowArchivedSessions] = useState(false)
+  const [archivingSessionId, setArchivingSessionId] = useState<string | null>(
+    null,
+  )
   const [transcriptPinnedToBottom, setTranscriptPinnedToBottom] = useState(true)
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
@@ -157,6 +162,31 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
           ) ?? null)
         : null,
     [state.activeSessionId, state.sessions],
+  )
+  const filteredSessions = useMemo(() => {
+    const query = sessionSearchQuery.trim().toLowerCase()
+    return state.sessions.filter((session) => {
+      if (!showArchivedSessions && session.archived) {
+        return false
+      }
+      if (!query) {
+        return true
+      }
+      return [
+        session.title,
+        session.preview ?? "",
+        session.cwd,
+        session.providerKind,
+        session.modelRef,
+      ]
+        .join("\n")
+        .toLowerCase()
+        .includes(query)
+    })
+  }, [sessionSearchQuery, showArchivedSessions, state.sessions])
+  const archivedSessionCount = useMemo(
+    () => state.sessions.filter((session) => session.archived).length,
+    [state.sessions],
   )
   const activeMessages = activeSession
     ? (state.messagesBySessionId[activeSession.id] ?? [])
@@ -333,6 +363,21 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     setNewChatOpen(false)
   }, [actions, newChatTitle])
 
+  const setSessionArchived = useCallback(
+    async (sessionId: string, archived: boolean) => {
+      setArchivingSessionId(sessionId)
+      try {
+        await actions.setSessionArchived(sessionId, archived)
+        if (!archived) {
+          setShowArchivedSessions(true)
+        }
+      } finally {
+        setArchivingSessionId(null)
+      }
+    },
+    [actions],
+  )
+
   return (
     <main className="flex h-screen min-h-0 bg-zinc-950 text-zinc-100">
       <aside className="flex w-[340px] shrink-0 flex-col border-r border-zinc-800 bg-zinc-900">
@@ -376,6 +421,36 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
               </button>
             </form>
           ) : null}
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              value={sessionSearchQuery}
+              onChange={(event) => setSessionSearchQuery(event.target.value)}
+              className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+              placeholder="Search chats"
+              aria-label="Search chats"
+            />
+            <button
+              type="button"
+              onClick={() => setShowArchivedSessions((current) => !current)}
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded border text-xs font-semibold ${
+                showArchivedSessions
+                  ? "border-amber-300/50 bg-amber-950/30 text-amber-100"
+                  : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-amber-500"
+              }`}
+              title={
+                showArchivedSessions
+                  ? "Hide archived chats"
+                  : "Show archived chats"
+              }
+              aria-label={
+                showArchivedSessions
+                  ? "Hide archived chats"
+                  : "Show archived chats"
+              }
+            >
+              {archivedSessionCount}
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2 text-xs text-zinc-400">
@@ -396,34 +471,59 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         ) : null}
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {state.sessions.map((session) => (
-            <button
+          {filteredSessions.map((session) => (
+            <div
               key={session.id}
-              type="button"
-              onClick={() => void actions.openSession(session.id)}
-              className={`block w-full border-b border-zinc-800 px-4 py-3 text-left transition ${
+              className={`flex border-b border-zinc-800 transition ${
                 session.id === state.activeSessionId
                   ? "bg-cyan-950/40"
                   : "hover:bg-zinc-800"
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <span className="min-w-0 truncate text-sm font-semibold text-zinc-100">
-                  {session.title}
-                </span>
-                <span className="shrink-0 rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">
-                  {activityLabel(session)}
-                </span>
-              </div>
-              <p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-400">
-                {session.preview ?? "No messages yet"}
-              </p>
-              <p className="mt-2 text-[11px] text-zinc-500">
-                {session.messageCount.toLocaleString()} messages ·{" "}
-                {formatTime(session.updatedAtMs)}
-              </p>
-            </button>
+              <button
+                type="button"
+                onClick={() => void actions.openSession(session.id)}
+                className="min-w-0 flex-1 px-4 py-3 text-left"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="min-w-0 truncate text-sm font-semibold text-zinc-100">
+                    {session.title}
+                  </span>
+                  <span className="shrink-0 rounded border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-300">
+                    {session.archived ? "Archived" : activityLabel(session)}
+                  </span>
+                </div>
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-400">
+                  {session.preview ?? "No messages yet"}
+                </p>
+                <p className="mt-2 text-[11px] text-zinc-500">
+                  {session.messageCount.toLocaleString()} messages ·{" "}
+                  {formatTime(session.updatedAtMs)}
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void setSessionArchived(session.id, !session.archived)
+                }
+                disabled={archivingSessionId === session.id}
+                className="my-3 mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded border border-zinc-700 text-xs text-zinc-300 hover:border-amber-500 disabled:opacity-50"
+                title={session.archived ? "Restore chat" : "Archive chat"}
+                aria-label={session.archived ? "Restore chat" : "Archive chat"}
+              >
+                {session.archived ? "↺" : "×"}
+              </button>
+            </div>
           ))}
+          {filteredSessions.length === 0 ? (
+            <div className="m-3 rounded border border-dashed border-zinc-700 px-3 py-4 text-sm text-zinc-400">
+              {sessionSearchQuery.trim()
+                ? "No chats match this search."
+                : showArchivedSessions
+                  ? "No chats."
+                  : "No active chats."}
+            </div>
+          ) : null}
         </div>
 
         {state.nextSessionsCursor ? (
