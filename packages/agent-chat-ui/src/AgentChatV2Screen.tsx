@@ -690,7 +690,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                 <button
                   type="button"
                   onClick={() => scrollTranscriptToBottom()}
-                  className="sticky bottom-3 left-1/2 z-10 mt-3 -translate-x-1/2 rounded border border-cyan-400/40 bg-zinc-950/95 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-lg backdrop-blur hover:bg-cyan-950"
+                  className="sticky bottom-3 left-full z-10 mt-3 ml-auto block rounded border border-cyan-400/40 bg-zinc-950/95 px-3 py-1.5 text-xs font-semibold text-cyan-100 shadow-lg backdrop-blur hover:bg-cyan-950"
                   title="Scroll to bottom"
                 >
                   Bottom
