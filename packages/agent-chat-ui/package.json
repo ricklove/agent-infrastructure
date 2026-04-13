@@ -13,6 +13,7 @@
     "check": "bun x tsgo --project tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@legendapp/state": "^3.0.0-beta.31",
     "@agent-infrastructure/dashboard-plugin": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
