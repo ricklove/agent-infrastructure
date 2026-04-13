@@ -40,7 +40,7 @@ const chatSessionQueryParam = "sessionId"
 const chatMessageHashPrefix = "#message-"
 
 function isScrolledNearBottom(element: HTMLElement): boolean {
-  return element.scrollHeight - element.scrollTop - element.clientHeight <= 24
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= 48
 }
 
 function preferredChatOrigin() {
@@ -125,6 +125,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const [composerImageError, setComposerImageError] = useState("")
   const [transcriptPinnedToBottom, setTranscriptPinnedToBottom] = useState(true)
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
+  const transcriptContentRef = useRef<HTMLDivElement | null>(null)
   const transcriptEndRef = useRef<HTMLDivElement | null>(null)
   const transcriptPinnedToBottomRef = useRef(true)
   const previousActiveSessionIdRef = useRef<string | null>(null)
@@ -230,8 +231,10 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     if (!scrollElement) {
       return
     }
-    transcriptEndRef.current?.scrollIntoView({ block: "end" })
-    scrollElement.scrollTop = scrollElement.scrollHeight
+    scrollElement.scrollTo({
+      top: scrollElement.scrollHeight,
+      behavior: "auto",
+    })
     transcriptPinnedToBottomRef.current = true
     setTranscriptPinnedToBottom(true)
   }, [])
@@ -260,6 +263,41 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     }
     scheduleTranscriptScrollToBottom({ force: sessionChanged })
   }, [activeSession?.id, autoScrollKey, scheduleTranscriptScrollToBottom])
+
+  useEffect(() => {
+    const activeSessionId = activeSession?.id ?? ""
+    const contentElement = transcriptContentRef.current
+    if (!activeSessionId || !contentElement) {
+      return
+    }
+    let frameHandle: number | null = null
+    const scheduleFollow = () => {
+      if (frameHandle !== null) {
+        window.cancelAnimationFrame(frameHandle)
+      }
+      frameHandle = window.requestAnimationFrame(() => {
+        frameHandle = null
+        if (transcriptPinnedToBottomRef.current) {
+          scrollTranscriptToBottom()
+        } else {
+          updateTranscriptPinnedToBottom()
+        }
+      })
+    }
+    const observer = new ResizeObserver(scheduleFollow)
+    observer.observe(contentElement)
+    scheduleFollow()
+    return () => {
+      observer.disconnect()
+      if (frameHandle !== null) {
+        window.cancelAnimationFrame(frameHandle)
+      }
+    }
+  }, [
+    activeSession?.id,
+    scrollTranscriptToBottom,
+    updateTranscriptPinnedToBottom,
+  ])
 
   useEffect(() => {
     void transcriptMessages.length
@@ -409,7 +447,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                 </button>
               ) : null}
 
-              <div className="space-y-3">
+              <div ref={transcriptContentRef} className="space-y-3">
                 {activeTranscriptItems.map((item, index) =>
                   item.type === "actions" ? (
                     <ActionSequence
