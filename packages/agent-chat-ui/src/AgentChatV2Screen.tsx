@@ -1,4 +1,5 @@
 import {
+  dashboardSessionFetch,
   readDashboardPreferences,
   subscribeDashboardPreferences,
 } from "@agent-infrastructure/dashboard-plugin"
@@ -26,6 +27,7 @@ import {
 import {
   type AgentChatV2ComposerImage,
   type AgentChatV2Session,
+  type ProviderKind,
   createAgentChatV2Actions,
   createAgentChatV2Store,
 } from "./AgentChatV2Store"
@@ -39,6 +41,26 @@ export type AgentChatV2ScreenProps = {
 const chatSessionQueryParam = "sessionId"
 const chatMessageHashPrefix = "#message-"
 const transcriptBottomStickinessPx = 2
+
+type ProviderCatalogEntry = {
+  kind: ProviderKind
+  label: string
+  description: string
+  defaultModelRef: string
+  modelOptions: string[]
+  authProfiles: string[]
+  status: "ready" | "planned"
+  supportsImageInput: boolean
+  supportsCachedContext: boolean
+  supportsInteractiveApprovals: boolean
+  transport: string
+}
+
+type ProvidersResponse = {
+  ok: boolean
+  providers: ProviderCatalogEntry[]
+  error?: string
+}
 
 function isScrolledNearBottom(element: HTMLElement): boolean {
   return (
@@ -155,6 +177,15 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   )
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingSessionTitle, setEditingSessionTitle] = useState("")
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [providers, setProviders] = useState<ProviderCatalogEntry[]>([])
+  const [settingsProviderKind, setSettingsProviderKind] =
+    useState<ProviderKind>("codex-app-server")
+  const [settingsModelRef, setSettingsModelRef] = useState("")
+  const [settingsAuthProfile, setSettingsAuthProfile] = useState("")
+  const [settingsDirectory, setSettingsDirectory] = useState("")
+  const [settingsImageModelRef, setSettingsImageModelRef] = useState("")
+  const [savingSettings, setSavingSettings] = useState(false)
   const [transcriptPinnedToBottom, setTranscriptPinnedToBottom] = useState(true)
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
@@ -178,6 +209,35 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     })
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    void dashboardSessionFetch(`${apiRootUrl}/providers`)
+      .then(async (rawResponse) => {
+        const response = rawResponse as Response
+        const payload = (await response.json()) as ProvidersResponse
+        if (!response.ok || !payload.ok || !Array.isArray(payload.providers)) {
+          throw new Error(payload.error ?? "Agent Chat providers failed to load.")
+        }
+        if (!cancelled) {
+          setProviders(payload.providers)
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          store.state$.connection.error.set(
+            error instanceof Error
+              ? error.message
+              : "Agent Chat providers failed to load.",
+          )
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [apiRootUrl, store])
+
   const state = useValue(store.state$)
   const activeSession = useMemo(
     () =>
@@ -190,6 +250,12 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   )
   const canInterruptActiveSession =
     activeSession?.activity.status === "running" && !state.interrupting
+  const activeSettingsProvider = useMemo(
+    () =>
+      providers.find((provider) => provider.kind === settingsProviderKind) ??
+      null,
+    [providers, settingsProviderKind],
+  )
 
   useEffect(() => {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
@@ -444,6 +510,102 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     setEditingSessionTitle("")
   }, [actions, editingSessionId, editingSessionTitle])
 
+  useEffect(() => {
+    if (!activeSession) {
+      setSettingsOpen(false)
+      return
+    }
+    setSettingsProviderKind(activeSession.providerKind)
+    setSettingsModelRef(activeSession.modelRef)
+    setSettingsAuthProfile(activeSession.authProfile ?? "")
+    setSettingsDirectory(activeSession.cwd)
+    setSettingsImageModelRef(activeSession.imageModelRef ?? "")
+  }, [
+    activeSession?.authProfile,
+    activeSession?.cwd,
+    activeSession?.id,
+    activeSession?.imageModelRef,
+    activeSession?.modelRef,
+    activeSession?.providerKind,
+    activeSession,
+  ])
+
+  useEffect(() => {
+    if (!activeSettingsProvider) {
+      return
+    }
+    if (
+      activeSettingsProvider.modelOptions.length > 0 &&
+      !activeSettingsProvider.modelOptions.includes(settingsModelRef)
+    ) {
+      setSettingsModelRef(
+        activeSettingsProvider.defaultModelRef ||
+          activeSettingsProvider.modelOptions[0] ||
+          "",
+      )
+    }
+    if (
+      activeSettingsProvider.authProfiles.length > 0 &&
+      !activeSettingsProvider.authProfiles.includes(settingsAuthProfile)
+    ) {
+      setSettingsAuthProfile(activeSettingsProvider.authProfiles[0] ?? "")
+    }
+  }, [activeSettingsProvider, settingsAuthProfile, settingsModelRef])
+
+  const openSessionSettings = useCallback(
+    async (session: AgentChatV2Session) => {
+      setSessionMenuOpenId(null)
+      setEditingSessionId(null)
+      if (session.id !== state.activeSessionId) {
+        await actions.openSession(session.id)
+      }
+      setSettingsOpen(true)
+    },
+    [actions, state.activeSessionId],
+  )
+
+  const saveSessionSettings = useCallback(async () => {
+    if (!activeSession || !settingsDirectory.trim()) {
+      return
+    }
+    const update: Parameters<typeof actions.updateSession>[1] = {}
+    if (settingsDirectory.trim() !== activeSession.cwd) {
+      update.cwd = settingsDirectory.trim()
+    }
+    if (settingsProviderKind !== activeSession.providerKind) {
+      update.providerKind = settingsProviderKind
+    }
+    if (settingsModelRef !== activeSession.modelRef) {
+      update.modelRef = settingsModelRef
+    }
+    if (settingsAuthProfile !== (activeSession.authProfile ?? "")) {
+      update.authProfile = settingsAuthProfile || null
+    }
+    if (settingsImageModelRef !== (activeSession.imageModelRef ?? "")) {
+      update.imageModelRef = settingsImageModelRef || null
+    }
+    if (Object.keys(update).length === 0) {
+      setSettingsOpen(false)
+      return
+    }
+
+    setSavingSettings(true)
+    try {
+      await actions.updateSession(activeSession.id, update)
+      setSettingsOpen(false)
+    } finally {
+      setSavingSettings(false)
+    }
+  }, [
+    actions,
+    activeSession,
+    settingsAuthProfile,
+    settingsDirectory,
+    settingsImageModelRef,
+    settingsModelRef,
+    settingsProviderKind,
+  ])
+
   return (
     <main className="flex h-screen min-h-0 bg-zinc-950 text-zinc-100">
       <aside className="flex w-[340px] shrink-0 flex-col border-r border-zinc-800 bg-zinc-900">
@@ -596,13 +758,20 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                 </button>
 
                 {menuOpen ? (
-                  <div className="absolute right-3 top-12 z-20 w-36 rounded border border-zinc-700 bg-zinc-950 py-1 text-sm shadow-xl">
+                  <div className="absolute right-3 top-12 z-20 w-40 rounded border border-zinc-700 bg-zinc-950 py-1 text-sm shadow-xl">
                     <button
                       type="button"
                       onClick={() => beginEditSession(session)}
                       className="block w-full px-3 py-2 text-left text-zinc-200 hover:bg-zinc-800"
                     >
                       Edit chat
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void openSessionSettings(session)}
+                      className="block w-full px-3 py-2 text-left text-zinc-200 hover:bg-zinc-800"
+                    >
+                      Chat settings
                     </button>
                     <button
                       type="button"
@@ -714,6 +883,152 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                 </div>
               </div>
             </header>
+
+            {settingsOpen ? (
+              <form
+                className="border-b border-zinc-800 bg-zinc-950 px-5 py-4"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void saveSessionSettings()
+                }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase text-cyan-300">
+                    Chat settings
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSettingsOpen(false)}
+                    className="h-8 rounded border border-zinc-700 px-3 text-xs text-zinc-300 hover:border-cyan-400 hover:text-cyan-100"
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <label className="block min-w-0">
+                    <span className="text-[11px] font-semibold uppercase text-zinc-500">
+                      Directory
+                    </span>
+                    <input
+                      value={settingsDirectory}
+                      onChange={(event) =>
+                        setSettingsDirectory(event.target.value)
+                      }
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="mt-1 h-9 w-full rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+                  <label className="block min-w-0">
+                    <span className="text-[11px] font-semibold uppercase text-zinc-500">
+                      Provider
+                    </span>
+                    <select
+                      value={settingsProviderKind}
+                      onChange={(event) =>
+                        setSettingsProviderKind(
+                          event.target.value as ProviderKind,
+                        )
+                      }
+                      className="mt-1 h-9 w-full rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                    >
+                      {providers.map((provider) => (
+                        <option key={provider.kind} value={provider.kind}>
+                          {provider.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block min-w-0">
+                    <span className="text-[11px] font-semibold uppercase text-zinc-500">
+                      Model
+                    </span>
+                    {activeSettingsProvider?.modelOptions.length ? (
+                      <select
+                        value={settingsModelRef}
+                        onChange={(event) =>
+                          setSettingsModelRef(event.target.value)
+                        }
+                        className="mt-1 h-9 w-full rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                      >
+                        {activeSettingsProvider.modelOptions.map((model) => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={settingsModelRef}
+                        onChange={(event) =>
+                          setSettingsModelRef(event.target.value)
+                        }
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        className="mt-1 h-9 w-full rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                      />
+                    )}
+                  </label>
+                  <label className="block min-w-0">
+                    <span className="text-[11px] font-semibold uppercase text-zinc-500">
+                      Auth profile
+                    </span>
+                    {activeSettingsProvider?.authProfiles.length ? (
+                      <select
+                        value={settingsAuthProfile}
+                        onChange={(event) =>
+                          setSettingsAuthProfile(event.target.value)
+                        }
+                        className="mt-1 h-9 w-full rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                      >
+                        {activeSettingsProvider.authProfiles.map((profile) => (
+                          <option key={profile} value={profile}>
+                            {profile}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={settingsAuthProfile}
+                        onChange={(event) =>
+                          setSettingsAuthProfile(event.target.value)
+                        }
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        className="mt-1 h-9 w-full rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                      />
+                    )}
+                  </label>
+                  <label className="block min-w-0 md:col-span-2 xl:col-span-1">
+                    <span className="text-[11px] font-semibold uppercase text-zinc-500">
+                      Image model
+                    </span>
+                    <input
+                      value={settingsImageModelRef}
+                      onChange={(event) =>
+                        setSettingsImageModelRef(event.target.value)
+                      }
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      className="mt-1 h-9 w-full rounded border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100 outline-none focus:border-cyan-400"
+                    />
+                  </label>
+                  <div className="flex items-end gap-2">
+                    <button
+                      type="submit"
+                      disabled={savingSettings || !settingsDirectory.trim()}
+                      className="h-9 rounded border border-cyan-400/40 bg-cyan-950 px-4 text-sm font-semibold text-cyan-100 hover:bg-cyan-900 disabled:cursor-wait disabled:border-zinc-700 disabled:bg-zinc-900 disabled:text-zinc-500"
+                    >
+                      {savingSettings ? "Saving" : "Save"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : null}
 
             <div
               ref={transcriptScrollRef}

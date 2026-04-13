@@ -7,7 +7,7 @@ import type { AgentTicket } from "./ticket-types"
 
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
 
-type ProviderKind =
+export type ProviderKind =
   | "codex-app-server"
   | "openrouter"
   | "claude-agent-sdk"
@@ -653,7 +653,15 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
 
     async updateSession(
       sessionId: string,
-      update: { title?: string; archived?: boolean },
+      update: {
+        title?: string
+        archived?: boolean
+        cwd?: string
+        providerKind?: ProviderKind
+        modelRef?: string
+        authProfile?: string | null
+        imageModelRef?: string | null
+      },
     ): Promise<void> {
       const payload = await readJson<SessionSnapshotResponse>(
         apiPath(store, `/sessions/${encodeURIComponent(sessionId)}`),
