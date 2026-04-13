@@ -2,15 +2,9 @@
 
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { FitAddon } from "@xterm/addon-fit"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Terminal } from "xterm"
 import xtermCssUrl from "xterm/css/xterm.css"
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react"
 
 void xtermCssUrl
 
@@ -149,7 +143,7 @@ function useTerminalRenderer(args: {
       }
 
       const lowerKey = event.key.toLowerCase()
-      if (isAccelKey(event) && lowerKey == "c") {
+      if (isAccelKey(event) && lowerKey === "c") {
         event.preventDefault()
         if (ctrlCPrimedRef.current) {
           onInput("\u0003")
@@ -157,7 +151,7 @@ function useTerminalRenderer(args: {
         } else {
           const selectedText = terminal.hasSelection()
             ? terminal.getSelection()
-            : window.getSelection()?.toString() ?? ""
+            : (window.getSelection()?.toString() ?? "")
           if (selectedText) {
             navigator.clipboard.writeText(selectedText).catch(() => {})
           }
@@ -166,7 +160,7 @@ function useTerminalRenderer(args: {
         return false
       }
 
-      if (isAccelKey(event) && lowerKey == "v") {
+      if (isAccelKey(event) && lowerKey === "v") {
         event.preventDefault()
         navigator.clipboard
           .readText()
@@ -530,58 +524,60 @@ export function DashboardTerminalScreen({
           overflowX: "auto",
         }}
       >
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            role="button"
-            tabIndex={0}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "4px 10px",
-              borderRadius: "6px",
-              fontSize: "12px",
-              cursor: "pointer",
-              backgroundColor:
-                activeSessionId === s.id ? "#21262d" : "transparent",
-              border:
-                activeSessionId === s.id
-                  ? "1px solid #30363d"
-                  : "1px solid transparent",
-            }}
-            onClick={() => connectWs(s.id)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault()
-                connectWs(s.id)
-              }
-            }}
-          >
-            <span style={{ fontFamily: "monospace" }}>
-              {s.cwd.split("/").pop() || "~"}
-            </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                closeSession(s.id)
-              }}
+        {sessions.map((s) => {
+          const active = activeSessionId === s.id
+          return (
+            <div
+              key={s.id}
               style={{
-                background: "none",
-                border: "none",
-                color: "#8b949e",
-                cursor: "pointer",
-                padding: "0 2px",
-                fontSize: "14px",
-                lineHeight: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: "2px",
+                borderRadius: "6px",
+                backgroundColor: active ? "#21262d" : "transparent",
+                border: active ? "1px solid #30363d" : "1px solid transparent",
               }}
-              title="Close session"
             >
-              x
-            </button>
-          </div>
-        ))}
+              <button
+                type="button"
+                onClick={() => connectWs(s.id)}
+                style={{
+                  appearance: "none",
+                  background: "none",
+                  border: "none",
+                  color: "inherit",
+                  cursor: "pointer",
+                  font: "inherit",
+                  fontSize: "12px",
+                  padding: "4px 8px 4px 10px",
+                }}
+              >
+                <span style={{ fontFamily: "monospace" }}>
+                  {s.cwd.split("/").pop() || "~"}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  closeSession(s.id)
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#8b949e",
+                  cursor: "pointer",
+                  padding: "0 6px 0 2px",
+                  fontSize: "14px",
+                  lineHeight: 1,
+                }}
+                title="Close session"
+              >
+                x
+              </button>
+            </div>
+          )
+        })}
         <button
           type="button"
           onClick={createSession}

@@ -1,10 +1,10 @@
 import { observer, useValue } from "@legendapp/state/react"
 import { type FormEvent, useEffect, useMemo, useState } from "react"
 import {
-  createAgentChatV2Actions,
-  createAgentChatV2Store,
   type AgentChatV2Message,
   type AgentChatV2Session,
+  createAgentChatV2Actions,
+  createAgentChatV2Store,
 } from "./AgentChatV2Store"
 
 export type AgentChatV2ScreenProps = {
@@ -59,8 +59,9 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const activeSession = useMemo(
     () =>
       state.activeSessionId
-        ? (state.sessions.find((session) => session.id === state.activeSessionId) ??
-          null)
+        ? (state.sessions.find(
+            (session) => session.id === state.activeSessionId,
+          ) ?? null)
         : null,
     [state.activeSessionId, state.sessions],
   )

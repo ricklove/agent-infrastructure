@@ -71,17 +71,10 @@ export type DashboardFeatureUiPlugin = DashboardFeaturePlugin & {
 }
 
 export {
-  buildCanonicalDashboardReleaseTag,
-  buildCanonicalDashboardVersion,
-  canonicalDashboardVersionFromTag,
-  fallbackDashboardVersion,
-  formatUtcDashboardReleaseDate,
-  nextCanonicalDashboardReleaseTag,
-  parseCanonicalDashboardReleaseTag,
-  type CanonicalDashboardReleaseParts,
-} from "./release-version.js"
-
-export {
+  type DashboardComposerKeyEvent,
+  type DashboardEnterStyle,
+  type DashboardPreferences,
+  type DashboardVisibilityMode,
   dashboardBasicFeatureIds,
   dashboardEnterStyleHint,
   dashboardEnterStyleShortLabel,
@@ -91,16 +84,22 @@ export {
   readDashboardPreferences,
   subscribeDashboardPreferences,
   writeDashboardPreferences,
-  type DashboardComposerKeyEvent,
-  type DashboardEnterStyle,
-  type DashboardPreferences,
-  type DashboardVisibilityMode,
 } from "./preferences.js"
+export {
+  buildCanonicalDashboardReleaseTag,
+  buildCanonicalDashboardVersion,
+  type CanonicalDashboardReleaseParts,
+  canonicalDashboardVersionFromTag,
+  fallbackDashboardVersion,
+  formatUtcDashboardReleaseDate,
+  nextCanonicalDashboardReleaseTag,
+  parseCanonicalDashboardReleaseTag,
+} from "./release-version.js"
 
 export {
   createDashboardSessionHeaders,
-  dashboardSessionDebugLog,
   dashboardSessionAuthorizationHeaderValue,
+  dashboardSessionDebugLog,
   dashboardSessionFetch,
   dashboardSessionWebSocketProtocols,
   readDashboardSessionToken,
