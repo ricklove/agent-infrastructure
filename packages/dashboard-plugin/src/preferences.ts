@@ -42,6 +42,7 @@ const defaultDashboardPreferences: DashboardPreferences = {
 
 export const dashboardBasicFeatureIds = [
   "chat",
+  "chat-v2",
   "swarm",
   "projects",
   "settings",
@@ -49,6 +50,7 @@ export const dashboardBasicFeatureIds = [
 
 export const dashboardFeatureOrder = [
   "chat",
+  "chat-v2",
   "swarm",
   "workbench",
   "design",
@@ -107,17 +109,24 @@ export function writeDashboardPreferences(
     dashboardPreferencesStorageKey,
     JSON.stringify(normalizedPreferences),
   )
-  preferencesWindow()?.dispatchEvent?.(new Event(dashboardPreferencesChangedEvent))
+  preferencesWindow()?.dispatchEvent?.(
+    new Event(dashboardPreferencesChangedEvent),
+  )
 
   return normalizedPreferences
 }
 
-export function subscribeDashboardPreferences(listener: () => void): () => void {
+export function subscribeDashboardPreferences(
+  listener: () => void,
+): () => void {
   const nextWindow = preferencesWindow()
   nextWindow?.addEventListener?.(dashboardPreferencesChangedEvent, listener)
   nextWindow?.addEventListener?.("storage", listener)
   return () => {
-    nextWindow?.removeEventListener?.(dashboardPreferencesChangedEvent, listener)
+    nextWindow?.removeEventListener?.(
+      dashboardPreferencesChangedEvent,
+      listener,
+    )
     nextWindow?.removeEventListener?.("storage", listener)
   }
 }
