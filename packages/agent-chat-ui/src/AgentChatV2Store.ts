@@ -432,10 +432,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       store.state$.sending.set(true)
       try {
         await readJson<{ ok: true }>(
-          apiPath(
-            store,
-            `/sessions/${encodeURIComponent(sessionId)}/messages`,
-          ),
+          apiPath(store, `/sessions/${encodeURIComponent(sessionId)}/messages`),
           {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -470,9 +467,12 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       const payload = await readJson<{
         ok: true
         activity: SessionActivity
-      }>(apiPath(store, `/sessions/${encodeURIComponent(sessionId)}/interrupt`), {
-        method: "POST",
-      })
+      }>(
+        apiPath(store, `/sessions/${encodeURIComponent(sessionId)}/interrupt`),
+        {
+          method: "POST",
+        },
+      )
       updateActiveSessionActivity(
         store,
         sessionId,
