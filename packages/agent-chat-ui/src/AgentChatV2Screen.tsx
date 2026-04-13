@@ -38,9 +38,13 @@ export type AgentChatV2ScreenProps = {
 
 const chatSessionQueryParam = "sessionId"
 const chatMessageHashPrefix = "#message-"
+const transcriptBottomStickinessPx = 2
 
 function isScrolledNearBottom(element: HTMLElement): boolean {
-  return element.scrollHeight - element.scrollTop - element.clientHeight <= 48
+  return (
+    element.scrollHeight - element.scrollTop - element.clientHeight <=
+    transcriptBottomStickinessPx
+  )
 }
 
 function preferredChatOrigin() {
