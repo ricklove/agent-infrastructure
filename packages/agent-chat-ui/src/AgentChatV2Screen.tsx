@@ -279,6 +279,24 @@ function composerStatusItems(
   return items
 }
 
+function queuedMessageLabel(message: AgentChatV2Message): string {
+  if (message.kind === "directoryInstruction") {
+    return "Next-turn instruction"
+  }
+  if (message.kind === "watchdogPrompt") {
+    return "Watchdog prompt"
+  }
+  return `${message.role} ${message.kind}`
+}
+
+function queuedMessagePreview(message: AgentChatV2Message): string {
+  const text = messageText(message).replace(/\s+/gu, " ").trim()
+  if (!text) {
+    return "(empty message)"
+  }
+  return text
+}
+
 type TranscriptItem =
   | { type: "message"; message: AgentChatV2Message }
   | { type: "actions"; messages: AgentChatV2Message[] }
@@ -669,8 +687,37 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
             {queuedMessages.length > 0 ? (
               <div className="border-t border-amber-500/30 bg-amber-950/20 px-5 py-2 text-xs text-amber-100">
-                {queuedMessages.length} queued message
-                {queuedMessages.length === 1 ? "" : "s"}
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-100">
+                    Queued
+                  </span>
+                  <span>
+                    {queuedMessages.length} message
+                    {queuedMessages.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {queuedMessages.map((message, index) => {
+                    const preview = queuedMessagePreview(message)
+                    return (
+                      <div
+                        key={message.id}
+                        className="flex min-w-0 items-center gap-2 rounded border border-amber-300/15 bg-zinc-950/35 px-2 py-1.5"
+                        title={preview}
+                      >
+                        <span className="shrink-0 rounded border border-amber-300/20 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] text-amber-200">
+                          {index + 1}
+                        </span>
+                        <span className="shrink-0 text-[11px] uppercase tracking-[0.12em] text-amber-200/80">
+                          {queuedMessageLabel(message)}
+                        </span>
+                        <span className="min-w-0 truncate text-zinc-200">
+                          {preview}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             ) : null}
 
