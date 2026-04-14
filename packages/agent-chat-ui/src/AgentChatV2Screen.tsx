@@ -62,6 +62,12 @@ type ProvidersResponse = {
   error?: string
 }
 
+type OlderMessagesScrollRestore = {
+  sessionId: string
+  scrollHeight: number
+  scrollTop: number
+}
+
 function isScrolledNearBottom(element: HTMLElement): boolean {
   return (
     element.scrollHeight - element.scrollTop - element.clientHeight <=
@@ -191,6 +197,8 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
   const transcriptEndRef = useRef<HTMLDivElement | null>(null)
   const transcriptPinnedToBottomRef = useRef(true)
+  const olderMessagesScrollRestoreRef =
+    useRef<OlderMessagesScrollRestore | null>(null)
   const previousActiveSessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -356,6 +364,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     : 0
   const lastPendingMessage = outboxMessages.at(-1) ?? null
   const autoScrollKey = `${activeSession?.id ?? ""}:${lastMessage?.id ?? ""}:${lastMessageTextLength}:${streamingAssistantText.length}:${queuedMessages.length}:${lastPendingMessage?.id ?? ""}:${lastPendingMessage?.pendingStatus ?? ""}`
+  const firstMessageId = transcriptMessages[0]?.id ?? ""
 
   const updateTranscriptPinnedToBottom = useCallback(() => {
     const scrollElement = transcriptScrollRef.current
@@ -409,6 +418,25 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     }
     scheduleTranscriptScrollToBottom({ force: sessionChanged })
   }, [activeSession?.id, autoScrollKey, scheduleTranscriptScrollToBottom])
+
+  useLayoutEffect(() => {
+    const pendingRestore = olderMessagesScrollRestoreRef.current
+    const scrollElement = transcriptScrollRef.current
+    if (
+      !pendingRestore ||
+      !scrollElement ||
+      pendingRestore.sessionId !== activeSession?.id
+    ) {
+      return
+    }
+
+    olderMessagesScrollRestoreRef.current = null
+    const scrollHeightDelta =
+      scrollElement.scrollHeight - pendingRestore.scrollHeight
+    scrollElement.scrollTop = pendingRestore.scrollTop + scrollHeightDelta
+    transcriptPinnedToBottomRef.current = false
+    setTranscriptPinnedToBottom(false)
+  }, [activeSession?.id, firstMessageId, transcriptMessages.length])
 
   useEffect(() => {
     const activeSessionId = activeSession?.id ?? ""
@@ -605,6 +633,30 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     settingsModelRef,
     settingsProviderKind,
   ])
+
+  const loadOlderMessagesPreservingScroll = useCallback(async () => {
+    const scrollElement = transcriptScrollRef.current
+    const sessionId = activeSession?.id
+    if (!scrollElement || !sessionId) {
+      await actions.loadOlderMessages()
+      return
+    }
+
+    olderMessagesScrollRestoreRef.current = {
+      sessionId,
+      scrollHeight: scrollElement.scrollHeight,
+      scrollTop: scrollElement.scrollTop,
+    }
+    transcriptPinnedToBottomRef.current = false
+    setTranscriptPinnedToBottom(false)
+
+    try {
+      await actions.loadOlderMessages()
+    } catch (error) {
+      olderMessagesScrollRestoreRef.current = null
+      throw error
+    }
+  }, [actions, activeSession?.id])
 
   return (
     <main className="flex h-screen min-h-0 bg-zinc-950 text-zinc-100">
@@ -1038,7 +1090,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
               {hasOlderMessages ? (
                 <button
                   type="button"
-                  onClick={() => void actions.loadOlderMessages()}
+                  onClick={() => void loadOlderMessagesPreservingScroll()}
                   className="mb-4 w-full rounded border border-zinc-700 px-3 py-2 text-sm text-cyan-200 hover:bg-zinc-900"
                 >
                   Load older messages
