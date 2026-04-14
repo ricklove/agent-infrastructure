@@ -3,6 +3,7 @@ import {
   readDashboardPreferences,
   subscribeDashboardPreferences,
 } from "@agent-infrastructure/dashboard-plugin"
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { observer, useValue } from "@legendapp/state/react"
 import {
   useCallback,
@@ -161,6 +162,7 @@ function activityDotClass(session: AgentChatV2Session): string {
 export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   props: AgentChatV2ScreenProps,
 ) {
+  useRenderCounter("AgentChatV2Screen")
   const apiRootUrl = props.apiRootUrl ?? "/api/agent-chat"
   const wsRootUrl = props.wsRootUrl ?? "/ws/agent-chat"
   const [store] = useState(() => createAgentChatV2Store(apiRootUrl, wsRootUrl))
@@ -249,18 +251,32 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     }
   }, [apiRootUrl, store])
 
-  const state = useValue(store.state$)
+  const connection = useValue(store.state$.connection)
+  const sessions = useValue(store.state$.sessions)
+  const activeSessionId = useValue(store.state$.activeSessionId)
+  const totalKnownSessions = useValue(store.state$.totalKnownSessions)
+  const nextSessionsCursor = useValue(store.state$.nextSessionsCursor)
+  const messagesBySessionId = useValue(store.state$.messagesBySessionId)
+  const queuedMessagesBySessionId = useValue(
+    store.state$.queuedMessagesBySessionId,
+  )
+  const pendingMessagesBySessionId = useValue(
+    store.state$.pendingMessagesBySessionId,
+  )
+  const hasOlderMessagesBySessionId = useValue(
+    store.state$.hasOlderMessagesBySessionId,
+  )
+  const streamingAssistantText = useValue(store.state$.streamingAssistantText)
+  const interrupting = useValue(store.state$.interrupting)
   const activeSession = useMemo(
     () =>
-      state.activeSessionId
-        ? (state.sessions.find(
-            (session) => session.id === state.activeSessionId,
-          ) ?? null)
+      activeSessionId
+        ? (sessions.find((session) => session.id === activeSessionId) ?? null)
         : null,
-    [state.activeSessionId, state.sessions],
+    [activeSessionId, sessions],
   )
   const canInterruptActiveSession =
-    activeSession?.activity.status === "running" && !state.interrupting
+    activeSession?.activity.status === "running" && !interrupting
   const activeSettingsProvider = useMemo(
     () =>
       providers.find((provider) => provider.kind === settingsProviderKind) ??
@@ -286,7 +302,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
   const filteredSessions = useMemo(() => {
     const query = sessionSearchQuery.trim().toLowerCase()
-    return state.sessions.filter((session) => {
+    return sessions.filter((session) => {
       if (!showArchivedSessions && session.archived) {
         return false
       }
@@ -304,19 +320,18 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         .toLowerCase()
         .includes(query)
     })
-  }, [sessionSearchQuery, showArchivedSessions, state.sessions])
+  }, [sessionSearchQuery, showArchivedSessions, sessions])
   const activeMessages = activeSession
-    ? (state.messagesBySessionId[activeSession.id] ?? [])
+    ? (messagesBySessionId[activeSession.id] ?? [])
     : []
-  const streamingAssistantText = state.streamingAssistantText ?? ""
   const queuedMessages = activeSession
-    ? (state.queuedMessagesBySessionId[activeSession.id] ?? [])
+    ? (queuedMessagesBySessionId[activeSession.id] ?? [])
     : []
   const pendingMessages = activeSession
-    ? (state.pendingMessagesBySessionId[activeSession.id] ?? [])
+    ? (pendingMessagesBySessionId[activeSession.id] ?? [])
     : []
   const hasOlderMessages = activeSession
-    ? (state.hasOlderMessagesBySessionId[activeSession.id] ?? false)
+    ? (hasOlderMessagesBySessionId[activeSession.id] ?? false)
     : false
   const queuedDisplayKeys = useMemo(
     () => queuedMessageKeys(queuedMessages),
@@ -587,12 +602,12 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     async (session: AgentChatV2Session) => {
       setSessionMenuOpenId(null)
       setEditingSessionId(null)
-      if (session.id !== state.activeSessionId) {
+      if (session.id !== activeSessionId) {
         await actions.openSession(session.id)
       }
       setSettingsOpen(true)
     },
-    [actions, state.activeSessionId],
+    [actions, activeSessionId],
   )
 
   const saveSessionSettings = useCallback(async () => {
@@ -769,18 +784,18 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2 text-xs text-zinc-400">
           <span>
-            {state.sessions.length}
-            {state.totalKnownSessions == null
+            {sessions.length}
+            {totalKnownSessions == null
               ? ""
-              : ` of ${state.totalKnownSessions}`}{" "}
+              : ` of ${totalKnownSessions}`}{" "}
             sessions
           </span>
-          <span>{state.connection.wsStatus}</span>
+          <span>{connection.wsStatus}</span>
         </div>
 
-        {state.connection.error ? (
+        {connection.error ? (
           <div className="m-3 rounded border border-red-500/40 bg-red-950/40 px-3 py-2 text-sm text-red-100">
-            {state.connection.error}
+            {connection.error}
           </div>
         ) : null}
 
@@ -792,7 +807,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
               <div
                 key={session.id}
                 className={`relative border-b border-zinc-800 transition ${
-                  session.id === state.activeSessionId
+                  session.id === activeSessionId
                     ? "bg-cyan-950/40"
                     : "hover:bg-zinc-800"
                 }`}
@@ -926,7 +941,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
           ) : null}
         </div>
 
-        {state.nextSessionsCursor ? (
+        {nextSessionsCursor ? (
           <button
             type="button"
             onClick={() => void actions.loadSessions(true)}
@@ -959,11 +974,11 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                   {activeSession.activity.status === "running" ? (
                     <button
                       type="button"
-                      disabled={state.interrupting}
+                      disabled={interrupting}
                       onClick={() => void actions.interruptSession()}
                       className="mt-2 rounded border border-red-400/40 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-950 disabled:cursor-wait disabled:opacity-60"
                     >
-                      {state.interrupting ? "Stopping" : "Stop"}
+                      {interrupting ? "Stopping" : "Stop"}
                     </button>
                   ) : null}
                 </div>
@@ -1185,25 +1200,19 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
             <AgentChatV2Composer
               activeSession={activeSession}
-              composerText={state.composerText}
               composerImages={composerImages}
               composerImageError={composerImageError}
-              sending={state.sending}
-              interrupting={state.interrupting}
               enterStyle={enterStyle}
               queuedMessages={queuedMessages}
-              onComposerTextChange={(value) =>
-                store.state$.composerText.set(value)
-              }
+              store={store}
+              actions={actions}
               onComposerImagesChange={setComposerImages}
               onComposerImageErrorChange={setComposerImageError}
-              onSendMessage={actions.sendMessage}
-              onInterruptSession={actions.interruptSession}
             />
           </>
         ) : (
           <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-zinc-400">
-            {state.connection.status === "loading"
+            {connection.status === "loading"
               ? "Loading sessions"
               : "Select a session"}
           </div>

@@ -1,4 +1,5 @@
 import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import { Fragment, type ReactNode, useEffect, useState } from "react"
 import type { AgentChatV2Message } from "./AgentChatV2Store"
 
@@ -117,6 +118,7 @@ function parseStandaloneLocalFileLine(line: string): string | null {
 }
 
 function FileReferenceLink(props: { pathname: string; label?: string }) {
+  useRenderCounter("AgentChatV2.FileReferenceLink")
   const [copied, setCopied] = useState(false)
   const label = props.label || props.pathname
 
@@ -139,6 +141,7 @@ function FileReferenceLink(props: { pathname: string; label?: string }) {
 }
 
 function CodeBlock(props: { language: string; code: string }) {
+  useRenderCounter("AgentChatV2.CodeBlock")
   const [copied, setCopied] = useState(false)
 
   async function copyCode() {
@@ -497,6 +500,7 @@ export function ActionSequence(props: {
   showPreview: boolean
   onToggle: () => void
 }) {
+  useRenderCounter("AgentChatV2.ActionSequence")
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
     null,
   )
@@ -568,6 +572,7 @@ function MessageImagePreview(props: {
   sourceUrl: string
   altText: string
 }) {
+  useRenderCounter("AgentChatV2.MessageImagePreview")
   const [assetUrl, setAssetUrl] = useState("")
   const [error, setError] = useState("")
   const normalizedSourceUrl = normalizeImageSource(props.sourceUrl)
@@ -658,6 +663,7 @@ function MessageContent(props: {
   message: AgentChatV2Message
   apiRootUrl: string
 }) {
+  useRenderCounter("AgentChatV2.MessageContent")
   const textBlocks = props.message.content.filter(
     (block): block is { type: "text"; text: string } => block.type === "text",
   )
@@ -696,6 +702,7 @@ function MessageContent(props: {
 }
 
 function RawMessageContent(props: { message: AgentChatV2Message }) {
+  useRenderCounter("AgentChatV2.RawMessageContent")
   return (
     <div className="space-y-2">
       {props.message.content.map((block) => {
@@ -721,6 +728,7 @@ export function MessageBubble(props: {
   apiRootUrl: string
   onCopyMessageLink: (sessionId: string, messageId: string) => Promise<void>
 }) {
+  useRenderCounter("AgentChatV2.MessageBubble")
   const [raw, setRaw] = useState(false)
   const tone =
     props.message.role === "user"
@@ -774,6 +782,7 @@ export function OutboxMessageBubble(props: {
   index: number
   apiRootUrl: string
 }) {
+  useRenderCounter("AgentChatV2.OutboxMessageBubble")
   const statusLabel =
     props.message.pendingStatus === "pending" ? "Pending" : "Queued"
   const statusIcon = "⏳"

@@ -179,6 +179,7 @@ type AgentChatV2StoreState = {
 }
 
 export type AgentChatV2Store = ReturnType<typeof createAgentChatV2Store>
+export type AgentChatV2Actions = ReturnType<typeof createAgentChatV2Actions>
 
 export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
   const state$ = observable<AgentChatV2StoreState>({

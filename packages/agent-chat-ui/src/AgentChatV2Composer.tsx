@@ -2,6 +2,8 @@ import {
   type DashboardEnterStyle,
   isDashboardSendShortcut,
 } from "@agent-infrastructure/dashboard-plugin"
+import { observer, useValue } from "@legendapp/state/react"
+import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import {
   type ChangeEvent,
   type ClipboardEvent,
@@ -10,29 +12,27 @@ import {
   useRef,
 } from "react"
 import type {
+  AgentChatV2Actions,
   AgentChatV2ComposerImage,
   AgentChatV2Message,
   AgentChatV2Session,
+  AgentChatV2Store,
 } from "./AgentChatV2Store"
 
 type AgentChatV2ComposerProps = {
   activeSession: AgentChatV2Session
-  composerText: string
   composerImages: AgentChatV2ComposerImage[]
   composerImageError: string
-  sending: boolean
-  interrupting: boolean
   enterStyle: DashboardEnterStyle
   queuedMessages: AgentChatV2Message[]
-  onComposerTextChange: (value: string) => void
+  store: AgentChatV2Store
+  actions: AgentChatV2Actions
   onComposerImagesChange: (
     updater:
       | AgentChatV2ComposerImage[]
       | ((current: AgentChatV2ComposerImage[]) => AgentChatV2ComposerImage[]),
   ) => void
   onComposerImageErrorChange: (value: string) => void
-  onSendMessage: (images: AgentChatV2ComposerImage[]) => Promise<void>
-  onInterruptSession: () => Promise<void>
 }
 
 function readImageFile(file: File): Promise<AgentChatV2ComposerImage> {
@@ -121,8 +121,14 @@ function composerStatusItems(
   return items
 }
 
-export function AgentChatV2Composer(props: AgentChatV2ComposerProps) {
+export const AgentChatV2Composer = observer(function AgentChatV2Composer(
+  props: AgentChatV2ComposerProps,
+) {
+  useRenderCounter("AgentChatV2Composer")
   const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const composerText = useValue(props.store.state$.composerText)
+  const sending = useValue(props.store.state$.sending)
+  const interrupting = useValue(props.store.state$.interrupting)
   const composerStatus = composerStatusItems(
     props.activeSession,
     props.queuedMessages,
@@ -130,7 +136,7 @@ export function AgentChatV2Composer(props: AgentChatV2ComposerProps) {
 
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    await props.onSendMessage(props.composerImages)
+    await props.actions.sendMessage(props.composerImages)
     props.onComposerImagesChange([])
   }
 
@@ -138,10 +144,10 @@ export function AgentChatV2Composer(props: AgentChatV2ComposerProps) {
     if (
       event.key === "Escape" &&
       props.activeSession.activity.status === "running" &&
-      !props.interrupting
+      !interrupting
     ) {
       event.preventDefault()
-      void props.onInterruptSession()
+      void props.actions.interruptSession()
       return
     }
 
@@ -149,8 +155,8 @@ export function AgentChatV2Composer(props: AgentChatV2ComposerProps) {
       return
     }
     event.preventDefault()
-    void props
-      .onSendMessage(props.composerImages)
+    void props.actions
+      .sendMessage(props.composerImages)
       .then(() => props.onComposerImagesChange([]))
   }
 
@@ -258,14 +264,16 @@ export function AgentChatV2Composer(props: AgentChatV2ComposerProps) {
                 {item}
               </span>
             ))}
-            {props.sending ? (
+            {sending ? (
               <span className="normal-case tracking-normal">sending...</span>
             ) : null}
           </span>
         </div>
         <textarea
-          value={props.composerText}
-          onChange={(event) => props.onComposerTextChange(event.target.value)}
+          value={composerText}
+          onChange={(event) =>
+            props.store.state$.composerText.set(event.target.value)
+          }
           onKeyDown={handleComposerKeyDown}
           onPaste={(event) => void handleComposerPaste(event)}
           rows={3}
@@ -296,12 +304,12 @@ export function AgentChatV2Composer(props: AgentChatV2ComposerProps) {
           <button
             type="submit"
             disabled={
-              props.sending ||
-              (!props.composerText.trim() && props.composerImages.length === 0)
+              sending ||
+              (!composerText.trim() && props.composerImages.length === 0)
             }
             className="flex h-8 w-8 items-center justify-center rounded bg-cyan-500 text-lg font-semibold text-zinc-950 disabled:opacity-50"
-            title={props.sending ? "Sending" : "Send"}
-            aria-label={props.sending ? "Sending" : "Send"}
+            title={sending ? "Sending" : "Send"}
+            aria-label={sending ? "Sending" : "Send"}
           >
             ↑
           </button>
@@ -309,4 +317,4 @@ export function AgentChatV2Composer(props: AgentChatV2ComposerProps) {
       </div>
     </form>
   )
-}
+})
