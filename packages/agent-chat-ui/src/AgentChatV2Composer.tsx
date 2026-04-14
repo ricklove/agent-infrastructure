@@ -36,6 +36,22 @@ type AgentChatV2ComposerProps = {
   onComposerImageErrorChange: (value: string) => void
 }
 
+function chatV2DraftStorageKey(sessionId: string) {
+  return `agent-chat-v2:draft:${sessionId}`
+}
+
+function writeChatV2Draft(sessionId: string, value: string) {
+  if (typeof window === "undefined" || !sessionId) {
+    return
+  }
+  const key = chatV2DraftStorageKey(sessionId)
+  if (value) {
+    window.localStorage.setItem(key, value)
+  } else {
+    window.localStorage.removeItem(key)
+  }
+}
+
 function readImageFile(file: File): Promise<AgentChatV2ComposerImage> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -160,6 +176,7 @@ export const AgentChatV2Composer = observer(function AgentChatV2Composer(
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     await props.actions.sendMessage(props.composerImages)
+    writeChatV2Draft(props.activeSession.id, "")
     props.onComposerImagesChange([])
   }
 
@@ -178,9 +195,10 @@ export const AgentChatV2Composer = observer(function AgentChatV2Composer(
       return
     }
     event.preventDefault()
-    void props.actions
-      .sendMessage(props.composerImages)
-      .then(() => props.onComposerImagesChange([]))
+    void props.actions.sendMessage(props.composerImages).then(() => {
+      writeChatV2Draft(props.activeSession.id, "")
+      props.onComposerImagesChange([])
+    })
   }
 
   async function handleComposerPaste(
@@ -294,6 +312,9 @@ export const AgentChatV2Composer = observer(function AgentChatV2Composer(
         </div>
         <$React.textarea
           $value={props.store.state$.composerText}
+          onChange={(event) => {
+            writeChatV2Draft(props.activeSession.id, event.target.value)
+          }}
           onKeyDown={handleComposerKeyDown}
           onPaste={(event) => void handleComposerPaste(event)}
           rows={3}

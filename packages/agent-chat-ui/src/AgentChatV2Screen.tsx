@@ -7,6 +7,7 @@ import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
 import type { Observable } from "@legendapp/state"
 import { For, observer, useValue } from "@legendapp/state/react"
 import {
+  type CSSProperties,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -44,6 +45,9 @@ const chatSessionQueryParam = "sessionId"
 const chatMessageHashPrefix = "#message-"
 const transcriptBottomStickinessPx = 2
 const transcriptTopLoadThresholdPx = 240
+const chatV2SessionRailWidthStorageKey = "agent-chat-v2-session-rail-width"
+const minSessionRailWidth = 260
+const maxSessionRailWidth = 520
 
 type ProviderCatalogEntry = {
   kind: ProviderKind
@@ -131,6 +135,30 @@ function readRequestedMessageHashFromLocation() {
   return hash.startsWith(chatMessageHashPrefix) ? hash.slice(1) : ""
 }
 
+function chatV2DraftStorageKey(sessionId: string) {
+  return `agent-chat-v2:draft:${sessionId}`
+}
+
+function readChatV2Draft(sessionId: string) {
+  if (typeof window === "undefined" || !sessionId) {
+    return ""
+  }
+  return window.localStorage.getItem(chatV2DraftStorageKey(sessionId)) ?? ""
+}
+
+function readSessionRailWidth() {
+  if (typeof window === "undefined") {
+    return 340
+  }
+  const value = Number(
+    window.localStorage.getItem(chatV2SessionRailWidthStorageKey),
+  )
+  if (!Number.isFinite(value)) {
+    return 340
+  }
+  return Math.max(minSessionRailWidth, Math.min(maxSessionRailWidth, value))
+}
+
 function activityLabel(session: AgentChatV2Session): string {
   if (session.activity.status === "running") {
     return "Working"
@@ -214,6 +242,20 @@ function ChatSettingsIcon() {
         stroke="currentColor"
         strokeLinecap="round"
         strokeWidth="1.5"
+      />
+    </svg>
+  )
+}
+
+function SessionsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true">
+      <path
+        d="M4 5.5h12M4 10h12M4 14.5h12"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.7"
       />
     </svg>
   )
@@ -450,10 +492,16 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const [savingSettings, setSavingSettings] = useState(false)
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [transcriptPinnedToBottom, setTranscriptPinnedToBottom] = useState(true)
+  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false)
+  const [sessionRailWidth, setSessionRailWidth] = useState(readSessionRailWidth)
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
   const transcriptEndRef = useRef<HTMLDivElement | null>(null)
   const transcriptPinnedToBottomRef = useRef(true)
+  const sessionRailResizeRef = useRef<{
+    startX: number
+    startWidth: number
+  } | null>(null)
   const olderMessagesScrollRestoreRef =
     useRef<OlderMessagesScrollRestore | null>(null)
   const loadingOlderMessagesRef = useRef(false)
@@ -473,6 +521,38 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     return subscribeDashboardPreferences(() => {
       setEnterStyle(readDashboardPreferences().enterStyle)
     })
+  }, [])
+
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      const resizeState = sessionRailResizeRef.current
+      if (!resizeState) {
+        return
+      }
+      const nextWidth = Math.max(
+        minSessionRailWidth,
+        Math.min(
+          maxSessionRailWidth,
+          resizeState.startWidth + event.clientX - resizeState.startX,
+        ),
+      )
+      setSessionRailWidth(nextWidth)
+      window.localStorage.setItem(
+        chatV2SessionRailWidthStorageKey,
+        String(Math.round(nextWidth)),
+      )
+    }
+
+    function handlePointerUp() {
+      sessionRailResizeRef.current = null
+    }
+
+    window.addEventListener("pointermove", handlePointerMove)
+    window.addEventListener("pointerup", handlePointerUp)
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove)
+      window.removeEventListener("pointerup", handlePointerUp)
+    }
   }, [])
 
   useEffect(() => {
@@ -647,6 +727,15 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     scheduleTranscriptScrollToBottom,
   ])
 
+  useEffect(() => {
+    const activeSessionId = activeSessionSummary?.id ?? ""
+    if (!activeSessionId) {
+      store.state$.composerText.set("")
+      return
+    }
+    store.state$.composerText.set(readChatV2Draft(activeSessionId))
+  }, [activeSessionSummary?.id, store])
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: older-message scroll restoration must rerun after prepended transcript content changes.
   useLayoutEffect(() => {
     const pendingRestore = olderMessagesScrollRestoreRef.current
@@ -739,6 +828,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     }
     setNewChatTitle("")
     setNewChatOpen(false)
+    setMobileSessionsOpen(false)
   }, [actions, newChatTitle])
 
   const setSessionArchived = useCallback(
@@ -777,6 +867,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       }
       setSessionMenuOpenId(null)
       setSettingsOpen(false)
+      setMobileSessionsOpen(false)
       void actions.openSession(sessionId)
     },
     [actions],
@@ -956,8 +1047,25 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   ])
 
   return (
-    <main className="flex h-screen min-h-0 bg-zinc-950 text-zinc-100">
-      <aside className="flex w-[340px] shrink-0 flex-col border-r border-zinc-800 bg-zinc-900">
+    <main className="relative flex h-screen min-h-0 overflow-hidden bg-zinc-950 text-zinc-100">
+      {mobileSessionsOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          onClick={() => setMobileSessionsOpen(false)}
+          aria-label="Close sessions"
+        />
+      ) : null}
+      <aside
+        className={`fixed inset-y-0 left-0 z-30 flex w-[86vw] max-w-sm shrink-0 flex-col border-r border-zinc-800 bg-zinc-900 transition-transform md:relative md:z-auto md:w-[var(--chat-v2-session-rail-width)] md:max-w-none md:translate-x-0 ${
+          mobileSessionsOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+        style={
+          {
+            "--chat-v2-session-rail-width": `${sessionRailWidth}px`,
+          } as CSSProperties
+        }
+      >
         <div className="border-b border-zinc-800 px-4 py-3">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase text-cyan-300">
@@ -1087,6 +1195,21 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
             Load more sessions
           </button>
         ) : null}
+        <button
+          type="button"
+          className="absolute inset-y-0 right-0 hidden w-3 cursor-col-resize md:block"
+          aria-label="Resize session list"
+          onPointerDown={(event) => {
+            sessionRailResizeRef.current = {
+              startX: event.clientX,
+              startWidth: sessionRailWidth,
+            }
+            event.currentTarget.setPointerCapture(event.pointerId)
+            event.preventDefault()
+          }}
+        >
+          <span className="absolute inset-y-0 right-0 w-px bg-zinc-700" />
+        </button>
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
@@ -1096,6 +1219,15 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1 self-center">
                   <div className="flex min-w-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMobileSessionsOpen(true)}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-zinc-700 text-zinc-300 hover:border-cyan-400 hover:text-cyan-100 md:hidden"
+                      title="Open sessions"
+                      aria-label="Open sessions"
+                    >
+                      <SessionsIcon />
+                    </button>
                     <span
                       className={`h-2.5 w-2.5 shrink-0 rounded-full border ${activityDotClass(
                         activeSessionSummary,
