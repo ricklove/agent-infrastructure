@@ -160,6 +160,45 @@ function activityDotClass(session: AgentChatV2Session): string {
   return "border-zinc-600 bg-zinc-800"
 }
 
+function ActionSequenceModeIcon(props: {
+  mode: AgentChatV2ActionSequenceMode
+}) {
+  if (props.mode === "condensed") {
+    return (
+      <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true">
+        <path
+          d="M4 6.5h12M4 10h12M4 13.5h12"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="1.7"
+        />
+      </svg>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true">
+      <path
+        d="M10 4v12M5 7h7M8 13h7"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.7"
+      />
+      <circle cx="10" cy="10" r="2" fill="currentColor" />
+    </svg>
+  )
+}
+
+function StopSessionIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true">
+      <rect x="6" y="6" width="8" height="8" rx="1.5" fill="currentColor" />
+    </svg>
+  )
+}
+
 type AgentChatV2SessionRowProps = {
   session: AgentChatV2Session
   active: boolean
@@ -1038,35 +1077,49 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
           <>
             <header className="border-b border-zinc-800 bg-zinc-950 px-5 py-3">
               <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="truncate text-lg font-semibold text-white">
-                    {activeSessionSummary.title}
-                  </h2>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={`h-2.5 w-2.5 shrink-0 rounded-full border ${activityDotClass(
+                        activeSessionSummary,
+                      )}`}
+                      title={
+                        activeSessionSummary.archived
+                          ? "Archived"
+                          : activityLabel(activeSessionSummary)
+                      }
+                    />
+                    <h2 className="min-w-0 truncate text-lg font-semibold text-white">
+                      {activeSessionSummary.title}
+                    </h2>
+                  </div>
                   <p className="mt-1 truncate text-xs text-zinc-500">
                     {activeSessionSummary.cwd}
                   </p>
-                </div>
-                <div className="text-right text-xs text-zinc-400">
-                  <p>{activityLabel(activeSessionSummary)}</p>
-                  <p className="mt-1">
-                    window {activeMessages.length.toLocaleString()} /{" "}
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    {activityLabel(activeSessionSummary)} · window{" "}
+                    {activeMessages.length.toLocaleString()} /{" "}
                     {activeSessionSummary.messageCount.toLocaleString()}
                   </p>
-                  <fieldset className="mt-2 inline-flex rounded border border-zinc-800 bg-zinc-950 p-0.5">
+                </div>
+                <div className="flex shrink-0 items-center justify-end gap-1.5">
+                  <fieldset className="inline-flex rounded border border-zinc-800 bg-zinc-950 p-0.5">
                     <legend className="sr-only">Action sequence mode</legend>
                     {(["condensed", "checkpoint"] as const).map((mode) => (
                       <button
                         key={mode}
                         type="button"
                         onClick={() => actions.setActionSequenceMode(mode)}
-                        className={`rounded px-2 py-1 text-[11px] font-semibold uppercase ${
+                        className={`flex h-7 w-7 items-center justify-center rounded ${
                           actionSequenceMode === mode
                             ? "bg-cyan-950 text-cyan-100"
                             : "text-zinc-500 hover:text-zinc-200"
                         }`}
+                        title={`${mode} action sequences`}
+                        aria-label={`${mode} action sequences`}
                         aria-pressed={actionSequenceMode === mode}
                       >
-                        {mode}
+                        <ActionSequenceModeIcon mode={mode} />
                       </button>
                     ))}
                   </fieldset>
@@ -1077,9 +1130,9 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                       onClick={() => void activeSessionActions.interrupt()}
                       title={interrupting ? "Stopping" : "Stop session"}
                       aria-label={interrupting ? "Stopping" : "Stop session"}
-                      className="mt-2 rounded border border-red-400/40 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-950 disabled:cursor-wait disabled:opacity-60"
+                      className="flex h-8 w-8 items-center justify-center rounded border border-red-400/40 text-red-100 hover:bg-red-950 disabled:cursor-wait disabled:opacity-60"
                     >
-                      {interrupting ? "Stopping" : "Stop"}
+                      <StopSessionIcon />
                     </button>
                   ) : null}
                 </div>
