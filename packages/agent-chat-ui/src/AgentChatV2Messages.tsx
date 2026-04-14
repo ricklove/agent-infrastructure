@@ -494,22 +494,28 @@ export function transcriptItems(
   const items: TranscriptItem[] = []
   let actionMessages: AgentChatV2Message[] = []
 
+  const flushActionMessages = () => {
+    if (actionMessages.length === 0) {
+      return
+    }
+    items.push({ type: "actions", messages: actionMessages })
+    actionMessages = []
+  }
+
   for (const message of messages) {
     if (isActionMessage(message)) {
       actionMessages.push(message)
+      if (message.kind === "streamCheckpoint") {
+        flushActionMessages()
+      }
       continue
     }
 
-    if (actionMessages.length > 0) {
-      items.push({ type: "actions", messages: actionMessages })
-      actionMessages = []
-    }
+    flushActionMessages()
     items.push({ type: "message", message })
   }
 
-  if (actionMessages.length > 0) {
-    items.push({ type: "actions", messages: actionMessages })
-  }
+  flushActionMessages()
 
   return items
 }

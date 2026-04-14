@@ -439,30 +439,32 @@ function buildTranscriptItems(
   const items: AgentChatV2TranscriptItem[] = []
   let actionMessages: AgentChatV2Message[] = []
 
-  for (const message of messages) {
-    if (isActionTranscriptMessage(message)) {
-      actionMessages.push(message)
-      continue
+  const flushActionMessages = (showIdlePreview: boolean) => {
+    if (actionMessages.length === 0) {
+      return
     }
-
-    if (actionMessages.length > 0) {
-      items.push({
-        type: "actions",
-        messages: actionMessages,
-        showIdlePreview: false,
-      })
-      actionMessages = []
-    }
-    items.push({ type: "message", message })
-  }
-
-  if (actionMessages.length > 0) {
     items.push({
       type: "actions",
       messages: actionMessages,
-      showIdlePreview: true,
+      showIdlePreview,
     })
+    actionMessages = []
   }
+
+  for (const message of messages) {
+    if (isActionTranscriptMessage(message)) {
+      actionMessages.push(message)
+      if (message.kind === "streamCheckpoint") {
+        flushActionMessages(false)
+      }
+      continue
+    }
+
+    flushActionMessages(false)
+    items.push({ type: "message", message })
+  }
+
+  flushActionMessages(true)
 
   return items
 }
