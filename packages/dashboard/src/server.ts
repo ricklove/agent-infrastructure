@@ -294,7 +294,7 @@ const dashboardDevMainDashboardAuthorization =
   process.env.DASHBOARD_DEV_MAIN_DASHBOARD_AUTHORIZATION?.trim() || ""
 const dashboardDevMainDashboardProxyPaths = (
   process.env.DASHBOARD_DEV_MAIN_DASHBOARD_PROXY_PATHS?.trim() ||
-  "/api/agent-chat,/ws/agent-chat,/api/session/exchange"
+  "/api/agent-chat,/ws/agent-chat,/api/session/exchange,/ws/dashboard-status"
 )
   .split(",")
   .map((path) => path.trim().replace(/\/+$/u, ""))
