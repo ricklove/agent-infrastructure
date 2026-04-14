@@ -22,6 +22,7 @@ import {
   OutboxMessageBubble,
 } from "./AgentChatV2Messages"
 import {
+  type AgentChatV2ActionSequenceMode,
   type AgentChatV2ActiveSessionActions,
   type AgentChatV2ComposerImage,
   type AgentChatV2OutboxMessage,
@@ -181,6 +182,7 @@ type AgentChatV2TranscriptItemViewProps = {
   apiRootUrl: string
   streamingAssistantText: string
   onCopyMessageLink: (sessionId: string, messageId: string) => Promise<void>
+  actionSequenceMode: AgentChatV2ActionSequenceMode
   onActionToggle: () => void
 }
 
@@ -195,6 +197,7 @@ const AgentChatV2TranscriptItemView = observer(
         <ActionSequence
           messages={item.messages}
           showPreview={item.showIdlePreview && !props.streamingAssistantText}
+          autoSelectStreamCheckpoint={props.actionSequenceMode === "checkpoint"}
           onToggle={props.onActionToggle}
         />
       )
@@ -454,6 +457,9 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   )
   const sessions = useValue(() => store.state$.sessions.get())
   const interrupting = useValue(() => store.state$.interrupting.get())
+  const actionSequenceMode = useValue(() =>
+    store.state$.actionSequenceMode.get(),
+  )
   const activeSessionSummary = useValue(() =>
     store.state$.activeSession.session.get(),
   )
@@ -1046,6 +1052,24 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                     window {activeMessages.length.toLocaleString()} /{" "}
                     {activeSessionSummary.messageCount.toLocaleString()}
                   </p>
+                  <fieldset className="mt-2 inline-flex rounded border border-zinc-800 bg-zinc-950 p-0.5">
+                    <legend className="sr-only">Action sequence mode</legend>
+                    {(["condensed", "checkpoint"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => actions.setActionSequenceMode(mode)}
+                        className={`rounded px-2 py-1 text-[11px] font-semibold uppercase ${
+                          actionSequenceMode === mode
+                            ? "bg-cyan-950 text-cyan-100"
+                            : "text-zinc-500 hover:text-zinc-200"
+                        }`}
+                        aria-pressed={actionSequenceMode === mode}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </fieldset>
                   {activeSessionSummary.activity.canInterrupt ? (
                     <button
                       type="button"
@@ -1247,6 +1271,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                       apiRootUrl={apiRootUrl}
                       streamingAssistantText={streamingAssistantText}
                       onCopyMessageLink={copyMessageLink}
+                      actionSequenceMode={actionSequenceMode}
                       onActionToggle={scheduleTranscriptScrollToBottom}
                     />
                   )}

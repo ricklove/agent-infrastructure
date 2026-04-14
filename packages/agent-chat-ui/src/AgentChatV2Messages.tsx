@@ -562,12 +562,13 @@ function defaultActionSequenceExpandedMessageId(
 export function ActionSequence(props: {
   messages: AgentChatV2Message[]
   showPreview: boolean
+  autoSelectStreamCheckpoint: boolean
   onToggle: () => void
 }) {
   useRenderCounter("AgentChatV2.ActionSequence")
-  const defaultExpandedMessageId = defaultActionSequenceExpandedMessageId(
-    props.messages,
-  )
+  const defaultExpandedMessageId = props.autoSelectStreamCheckpoint
+    ? defaultActionSequenceExpandedMessageId(props.messages)
+    : null
   const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
     () => defaultExpandedMessageId,
   )

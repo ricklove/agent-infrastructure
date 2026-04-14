@@ -7,6 +7,8 @@ import type { AgentTicket } from "./ticket-types"
 
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
 
+export type AgentChatV2ActionSequenceMode = "condensed" | "checkpoint"
+
 export type ProviderKind =
   | "codex-app-server"
   | "openrouter"
@@ -226,6 +228,7 @@ type AgentChatV2StoreState = {
   composerHasText: boolean
   sending: boolean
   interrupting: boolean
+  actionSequenceMode: AgentChatV2ActionSequenceMode
   connectionSummary: () => Pick<
     AgentChatV2StoreState["connection"],
     "error" | "status" | "wsStatus"
@@ -320,6 +323,7 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
     composerHasText: false,
     sending: false,
     interrupting: false,
+    actionSequenceMode: "condensed",
     connectionSummary: () => ({
       error: state$.connection.error.get(),
       status: state$.connection.status.get(),
@@ -435,6 +439,7 @@ function isActionTranscriptMessage(message: AgentChatV2Message): boolean {
 
 function buildTranscriptItems(
   messages: AgentChatV2Message[],
+  mode: AgentChatV2ActionSequenceMode,
 ): AgentChatV2TranscriptItem[] {
   const items: AgentChatV2TranscriptItem[] = []
   let actionMessages: AgentChatV2Message[] = []
@@ -454,7 +459,7 @@ function buildTranscriptItems(
   for (const message of messages) {
     if (isActionTranscriptMessage(message)) {
       actionMessages.push(message)
-      if (message.kind === "streamCheckpoint") {
+      if (mode === "checkpoint" && message.kind === "streamCheckpoint") {
         flushActionMessages(false)
       }
       continue
@@ -475,6 +480,7 @@ function buildActiveSessionTranscript(
   queuedMessages: AgentChatV2Message[],
   pendingMessages: AgentChatV2PendingMessage[],
   streamingAssistantText: string,
+  actionSequenceMode: AgentChatV2ActionSequenceMode,
 ): Pick<
   AgentChatV2ActiveSession,
   | "transcriptMessages"
@@ -514,7 +520,10 @@ function buildActiveSessionTranscript(
   return {
     transcriptMessages,
     outboxMessages,
-    transcriptItems: buildTranscriptItems(transcriptMessages),
+    transcriptItems: buildTranscriptItems(
+      transcriptMessages,
+      actionSequenceMode,
+    ),
     autoScrollKey: `${sessionId}:${lastMessage?.id ?? ""}:${lastMessageTextLength}:${streamingAssistantText.length}:${queuedMessages.length}:${lastPendingMessage?.id ?? ""}:${lastPendingMessage?.pendingStatus ?? ""}`,
     firstMessageId: transcriptMessages[0]?.id ?? "",
   }
@@ -587,6 +596,7 @@ function readActiveSessionView(
       queuedMessages,
       pendingMessages,
       streamingAssistantText,
+      store.state$.actionSequenceMode.get(),
     ),
     hasOlderMessages:
       store.state$.hasOlderMessagesBySessionId[sessionId].get() ?? false,
@@ -1081,6 +1091,14 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       update: AgentChatV2SessionUpdate,
     ): Promise<void> {
       await updateSessionById(store, sessionId, update)
+    },
+
+    setActionSequenceMode(mode: AgentChatV2ActionSequenceMode): void {
+      store.state$.actionSequenceMode.set(mode)
+      const sessionId = store.state$.activeSessionId.get()
+      if (sessionId) {
+        syncActiveSession(store, sessionId)
+      }
     },
 
     interruptSession(): Promise<void> {
