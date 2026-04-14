@@ -389,31 +389,29 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     }
   }, [apiRootUrl, store])
 
-  const connection = useValue(store.state$.connection)
-  const sessions = useValue(store.state$.sessions)
+  const connection = useValue(() => ({
+    error: store.state$.connection.error.get(),
+    status: store.state$.connection.status.get(),
+    wsStatus: store.state$.connection.wsStatus.get(),
+  }))
   const activeSessionId = useValue(store.state$.activeSessionId)
   const totalKnownSessions = useValue(store.state$.totalKnownSessions)
   const nextSessionsCursor = useValue(store.state$.nextSessionsCursor)
-  const messagesBySessionId = useValue(store.state$.messagesBySessionId)
-  const queuedMessagesBySessionId = useValue(
-    store.state$.queuedMessagesBySessionId,
-  )
-  const pendingMessagesBySessionId = useValue(
-    store.state$.pendingMessagesBySessionId,
-  )
-  const hasOlderMessagesBySessionId = useValue(
-    store.state$.hasOlderMessagesBySessionId,
-  )
+  const sessions = useValue(store.state$.sessions)
   const streamingAssistantText =
     useValue(store.state$.streamingAssistantText) ?? ""
   const interrupting = useValue(store.state$.interrupting)
-  const activeSession = useMemo(
-    () =>
-      activeSessionId
-        ? (sessions.find((session) => session.id === activeSessionId) ?? null)
-        : null,
-    [activeSessionId, sessions],
-  )
+  const activeSession = useValue(() => {
+    const sessionId = store.state$.activeSessionId.get()
+    if (!sessionId) {
+      return null
+    }
+    return (
+      store.state$.sessions
+        .get()
+        .find((session) => session.id === sessionId) ?? null
+    )
+  })
   const canInterruptActiveSession =
     activeSession?.activity.status === "running" && !interrupting
   const activeSettingsProvider = useMemo(
@@ -460,18 +458,30 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         .includes(query)
     })
   }, [sessionSearchQuery, showArchivedSessions, sessions])
-  const activeMessages = activeSession
-    ? (messagesBySessionId[activeSession.id] ?? [])
-    : []
-  const queuedMessages = activeSession
-    ? (queuedMessagesBySessionId[activeSession.id] ?? [])
-    : []
-  const pendingMessages = activeSession
-    ? (pendingMessagesBySessionId[activeSession.id] ?? [])
-    : []
-  const hasOlderMessages = activeSession
-    ? (hasOlderMessagesBySessionId[activeSession.id] ?? false)
-    : false
+  const activeMessages = useValue(() => {
+    const sessionId = store.state$.activeSessionId.get()
+    return sessionId
+      ? (store.state$.messagesBySessionId[sessionId].get() ?? [])
+      : []
+  })
+  const queuedMessages = useValue(() => {
+    const sessionId = store.state$.activeSessionId.get()
+    return sessionId
+      ? (store.state$.queuedMessagesBySessionId[sessionId].get() ?? [])
+      : []
+  })
+  const pendingMessages = useValue(() => {
+    const sessionId = store.state$.activeSessionId.get()
+    return sessionId
+      ? (store.state$.pendingMessagesBySessionId[sessionId].get() ?? [])
+      : []
+  })
+  const hasOlderMessages = useValue(() => {
+    const sessionId = store.state$.activeSessionId.get()
+    return sessionId
+      ? (store.state$.hasOlderMessagesBySessionId[sessionId].get() ?? false)
+      : false
+  })
   const queuedDisplayKeys = useMemo(
     () => queuedMessageKeys(queuedMessages),
     [queuedMessages],
