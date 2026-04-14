@@ -2,11 +2,7 @@ import {
   dashboardSessionFetch,
   dashboardSessionWebSocketProtocols,
 } from "@agent-infrastructure/dashboard-plugin"
-import {
-  mergeIntoObservable,
-  ObservableHint,
-  observable,
-} from "@legendapp/state"
+import { batch, ObservableHint, observable } from "@legendapp/state"
 import type { AgentTicket } from "./ticket-types"
 
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
@@ -262,15 +258,39 @@ function emptyActiveSessionView(): AgentChatV2ActiveSession {
   }
 }
 
-function clearActiveSessionView(store: AgentChatV2Store): void {
-  mergeIntoObservable(store.state$.activeSession, emptyActiveSessionView())
-}
-
-function mergeActiveSessionView(
+function writeActiveSessionView(
   store: AgentChatV2Store,
   view: AgentChatV2ActiveSession,
 ): void {
-  mergeIntoObservable(store.state$.activeSession, view)
+  batch(() => {
+    store.state$.activeSession.session.set(view.session)
+    store.state$.activeSession.actions.set(view.actions)
+    store.state$.activeSession.messages.set(view.messages)
+    store.state$.activeSession.queuedMessages.set(view.queuedMessages)
+    store.state$.activeSession.pendingMessages.set(view.pendingMessages)
+    store.state$.activeSession.transcriptMessages.set(view.transcriptMessages)
+    store.state$.activeSession.outboxMessages.set(view.outboxMessages)
+    store.state$.activeSession.transcriptItems.set(view.transcriptItems)
+    store.state$.activeSession.autoScrollKey.set(view.autoScrollKey)
+    store.state$.activeSession.firstMessageId.set(view.firstMessageId)
+    store.state$.activeSession.hasOlderMessages.set(view.hasOlderMessages)
+    store.state$.activeSession.nextBeforeMessageId.set(view.nextBeforeMessageId)
+    store.state$.activeSession.sessionVersion.set(view.sessionVersion)
+    store.state$.activeSession.streamingAssistantText.set(
+      view.streamingAssistantText,
+    )
+  })
+}
+
+function clearActiveSessionView(store: AgentChatV2Store): void {
+  writeActiveSessionView(store, emptyActiveSessionView())
+}
+
+function syncActiveSessionView(
+  store: AgentChatV2Store,
+  view: AgentChatV2ActiveSession,
+): void {
+  writeActiveSessionView(store, view)
 }
 
 export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
@@ -578,7 +598,7 @@ function syncActiveSession(store: AgentChatV2Store, sessionId: string): void {
     clearActiveSessionView(store)
     return
   }
-  mergeActiveSessionView(store, readActiveSessionView(store, session))
+  syncActiveSessionView(store, readActiveSessionView(store, session))
 }
 
 function setSessionWindow(
@@ -959,12 +979,10 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     const payload = await readJson<SessionWindowResponse>(
       apiPath(store, `/v2/sessions/${encodeURIComponent(sessionId)}/window`),
     )
-    if (
-      requestId !== openSessionRequestId ||
-      store.state$.activeSessionId.get() !== sessionId
-    ) {
+    if (requestId !== openSessionRequestId) {
       return
     }
+    store.state$.activeSessionId.set(sessionId)
     setSessionWindow(store, payload, "replace")
     connectSocket(sessionId)
   }

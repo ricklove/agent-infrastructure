@@ -22,7 +22,6 @@ import {
   OutboxMessageBubble,
 } from "./AgentChatV2Messages"
 import {
-  type AgentChatV2Actions,
   type AgentChatV2ActiveSessionActions,
   type AgentChatV2ComposerImage,
   type AgentChatV2OutboxMessage,
@@ -167,7 +166,7 @@ type AgentChatV2SessionRowProps = {
   editing: boolean
   editingTitle: string
   archiving: boolean
-  actions: AgentChatV2Actions
+  onOpenSession: (sessionId: string) => void
   onToggleMenu: (sessionId: string) => void
   onBeginEdit: (session: AgentChatV2Session) => void
   onOpenSettings: (session: AgentChatV2Session) => void
@@ -244,8 +243,9 @@ function AgentChatV2SessionRow(props: AgentChatV2SessionRowProps) {
     >
       <button
         type="button"
-        onClick={() => void props.actions.openSession(session.id)}
+        onClick={() => props.onOpenSession(session.id)}
         className="w-full min-w-0 px-4 py-3 pr-12 text-left"
+        data-session-id={session.id}
       >
         <div className="flex min-w-0 items-center gap-2">
           <span
@@ -444,15 +444,21 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     }
   }, [apiRootUrl, store])
 
-  const connection = useValue(store.state$.connectionSummary)
-  const activeSessionId = useValue(store.state$.activeSessionId)
-  const totalKnownSessions = useValue(store.state$.totalKnownSessions)
-  const nextSessionsCursor = useValue(store.state$.nextSessionsCursor)
-  const sessions = useValue(store.state$.sessions)
-  const interrupting = useValue(store.state$.interrupting)
-  const activeSessionSummary = useValue(store.state$.activeSession.session)
-  const activeSessionActions = useValue(
-    store.state$.activeSession.actions,
+  const connection = useValue(() => store.state$.connectionSummary.get())
+  const activeSessionId = useValue(() => store.state$.activeSessionId.get())
+  const totalKnownSessions = useValue(() =>
+    store.state$.totalKnownSessions.get(),
+  )
+  const nextSessionsCursor = useValue(() =>
+    store.state$.nextSessionsCursor.get(),
+  )
+  const sessions = useValue(() => store.state$.sessions.get())
+  const interrupting = useValue(() => store.state$.interrupting.get())
+  const activeSessionSummary = useValue(() =>
+    store.state$.activeSession.session.get(),
+  )
+  const activeSessionActions = useValue(() =>
+    store.state$.activeSession.actions.get(),
   ) as AgentChatV2ActiveSessionActions | null
   const canInterruptActiveSession =
     activeSessionSummary?.activity.status === "running" && !interrupting
@@ -500,17 +506,27 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         .includes(query)
     })
   }, [sessionSearchQuery, showArchivedSessions, sessions])
-  const activeMessages = useValue(store.state$.activeSession.messages)
-  const queuedMessages = useValue(store.state$.activeSession.queuedMessages)
-  const hasOlderMessages = useValue(store.state$.activeSession.hasOlderMessages)
-  const streamingAssistantText = useValue(
-    store.state$.activeSession.streamingAssistantText,
+  const activeMessages = useValue(() =>
+    store.state$.activeSession.messages.get(),
   )
-  const transcriptMessages = useValue(
-    store.state$.activeSession.transcriptMessages,
+  const queuedMessages = useValue(() =>
+    store.state$.activeSession.queuedMessages.get(),
   )
-  const autoScrollKey = useValue(store.state$.activeSession.autoScrollKey)
-  const firstMessageId = useValue(store.state$.activeSession.firstMessageId)
+  const hasOlderMessages = useValue(() =>
+    store.state$.activeSession.hasOlderMessages.get(),
+  )
+  const streamingAssistantText = useValue(() =>
+    store.state$.activeSession.streamingAssistantText.get(),
+  )
+  const transcriptMessages = useValue(() =>
+    store.state$.activeSession.transcriptMessages.get(),
+  )
+  const autoScrollKey = useValue(() =>
+    store.state$.activeSession.autoScrollKey.get(),
+  )
+  const firstMessageId = useValue(() =>
+    store.state$.activeSession.firstMessageId.get(),
+  )
 
   const updateTranscriptPinnedToBottom = useCallback(() => {
     const scrollElement = transcriptScrollRef.current
@@ -677,6 +693,25 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     setEditingSessionTitle(session.title)
     setSessionMenuOpenId(null)
   }, [])
+
+  const openChatSession = useCallback(
+    (sessionId: string) => {
+      if (!sessionId) {
+        return
+      }
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href)
+        url.pathname = "/chat-v2"
+        url.searchParams.set(chatSessionQueryParam, sessionId)
+        url.hash = ""
+        window.history.replaceState(null, "", `${url.pathname}${url.search}`)
+      }
+      setSessionMenuOpenId(null)
+      setSettingsOpen(false)
+      void actions.openSession(sessionId)
+    },
+    [actions],
+  )
 
   const toggleSessionMenu = useCallback((sessionId: string) => {
     setSessionMenuOpenId((current) =>
@@ -952,7 +987,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                 editing={editingSessionId === session.id}
                 editingTitle={editingSessionTitle}
                 archiving={archivingSessionId === session.id}
-                actions={actions}
+                onOpenSession={openChatSession}
                 onToggleMenu={toggleSessionMenu}
                 onBeginEdit={beginEditSession}
                 onOpenSettings={openSessionSettings}
