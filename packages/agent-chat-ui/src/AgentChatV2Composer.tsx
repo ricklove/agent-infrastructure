@@ -128,14 +128,13 @@ const AgentChatV2SendButton = observer(function AgentChatV2SendButton(props: {
   composerImageCount: number
 }) {
   useRenderCounter("AgentChatV2.SendButton")
-  const composerText = useValue(props.store.state$.composerText) ?? ""
+  const composerHasText = useValue(props.store.state$.composerHasText)
 
   return (
     <button
       type="submit"
       disabled={
-        props.sending ||
-        (!composerText.trim() && props.composerImageCount === 0)
+        props.sending || (!composerHasText && props.composerImageCount === 0)
       }
       className="flex h-8 w-8 items-center justify-center rounded bg-cyan-500 text-lg font-semibold text-zinc-950 disabled:opacity-50"
       title={props.sending ? "Sending" : "Send"}

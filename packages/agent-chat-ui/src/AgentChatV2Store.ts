@@ -2,7 +2,7 @@ import {
   dashboardSessionFetch,
   dashboardSessionWebSocketProtocols,
 } from "@agent-infrastructure/dashboard-plugin"
-import { batch, ObservableHint, observable } from "@legendapp/state"
+import { batch, ObservableHint, observable, observe } from "@legendapp/state"
 import type { AgentTicket } from "./ticket-types"
 
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
@@ -223,6 +223,7 @@ type AgentChatV2StoreState = {
   sessionVersionBySessionId: Record<string, string>
   streamingAssistantText: string
   composerText: string
+  composerHasText: boolean
   sending: boolean
   interrupting: boolean
   connectionSummary: () => Pick<
@@ -316,6 +317,7 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
     sessionVersionBySessionId: {},
     streamingAssistantText: "",
     composerText: "",
+    composerHasText: false,
     sending: false,
     interrupting: false,
     connectionSummary: () => ({
@@ -323,6 +325,12 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
       status: state$.connection.status.get(),
       wsStatus: state$.connection.wsStatus.get(),
     }),
+  })
+  observe(() => {
+    const composerHasText = state$.composerText.get().trim().length > 0
+    if (state$.composerHasText.peek() !== composerHasText) {
+      state$.composerHasText.set(composerHasText)
+    }
   })
   return { state$ }
 }
