@@ -4,7 +4,8 @@ import {
   subscribeDashboardPreferences,
 } from "@agent-infrastructure/dashboard-plugin"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
-import { observer, useValue } from "@legendapp/state/react"
+import type { Observable } from "@legendapp/state"
+import { For, observer, useValue } from "@legendapp/state/react"
 import {
   useCallback,
   useEffect,
@@ -21,13 +22,16 @@ import {
   OutboxMessageBubble,
 } from "./AgentChatV2Messages"
 import {
-  type AgentChatV2ComposerImage,
   type AgentChatV2Actions,
+  type AgentChatV2ActiveSessionActions,
+  type AgentChatV2ComposerImage,
+  type AgentChatV2OutboxMessage,
   type AgentChatV2Session,
   type AgentChatV2SessionUpdate,
-  type ProviderKind,
+  type AgentChatV2TranscriptItem,
   createAgentChatV2Actions,
   createAgentChatV2Store,
+  type ProviderKind,
 } from "./AgentChatV2Store"
 
 export type AgentChatV2ScreenProps = {
@@ -173,9 +177,62 @@ type AgentChatV2SessionRowProps = {
   onSaveTitle: () => void
 }
 
-function AgentChatV2SessionRow(
-  props: AgentChatV2SessionRowProps,
-) {
+type AgentChatV2TranscriptItemViewProps = {
+  item$: Observable<AgentChatV2TranscriptItem>
+  apiRootUrl: string
+  streamingAssistantText: string
+  onCopyMessageLink: (sessionId: string, messageId: string) => Promise<void>
+  onActionToggle: () => void
+}
+
+const AgentChatV2TranscriptItemView = observer(
+  function AgentChatV2TranscriptItemView(
+    props: AgentChatV2TranscriptItemViewProps,
+  ) {
+    const item = useValue(props.item$)
+
+    if (item.type === "actions") {
+      return (
+        <ActionSequence
+          messages={item.messages}
+          showPreview={item.showIdlePreview && !props.streamingAssistantText}
+          onToggle={props.onActionToggle}
+        />
+      )
+    }
+
+    return (
+      <MessageBubble
+        message={item.message}
+        apiRootUrl={props.apiRootUrl}
+        onCopyMessageLink={props.onCopyMessageLink}
+      />
+    )
+  },
+)
+
+type AgentChatV2OutboxMessageViewProps = {
+  message$: Observable<AgentChatV2OutboxMessage>
+  id?: string
+  apiRootUrl: string
+}
+
+const AgentChatV2OutboxMessageView = observer(
+  function AgentChatV2OutboxMessageView(
+    props: AgentChatV2OutboxMessageViewProps,
+  ) {
+    const message = useValue(props.message$)
+    return (
+      <OutboxMessageBubble
+        message={message}
+        index={Number.parseInt(props.id ?? "0", 10) || 0}
+        apiRootUrl={props.apiRootUrl}
+      />
+    )
+  },
+)
+
+function AgentChatV2SessionRow(props: AgentChatV2SessionRowProps) {
   useRenderCounter("AgentChatV2.SessionRow")
   const session = props.session
 
@@ -364,7 +421,9 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         const response = rawResponse as Response
         const payload = (await response.json()) as ProvidersResponse
         if (!response.ok || !payload.ok || !Array.isArray(payload.providers)) {
-          throw new Error(payload.error ?? "Agent Chat providers failed to load.")
+          throw new Error(
+            payload.error ?? "Agent Chat providers failed to load.",
+          )
         }
         if (!cancelled) {
           setProviders(payload.providers)
@@ -391,9 +450,10 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const nextSessionsCursor = useValue(store.state$.nextSessionsCursor)
   const sessions = useValue(store.state$.sessions)
   const interrupting = useValue(store.state$.interrupting)
-  const activeSession = useValue(store.state$.activeSession)
-  const activeSessionSummary = activeSession?.session ?? null
-  const activeSessionActions = activeSession?.actions ?? null
+  const activeSessionSummary = useValue(store.state$.activeSession.session)
+  const activeSessionActions = useValue(
+    store.state$.activeSession.actions,
+  ) as AgentChatV2ActiveSessionActions | null
   const canInterruptActiveSession =
     activeSessionSummary?.activity.status === "running" && !interrupting
   const activeSettingsProvider = useMemo(
@@ -440,15 +500,17 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         .includes(query)
     })
   }, [sessionSearchQuery, showArchivedSessions, sessions])
-  const activeMessages = activeSession?.messages ?? []
-  const queuedMessages = activeSession?.queuedMessages ?? []
-  const hasOlderMessages = activeSession?.hasOlderMessages ?? false
-  const streamingAssistantText = activeSession?.streamingAssistantText ?? ""
-  const transcriptMessages = activeSession?.transcriptMessages ?? []
-  const outboxMessages = activeSession?.outboxMessages ?? []
-  const activeTranscriptItems = activeSession?.transcriptItems ?? []
-  const autoScrollKey = activeSession?.autoScrollKey ?? ""
-  const firstMessageId = activeSession?.firstMessageId ?? ""
+  const activeMessages = useValue(store.state$.activeSession.messages)
+  const queuedMessages = useValue(store.state$.activeSession.queuedMessages)
+  const hasOlderMessages = useValue(store.state$.activeSession.hasOlderMessages)
+  const streamingAssistantText = useValue(
+    store.state$.activeSession.streamingAssistantText,
+  )
+  const transcriptMessages = useValue(
+    store.state$.activeSession.transcriptMessages,
+  )
+  const autoScrollKey = useValue(store.state$.activeSession.autoScrollKey)
+  const firstMessageId = useValue(store.state$.activeSession.firstMessageId)
 
   const updateTranscriptPinnedToBottom = useCallback(() => {
     const scrollElement = transcriptScrollRef.current
@@ -501,8 +563,13 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       return
     }
     scheduleTranscriptScrollToBottom({ force: sessionChanged })
-  }, [activeSessionSummary?.id, autoScrollKey, scheduleTranscriptScrollToBottom])
+  }, [
+    activeSessionSummary?.id,
+    autoScrollKey,
+    scheduleTranscriptScrollToBottom,
+  ])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: older-message scroll restoration must rerun after prepended transcript content changes.
   useLayoutEffect(() => {
     const pendingRestore = olderMessagesScrollRestoreRef.current
     const scrollElement = transcriptScrollRef.current
@@ -612,7 +679,9 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   }, [])
 
   const toggleSessionMenu = useCallback((sessionId: string) => {
-    setSessionMenuOpenId((current) => (current === sessionId ? null : sessionId))
+    setSessionMenuOpenId((current) =>
+      current === sessionId ? null : sessionId,
+    )
   }, [])
 
   const cancelEditSession = useCallback(() => {
@@ -860,9 +929,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2 text-xs text-zinc-400">
           <span>
             {sessions.length}
-            {totalKnownSessions == null
-              ? ""
-              : ` of ${totalKnownSessions}`}{" "}
+            {totalKnownSessions == null ? "" : ` of ${totalKnownSessions}`}{" "}
             sessions
           </span>
           <span>{connection.wsStatus}</span>
@@ -1007,12 +1074,16 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                       ))}
                     </select>
                   </label>
-                  <label className="block min-w-0">
+                  <label
+                    className="block min-w-0"
+                    htmlFor="agent-chat-v2-model"
+                  >
                     <span className="text-[11px] font-semibold uppercase text-zinc-500">
                       Model
                     </span>
                     {activeSettingsProvider?.modelOptions.length ? (
                       <select
+                        id="agent-chat-v2-model"
                         value={settingsModelRef}
                         onChange={(event) =>
                           setSettingsModelRef(event.target.value)
@@ -1027,6 +1098,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                       </select>
                     ) : (
                       <input
+                        id="agent-chat-v2-model"
                         value={settingsModelRef}
                         onChange={(event) =>
                           setSettingsModelRef(event.target.value)
@@ -1038,12 +1110,16 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                       />
                     )}
                   </label>
-                  <label className="block min-w-0">
+                  <label
+                    className="block min-w-0"
+                    htmlFor="agent-chat-v2-auth-profile"
+                  >
                     <span className="text-[11px] font-semibold uppercase text-zinc-500">
                       Auth profile
                     </span>
                     {activeSettingsProvider?.authProfiles.length ? (
                       <select
+                        id="agent-chat-v2-auth-profile"
                         value={settingsAuthProfile}
                         onChange={(event) =>
                           setSettingsAuthProfile(event.target.value)
@@ -1058,6 +1134,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                       </select>
                     ) : (
                       <input
+                        id="agent-chat-v2-auth-profile"
                         value={settingsAuthProfile}
                         onChange={(event) =>
                           setSettingsAuthProfile(event.target.value)
@@ -1116,39 +1193,36 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
               ) : null}
 
               <div ref={transcriptContentRef} className="space-y-3">
-                {activeTranscriptItems.map((item, index) =>
-                  item.type === "actions" ? (
-                    <ActionSequence
-                      key={`actions-${item.messages[0]?.id ?? "empty"}`}
-                      messages={item.messages}
-                      showPreview={
-                        index === activeTranscriptItems.length - 1 &&
-                        !streamingAssistantText
-                      }
-                      onToggle={scheduleTranscriptScrollToBottom}
-                    />
-                  ) : (
-                    <MessageBubble
-                      key={item.message.id}
-                      message={item.message}
+                <For
+                  each={store.state$.activeSession.transcriptItems}
+                  optimized
+                >
+                  {(item$) => (
+                    <AgentChatV2TranscriptItemView
+                      item$={item$ as Observable<AgentChatV2TranscriptItem>}
                       apiRootUrl={apiRootUrl}
+                      streamingAssistantText={streamingAssistantText}
                       onCopyMessageLink={copyMessageLink}
+                      onActionToggle={scheduleTranscriptScrollToBottom}
                     />
-                  ),
-                )}
+                  )}
+                </For>
                 {streamingAssistantText ? (
                   <div className="rounded border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm leading-6 text-emerald-50">
                     {streamingAssistantText}
                   </div>
                 ) : null}
-                {outboxMessages.map((message, index) => (
-                  <OutboxMessageBubble
-                    key={message.id}
-                    message={message}
-                    index={index}
-                    apiRootUrl={apiRootUrl}
-                  />
-                ))}
+                <For each={store.state$.activeSession.outboxMessages} optimized>
+                  {(message$, id) => (
+                    <AgentChatV2OutboxMessageView
+                      message$={
+                        message$ as Observable<AgentChatV2OutboxMessage>
+                      }
+                      id={id}
+                      apiRootUrl={apiRootUrl}
+                    />
+                  )}
+                </For>
                 <div ref={transcriptEndRef} aria-hidden="true" />
               </div>
               {!transcriptPinnedToBottom ? (

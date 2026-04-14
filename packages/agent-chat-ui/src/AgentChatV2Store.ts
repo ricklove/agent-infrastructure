@@ -2,7 +2,11 @@ import {
   dashboardSessionFetch,
   dashboardSessionWebSocketProtocols,
 } from "@agent-infrastructure/dashboard-plugin"
-import { observable } from "@legendapp/state"
+import {
+  mergeIntoObservable,
+  ObservableHint,
+  observable,
+} from "@legendapp/state"
 import type { AgentTicket } from "./ticket-types"
 
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
@@ -101,7 +105,11 @@ export type AgentChatV2OutboxMessage = AgentChatV2Message & {
 
 export type AgentChatV2TranscriptItem =
   | { type: "message"; message: AgentChatV2Message }
-  | { type: "actions"; messages: AgentChatV2Message[] }
+  | {
+      type: "actions"
+      messages: AgentChatV2Message[]
+      showIdlePreview: boolean
+    }
 
 export type AgentChatV2SessionUpdate = {
   title?: string
@@ -123,8 +131,8 @@ export type AgentChatV2ActiveSessionActions = {
 }
 
 export type AgentChatV2ActiveSession = {
-  session: AgentChatV2Session
-  actions: AgentChatV2ActiveSessionActions
+  session: AgentChatV2Session | null
+  actions: AgentChatV2ActiveSessionActions | null
   messages: AgentChatV2Message[]
   queuedMessages: AgentChatV2Message[]
   pendingMessages: AgentChatV2PendingMessage[]
@@ -210,7 +218,7 @@ type AgentChatV2StoreState = {
   nextSessionsCursor: string | null
   totalKnownSessions: number | null
   activeSessionId: string | null
-  activeSession: AgentChatV2ActiveSession | null
+  activeSession: AgentChatV2ActiveSession
   messagesBySessionId: Record<string, AgentChatV2Message[]>
   queuedMessagesBySessionId: Record<string, AgentChatV2Message[]>
   pendingMessagesBySessionId: Record<string, AgentChatV2PendingMessage[]>
@@ -235,6 +243,36 @@ const activeSessionActionsByStore = new WeakMap<
   Map<string, AgentChatV2ActiveSessionActions>
 >()
 
+function emptyActiveSessionView(): AgentChatV2ActiveSession {
+  return {
+    session: null,
+    actions: null,
+    messages: [],
+    queuedMessages: [],
+    pendingMessages: [],
+    transcriptMessages: [],
+    outboxMessages: [],
+    transcriptItems: [],
+    autoScrollKey: "",
+    firstMessageId: "",
+    hasOlderMessages: false,
+    nextBeforeMessageId: null,
+    sessionVersion: "",
+    streamingAssistantText: "",
+  }
+}
+
+function clearActiveSessionView(store: AgentChatV2Store): void {
+  mergeIntoObservable(store.state$.activeSession, emptyActiveSessionView())
+}
+
+function mergeActiveSessionView(
+  store: AgentChatV2Store,
+  view: AgentChatV2ActiveSession,
+): void {
+  mergeIntoObservable(store.state$.activeSession, view)
+}
+
 export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
   let state$: ReturnType<typeof observable<AgentChatV2StoreState>>
   state$ = observable<AgentChatV2StoreState>({
@@ -249,7 +287,7 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
     nextSessionsCursor: null,
     totalKnownSessions: null,
     activeSessionId: null,
-    activeSession: null,
+    activeSession: emptyActiveSessionView(),
     messagesBySessionId: {},
     queuedMessagesBySessionId: {},
     pendingMessagesBySessionId: {},
@@ -380,14 +418,22 @@ function buildTranscriptItems(
     }
 
     if (actionMessages.length > 0) {
-      items.push({ type: "actions", messages: actionMessages })
+      items.push({
+        type: "actions",
+        messages: actionMessages,
+        showIdlePreview: false,
+      })
       actionMessages = []
     }
     items.push({ type: "message", message })
   }
 
   if (actionMessages.length > 0) {
-    items.push({ type: "actions", messages: actionMessages })
+    items.push({
+      type: "actions",
+      messages: actionMessages,
+      showIdlePreview: true,
+    })
   }
 
   return items
@@ -501,7 +547,7 @@ function readActiveSessionView(
 
   return {
     session,
-    actions: readActiveSessionActions(store, sessionId),
+    actions: ObservableHint.opaque(readActiveSessionActions(store, sessionId)),
     messages,
     queuedMessages,
     pendingMessages,
@@ -528,9 +574,11 @@ function syncActiveSession(store: AgentChatV2Store, sessionId: string): void {
   }
   const session =
     store.state$.sessions.get().find((entry) => entry.id === sessionId) ?? null
-  store.state$.activeSession.set(
-    session ? readActiveSessionView(store, session) : null,
-  )
+  if (!session) {
+    clearActiveSessionView(store)
+    return
+  }
+  mergeActiveSessionView(store, readActiveSessionView(store, session))
 }
 
 function setSessionWindow(
@@ -827,7 +875,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     store.state$.hasOlderMessagesBySessionId[sessionId].set(false)
     store.state$.nextBeforeMessageIdBySessionId[sessionId].set(null)
     store.state$.sessionVersionBySessionId[sessionId].set("")
-    store.state$.activeSession.set(null)
+    clearActiveSessionView(store)
     store.state$.streamingAssistantText.set("")
     store.state$.composerText.set("")
     store.state$.sending.set(false)
@@ -888,7 +936,10 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       }
     })
     nextSocket.addEventListener("close", () => {
-      if (socket === nextSocket && store.state$.connection.wsStatus.get() !== "idle") {
+      if (
+        socket === nextSocket &&
+        store.state$.connection.wsStatus.get() !== "idle"
+      ) {
         store.state$.connection.wsStatus.set("error")
       }
     })
