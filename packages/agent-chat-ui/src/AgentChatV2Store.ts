@@ -230,6 +230,11 @@ type AgentChatV2StoreState = {
 export type AgentChatV2Store = ReturnType<typeof createAgentChatV2Store>
 export type AgentChatV2Actions = ReturnType<typeof createAgentChatV2Actions>
 
+const activeSessionActionsByStore = new WeakMap<
+  AgentChatV2Store,
+  Map<string, AgentChatV2ActiveSessionActions>
+>()
+
 export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
   let state$: ReturnType<typeof observable<AgentChatV2StoreState>>
   state$ = observable<AgentChatV2StoreState>({
@@ -439,6 +444,49 @@ function buildActiveSessionTranscript(
   }
 }
 
+function readActiveSessionActions(
+  store: AgentChatV2Store,
+  sessionId: string,
+): AgentChatV2ActiveSessionActions {
+  let actionsBySessionId = activeSessionActionsByStore.get(store)
+  if (!actionsBySessionId) {
+    actionsBySessionId = new Map()
+    activeSessionActionsByStore.set(store, actionsBySessionId)
+  }
+
+  const cachedActions = actionsBySessionId.get(sessionId)
+  if (cachedActions) {
+    return cachedActions
+  }
+
+  const actions: AgentChatV2ActiveSessionActions = {
+    sendMessage: (images = []) =>
+      sendMessageForSession(store, sessionId, images, { requireActive: true }),
+    loadOlderMessages: () =>
+      loadOlderMessagesForSession(store, sessionId, { requireActive: true }),
+    interrupt: () =>
+      interruptSessionById(store, sessionId, { requireActive: true }),
+    update: (update) =>
+      updateSessionById(store, sessionId, update, { requireActive: true }),
+    archive: () =>
+      updateSessionById(
+        store,
+        sessionId,
+        { archived: true },
+        { requireActive: true },
+      ),
+    restore: () =>
+      updateSessionById(
+        store,
+        sessionId,
+        { archived: false },
+        { requireActive: true },
+      ),
+  }
+  actionsBySessionId.set(sessionId, actions)
+  return actions
+}
+
 function readActiveSessionView(
   store: AgentChatV2Store,
   session: AgentChatV2Session,
@@ -453,30 +501,7 @@ function readActiveSessionView(
 
   return {
     session,
-    actions: {
-      sendMessage: (images = []) =>
-        sendMessageForSession(store, sessionId, images, { requireActive: true }),
-      loadOlderMessages: () =>
-        loadOlderMessagesForSession(store, sessionId, { requireActive: true }),
-      interrupt: () =>
-        interruptSessionById(store, sessionId, { requireActive: true }),
-      update: (update) =>
-        updateSessionById(store, sessionId, update, { requireActive: true }),
-      archive: () =>
-        updateSessionById(
-          store,
-          sessionId,
-          { archived: true },
-          { requireActive: true },
-        ),
-      restore: () =>
-        updateSessionById(
-          store,
-          sessionId,
-          { archived: false },
-          { requireActive: true },
-        ),
-    },
+    actions: readActiveSessionActions(store, sessionId),
     messages,
     queuedMessages,
     pendingMessages,
