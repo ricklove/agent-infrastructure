@@ -2,8 +2,9 @@ import {
   type DashboardEnterStyle,
   isDashboardSendShortcut,
 } from "@agent-infrastructure/dashboard-plugin"
-import { observer, useValue } from "@legendapp/state/react"
 import { useRenderCounter } from "@agent-infrastructure/render-diagnostics"
+import { observer, useValue } from "@legendapp/state/react"
+import { $React } from "@legendapp/state/react-web"
 import {
   type ChangeEvent,
   type ClipboardEvent,
@@ -121,12 +122,35 @@ function composerStatusItems(
   return items
 }
 
+const AgentChatV2SendButton = observer(function AgentChatV2SendButton(props: {
+  store: AgentChatV2Store
+  sending: boolean
+  composerImageCount: number
+}) {
+  useRenderCounter("AgentChatV2.SendButton")
+  const composerText = useValue(props.store.state$.composerText) ?? ""
+
+  return (
+    <button
+      type="submit"
+      disabled={
+        props.sending ||
+        (!composerText.trim() && props.composerImageCount === 0)
+      }
+      className="flex h-8 w-8 items-center justify-center rounded bg-cyan-500 text-lg font-semibold text-zinc-950 disabled:opacity-50"
+      title={props.sending ? "Sending" : "Send"}
+      aria-label={props.sending ? "Sending" : "Send"}
+    >
+      ↑
+    </button>
+  )
+})
+
 export const AgentChatV2Composer = observer(function AgentChatV2Composer(
   props: AgentChatV2ComposerProps,
 ) {
   useRenderCounter("AgentChatV2Composer")
   const imageInputRef = useRef<HTMLInputElement | null>(null)
-  const composerText = useValue(props.store.state$.composerText)
   const sending = useValue(props.store.state$.sending)
   const interrupting = useValue(props.store.state$.interrupting)
   const composerStatus = composerStatusItems(
@@ -269,11 +293,8 @@ export const AgentChatV2Composer = observer(function AgentChatV2Composer(
             ) : null}
           </span>
         </div>
-        <textarea
-          value={composerText}
-          onChange={(event) =>
-            props.store.state$.composerText.set(event.target.value)
-          }
+        <$React.textarea
+          $value={props.store.state$.composerText}
           onKeyDown={handleComposerKeyDown}
           onPaste={(event) => void handleComposerPaste(event)}
           rows={3}
@@ -301,18 +322,11 @@ export const AgentChatV2Composer = observer(function AgentChatV2Composer(
               +
             </button>
           </div>
-          <button
-            type="submit"
-            disabled={
-              sending ||
-              (!composerText.trim() && props.composerImages.length === 0)
-            }
-            className="flex h-8 w-8 items-center justify-center rounded bg-cyan-500 text-lg font-semibold text-zinc-950 disabled:opacity-50"
-            title={sending ? "Sending" : "Send"}
-            aria-label={sending ? "Sending" : "Send"}
-          >
-            ↑
-          </button>
+          <AgentChatV2SendButton
+            store={props.store}
+            sending={sending}
+            composerImageCount={props.composerImages.length}
+          />
         </div>
       </div>
     </form>
