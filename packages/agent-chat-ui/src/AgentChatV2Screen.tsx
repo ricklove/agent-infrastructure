@@ -18,12 +18,7 @@ import {
   ActionSequence,
   formatTime,
   MessageBubble,
-  messageDisplayKey,
-  messageText,
-  type OutboxMessage,
   OutboxMessageBubble,
-  queuedMessageKeys,
-  transcriptItems,
 } from "./AgentChatV2Messages"
 import {
   type AgentChatV2ComposerImage,
@@ -447,59 +442,13 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   }, [sessionSearchQuery, showArchivedSessions, sessions])
   const activeMessages = activeSession?.messages ?? []
   const queuedMessages = activeSession?.queuedMessages ?? []
-  const pendingMessages = activeSession?.pendingMessages ?? []
   const hasOlderMessages = activeSession?.hasOlderMessages ?? false
   const streamingAssistantText = activeSession?.streamingAssistantText ?? ""
-  const queuedDisplayKeys = useMemo(
-    () => queuedMessageKeys(queuedMessages),
-    [queuedMessages],
-  )
-  const transcriptMessages = useMemo(
-    () =>
-      activeMessages.filter(
-        (message) =>
-          !queuedDisplayKeys.has(messageDisplayKey(message)) &&
-          !queuedMessages.some(
-            (queuedMessage) => queuedMessage.id === message.id,
-          ),
-      ),
-    [activeMessages, queuedDisplayKeys, queuedMessages],
-  )
-  const displayPendingMessages = useMemo(
-    () =>
-      pendingMessages.filter(
-        (message) =>
-          !queuedDisplayKeys.has(messageDisplayKey(message)) &&
-          !queuedMessages.some(
-            (queuedMessage) => queuedMessage.id === message.id,
-          ),
-      ),
-    [pendingMessages, queuedDisplayKeys, queuedMessages],
-  )
-  const outboxMessages = useMemo(
-    () =>
-      [
-        ...displayPendingMessages,
-        ...queuedMessages.map(
-          (message): OutboxMessage => ({
-            ...message,
-            pendingStatus: "queued",
-          }),
-        ),
-      ].sort((left, right) => left.createdAtMs - right.createdAtMs),
-    [displayPendingMessages, queuedMessages],
-  )
-  const activeTranscriptItems = useMemo(
-    () => transcriptItems(transcriptMessages),
-    [transcriptMessages],
-  )
-  const lastMessage = transcriptMessages.at(-1) ?? null
-  const lastMessageTextLength = lastMessage
-    ? messageText(lastMessage).length
-    : 0
-  const lastPendingMessage = outboxMessages.at(-1) ?? null
-  const autoScrollKey = `${activeSessionSummary?.id ?? ""}:${lastMessage?.id ?? ""}:${lastMessageTextLength}:${streamingAssistantText.length}:${queuedMessages.length}:${lastPendingMessage?.id ?? ""}:${lastPendingMessage?.pendingStatus ?? ""}`
-  const firstMessageId = transcriptMessages[0]?.id ?? ""
+  const transcriptMessages = activeSession?.transcriptMessages ?? []
+  const outboxMessages = activeSession?.outboxMessages ?? []
+  const activeTranscriptItems = activeSession?.transcriptItems ?? []
+  const autoScrollKey = activeSession?.autoScrollKey ?? ""
+  const firstMessageId = activeSession?.firstMessageId ?? ""
 
   const updateTranscriptPinnedToBottom = useCallback(() => {
     const scrollElement = transcriptScrollRef.current

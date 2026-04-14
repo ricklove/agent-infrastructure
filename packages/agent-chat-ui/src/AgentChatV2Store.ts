@@ -95,6 +95,14 @@ export type AgentChatV2PendingMessage = AgentChatV2Message & {
   pendingStatus: "pending" | "queued"
 }
 
+export type AgentChatV2OutboxMessage = AgentChatV2Message & {
+  pendingStatus: "pending" | "queued"
+}
+
+export type AgentChatV2TranscriptItem =
+  | { type: "message"; message: AgentChatV2Message }
+  | { type: "actions"; messages: AgentChatV2Message[] }
+
 export type AgentChatV2SessionUpdate = {
   title?: string
   archived?: boolean
@@ -120,6 +128,11 @@ export type AgentChatV2ActiveSession = {
   messages: AgentChatV2Message[]
   queuedMessages: AgentChatV2Message[]
   pendingMessages: AgentChatV2PendingMessage[]
+  transcriptMessages: AgentChatV2Message[]
+  outboxMessages: AgentChatV2OutboxMessage[]
+  transcriptItems: AgentChatV2TranscriptItem[]
+  autoScrollKey: string
+  firstMessageId: string
   hasOlderMessages: boolean
   nextBeforeMessageId: string | null
   sessionVersion: string
@@ -334,11 +347,110 @@ function reconcilePendingMessages(
   )
 }
 
+function activeMessageText(message: AgentChatV2Message): string {
+  return message.content
+    .map((block) => (block.type === "text" ? block.text : "[image]"))
+    .join("\n")
+    .trim()
+}
+
+function activeMessageDisplayKey(message: AgentChatV2Message): string {
+  return `${message.role}:${JSON.stringify(message.content)}`
+}
+
+function isActionTranscriptMessage(message: AgentChatV2Message): boolean {
+  return message.role === "system" || message.kind !== "chat"
+}
+
+function buildTranscriptItems(
+  messages: AgentChatV2Message[],
+): AgentChatV2TranscriptItem[] {
+  const items: AgentChatV2TranscriptItem[] = []
+  let actionMessages: AgentChatV2Message[] = []
+
+  for (const message of messages) {
+    if (isActionTranscriptMessage(message)) {
+      actionMessages.push(message)
+      continue
+    }
+
+    if (actionMessages.length > 0) {
+      items.push({ type: "actions", messages: actionMessages })
+      actionMessages = []
+    }
+    items.push({ type: "message", message })
+  }
+
+  if (actionMessages.length > 0) {
+    items.push({ type: "actions", messages: actionMessages })
+  }
+
+  return items
+}
+
+function buildActiveSessionTranscript(
+  sessionId: string,
+  messages: AgentChatV2Message[],
+  queuedMessages: AgentChatV2Message[],
+  pendingMessages: AgentChatV2PendingMessage[],
+  streamingAssistantText: string,
+): Pick<
+  AgentChatV2ActiveSession,
+  | "transcriptMessages"
+  | "outboxMessages"
+  | "transcriptItems"
+  | "autoScrollKey"
+  | "firstMessageId"
+> {
+  const queuedDisplayKeys = new Set(
+    queuedMessages.map((message) => activeMessageDisplayKey(message)),
+  )
+  const transcriptMessages = messages.filter(
+    (message) =>
+      !queuedDisplayKeys.has(activeMessageDisplayKey(message)) &&
+      !queuedMessages.some((queuedMessage) => queuedMessage.id === message.id),
+  )
+  const displayPendingMessages = pendingMessages.filter(
+    (message) =>
+      !queuedDisplayKeys.has(activeMessageDisplayKey(message)) &&
+      !queuedMessages.some((queuedMessage) => queuedMessage.id === message.id),
+  )
+  const outboxMessages: AgentChatV2OutboxMessage[] = [
+    ...displayPendingMessages,
+    ...queuedMessages.map(
+      (message): AgentChatV2OutboxMessage => ({
+        ...message,
+        pendingStatus: "queued",
+      }),
+    ),
+  ].sort((left, right) => left.createdAtMs - right.createdAtMs)
+  const lastMessage = transcriptMessages.at(-1) ?? null
+  const lastMessageTextLength = lastMessage
+    ? activeMessageText(lastMessage).length
+    : 0
+  const lastPendingMessage = outboxMessages.at(-1) ?? null
+
+  return {
+    transcriptMessages,
+    outboxMessages,
+    transcriptItems: buildTranscriptItems(transcriptMessages),
+    autoScrollKey: `${sessionId}:${lastMessage?.id ?? ""}:${lastMessageTextLength}:${streamingAssistantText.length}:${queuedMessages.length}:${lastPendingMessage?.id ?? ""}:${lastPendingMessage?.pendingStatus ?? ""}`,
+    firstMessageId: transcriptMessages[0]?.id ?? "",
+  }
+}
+
 function readActiveSessionView(
   store: AgentChatV2Store,
   session: AgentChatV2Session,
 ): AgentChatV2ActiveSession {
   const sessionId = session.id
+  const messages = store.state$.messagesBySessionId[sessionId].get() ?? []
+  const queuedMessages =
+    store.state$.queuedMessagesBySessionId[sessionId].get() ?? []
+  const pendingMessages =
+    store.state$.pendingMessagesBySessionId[sessionId].get() ?? []
+  const streamingAssistantText = store.state$.streamingAssistantText.get() ?? ""
+
   return {
     session,
     actions: {
@@ -365,18 +477,23 @@ function readActiveSessionView(
           { requireActive: true },
         ),
     },
-    messages: store.state$.messagesBySessionId[sessionId].get() ?? [],
-    queuedMessages:
-      store.state$.queuedMessagesBySessionId[sessionId].get() ?? [],
-    pendingMessages:
-      store.state$.pendingMessagesBySessionId[sessionId].get() ?? [],
+    messages,
+    queuedMessages,
+    pendingMessages,
+    ...buildActiveSessionTranscript(
+      sessionId,
+      messages,
+      queuedMessages,
+      pendingMessages,
+      streamingAssistantText,
+    ),
     hasOlderMessages:
       store.state$.hasOlderMessagesBySessionId[sessionId].get() ?? false,
     nextBeforeMessageId:
       store.state$.nextBeforeMessageIdBySessionId[sessionId].get() ?? null,
     sessionVersion:
       store.state$.sessionVersionBySessionId[sessionId].get() ?? "",
-    streamingAssistantText: store.state$.streamingAssistantText.get() ?? "",
+    streamingAssistantText,
   }
 }
 
