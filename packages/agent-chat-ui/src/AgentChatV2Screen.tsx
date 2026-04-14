@@ -41,6 +41,7 @@ export type AgentChatV2ScreenProps = {
 const chatSessionQueryParam = "sessionId"
 const chatMessageHashPrefix = "#message-"
 const transcriptBottomStickinessPx = 2
+const transcriptTopLoadThresholdPx = 240
 
 type ProviderCatalogEntry = {
   kind: ProviderKind
@@ -192,6 +193,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const [settingsDirectory, setSettingsDirectory] = useState("")
   const [settingsImageModelRef, setSettingsImageModelRef] = useState("")
   const [savingSettings, setSavingSettings] = useState(false)
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
   const [transcriptPinnedToBottom, setTranscriptPinnedToBottom] = useState(true)
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null)
   const transcriptContentRef = useRef<HTMLDivElement | null>(null)
@@ -199,6 +201,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const transcriptPinnedToBottomRef = useRef(true)
   const olderMessagesScrollRestoreRef =
     useRef<OlderMessagesScrollRestore | null>(null)
+  const loadingOlderMessagesRef = useRef(false)
   const previousActiveSessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -635,13 +638,25 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   ])
 
   const loadOlderMessagesPreservingScroll = useCallback(async () => {
+    if (loadingOlderMessagesRef.current || !hasOlderMessages) {
+      return
+    }
     const scrollElement = transcriptScrollRef.current
     const sessionId = activeSession?.id
     if (!scrollElement || !sessionId) {
-      await actions.loadOlderMessages()
+      loadingOlderMessagesRef.current = true
+      setLoadingOlderMessages(true)
+      try {
+        await actions.loadOlderMessages()
+      } finally {
+        loadingOlderMessagesRef.current = false
+        setLoadingOlderMessages(false)
+      }
       return
     }
 
+    loadingOlderMessagesRef.current = true
+    setLoadingOlderMessages(true)
     olderMessagesScrollRestoreRef.current = {
       sessionId,
       scrollHeight: scrollElement.scrollHeight,
@@ -655,8 +670,27 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     } catch (error) {
       olderMessagesScrollRestoreRef.current = null
       throw error
+    } finally {
+      loadingOlderMessagesRef.current = false
+      setLoadingOlderMessages(false)
     }
-  }, [actions, activeSession?.id])
+  }, [actions, activeSession?.id, hasOlderMessages])
+
+  const handleTranscriptScroll = useCallback(() => {
+    const scrollElement = transcriptScrollRef.current
+    updateTranscriptPinnedToBottom()
+    if (
+      scrollElement &&
+      hasOlderMessages &&
+      scrollElement.scrollTop <= transcriptTopLoadThresholdPx
+    ) {
+      void loadOlderMessagesPreservingScroll()
+    }
+  }, [
+    hasOlderMessages,
+    loadOlderMessagesPreservingScroll,
+    updateTranscriptPinnedToBottom,
+  ])
 
   return (
     <main className="flex h-screen min-h-0 bg-zinc-950 text-zinc-100">
@@ -1084,16 +1118,19 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
             <div
               ref={transcriptScrollRef}
-              onScroll={updateTranscriptPinnedToBottom}
+              onScroll={handleTranscriptScroll}
               className="relative min-h-0 flex-1 overflow-y-auto px-5 py-4"
             >
               {hasOlderMessages ? (
                 <button
                   type="button"
+                  disabled={loadingOlderMessages}
                   onClick={() => void loadOlderMessagesPreservingScroll()}
-                  className="mb-4 w-full rounded border border-zinc-700 px-3 py-2 text-sm text-cyan-200 hover:bg-zinc-900"
+                  className="mb-4 w-full rounded border border-zinc-700 px-3 py-2 text-sm text-cyan-200 hover:bg-zinc-900 disabled:cursor-wait disabled:text-zinc-500"
                 >
-                  Load older messages
+                  {loadingOlderMessages
+                    ? "Loading older messages"
+                    : "Load older messages"}
                 </button>
               ) : null}
 
