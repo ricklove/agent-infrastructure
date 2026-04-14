@@ -95,6 +95,17 @@ export type AgentChatV2PendingMessage = AgentChatV2Message & {
   pendingStatus: "pending" | "queued"
 }
 
+export type AgentChatV2ActiveSession = {
+  session: AgentChatV2Session
+  messages: AgentChatV2Message[]
+  queuedMessages: AgentChatV2Message[]
+  pendingMessages: AgentChatV2PendingMessage[]
+  hasOlderMessages: boolean
+  nextBeforeMessageId: string | null
+  sessionVersion: string
+  streamingAssistantText: string
+}
+
 export type AgentChatV2ComposerImage = {
   id: string
   dataUrl: string
@@ -166,6 +177,7 @@ type AgentChatV2StoreState = {
   nextSessionsCursor: string | null
   totalKnownSessions: number | null
   activeSessionId: string | null
+  activeSession: AgentChatV2ActiveSession | null
   messagesBySessionId: Record<string, AgentChatV2Message[]>
   queuedMessagesBySessionId: Record<string, AgentChatV2Message[]>
   pendingMessagesBySessionId: Record<string, AgentChatV2PendingMessage[]>
@@ -180,11 +192,6 @@ type AgentChatV2StoreState = {
     AgentChatV2StoreState["connection"],
     "error" | "status" | "wsStatus"
   >
-  activeSession: () => AgentChatV2Session | null
-  activeMessages: () => AgentChatV2Message[]
-  activeQueuedMessages: () => AgentChatV2Message[]
-  activePendingMessages: () => AgentChatV2PendingMessage[]
-  activeHasOlderMessages: () => boolean
 }
 
 export type AgentChatV2Store = ReturnType<typeof createAgentChatV2Store>
@@ -204,6 +211,7 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
     nextSessionsCursor: null,
     totalKnownSessions: null,
     activeSessionId: null,
+    activeSession: null,
     messagesBySessionId: {},
     queuedMessagesBySessionId: {},
     pendingMessagesBySessionId: {},
@@ -219,41 +227,6 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
       status: state$.connection.status.get(),
       wsStatus: state$.connection.wsStatus.get(),
     }),
-    activeSession: () => {
-      const sessionId = state$.activeSessionId.get()
-      if (!sessionId) {
-        return null
-      }
-      return (
-        state$.sessions
-          .get()
-          .find((session) => session.id === sessionId) ?? null
-      )
-    },
-    activeMessages: () => {
-      const sessionId = state$.activeSessionId.get()
-      return sessionId
-        ? (state$.messagesBySessionId[sessionId].get() ?? [])
-        : []
-    },
-    activeQueuedMessages: () => {
-      const sessionId = state$.activeSessionId.get()
-      return sessionId
-        ? (state$.queuedMessagesBySessionId[sessionId].get() ?? [])
-        : []
-    },
-    activePendingMessages: () => {
-      const sessionId = state$.activeSessionId.get()
-      return sessionId
-        ? (state$.pendingMessagesBySessionId[sessionId].get() ?? [])
-        : []
-    },
-    activeHasOlderMessages: () => {
-      const sessionId = state$.activeSessionId.get()
-      return sessionId
-        ? (state$.hasOlderMessagesBySessionId[sessionId].get() ?? false)
-        : false
-    },
   })
   return { state$ }
 }
@@ -341,6 +314,39 @@ function reconcilePendingMessages(
   )
 }
 
+function readActiveSessionView(
+  store: AgentChatV2Store,
+  session: AgentChatV2Session,
+): AgentChatV2ActiveSession {
+  const sessionId = session.id
+  return {
+    session,
+    messages: store.state$.messagesBySessionId[sessionId].get() ?? [],
+    queuedMessages:
+      store.state$.queuedMessagesBySessionId[sessionId].get() ?? [],
+    pendingMessages:
+      store.state$.pendingMessagesBySessionId[sessionId].get() ?? [],
+    hasOlderMessages:
+      store.state$.hasOlderMessagesBySessionId[sessionId].get() ?? false,
+    nextBeforeMessageId:
+      store.state$.nextBeforeMessageIdBySessionId[sessionId].get() ?? null,
+    sessionVersion:
+      store.state$.sessionVersionBySessionId[sessionId].get() ?? "",
+    streamingAssistantText: store.state$.streamingAssistantText.get() ?? "",
+  }
+}
+
+function syncActiveSession(store: AgentChatV2Store, sessionId: string): void {
+  if (store.state$.activeSessionId.get() !== sessionId) {
+    return
+  }
+  const session =
+    store.state$.sessions.get().find((entry) => entry.id === sessionId) ?? null
+  store.state$.activeSession.set(
+    session ? readActiveSessionView(store, session) : null,
+  )
+}
+
 function setSessionWindow(
   store: AgentChatV2Store,
   payload: SessionWindowResponse,
@@ -372,6 +378,7 @@ function setSessionWindow(
   store.state$.sessionVersionBySessionId[payload.session.id].set(
     payload.sessionVersion,
   )
+  syncActiveSession(store, payload.session.id)
 }
 
 function applySessionUpdate(
@@ -394,6 +401,7 @@ function applySessionUpdate(
       ...payload.messages,
       ...payload.queuedMessages,
     ])
+    syncActiveSession(store, payload.session.id)
   }
 }
 
@@ -416,6 +424,7 @@ function updateActiveSessionActivity(
   )
   store.state$.queuedMessagesBySessionId[sessionId].set(queuedMessages)
   reconcilePendingMessages(store, sessionId, queuedMessages)
+  syncActiveSession(store, sessionId)
 }
 
 function setSessionSnapshot(
@@ -434,6 +443,7 @@ function setSessionSnapshot(
   store.state$.hasOlderMessagesBySessionId[payload.session.id].set(false)
   store.state$.nextBeforeMessageIdBySessionId[payload.session.id].set(null)
   store.state$.sessionVersionBySessionId[payload.session.id].set("")
+  syncActiveSession(store, payload.session.id)
 }
 
 export function createAgentChatV2Actions(store: AgentChatV2Store) {
@@ -453,6 +463,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     store.state$.hasOlderMessagesBySessionId[sessionId].set(false)
     store.state$.nextBeforeMessageIdBySessionId[sessionId].set(null)
     store.state$.sessionVersionBySessionId[sessionId].set("")
+    store.state$.activeSession.set(null)
     store.state$.streamingAssistantText.set("")
     store.state$.composerText.set("")
     store.state$.sending.set(false)
@@ -495,10 +506,12 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       if (payload.type === "session.updated") {
         applySessionUpdate(store, payload)
         store.state$.streamingAssistantText.set("")
+        syncActiveSession(store, sessionId)
         return
       }
       if (payload.type === "run.delta") {
         store.state$.streamingAssistantText.set(payload.text)
+        syncActiveSession(store, sessionId)
         return
       }
       if (payload.type === "run.activity") {
@@ -627,6 +640,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         ...(store.state$.pendingMessagesBySessionId[sessionId].get() ?? []),
         pendingMessage,
       ])
+      syncActiveSession(store, sessionId)
       store.state$.composerText.set("")
       store.state$.sending.set(true)
       try {
@@ -664,6 +678,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
                 : message,
             ),
           )
+          syncActiveSession(store, sessionId)
         }
       } catch (error) {
         const pendingMessages =
@@ -671,6 +686,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         store.state$.pendingMessagesBySessionId[sessionId].set(
           pendingMessages.filter((message) => message.id !== pendingMessage.id),
         )
+        syncActiveSession(store, sessionId)
         store.state$.composerText.set(text)
         throw error
       } finally {
@@ -690,8 +706,8 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
           }),
         },
       )
-      setSessionWindow(store, payload, "replace")
       store.state$.activeSessionId.set(payload.session.id)
+      setSessionWindow(store, payload, "replace")
       connectSocket(payload.session.id)
     },
 

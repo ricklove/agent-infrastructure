@@ -394,12 +394,11 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const totalKnownSessions = useValue(store.state$.totalKnownSessions)
   const nextSessionsCursor = useValue(store.state$.nextSessionsCursor)
   const sessions = useValue(store.state$.sessions)
-  const streamingAssistantText =
-    useValue(store.state$.streamingAssistantText) ?? ""
   const interrupting = useValue(store.state$.interrupting)
   const activeSession = useValue(store.state$.activeSession)
+  const activeSessionSummary = activeSession?.session ?? null
   const canInterruptActiveSession =
-    activeSession?.activity.status === "running" && !interrupting
+    activeSessionSummary?.activity.status === "running" && !interrupting
   const activeSettingsProvider = useMemo(
     () =>
       providers.find((provider) => provider.kind === settingsProviderKind) ??
@@ -444,10 +443,11 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         .includes(query)
     })
   }, [sessionSearchQuery, showArchivedSessions, sessions])
-  const activeMessages = useValue(store.state$.activeMessages)
-  const queuedMessages = useValue(store.state$.activeQueuedMessages)
-  const pendingMessages = useValue(store.state$.activePendingMessages)
-  const hasOlderMessages = useValue(store.state$.activeHasOlderMessages)
+  const activeMessages = activeSession?.messages ?? []
+  const queuedMessages = activeSession?.queuedMessages ?? []
+  const pendingMessages = activeSession?.pendingMessages ?? []
+  const hasOlderMessages = activeSession?.hasOlderMessages ?? false
+  const streamingAssistantText = activeSession?.streamingAssistantText ?? ""
   const queuedDisplayKeys = useMemo(
     () => queuedMessageKeys(queuedMessages),
     [queuedMessages],
@@ -496,7 +496,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     ? messageText(lastMessage).length
     : 0
   const lastPendingMessage = outboxMessages.at(-1) ?? null
-  const autoScrollKey = `${activeSession?.id ?? ""}:${lastMessage?.id ?? ""}:${lastMessageTextLength}:${streamingAssistantText.length}:${queuedMessages.length}:${lastPendingMessage?.id ?? ""}:${lastPendingMessage?.pendingStatus ?? ""}`
+  const autoScrollKey = `${activeSessionSummary?.id ?? ""}:${lastMessage?.id ?? ""}:${lastMessageTextLength}:${streamingAssistantText.length}:${queuedMessages.length}:${lastPendingMessage?.id ?? ""}:${lastPendingMessage?.pendingStatus ?? ""}`
   const firstMessageId = transcriptMessages[0]?.id ?? ""
 
   const updateTranscriptPinnedToBottom = useCallback(() => {
@@ -542,7 +542,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
   useLayoutEffect(() => {
     void autoScrollKey
-    const activeSessionId = activeSession?.id ?? ""
+    const activeSessionId = activeSessionSummary?.id ?? ""
     const sessionChanged =
       previousActiveSessionIdRef.current !== activeSessionId
     previousActiveSessionIdRef.current = activeSessionId
@@ -550,7 +550,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       return
     }
     scheduleTranscriptScrollToBottom({ force: sessionChanged })
-  }, [activeSession?.id, autoScrollKey, scheduleTranscriptScrollToBottom])
+  }, [activeSessionSummary?.id, autoScrollKey, scheduleTranscriptScrollToBottom])
 
   useLayoutEffect(() => {
     const pendingRestore = olderMessagesScrollRestoreRef.current
@@ -558,7 +558,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     if (
       !pendingRestore ||
       !scrollElement ||
-      pendingRestore.sessionId !== activeSession?.id
+      pendingRestore.sessionId !== activeSessionSummary?.id
     ) {
       return
     }
@@ -569,10 +569,10 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     scrollElement.scrollTop = pendingRestore.scrollTop + scrollHeightDelta
     transcriptPinnedToBottomRef.current = false
     setTranscriptPinnedToBottom(false)
-  }, [activeSession?.id, firstMessageId, transcriptMessages.length])
+  }, [activeSessionSummary?.id, firstMessageId, transcriptMessages.length])
 
   useEffect(() => {
-    const activeSessionId = activeSession?.id ?? ""
+    const activeSessionId = activeSessionSummary?.id ?? ""
     const contentElement = transcriptContentRef.current
     if (!activeSessionId || !contentElement) {
       return
@@ -601,7 +601,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       }
     }
   }, [
-    activeSession?.id,
+    activeSessionSummary?.id,
     scrollTranscriptToBottom,
     updateTranscriptPinnedToBottom,
   ])
@@ -681,23 +681,23 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   }, [actions, editingSessionId, editingSessionTitle])
 
   useEffect(() => {
-    if (!activeSession) {
+    if (!activeSessionSummary) {
       setSettingsOpen(false)
       return
     }
-    setSettingsProviderKind(activeSession.providerKind)
-    setSettingsModelRef(activeSession.modelRef)
-    setSettingsAuthProfile(activeSession.authProfile ?? "")
-    setSettingsDirectory(activeSession.cwd)
-    setSettingsImageModelRef(activeSession.imageModelRef ?? "")
+    setSettingsProviderKind(activeSessionSummary.providerKind)
+    setSettingsModelRef(activeSessionSummary.modelRef)
+    setSettingsAuthProfile(activeSessionSummary.authProfile ?? "")
+    setSettingsDirectory(activeSessionSummary.cwd)
+    setSettingsImageModelRef(activeSessionSummary.imageModelRef ?? "")
   }, [
-    activeSession?.authProfile,
-    activeSession?.cwd,
-    activeSession?.id,
-    activeSession?.imageModelRef,
-    activeSession?.modelRef,
-    activeSession?.providerKind,
-    activeSession,
+    activeSessionSummary?.authProfile,
+    activeSessionSummary?.cwd,
+    activeSessionSummary?.id,
+    activeSessionSummary?.imageModelRef,
+    activeSessionSummary?.modelRef,
+    activeSessionSummary?.providerKind,
+    activeSessionSummary,
   ])
 
   useEffect(() => {
@@ -735,23 +735,23 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   )
 
   const saveSessionSettings = useCallback(async () => {
-    if (!activeSession || !settingsDirectory.trim()) {
+    if (!activeSessionSummary || !settingsDirectory.trim()) {
       return
     }
     const update: Parameters<typeof actions.updateSession>[1] = {}
-    if (settingsDirectory.trim() !== activeSession.cwd) {
+    if (settingsDirectory.trim() !== activeSessionSummary.cwd) {
       update.cwd = settingsDirectory.trim()
     }
-    if (settingsProviderKind !== activeSession.providerKind) {
+    if (settingsProviderKind !== activeSessionSummary.providerKind) {
       update.providerKind = settingsProviderKind
     }
-    if (settingsModelRef !== activeSession.modelRef) {
+    if (settingsModelRef !== activeSessionSummary.modelRef) {
       update.modelRef = settingsModelRef
     }
-    if (settingsAuthProfile !== (activeSession.authProfile ?? "")) {
+    if (settingsAuthProfile !== (activeSessionSummary.authProfile ?? "")) {
       update.authProfile = settingsAuthProfile || null
     }
-    if (settingsImageModelRef !== (activeSession.imageModelRef ?? "")) {
+    if (settingsImageModelRef !== (activeSessionSummary.imageModelRef ?? "")) {
       update.imageModelRef = settingsImageModelRef || null
     }
     if (Object.keys(update).length === 0) {
@@ -761,14 +761,14 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
     setSavingSettings(true)
     try {
-      await actions.updateSession(activeSession.id, update)
+      await actions.updateSession(activeSessionSummary.id, update)
       setSettingsOpen(false)
     } finally {
       setSavingSettings(false)
     }
   }, [
     actions,
-    activeSession,
+    activeSessionSummary,
     settingsAuthProfile,
     settingsDirectory,
     settingsImageModelRef,
@@ -781,7 +781,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       return
     }
     const scrollElement = transcriptScrollRef.current
-    const sessionId = activeSession?.id
+    const sessionId = activeSessionSummary?.id
     if (!scrollElement || !sessionId) {
       loadingOlderMessagesRef.current = true
       setLoadingOlderMessages(true)
@@ -813,7 +813,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       loadingOlderMessagesRef.current = false
       setLoadingOlderMessages(false)
     }
-  }, [actions, activeSession?.id, hasOlderMessages])
+  }, [actions, activeSessionSummary?.id, hasOlderMessages])
 
   const handleTranscriptScroll = useCallback(() => {
     const scrollElement = transcriptScrollRef.current
@@ -968,25 +968,25 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
-        {activeSession ? (
+        {activeSessionSummary ? (
           <>
             <header className="border-b border-zinc-800 bg-zinc-950 px-5 py-3">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-semibold text-white">
-                    {activeSession.title}
+                    {activeSessionSummary.title}
                   </h2>
                   <p className="mt-1 truncate text-xs text-zinc-500">
-                    {activeSession.cwd}
+                    {activeSessionSummary.cwd}
                   </p>
                 </div>
                 <div className="text-right text-xs text-zinc-400">
-                  <p>{activityLabel(activeSession)}</p>
+                  <p>{activityLabel(activeSessionSummary)}</p>
                   <p className="mt-1">
                     window {activeMessages.length.toLocaleString()} /{" "}
-                    {activeSession.messageCount.toLocaleString()}
+                    {activeSessionSummary.messageCount.toLocaleString()}
                   </p>
-                  {activeSession.activity.status === "running" ? (
+                  {activeSessionSummary.activity.status === "running" ? (
                     <button
                       type="button"
                       disabled={interrupting}
@@ -1214,7 +1214,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
             </div>
 
             <AgentChatV2Composer
-              activeSession={activeSession}
+              activeSession={activeSessionSummary}
               composerImages={composerImages}
               composerImageError={composerImageError}
               enterStyle={enterStyle}
