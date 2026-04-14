@@ -199,6 +199,26 @@ function StopSessionIcon() {
   )
 }
 
+function ChatSettingsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" aria-hidden="true">
+      <path
+        d="M10 6.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M10 2.75v2M10 15.25v2M4.88 4.88l1.42 1.42M13.7 13.7l1.42 1.42M2.75 10h2M15.25 10h2M4.88 15.12l1.42-1.42M13.7 6.3l1.42-1.42"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  )
+}
+
 type AgentChatV2SessionRowProps = {
   session: AgentChatV2Session
   active: boolean
@@ -551,9 +571,6 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         .includes(query)
     })
   }, [sessionSearchQuery, showArchivedSessions, sessions])
-  const activeMessages = useValue(() =>
-    store.state$.activeSession.messages.get(),
-  )
   const queuedMessages = useValue(() =>
     store.state$.activeSession.queuedMessages.get(),
   )
@@ -1077,7 +1094,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
           <>
             <header className="border-b border-zinc-800 bg-zinc-950 px-5 py-3">
               <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 self-center">
                   <div className="flex min-w-0 items-center gap-2">
                     <span
                       className={`h-2.5 w-2.5 shrink-0 rounded-full border ${activityDotClass(
@@ -1093,16 +1110,30 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                       {activeSessionSummary.title}
                     </h2>
                   </div>
-                  <p className="mt-1 truncate text-xs text-zinc-500">
-                    {activeSessionSummary.cwd}
-                  </p>
-                  <p className="mt-1 text-[11px] text-zinc-500">
-                    {activityLabel(activeSessionSummary)} · window{" "}
-                    {activeMessages.length.toLocaleString()} /{" "}
-                    {activeSessionSummary.messageCount.toLocaleString()}
-                  </p>
                 </div>
                 <div className="flex shrink-0 items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSessionMenuOpenId(null)
+                      setEditingSessionId(null)
+                      setSettingsOpen((open) => !open)
+                    }}
+                    title={
+                      settingsOpen ? "Close chat settings" : "Chat settings"
+                    }
+                    aria-label={
+                      settingsOpen ? "Close chat settings" : "Chat settings"
+                    }
+                    aria-pressed={settingsOpen}
+                    className={`flex h-8 w-8 items-center justify-center rounded border ${
+                      settingsOpen
+                        ? "border-cyan-400 text-cyan-100"
+                        : "border-zinc-700 text-zinc-300 hover:border-cyan-400 hover:text-cyan-100"
+                    }`}
+                  >
+                    <ChatSettingsIcon />
+                  </button>
                   <fieldset className="inline-flex rounded border border-zinc-800 bg-zinc-950 p-0.5">
                     <legend className="sr-only">Action sequence mode</legend>
                     {(["condensed", "checkpoint"] as const).map((mode) => (
