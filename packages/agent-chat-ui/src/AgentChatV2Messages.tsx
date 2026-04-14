@@ -290,6 +290,52 @@ function renderStructuredTextBlock(
     )
   }
 
+  if (lines.length === 1 && /^[-*_]{3,}$/u.test((lines[0] ?? "").trim())) {
+    return <hr className="border-zinc-700" />
+  }
+
+  if (lines.every((line) => /^>\s?/u.test(line))) {
+    const quoteLines = lines.map((line) => line.replace(/^>\s?/u, ""))
+    return (
+      <blockquote className="border-l-2 border-cyan-500/50 pl-3 text-sm leading-6 text-zinc-300">
+        {renderMarkdownParagraph(quoteLines, `${keyPrefix}-quote`)}
+      </blockquote>
+    )
+  }
+
+  if (lines.every((line) => /^[-*]\s+\[[ xX]\]\s+/u.test(line))) {
+    const lineOccurrences = new Map<string, number>()
+    return (
+      <ul className="space-y-1 text-sm leading-6 text-zinc-100">
+        {lines.map((line) => {
+          const occurrence = lineOccurrences.get(line) ?? 0
+          lineOccurrences.set(line, occurrence + 1)
+          const checked = /^[-*]\s+\[[xX]\]/u.test(line)
+          return (
+            <li
+              key={`${keyPrefix}-task-${occurrence}-${line}`}
+              className="flex items-start gap-2"
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                readOnly
+                className="mt-1 h-3.5 w-3.5 shrink-0 accent-cyan-400"
+                aria-label={checked ? "Completed task" : "Open task"}
+              />
+              <span className="min-w-0">
+                {renderInlineMarkdown(
+                  line.replace(/^[-*]\s+\[[ xX]\]\s+/u, ""),
+                  `${keyPrefix}-task-${occurrence}-${line}`,
+                )}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    )
+  }
+
   if (lines.every((line) => /^[-*]\s+/u.test(line))) {
     const lineOccurrences = new Map<string, number>()
     return (
