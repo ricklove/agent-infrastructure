@@ -1215,7 +1215,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       <section className="flex min-w-0 flex-1 flex-col">
         {activeSessionSummary && activeSessionActions ? (
           <>
-            <header className="border-b border-zinc-800 bg-zinc-950 px-5 py-3">
+            <header className="border-b border-zinc-800 bg-zinc-950 px-5 py-3 pl-16 md:pl-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1 self-center">
                   <div className="flex min-w-0 items-center gap-2">
