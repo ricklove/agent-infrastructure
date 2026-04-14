@@ -176,13 +176,23 @@ type AgentChatV2StoreState = {
   composerText: string
   sending: boolean
   interrupting: boolean
+  connectionSummary: () => Pick<
+    AgentChatV2StoreState["connection"],
+    "error" | "status" | "wsStatus"
+  >
+  activeSession: () => AgentChatV2Session | null
+  activeMessages: () => AgentChatV2Message[]
+  activeQueuedMessages: () => AgentChatV2Message[]
+  activePendingMessages: () => AgentChatV2PendingMessage[]
+  activeHasOlderMessages: () => boolean
 }
 
 export type AgentChatV2Store = ReturnType<typeof createAgentChatV2Store>
 export type AgentChatV2Actions = ReturnType<typeof createAgentChatV2Actions>
 
 export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
-  const state$ = observable<AgentChatV2StoreState>({
+  let state$: ReturnType<typeof observable<AgentChatV2StoreState>>
+  state$ = observable<AgentChatV2StoreState>({
     connection: {
       status: "idle",
       wsStatus: "idle",
@@ -204,6 +214,46 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
     composerText: "",
     sending: false,
     interrupting: false,
+    connectionSummary: () => ({
+      error: state$.connection.error.get(),
+      status: state$.connection.status.get(),
+      wsStatus: state$.connection.wsStatus.get(),
+    }),
+    activeSession: () => {
+      const sessionId = state$.activeSessionId.get()
+      if (!sessionId) {
+        return null
+      }
+      return (
+        state$.sessions
+          .get()
+          .find((session) => session.id === sessionId) ?? null
+      )
+    },
+    activeMessages: () => {
+      const sessionId = state$.activeSessionId.get()
+      return sessionId
+        ? (state$.messagesBySessionId[sessionId].get() ?? [])
+        : []
+    },
+    activeQueuedMessages: () => {
+      const sessionId = state$.activeSessionId.get()
+      return sessionId
+        ? (state$.queuedMessagesBySessionId[sessionId].get() ?? [])
+        : []
+    },
+    activePendingMessages: () => {
+      const sessionId = state$.activeSessionId.get()
+      return sessionId
+        ? (state$.pendingMessagesBySessionId[sessionId].get() ?? [])
+        : []
+    },
+    activeHasOlderMessages: () => {
+      const sessionId = state$.activeSessionId.get()
+      return sessionId
+        ? (state$.hasOlderMessagesBySessionId[sessionId].get() ?? false)
+        : false
+    },
   })
   return { state$ }
 }
