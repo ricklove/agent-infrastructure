@@ -166,7 +166,7 @@ export const AgentChatV2Composer = observer(function AgentChatV2Composer(
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (
       event.key === "Escape" &&
-      props.activeSession.activity.status === "running" &&
+      props.activeSession.activity.canInterrupt &&
       !interrupting
     ) {
       event.preventDefault()

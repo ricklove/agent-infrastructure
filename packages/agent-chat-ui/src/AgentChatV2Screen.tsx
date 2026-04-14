@@ -461,7 +461,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     store.state$.activeSession.actions.get(),
   ) as AgentChatV2ActiveSessionActions | null
   const canInterruptActiveSession =
-    activeSessionSummary?.activity.status === "running" && !interrupting
+    Boolean(activeSessionSummary?.activity.canInterrupt) && !interrupting
   const activeSettingsProvider = useMemo(
     () =>
       providers.find((provider) => provider.kind === settingsProviderKind) ??
@@ -1046,11 +1046,13 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                     window {activeMessages.length.toLocaleString()} /{" "}
                     {activeSessionSummary.messageCount.toLocaleString()}
                   </p>
-                  {activeSessionSummary.activity.status === "running" ? (
+                  {activeSessionSummary.activity.canInterrupt ? (
                     <button
                       type="button"
                       disabled={interrupting}
                       onClick={() => void activeSessionActions.interrupt()}
+                      title={interrupting ? "Stopping" : "Stop session"}
+                      aria-label={interrupting ? "Stopping" : "Stop session"}
                       className="mt-2 rounded border border-red-400/40 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-950 disabled:cursor-wait disabled:opacity-60"
                     >
                       {interrupting ? "Stopping" : "Stop"}
