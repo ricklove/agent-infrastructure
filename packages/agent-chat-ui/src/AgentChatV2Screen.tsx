@@ -667,7 +667,14 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   )
 
   const createTitledSession = useCallback(async () => {
-    await actions.createSession(newChatTitle)
+    const sessionId = await actions.createSession(newChatTitle)
+    if (sessionId && typeof window !== "undefined") {
+      const url = new URL(window.location.href)
+      url.pathname = "/chat-v2"
+      url.searchParams.set(chatSessionQueryParam, sessionId)
+      url.hash = ""
+      window.history.replaceState(null, "", url.pathname + url.search)
+    }
     setNewChatTitle("")
     setNewChatOpen(false)
   }, [actions, newChatTitle])

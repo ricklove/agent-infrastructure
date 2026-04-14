@@ -1041,7 +1041,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       })
     },
 
-    async createSession(title?: string): Promise<void> {
+    async createSession(title?: string): Promise<string> {
       const payload = await readJson<SessionWindowResponse>(
         apiPath(store, "/sessions"),
         {
@@ -1056,6 +1056,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       store.state$.activeSessionId.set(payload.session.id)
       setSessionWindow(store, payload, "replace")
       connectSocket(payload.session.id)
+      return payload.session.id
     },
 
     async setSessionArchived(
