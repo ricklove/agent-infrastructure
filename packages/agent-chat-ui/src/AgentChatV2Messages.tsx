@@ -547,15 +547,43 @@ function actionPreviewText(message: AgentChatV2Message): string {
   return lines.slice(-3).join("\n")
 }
 
+function defaultActionSequenceExpandedMessageId(
+  messages: AgentChatV2Message[],
+): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.kind === "streamCheckpoint") {
+      return message.id
+    }
+  }
+  return null
+}
+
 export function ActionSequence(props: {
   messages: AgentChatV2Message[]
   showPreview: boolean
   onToggle: () => void
 }) {
   useRenderCounter("AgentChatV2.ActionSequence")
-  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
-    null,
+  const defaultExpandedMessageId = defaultActionSequenceExpandedMessageId(
+    props.messages,
   )
+  const [expandedMessageId, setExpandedMessageId] = useState<string | null>(
+    () => defaultExpandedMessageId,
+  )
+
+  useEffect(() => {
+    setExpandedMessageId((currentValue) => {
+      if (
+        currentValue &&
+        props.messages.some((message) => message.id === currentValue)
+      ) {
+        return currentValue
+      }
+      return defaultExpandedMessageId
+    })
+  }, [defaultExpandedMessageId, props.messages])
+
   const expandedMessage =
     props.messages.find((message) => message.id === expandedMessageId) ?? null
   const expandedText = expandedMessage
