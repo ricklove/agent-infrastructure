@@ -13,7 +13,7 @@ import {
   useRef,
 } from "react"
 import type {
-  AgentChatV2Actions,
+  AgentChatV2ActiveSessionActions,
   AgentChatV2ComposerImage,
   AgentChatV2Message,
   AgentChatV2Session,
@@ -27,7 +27,7 @@ type AgentChatV2ComposerProps = {
   enterStyle: DashboardEnterStyle
   queuedMessages: AgentChatV2Message[]
   store: AgentChatV2Store
-  actions: AgentChatV2Actions
+  actions: AgentChatV2ActiveSessionActions
   onComposerImagesChange: (
     updater:
       | AgentChatV2ComposerImage[]
@@ -171,7 +171,7 @@ export const AgentChatV2Composer = observer(function AgentChatV2Composer(
       !interrupting
     ) {
       event.preventDefault()
-      void props.actions.interruptSession()
+      void props.actions.interrupt()
       return
     }
 

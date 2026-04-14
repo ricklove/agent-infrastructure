@@ -95,8 +95,28 @@ export type AgentChatV2PendingMessage = AgentChatV2Message & {
   pendingStatus: "pending" | "queued"
 }
 
+export type AgentChatV2SessionUpdate = {
+  title?: string
+  archived?: boolean
+  cwd?: string
+  providerKind?: ProviderKind
+  modelRef?: string
+  authProfile?: string | null
+  imageModelRef?: string | null
+}
+
+export type AgentChatV2ActiveSessionActions = {
+  sendMessage(images?: AgentChatV2ComposerImage[]): Promise<void>
+  loadOlderMessages(): Promise<void>
+  interrupt(): Promise<void>
+  update(update: AgentChatV2SessionUpdate): Promise<void>
+  archive(): Promise<void>
+  restore(): Promise<void>
+}
+
 export type AgentChatV2ActiveSession = {
   session: AgentChatV2Session
+  actions: AgentChatV2ActiveSessionActions
   messages: AgentChatV2Message[]
   queuedMessages: AgentChatV2Message[]
   pendingMessages: AgentChatV2PendingMessage[]
@@ -321,6 +341,30 @@ function readActiveSessionView(
   const sessionId = session.id
   return {
     session,
+    actions: {
+      sendMessage: (images = []) =>
+        sendMessageForSession(store, sessionId, images, { requireActive: true }),
+      loadOlderMessages: () =>
+        loadOlderMessagesForSession(store, sessionId, { requireActive: true }),
+      interrupt: () =>
+        interruptSessionById(store, sessionId, { requireActive: true }),
+      update: (update) =>
+        updateSessionById(store, sessionId, update, { requireActive: true }),
+      archive: () =>
+        updateSessionById(
+          store,
+          sessionId,
+          { archived: true },
+          { requireActive: true },
+        ),
+      restore: () =>
+        updateSessionById(
+          store,
+          sessionId,
+          { archived: false },
+          { requireActive: true },
+        ),
+    },
     messages: store.state$.messagesBySessionId[sessionId].get() ?? [],
     queuedMessages:
       store.state$.queuedMessagesBySessionId[sessionId].get() ?? [],
@@ -444,6 +488,184 @@ function setSessionSnapshot(
   store.state$.nextBeforeMessageIdBySessionId[payload.session.id].set(null)
   store.state$.sessionVersionBySessionId[payload.session.id].set("")
   syncActiveSession(store, payload.session.id)
+}
+
+function shouldSkipInactiveSessionAction(
+  store: AgentChatV2Store,
+  sessionId: string,
+  options?: { requireActive?: boolean },
+): boolean {
+  return Boolean(
+    options?.requireActive && store.state$.activeSessionId.get() !== sessionId,
+  )
+}
+
+async function loadOlderMessagesForSession(
+  store: AgentChatV2Store,
+  sessionId: string,
+  options?: { requireActive?: boolean },
+): Promise<void> {
+  if (shouldSkipInactiveSessionAction(store, sessionId, options)) {
+    return
+  }
+  const beforeMessageId =
+    store.state$.nextBeforeMessageIdBySessionId[sessionId].get()
+  if (!beforeMessageId) {
+    return
+  }
+  const params = new URLSearchParams({
+    limit: "80",
+    beforeMessageId,
+  })
+  const payload = await readJson<SessionWindowResponse>(
+    apiPath(
+      store,
+      `/v2/sessions/${encodeURIComponent(sessionId)}/window?${params.toString()}`,
+    ),
+  )
+  setSessionWindow(store, payload, "prepend")
+}
+
+async function sendMessageForSession(
+  store: AgentChatV2Store,
+  sessionId: string,
+  images: AgentChatV2ComposerImage[] = [],
+  options?: { requireActive?: boolean },
+): Promise<void> {
+  if (shouldSkipInactiveSessionAction(store, sessionId, options)) {
+    return
+  }
+  const text = store.state$.composerText.get().trim()
+  if (!text && images.length === 0) {
+    return
+  }
+  const content: AgentChatV2Message["content"] = [
+    ...(text ? [{ type: "text" as const, text }] : []),
+    ...images.map((image) => ({
+      type: "image" as const,
+      url: image.dataUrl,
+    })),
+  ]
+  const pendingMessage: AgentChatV2PendingMessage = {
+    id: `pending-${crypto.randomUUID()}`,
+    sessionId,
+    role: "user",
+    kind: "chat",
+    replyToMessageId: null,
+    ticketId: null,
+    providerSeenAtMs: null,
+    content,
+    createdAtMs: Date.now(),
+    pendingStatus: "pending",
+  }
+  store.state$.pendingMessagesBySessionId[sessionId].set([
+    ...(store.state$.pendingMessagesBySessionId[sessionId].get() ?? []),
+    pendingMessage,
+  ])
+  syncActiveSession(store, sessionId)
+  store.state$.composerText.set("")
+  store.state$.sending.set(true)
+  try {
+    const payload = await readJson<{
+      ok: true
+      queuedMessages?: AgentChatV2Message[]
+    }>(apiPath(store, `/sessions/${encodeURIComponent(sessionId)}/messages`), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text,
+        content: [
+          ...(text ? [{ type: "text" as const, text }] : []),
+          ...images.map((image) => ({
+            type: "image" as const,
+            dataUrl: image.dataUrl,
+          })),
+        ],
+      }),
+    })
+    if (payload.queuedMessages) {
+      store.state$.queuedMessagesBySessionId[sessionId].set(
+        payload.queuedMessages,
+      )
+      reconcilePendingMessages(store, sessionId, payload.queuedMessages)
+      const pendingMessages =
+        store.state$.pendingMessagesBySessionId[sessionId].get() ?? []
+      store.state$.pendingMessagesBySessionId[sessionId].set(
+        pendingMessages.map((message) =>
+          message.id === pendingMessage.id
+            ? { ...message, pendingStatus: "queued" as const }
+            : message,
+        ),
+      )
+      syncActiveSession(store, sessionId)
+    }
+  } catch (error) {
+    const pendingMessages =
+      store.state$.pendingMessagesBySessionId[sessionId].get() ?? []
+    store.state$.pendingMessagesBySessionId[sessionId].set(
+      pendingMessages.filter((message) => message.id !== pendingMessage.id),
+    )
+    syncActiveSession(store, sessionId)
+    store.state$.composerText.set(text)
+    throw error
+  } finally {
+    store.state$.sending.set(false)
+  }
+}
+
+async function updateSessionById(
+  store: AgentChatV2Store,
+  sessionId: string,
+  update: AgentChatV2SessionUpdate,
+  options?: { requireActive?: boolean },
+): Promise<void> {
+  if (shouldSkipInactiveSessionAction(store, sessionId, options)) {
+    return
+  }
+  const payload = await readJson<SessionSnapshotResponse>(
+    apiPath(store, `/sessions/${encodeURIComponent(sessionId)}`),
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(update),
+    },
+  )
+  setSessionSnapshot(store, payload)
+}
+
+async function interruptSessionById(
+  store: AgentChatV2Store,
+  sessionId: string,
+  options?: { requireActive?: boolean },
+): Promise<void> {
+  if (
+    shouldSkipInactiveSessionAction(store, sessionId, options) ||
+    store.state$.interrupting.get()
+  ) {
+    return
+  }
+  store.state$.interrupting.set(true)
+  store.state$.connection.error.set("")
+  try {
+    const payload = await readJson<{
+      ok: true
+      activity: SessionActivity
+    }>(apiPath(store, `/sessions/${encodeURIComponent(sessionId)}/interrupt`), {
+      method: "POST",
+    })
+    updateActiveSessionActivity(
+      store,
+      sessionId,
+      payload.activity,
+      store.state$.queuedMessagesBySessionId[sessionId].get() ?? [],
+    )
+  } catch (error) {
+    store.state$.connection.error.set(
+      error instanceof Error ? error.message : "Interrupt failed.",
+    )
+  } finally {
+    store.state$.interrupting.set(false)
+  }
 }
 
 export function createAgentChatV2Actions(store: AgentChatV2Store) {
@@ -588,110 +810,24 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
 
     openSession,
 
-    async loadOlderMessages(): Promise<void> {
+    loadOlderMessages(): Promise<void> {
       const sessionId = store.state$.activeSessionId.get()
       if (!sessionId) {
-        return
+        return Promise.resolve()
       }
-      const beforeMessageId =
-        store.state$.nextBeforeMessageIdBySessionId[sessionId].get()
-      if (!beforeMessageId) {
-        return
-      }
-      const params = new URLSearchParams({
-        limit: "80",
-        beforeMessageId,
+      return loadOlderMessagesForSession(store, sessionId, {
+        requireActive: true,
       })
-      const payload = await readJson<SessionWindowResponse>(
-        apiPath(
-          store,
-          `/v2/sessions/${encodeURIComponent(sessionId)}/window?${params.toString()}`,
-        ),
-      )
-      setSessionWindow(store, payload, "prepend")
     },
 
-    async sendMessage(images: AgentChatV2ComposerImage[] = []): Promise<void> {
+    sendMessage(images: AgentChatV2ComposerImage[] = []): Promise<void> {
       const sessionId = store.state$.activeSessionId.get()
-      const text = store.state$.composerText.get().trim()
-      if (!sessionId || (!text && images.length === 0)) {
-        return
+      if (!sessionId) {
+        return Promise.resolve()
       }
-      const content: AgentChatV2Message["content"] = [
-        ...(text ? [{ type: "text" as const, text }] : []),
-        ...images.map((image) => ({
-          type: "image" as const,
-          url: image.dataUrl,
-        })),
-      ]
-      const pendingMessage: AgentChatV2PendingMessage = {
-        id: `pending-${crypto.randomUUID()}`,
-        sessionId,
-        role: "user",
-        kind: "chat",
-        replyToMessageId: null,
-        ticketId: null,
-        providerSeenAtMs: null,
-        content,
-        createdAtMs: Date.now(),
-        pendingStatus: "pending",
-      }
-      store.state$.pendingMessagesBySessionId[sessionId].set([
-        ...(store.state$.pendingMessagesBySessionId[sessionId].get() ?? []),
-        pendingMessage,
-      ])
-      syncActiveSession(store, sessionId)
-      store.state$.composerText.set("")
-      store.state$.sending.set(true)
-      try {
-        const payload = await readJson<{
-          ok: true
-          queuedMessages?: AgentChatV2Message[]
-        }>(
-          apiPath(store, `/sessions/${encodeURIComponent(sessionId)}/messages`),
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              text,
-              content: [
-                ...(text ? [{ type: "text" as const, text }] : []),
-                ...images.map((image) => ({
-                  type: "image" as const,
-                  dataUrl: image.dataUrl,
-                })),
-              ],
-            }),
-          },
-        )
-        if (payload.queuedMessages) {
-          store.state$.queuedMessagesBySessionId[sessionId].set(
-            payload.queuedMessages,
-          )
-          reconcilePendingMessages(store, sessionId, payload.queuedMessages)
-          const pendingMessages =
-            store.state$.pendingMessagesBySessionId[sessionId].get() ?? []
-          store.state$.pendingMessagesBySessionId[sessionId].set(
-            pendingMessages.map((message) =>
-              message.id === pendingMessage.id
-                ? { ...message, pendingStatus: "queued" as const }
-                : message,
-            ),
-          )
-          syncActiveSession(store, sessionId)
-        }
-      } catch (error) {
-        const pendingMessages =
-          store.state$.pendingMessagesBySessionId[sessionId].get() ?? []
-        store.state$.pendingMessagesBySessionId[sessionId].set(
-          pendingMessages.filter((message) => message.id !== pendingMessage.id),
-        )
-        syncActiveSession(store, sessionId)
-        store.state$.composerText.set(text)
-        throw error
-      } finally {
-        store.state$.sending.set(false)
-      }
+      return sendMessageForSession(store, sessionId, images, {
+        requireActive: true,
+      })
     },
 
     async createSession(title?: string): Promise<void> {
@@ -715,68 +851,22 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       sessionId: string,
       archived: boolean,
     ): Promise<void> {
-      await actions.updateSession(sessionId, { archived })
+      await updateSessionById(store, sessionId, { archived })
     },
 
     async updateSession(
       sessionId: string,
-      update: {
-        title?: string
-        archived?: boolean
-        cwd?: string
-        providerKind?: ProviderKind
-        modelRef?: string
-        authProfile?: string | null
-        imageModelRef?: string | null
-      },
+      update: AgentChatV2SessionUpdate,
     ): Promise<void> {
-      const payload = await readJson<SessionSnapshotResponse>(
-        apiPath(store, `/sessions/${encodeURIComponent(sessionId)}`),
-        {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(update),
-        },
-      )
-      setSessionSnapshot(store, payload)
+      await updateSessionById(store, sessionId, update)
     },
 
-    async interruptSession(): Promise<void> {
+    interruptSession(): Promise<void> {
       const sessionId = store.state$.activeSessionId.get()
       if (!sessionId) {
-        return
+        return Promise.resolve()
       }
-      if (store.state$.interrupting.get()) {
-        return
-      }
-      store.state$.interrupting.set(true)
-      store.state$.connection.error.set("")
-      try {
-        const payload = await readJson<{
-          ok: true
-          activity: SessionActivity
-        }>(
-          apiPath(
-            store,
-            `/sessions/${encodeURIComponent(sessionId)}/interrupt`,
-          ),
-          {
-            method: "POST",
-          },
-        )
-        updateActiveSessionActivity(
-          store,
-          sessionId,
-          payload.activity,
-          store.state$.queuedMessagesBySessionId[sessionId].get() ?? [],
-        )
-      } catch (error) {
-        store.state$.connection.error.set(
-          error instanceof Error ? error.message : "Interrupt failed.",
-        )
-      } finally {
-        store.state$.interrupting.set(false)
-      }
+      return interruptSessionById(store, sessionId, { requireActive: true })
     },
 
     close(): void {

@@ -29,6 +29,7 @@ import {
   type AgentChatV2ComposerImage,
   type AgentChatV2Actions,
   type AgentChatV2Session,
+  type AgentChatV2SessionUpdate,
   type ProviderKind,
   createAgentChatV2Actions,
   createAgentChatV2Store,
@@ -397,6 +398,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const interrupting = useValue(store.state$.interrupting)
   const activeSession = useValue(store.state$.activeSession)
   const activeSessionSummary = activeSession?.session ?? null
+  const activeSessionActions = activeSession?.actions ?? null
   const canInterruptActiveSession =
     activeSessionSummary?.activity.status === "running" && !interrupting
   const activeSettingsProvider = useMemo(
@@ -415,12 +417,12 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
         return
       }
       event.preventDefault()
-      void actions.interruptSession()
+      void activeSessionActions?.interrupt()
     }
 
     window.addEventListener("keydown", handleWindowKeyDown)
     return () => window.removeEventListener("keydown", handleWindowKeyDown)
-  }, [actions, canInterruptActiveSession])
+  }, [activeSessionActions, canInterruptActiveSession])
 
   const filteredSessions = useMemo(() => {
     const query = sessionSearchQuery.trim().toLowerCase()
@@ -738,7 +740,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     if (!activeSessionSummary || !settingsDirectory.trim()) {
       return
     }
-    const update: Parameters<typeof actions.updateSession>[1] = {}
+    const update: AgentChatV2SessionUpdate = {}
     if (settingsDirectory.trim() !== activeSessionSummary.cwd) {
       update.cwd = settingsDirectory.trim()
     }
@@ -761,13 +763,13 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
     setSavingSettings(true)
     try {
-      await actions.updateSession(activeSessionSummary.id, update)
+      await activeSessionActions?.update(update)
       setSettingsOpen(false)
     } finally {
       setSavingSettings(false)
     }
   }, [
-    actions,
+    activeSessionActions,
     activeSessionSummary,
     settingsAuthProfile,
     settingsDirectory,
@@ -786,7 +788,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       loadingOlderMessagesRef.current = true
       setLoadingOlderMessages(true)
       try {
-        await actions.loadOlderMessages()
+        await activeSessionActions?.loadOlderMessages()
       } finally {
         loadingOlderMessagesRef.current = false
         setLoadingOlderMessages(false)
@@ -805,7 +807,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     setTranscriptPinnedToBottom(false)
 
     try {
-      await actions.loadOlderMessages()
+      await activeSessionActions?.loadOlderMessages()
     } catch (error) {
       olderMessagesScrollRestoreRef.current = null
       throw error
@@ -813,7 +815,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       loadingOlderMessagesRef.current = false
       setLoadingOlderMessages(false)
     }
-  }, [actions, activeSessionSummary?.id, hasOlderMessages])
+  }, [activeSessionActions, activeSessionSummary?.id, hasOlderMessages])
 
   const handleTranscriptScroll = useCallback(() => {
     const scrollElement = transcriptScrollRef.current
@@ -968,7 +970,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
-        {activeSessionSummary ? (
+        {activeSessionSummary && activeSessionActions ? (
           <>
             <header className="border-b border-zinc-800 bg-zinc-950 px-5 py-3">
               <div className="flex items-start justify-between gap-4">
@@ -990,7 +992,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                     <button
                       type="button"
                       disabled={interrupting}
-                      onClick={() => void actions.interruptSession()}
+                      onClick={() => void activeSessionActions.interrupt()}
                       className="mt-2 rounded border border-red-400/40 px-3 py-1 text-xs font-semibold text-red-100 hover:bg-red-950 disabled:cursor-wait disabled:opacity-60"
                     >
                       {interrupting ? "Stopping" : "Stop"}
@@ -1220,7 +1222,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
               enterStyle={enterStyle}
               queuedMessages={queuedMessages}
               store={store}
-              actions={actions}
+              actions={activeSessionActions}
               onComposerImagesChange={setComposerImages}
               onComposerImageErrorChange={setComposerImageError}
             />
