@@ -6,6 +6,8 @@ import { batch, ObservableHint, observable, observe } from "@legendapp/state"
 import type { AgentTicket } from "./ticket-types"
 
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
+const actionSequenceModeStorageKey = "agent-chat-v2:action-sequence-mode"
+const draftStorageKeyPrefix = "agent-chat-v2:draft:"
 
 export type AgentChatV2ActionSequenceMode = "condensed" | "checkpoint"
 
@@ -271,6 +273,49 @@ function emptyActiveSessionView(): AgentChatV2ActiveSession {
   }
 }
 
+function isAgentChatV2ActionSequenceMode(
+  value: string | null,
+): value is AgentChatV2ActionSequenceMode {
+  return value === "condensed" || value === "checkpoint"
+}
+
+function readActionSequenceMode(): AgentChatV2ActionSequenceMode {
+  if (typeof window === "undefined") {
+    return "condensed"
+  }
+  const value = window.localStorage.getItem(actionSequenceModeStorageKey)
+  return isAgentChatV2ActionSequenceMode(value) ? value : "condensed"
+}
+
+function writeActionSequenceMode(mode: AgentChatV2ActionSequenceMode): void {
+  if (typeof window === "undefined") {
+    return
+  }
+  window.localStorage.setItem(actionSequenceModeStorageKey, mode)
+}
+
+function draftStorageKey(sessionId: string): string {
+  return `${draftStorageKeyPrefix}${sessionId}`
+}
+
+function readDraft(sessionId: string): string {
+  if (typeof window === "undefined" || !sessionId) {
+    return ""
+  }
+  return window.localStorage.getItem(draftStorageKey(sessionId)) ?? ""
+}
+
+function writeDraft(sessionId: string, draft: string): void {
+  if (typeof window === "undefined" || !sessionId) {
+    return
+  }
+  if (draft) {
+    window.localStorage.setItem(draftStorageKey(sessionId), draft)
+    return
+  }
+  window.localStorage.removeItem(draftStorageKey(sessionId))
+}
+
 function writeActiveSessionView(
   store: AgentChatV2Store,
   view: AgentChatV2ActiveSession,
@@ -332,7 +377,7 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
     composerHasText: false,
     sending: false,
     interrupting: false,
-    actionSequenceMode: "condensed",
+    actionSequenceMode: readActionSequenceMode(),
     connectionSummary: () => ({
       error: state$.connection.error.get(),
       status: state$.connection.status.get(),
@@ -823,6 +868,7 @@ async function sendMessageForSession(
   ])
   syncActiveSession(store, sessionId)
   store.state$.composerText.set("")
+  writeDraft(sessionId, "")
   store.state$.sending.set(true)
   try {
     const payload = await readJson<{
@@ -866,6 +912,7 @@ async function sendMessageForSession(
     )
     syncActiveSession(store, sessionId)
     store.state$.composerText.set(text)
+    writeDraft(sessionId, text)
     throw error
   } finally {
     store.state$.sending.set(false)
@@ -938,12 +985,14 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
   }
 
   function prepareActiveSessionSwitch(sessionId: string) {
-    store.state$.activeSessionId.set(sessionId)
-    syncActiveSession(store, sessionId)
-    store.state$.streamingAssistantText.set("")
-    store.state$.composerText.set("")
-    store.state$.sending.set(false)
-    store.state$.interrupting.set(false)
+    batch(() => {
+      store.state$.activeSessionId.set(sessionId)
+      syncActiveSession(store, sessionId)
+      store.state$.streamingAssistantText.set("")
+      store.state$.composerText.set(readDraft(sessionId))
+      store.state$.sending.set(false)
+      store.state$.interrupting.set(false)
+    })
   }
 
   function connectSocket(sessionId: string) {
@@ -1109,6 +1158,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       )
       store.state$.activeSessionId.set(payload.session.id)
       setSessionWindow(store, payload, "replace")
+      store.state$.composerText.set(readDraft(payload.session.id))
       connectSocket(payload.session.id)
       void markSessionReadById(store, payload.session.id)
       return payload.session.id
@@ -1130,6 +1180,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
 
     setActionSequenceMode(mode: AgentChatV2ActionSequenceMode): void {
       store.state$.actionSequenceMode.set(mode)
+      writeActionSequenceMode(mode)
       const sessionId = store.state$.activeSessionId.get()
       if (sessionId) {
         syncActiveSession(store, sessionId)

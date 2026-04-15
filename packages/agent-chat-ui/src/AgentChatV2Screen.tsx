@@ -135,17 +135,6 @@ function readRequestedMessageHashFromLocation() {
   return hash.startsWith(chatMessageHashPrefix) ? hash.slice(1) : ""
 }
 
-function chatV2DraftStorageKey(sessionId: string) {
-  return `agent-chat-v2:draft:${sessionId}`
-}
-
-function readChatV2Draft(sessionId: string) {
-  if (typeof window === "undefined" || !sessionId) {
-    return ""
-  }
-  return window.localStorage.getItem(chatV2DraftStorageKey(sessionId)) ?? ""
-}
-
 function readSessionRailWidth() {
   if (typeof window === "undefined") {
     return 340
@@ -813,15 +802,6 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     autoScrollKey,
     scheduleTranscriptScrollToBottom,
   ])
-
-  useEffect(() => {
-    const activeSessionId = activeSessionSummary?.id ?? ""
-    if (!activeSessionId) {
-      store.state$.composerText.set("")
-      return
-    }
-    store.state$.composerText.set(readChatV2Draft(activeSessionId))
-  }, [activeSessionSummary?.id, store])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: older-message scroll restoration must rerun after prepended transcript content changes.
   useLayoutEffect(() => {
