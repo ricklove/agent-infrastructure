@@ -273,6 +273,11 @@ const sessionSockets = new Map<
   Set<Bun.ServerWebSocket<ChatSocketData>>
 >()
 const v2SessionSummarySockets = new Set<Bun.ServerWebSocket<ChatSocketData>>()
+const v2SessionSummaryBroadcastTimers = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>()
+const v2SessionSummaryBroadcastDelayMs = 400
 const activeSessionRuns = new Set<string>()
 const sessionRuntime = new Map<string, SessionRuntimeState>()
 const sessionWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -2336,7 +2341,19 @@ function broadcastSession(sessionId: string, event: unknown) {
   for (const socket of getSessionSockets(sessionId)) {
     socket.send(JSON.stringify(eventForSocket(event, socket)))
   }
-  broadcastV2SessionSummary(sessionId)
+  scheduleV2SessionSummaryBroadcast(sessionId)
+}
+
+function scheduleV2SessionSummaryBroadcast(sessionId: string) {
+  const existing = v2SessionSummaryBroadcastTimers.get(sessionId)
+  if (existing) {
+    clearTimeout(existing)
+  }
+  const timeout = setTimeout(() => {
+    v2SessionSummaryBroadcastTimers.delete(sessionId)
+    broadcastV2SessionSummary(sessionId)
+  }, v2SessionSummaryBroadcastDelayMs)
+  v2SessionSummaryBroadcastTimers.set(sessionId, timeout)
 }
 
 function broadcastV2SessionSummary(sessionId: string) {
