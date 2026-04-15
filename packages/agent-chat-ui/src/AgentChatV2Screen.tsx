@@ -48,6 +48,7 @@ const transcriptTopLoadThresholdPx = 240
 const chatV2SessionRailWidthStorageKey = "agent-chat-v2-session-rail-width"
 const minSessionRailWidth = 260
 const maxSessionRailWidth = 520
+const chatV2ViewportHeightProperty = "--agent-chat-v2-viewport-height"
 
 type ProviderCatalogEntry = {
   kind: ProviderKind
@@ -67,6 +68,16 @@ type ProvidersResponse = {
   ok: boolean
   providers: ProviderCatalogEntry[]
   error?: string
+}
+
+function measureChatV2ViewportHeight() {
+  if (typeof window === "undefined") {
+    return null
+  }
+  return Math.max(
+    320,
+    Math.floor(window.visualViewport?.height ?? window.innerHeight),
+  )
 }
 
 const providerRequestCacheTtlMs = 2_000
@@ -530,6 +541,33 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const wsRootUrl = props.wsRootUrl ?? "/ws/agent-chat"
   const [store] = useState(() => createAgentChatV2Store(apiRootUrl, wsRootUrl))
   const [actions] = useState(() => createAgentChatV2Actions(store))
+
+  useEffect(() => {
+    function syncViewportHeight() {
+      const height = measureChatV2ViewportHeight()
+      if (height === null) {
+        return
+      }
+      document.documentElement.style.setProperty(
+        chatV2ViewportHeightProperty,
+        `${height}px`,
+      )
+    }
+
+    syncViewportHeight()
+    window.addEventListener("resize", syncViewportHeight)
+    window.visualViewport?.addEventListener("resize", syncViewportHeight)
+    window.visualViewport?.addEventListener("scroll", syncViewportHeight)
+    return () => {
+      window.removeEventListener("resize", syncViewportHeight)
+      window.visualViewport?.removeEventListener("resize", syncViewportHeight)
+      window.visualViewport?.removeEventListener("scroll", syncViewportHeight)
+      document.documentElement.style.removeProperty(
+        chatV2ViewportHeightProperty,
+      )
+    }
+  }, [])
+
   const [enterStyle, setEnterStyle] = useState(
     () => readDashboardPreferences().enterStyle,
   )
@@ -1151,7 +1189,10 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   ])
 
   return (
-    <main className="relative flex h-screen min-h-0 overflow-hidden bg-zinc-950 text-zinc-100">
+    <main
+      className="relative flex min-h-0 overflow-hidden bg-zinc-950 text-zinc-100"
+      style={{ height: `var(${chatV2ViewportHeightProperty}, 100dvh)` }}
+    >
       {mobileSessionsOpen ? (
         <button
           type="button"

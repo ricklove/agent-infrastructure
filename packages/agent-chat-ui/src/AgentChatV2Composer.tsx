@@ -247,7 +247,7 @@ export const AgentChatV2Composer = observer(function AgentChatV2Composer(
   return (
     <form
       onSubmit={(event) => void submitMessage(event)}
-      className="border-t border-zinc-800 bg-zinc-950 p-4"
+      className="shrink-0 border-t border-zinc-800 bg-zinc-950 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4"
     >
       {props.composerImages.length > 0 ? (
         <div className="mb-3 rounded border border-cyan-500/30 bg-cyan-950/20 px-3 py-3">
