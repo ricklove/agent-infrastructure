@@ -159,6 +159,43 @@ function readSessionRailWidth() {
   return Math.max(minSessionRailWidth, Math.min(maxSessionRailWidth, value))
 }
 
+function playWorkerIdleDing() {
+  const AudioContextCtor =
+    window.AudioContext ??
+    (
+      window as typeof window & {
+        webkitAudioContext?: typeof AudioContext
+      }
+    ).webkitAudioContext
+  if (!AudioContextCtor) {
+    return
+  }
+
+  try {
+    const audioContext = new AudioContextCtor()
+    const oscillator = audioContext.createOscillator()
+    const gain = audioContext.createGain()
+    oscillator.type = "sine"
+    oscillator.frequency.value = 880
+    gain.gain.setValueAtTime(0.0001, audioContext.currentTime)
+    gain.gain.exponentialRampToValueAtTime(
+      0.08,
+      audioContext.currentTime + 0.02,
+    )
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      audioContext.currentTime + 0.22,
+    )
+    oscillator.connect(gain)
+    gain.connect(audioContext.destination)
+    oscillator.start()
+    oscillator.stop(audioContext.currentTime + 0.24)
+    window.setTimeout(() => void audioContext.close(), 300)
+  } catch {
+    // Browser autoplay policy can block audio until the page has user activation.
+  }
+}
+
 function activityLabel(session: AgentChatV2Session): string {
   if (session.activity.status === "running") {
     return "Working"
@@ -361,6 +398,20 @@ function AgentChatV2SessionRow(props: AgentChatV2SessionRowProps) {
           <span className="min-w-0 truncate text-sm font-semibold text-zinc-100">
             {session.title}
           </span>
+          {session.v2ReadState?.hasUnread ? (
+            <span
+              className="shrink-0 rounded-full border border-cyan-300/40 bg-cyan-400/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-cyan-100"
+              title={
+                session.v2ReadState.unreadCount > 0
+                  ? `${session.v2ReadState.unreadCount} unread`
+                  : "Worker idle"
+              }
+            >
+              {session.v2ReadState.unreadCount > 0
+                ? session.v2ReadState.unreadCount
+                : "idle"}
+            </span>
+          ) : null}
         </div>
         {props.editing ? null : (
           <>
@@ -502,6 +553,8 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     startX: number
     startWidth: number
   } | null>(null)
+  const previousSessionStatusByIdRef = useRef<Map<string, string>>(new Map())
+  const dingedIdleAtBySessionIdRef = useRef<Map<string, number>>(new Map())
   const olderMessagesScrollRestoreRef =
     useRef<OlderMessagesScrollRestore | null>(null)
   const loadingOlderMessagesRef = useRef(false)
@@ -669,6 +722,40 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const firstMessageId = useValue(() =>
     store.state$.activeSession.firstMessageId.get(),
   )
+
+  useEffect(() => {
+    const previousStatuses = previousSessionStatusByIdRef.current
+    const dingedIdleAt = dingedIdleAtBySessionIdRef.current
+    for (const session of sessions) {
+      const previousStatus = previousStatuses.get(session.id)
+      const idleCompletedAtMs = session.v2ReadState?.idleCompletedAtMs ?? null
+      if (
+        previousStatus &&
+        previousStatus !== "idle" &&
+        session.activity.status === "idle" &&
+        idleCompletedAtMs !== null &&
+        dingedIdleAt.get(session.id) !== idleCompletedAtMs
+      ) {
+        dingedIdleAt.set(session.id, idleCompletedAtMs)
+        playWorkerIdleDing()
+      }
+      previousStatuses.set(session.id, session.activity.status)
+    }
+  }, [sessions])
+
+  useEffect(() => {
+    if (!activeSessionSummary?.id || document.visibilityState !== "visible") {
+      return
+    }
+    if (!activeSessionSummary.v2ReadState?.hasUnread) {
+      return
+    }
+    void activeSessionActions?.markRead()
+  }, [
+    activeSessionActions,
+    activeSessionSummary?.id,
+    activeSessionSummary?.v2ReadState?.hasUnread,
+  ])
 
   const updateTranscriptPinnedToBottom = useCallback(() => {
     const scrollElement = transcriptScrollRef.current

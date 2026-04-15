@@ -50,6 +50,13 @@ type SessionProviderUsage = {
   updatedAtMs: number
 }
 
+type SessionV2ReadState = {
+  lastReadAtMs: number
+  hasUnread: boolean
+  unreadCount: number
+  idleCompletedAtMs: number | null
+}
+
 export type AgentChatV2Session = {
   id: string
   title: string
@@ -70,6 +77,7 @@ export type AgentChatV2Session = {
   queuedMessageCount: number
   providerUsage: SessionProviderUsage | null
   activeTicket: AgentTicket | null
+  v2ReadState?: SessionV2ReadState
 }
 
 export type AgentChatV2Message = {
@@ -126,6 +134,7 @@ export type AgentChatV2ActiveSessionActions = {
   update(update: AgentChatV2SessionUpdate): Promise<void>
   archive(): Promise<void>
   restore(): Promise<void>
+  markRead(): Promise<void>
 }
 
 export type AgentChatV2ActiveSession = {
@@ -567,6 +576,7 @@ function readActiveSessionActions(
         { archived: false },
         { requireActive: true },
       ),
+    markRead: () => markSessionReadById(store, sessionId),
   }
   actionsBySessionId.set(sessionId, actions)
   return actions
@@ -698,6 +708,25 @@ function updateActiveSessionActivity(
   )
   store.state$.queuedMessagesBySessionId[sessionId].set(queuedMessages)
   reconcilePendingMessages(store, sessionId, queuedMessages)
+  syncActiveSession(store, sessionId)
+}
+
+async function markSessionReadById(
+  store: AgentChatV2Store,
+  sessionId: string,
+): Promise<void> {
+  const payload = await readJson<{
+    ok: true
+    session: AgentChatV2Session | null
+  }>(apiPath(store, `/v2/sessions/${encodeURIComponent(sessionId)}/read`), {
+    method: "POST",
+  })
+  if (!payload.session) {
+    return
+  }
+  store.state$.sessions.set(
+    upsertSession(store.state$.sessions.get(), payload.session),
+  )
   syncActiveSession(store, sessionId)
 }
 
@@ -1005,6 +1034,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     store.state$.activeSessionId.set(sessionId)
     setSessionWindow(store, payload, "replace")
     connectSocket(sessionId)
+    void markSessionReadById(store, sessionId)
   }
 
   const actions = {
@@ -1076,6 +1106,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       store.state$.activeSessionId.set(payload.session.id)
       setSessionWindow(store, payload, "replace")
       connectSocket(payload.session.id)
+      void markSessionReadById(store, payload.session.id)
       return payload.session.id
     },
 
@@ -1099,6 +1130,10 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       if (sessionId) {
         syncActiveSession(store, sessionId)
       }
+    },
+
+    markSessionRead(sessionId: string): Promise<void> {
+      return markSessionReadById(store, sessionId)
     },
 
     interruptSession(): Promise<void> {
