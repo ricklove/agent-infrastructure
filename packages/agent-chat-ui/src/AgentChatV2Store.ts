@@ -258,6 +258,15 @@ const activeSessionActionsByStore = new WeakMap<
   AgentChatV2Store,
   Map<string, AgentChatV2ActiveSessionActions>
 >()
+const bootstrapRequestCacheTtlMs = 2_000
+const sessionListRequestCache = new Map<
+  string,
+  { createdAtMs: number; promise: Promise<SessionsResponse> }
+>()
+const sessionWindowRequestCache = new Map<
+  string,
+  { createdAtMs: number; promise: Promise<SessionWindowResponse> }
+>()
 
 function emptyActiveSessionView(): AgentChatV2ActiveSession {
   return {
@@ -426,6 +435,23 @@ async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(payload.error ?? `Request failed with ${response.status}`)
   }
   return payload
+}
+
+function readCachedBootstrapJson<T>(
+  cache: Map<string, { createdAtMs: number; promise: Promise<T> }>,
+  path: string,
+): Promise<T> {
+  const now = Date.now()
+  const cached = cache.get(path)
+  if (cached && now - cached.createdAtMs < bootstrapRequestCacheTtlMs) {
+    return cached.promise
+  }
+  const promise = readJson<T>(path).catch((error) => {
+    cache.delete(path)
+    throw error
+  })
+  cache.set(path, { createdAtMs: now, promise })
+  return promise
 }
 
 function upsertSession(
@@ -1139,7 +1165,8 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     connectSocket(sessionId)
     prepareActiveSessionSwitch(sessionId)
     try {
-      const payload = await readJson<SessionWindowResponse>(
+      const payload = await readCachedBootstrapJson(
+        sessionWindowRequestCache,
         apiPath(store, `/v2/sessions/${encodeURIComponent(sessionId)}/window`),
       )
       if (requestId !== openSessionRequestId) {
@@ -1169,9 +1196,10 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         if (cursor) {
           params.set("cursor", cursor)
         }
-        const payload = await readJson<SessionsResponse>(
-          apiPath(store, `/v2/sessions?${params.toString()}`),
-        )
+        const requestPath = apiPath(store, `/v2/sessions?${params.toString()}`)
+        const payload = append
+          ? await readJson<SessionsResponse>(requestPath)
+          : await readCachedBootstrapJson(sessionListRequestCache, requestPath)
         store.state$.sessions.set(
           append
             ? mergeSessionPages(store.state$.sessions.get(), payload.sessions)

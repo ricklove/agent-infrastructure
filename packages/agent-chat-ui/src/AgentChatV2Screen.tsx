@@ -69,6 +69,35 @@ type ProvidersResponse = {
   error?: string
 }
 
+const providerRequestCacheTtlMs = 2_000
+const providerRequestCache = new Map<
+  string,
+  { createdAtMs: number; promise: Promise<ProviderCatalogEntry[]> }
+>()
+
+async function readProviderCatalog(apiRootUrl: string) {
+  const now = Date.now()
+  const cached = providerRequestCache.get(apiRootUrl)
+  if (cached && now - cached.createdAtMs < providerRequestCacheTtlMs) {
+    return cached.promise
+  }
+  const promise = dashboardSessionFetch(`${apiRootUrl}/providers`)
+    .then(async (rawResponse) => {
+      const response = rawResponse as Response
+      const payload = (await response.json()) as ProvidersResponse
+      if (!response.ok || !payload.ok || !Array.isArray(payload.providers)) {
+        throw new Error(payload.error ?? "Agent Chat providers failed to load.")
+      }
+      return payload.providers
+    })
+    .catch((error) => {
+      providerRequestCache.delete(apiRootUrl)
+      throw error
+    })
+  providerRequestCache.set(apiRootUrl, { createdAtMs: now, promise })
+  return promise
+}
+
 type OlderMessagesScrollRestore = {
   sessionId: string
   scrollHeight: number
@@ -548,6 +577,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     useRef<OlderMessagesScrollRestore | null>(null)
   const loadingOlderMessagesRef = useRef(false)
   const previousActiveSessionIdRef = useRef<string | null>(null)
+  const previousTranscriptScrollTopRef = useRef<number | null>(null)
 
   useEffect(() => {
     void actions.loadSessions().then(async () => {
@@ -602,17 +632,10 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   useEffect(() => {
     let cancelled = false
 
-    void dashboardSessionFetch(`${apiRootUrl}/providers`)
-      .then(async (rawResponse) => {
-        const response = rawResponse as Response
-        const payload = (await response.json()) as ProvidersResponse
-        if (!response.ok || !payload.ok || !Array.isArray(payload.providers)) {
-          throw new Error(
-            payload.error ?? "Agent Chat providers failed to load.",
-          )
-        }
+    void readProviderCatalog(apiRootUrl)
+      .then((providers) => {
         if (!cancelled) {
-          setProviders(payload.providers)
+          setProviders(providers)
         }
       })
       .catch((error: unknown) => {
@@ -795,6 +818,9 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     const sessionChanged =
       previousActiveSessionIdRef.current !== activeSessionId
     previousActiveSessionIdRef.current = activeSessionId
+    if (sessionChanged) {
+      previousTranscriptScrollTopRef.current = null
+    }
     if (!activeSessionId) {
       return
     }
@@ -821,6 +847,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
     const scrollHeightDelta =
       scrollElement.scrollHeight - pendingRestore.scrollHeight
     scrollElement.scrollTop = pendingRestore.scrollTop + scrollHeightDelta
+    previousTranscriptScrollTopRef.current = scrollElement.scrollTop
     transcriptPinnedToBottomRef.current = false
     setTranscriptPinnedToBottom(false)
   }, [activeSessionSummary?.id, firstMessageId, transcriptMessages.length])
@@ -1102,8 +1129,17 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const handleTranscriptScroll = useCallback(() => {
     const scrollElement = transcriptScrollRef.current
     updateTranscriptPinnedToBottom()
+    const previousScrollTop = previousTranscriptScrollTopRef.current
+    if (scrollElement) {
+      previousTranscriptScrollTopRef.current = scrollElement.scrollTop
+    }
+    const userScrolledUp =
+      scrollElement &&
+      previousScrollTop !== null &&
+      scrollElement.scrollTop < previousScrollTop
     if (
       scrollElement &&
+      userScrolledUp &&
       hasOlderMessages &&
       scrollElement.scrollTop <= transcriptTopLoadThresholdPx
     ) {

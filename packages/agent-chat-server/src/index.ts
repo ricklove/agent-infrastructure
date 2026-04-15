@@ -426,13 +426,40 @@ function toSessionActivity(sessionId: string): SessionActivity {
 
 function buildSessionSummary(
   session: StoredSession,
-  options?: { includeV2ReadState?: boolean },
+  options?: { compactV2?: boolean; includeV2ReadState?: boolean },
 ): SessionSummaryResponseItem {
   const runtime = ensureRuntimeState(session.id)
   const modelRef =
     session.providerKind === "claude-agent-sdk"
       ? normalizeClaudeSessionModelRef(session.modelRef)
       : session.modelRef
+  if (options?.compactV2) {
+    const summary = {
+      id: session.id,
+      title: session.title,
+      archived: session.archived,
+      processBlueprintId: session.processBlueprintId,
+      watchdogState: session.watchdogState,
+      providerKind: session.providerKind,
+      modelRef,
+      cwd: session.cwd,
+      pendingSystemInstruction: session.pendingSystemInstruction,
+      authProfile: session.authProfile,
+      imageModelRef: session.imageModelRef,
+      createdAtMs: session.createdAtMs,
+      updatedAtMs: session.updatedAtMs,
+      preview: session.preview,
+      messageCount: session.messageCount,
+      activity: toSessionActivity(session.id),
+      queuedMessageCount: store.listQueuedMessages(session.id).length,
+      providerUsage: runtime.providerUsage,
+      activeTicket: ticketStore.getActiveTicketForSession(session.id),
+    } as SessionSummaryResponseItem
+    if (options.includeV2ReadState) {
+      summary.v2ReadState = buildSessionV2ReadState(session.id)
+    }
+    return summary
+  }
   const summary: SessionSummaryResponseItem = {
     ...session,
     modelRef,
@@ -445,6 +472,24 @@ function buildSessionSummary(
     summary.v2ReadState = buildSessionV2ReadState(session.id)
   }
   return summary
+}
+
+function compactMessageForV2(message: StoredMessage): StoredMessage {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    role: message.role,
+    kind: message.kind,
+    replyToMessageId: message.replyToMessageId,
+    ticketId: message.ticketId,
+    providerSeenAtMs: message.providerSeenAtMs,
+    content: message.content,
+    createdAtMs: message.createdAtMs,
+  } as StoredMessage
+}
+
+function compactMessagesForV2(messages: StoredMessage[]): StoredMessage[] {
+  return messages.map(compactMessageForV2)
 }
 
 function buildSessionSnapshot(
@@ -498,9 +543,12 @@ function buildSessionWindow(
   const activity = toSessionActivity(sessionId)
   return {
     ok: true,
-    session: buildSessionSummary(session, { includeV2ReadState: true }),
-    messages: page.messages,
-    queuedMessages: store.listQueuedMessages(sessionId),
+    session: buildSessionSummary(session, {
+      compactV2: true,
+      includeV2ReadState: true,
+    }),
+    messages: compactMessagesForV2(page.messages),
+    queuedMessages: compactMessagesForV2(store.listQueuedMessages(sessionId)),
     activity,
     providerUsage: ensureRuntimeState(sessionId).providerUsage,
     hasOlderMessages: page.hasOlderMessages,
@@ -2353,7 +2401,10 @@ function buildSessionSummaryOrNull(sessionId: string) {
 function buildV2SessionSummaryOrNull(sessionId: string) {
   const session = store.getSession(sessionId)
   return session
-    ? buildSessionSummary(session, { includeV2ReadState: true })
+    ? buildSessionSummary(session, {
+        compactV2: true,
+        includeV2ReadState: true,
+      })
     : null
 }
 
@@ -2373,10 +2424,24 @@ function eventForSocket(
   if (!session?.id || typeof session.id !== "string") {
     return event
   }
-  return {
+  const nextEvent = {
     ...event,
     session: buildV2SessionSummaryOrNull(session.id),
+  } as {
+    messages?: unknown
+    queuedMessages?: unknown
   }
+  if (Array.isArray(nextEvent.messages)) {
+    nextEvent.messages = compactMessagesForV2(
+      nextEvent.messages as StoredMessage[],
+    )
+  }
+  if (Array.isArray(nextEvent.queuedMessages)) {
+    nextEvent.queuedMessages = compactMessagesForV2(
+      nextEvent.queuedMessages as StoredMessage[],
+    )
+  }
+  return nextEvent
 }
 
 function decodeMatchGroup(match: RegExpExecArray, index: number) {
@@ -3004,7 +3069,7 @@ const server = Bun.serve<ChatSocketData>({
     }
 
     if (url.pathname === "/api/agent-chat/providers") {
-      await refreshClaudeModelCatalog()
+      void refreshClaudeModelCatalog()
       return jsonResponse({
         ok: true,
         providers: listProviderCatalog(),
@@ -3330,9 +3395,7 @@ const server = Bun.serve<ChatSocketData>({
     ) {
       const limit = normalizeV2Limit(url.searchParams.get("limit"), 40)
       const cursor = url.searchParams.get("cursor")?.trim() || ""
-      const sessions = store
-        .listSessions()
-        .map((session) => buildSessionSummary(session))
+      const sessions = store.listSessions()
       const startIndex = cursor
         ? Math.max(
             0,
@@ -3343,7 +3406,10 @@ const server = Bun.serve<ChatSocketData>({
       return jsonResponse({
         ok: true,
         sessions: boundedSessions.map((session) =>
-          buildSessionSummary(session, { includeV2ReadState: true }),
+          buildSessionSummary(session, {
+            compactV2: true,
+            includeV2ReadState: true,
+          }),
         ),
         nextCursor:
           startIndex + limit < sessions.length
