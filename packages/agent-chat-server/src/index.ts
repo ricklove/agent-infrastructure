@@ -67,6 +67,7 @@ const logPath =
 const legacyDbPath =
   process.env.AGENT_CHAT_DB_PATH?.trim() ||
   `${stateDir}/agent-chat/agent-chat.sqlite`
+const v2DashboardReadStatePath = `${appDataDir}/dashboard-read-state-v2.json`
 const port = Number.parseInt(process.env.AGENT_CHAT_PORT ?? "8789", 10)
 const defaultSessionDirectory =
   process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace"
@@ -125,6 +126,17 @@ type SessionActivity = {
   canInterrupt: boolean
 }
 
+type SessionV2ReadState = {
+  lastReadAtMs: number
+  hasUnread: boolean
+  unreadCount: number
+  idleCompletedAtMs: number | null
+}
+
+type V2DashboardReadStateFile = {
+  sessions: Record<string, { lastReadAtMs: number }>
+}
+
 type SessionProviderUsage = {
   providerKind: AgentChatProviderKind
   modelContextWindow: number | null
@@ -146,6 +158,7 @@ type SessionSummaryResponseItem = StoredSession & {
   queuedMessageCount: number
   providerUsage: SessionProviderUsage | null
   activeTicket: StoredAgentTicket | null
+  v2ReadState?: SessionV2ReadState
 }
 
 type ProcessBlueprintResponseItem = ProcessBlueprint
@@ -262,6 +275,7 @@ const sessionSockets = new Map<
 const activeSessionRuns = new Set<string>()
 const sessionRuntime = new Map<string, SessionRuntimeState>()
 const sessionWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let v2DashboardReadStateCache: V2DashboardReadStateFile | null = null
 const retryBackoffMs = [2_000, 5_000, 15_000] as const
 const typingGraceMs = 5_000
 
@@ -312,6 +326,78 @@ function ensureRuntimeState(sessionId: string): SessionRuntimeState {
   return runtime
 }
 
+function readV2DashboardReadState(): V2DashboardReadStateFile {
+  if (v2DashboardReadStateCache) {
+    return v2DashboardReadStateCache
+  }
+  if (!existsSync(v2DashboardReadStatePath)) {
+    v2DashboardReadStateCache = { sessions: {} }
+    return v2DashboardReadStateCache
+  }
+  let parsed: V2DashboardReadStateFile | null = null
+  try {
+    parsed = JSON.parse(
+      readFileSync(v2DashboardReadStatePath, "utf8"),
+    ) as V2DashboardReadStateFile
+  } catch {
+    parsed = null
+  }
+  if (!parsed?.sessions || typeof parsed.sessions !== "object") {
+    v2DashboardReadStateCache = { sessions: {} }
+    return v2DashboardReadStateCache
+  }
+  v2DashboardReadStateCache = {
+    sessions: Object.fromEntries(
+      Object.entries(parsed.sessions).map(([sessionId, entry]) => [
+        sessionId,
+        {
+          lastReadAtMs: Number.isFinite(Number(entry?.lastReadAtMs))
+            ? Number(entry.lastReadAtMs)
+            : 0,
+        },
+      ]),
+    ),
+  }
+  return v2DashboardReadStateCache
+}
+
+function writeV2DashboardReadState(state: V2DashboardReadStateFile) {
+  v2DashboardReadStateCache = state
+  mkdirSync(dirname(v2DashboardReadStatePath), { recursive: true })
+  writeFileSync(v2DashboardReadStatePath, `${JSON.stringify(state, null, 2)}\n`)
+}
+
+function markV2DashboardSessionRead(sessionId: string, atMs = Date.now()) {
+  const state = readV2DashboardReadState()
+  state.sessions[sessionId] = { lastReadAtMs: atMs }
+  writeV2DashboardReadState(state)
+  requestWorkspacePersistence(`agent-chat:v2-read-state:${sessionId}`)
+}
+
+function buildSessionV2ReadState(sessionId: string): SessionV2ReadState {
+  const readState = readV2DashboardReadState().sessions[sessionId]
+  const lastReadAtMs = readState?.lastReadAtMs ?? 0
+  const runtime = ensureRuntimeState(sessionId)
+  const unreadMessages = store.listMessages(sessionId).filter((message) => {
+    if (message.createdAtMs <= lastReadAtMs) {
+      return false
+    }
+    if (message.role === "user" || message.kind === "activity") {
+      return false
+    }
+    return true
+  })
+  const idleCompletedAtMs = runtime.providerIdleSinceAtMs
+  return {
+    lastReadAtMs,
+    hasUnread:
+      unreadMessages.length > 0 ||
+      (idleCompletedAtMs !== null && idleCompletedAtMs > lastReadAtMs),
+    unreadCount: unreadMessages.length,
+    idleCompletedAtMs,
+  }
+}
+
 function getSessionSockets(sessionId: string) {
   let sockets = sessionSockets.get(sessionId)
   if (!sockets) {
@@ -338,13 +424,14 @@ function toSessionActivity(sessionId: string): SessionActivity {
 
 function buildSessionSummary(
   session: StoredSession,
+  options?: { includeV2ReadState?: boolean },
 ): SessionSummaryResponseItem {
   const runtime = ensureRuntimeState(session.id)
   const modelRef =
     session.providerKind === "claude-agent-sdk"
       ? normalizeClaudeSessionModelRef(session.modelRef)
       : session.modelRef
-  return {
+  const summary: SessionSummaryResponseItem = {
     ...session,
     modelRef,
     activity: toSessionActivity(session.id),
@@ -352,6 +439,10 @@ function buildSessionSummary(
     providerUsage: runtime.providerUsage,
     activeTicket: ticketStore.getActiveTicketForSession(session.id),
   }
+  if (options?.includeV2ReadState) {
+    summary.v2ReadState = buildSessionV2ReadState(session.id)
+  }
+  return summary
 }
 
 function buildSessionSnapshot(
@@ -405,7 +496,7 @@ function buildSessionWindow(
   const activity = toSessionActivity(sessionId)
   return {
     ok: true,
-    session: buildSessionSummary(session),
+    session: buildSessionSummary(session, { includeV2ReadState: true }),
     messages: page.messages,
     queuedMessages: store.listQueuedMessages(sessionId),
     activity,
@@ -2193,7 +2284,7 @@ function broadcastSingleMessageUpdate(
 
 function broadcastSession(sessionId: string, event: unknown) {
   for (const socket of getSessionSockets(sessionId)) {
-    socket.send(JSON.stringify(event))
+    socket.send(JSON.stringify(eventForSocket(event, socket)))
   }
 }
 
@@ -2240,6 +2331,35 @@ function buildSessionTitleFromContent(content: StoredMessageContentBlock[]) {
 function buildSessionSummaryOrNull(sessionId: string) {
   const session = store.getSession(sessionId)
   return session ? buildSessionSummary(session) : null
+}
+
+function buildV2SessionSummaryOrNull(sessionId: string) {
+  const session = store.getSession(sessionId)
+  return session
+    ? buildSessionSummary(session, { includeV2ReadState: true })
+    : null
+}
+
+function eventForSocket(
+  event: unknown,
+  socket: Bun.ServerWebSocket<ChatSocketData>,
+) {
+  if (
+    socket.data.clientMode !== "v2" ||
+    !event ||
+    typeof event !== "object" ||
+    !("session" in event)
+  ) {
+    return event
+  }
+  const session = (event as { session?: { id?: unknown } | null }).session
+  if (!session?.id || typeof session.id !== "string") {
+    return event
+  }
+  return {
+    ...event,
+    session: buildV2SessionSummaryOrNull(session.id),
+  }
 }
 
 function decodeMatchGroup(match: RegExpExecArray, index: number) {
@@ -3163,7 +3283,9 @@ const server = Bun.serve<ChatSocketData>({
     ) {
       return jsonResponse({
         ok: true,
-        sessions: store.listSessions().map(buildSessionSummary),
+        sessions: store
+          .listSessions()
+          .map((session) => buildSessionSummary(session)),
       })
     }
 
@@ -3173,7 +3295,9 @@ const server = Bun.serve<ChatSocketData>({
     ) {
       const limit = normalizeV2Limit(url.searchParams.get("limit"), 40)
       const cursor = url.searchParams.get("cursor")?.trim() || ""
-      const sessions = store.listSessions().map(buildSessionSummary)
+      const sessions = store
+        .listSessions()
+        .map((session) => buildSessionSummary(session))
       const startIndex = cursor
         ? Math.max(
             0,
@@ -3183,12 +3307,28 @@ const server = Bun.serve<ChatSocketData>({
       const boundedSessions = sessions.slice(startIndex, startIndex + limit)
       return jsonResponse({
         ok: true,
-        sessions: boundedSessions,
+        sessions: boundedSessions.map((session) =>
+          buildSessionSummary(session, { includeV2ReadState: true }),
+        ),
         nextCursor:
           startIndex + limit < sessions.length
             ? (boundedSessions.at(-1)?.id ?? null)
             : null,
         totalKnownSessions: sessions.length,
+      })
+    }
+
+    const markV2SessionReadMatch =
+      /^\/api\/agent-chat\/v2\/sessions\/([^/]+)\/read$/.exec(url.pathname)
+    if (markV2SessionReadMatch && request.method === "POST") {
+      const sessionId = decodeMatchGroup(markV2SessionReadMatch, 1)
+      if (!store.getSession(sessionId)) {
+        return notFound()
+      }
+      markV2DashboardSessionRead(sessionId)
+      return jsonResponse({
+        ok: true,
+        session: buildV2SessionSummaryOrNull(sessionId),
       })
     }
 
