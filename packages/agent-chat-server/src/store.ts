@@ -166,6 +166,11 @@ type FileState = {
   size: number
 }
 
+type MessageIndexEntry = {
+  message: StoredMessage
+  lineIndex: number
+}
+
 const defaultWatchdogState = (
   processBlueprintId: string | null,
 ): SessionWatchdogState => ({
@@ -780,11 +785,9 @@ export class AgentChatStore {
     this.writeSessionMetadata(nextSession)
     appendFileSync(this.messagesPath(sessionId), `${JSON.stringify(message)}\n`)
     this.sessionCache.set(sessionId, nextSession)
-    this.appendSessionIndexMessage(
-      nextSession,
-      message,
-      nextMessages.length - 1,
-    )
+    this.upsertSessionIndexMessages(nextSession, [
+      { message, lineIndex: nextMessages.length - 1 },
+    ])
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-appended",
@@ -818,7 +821,8 @@ export class AgentChatStore {
     }
 
     let updatedMessage: StoredMessage | null = null
-    const nextMessages = currentMessages.map((message) => {
+    let updatedMessageIndex = -1
+    const nextMessages = currentMessages.map((message, index) => {
       if (message.id !== messageId) {
         return message
       }
@@ -855,6 +859,7 @@ export class AgentChatStore {
           nextVisibilityResolution,
         ),
       }
+      updatedMessageIndex = index
       return updatedMessage
     })
 
@@ -873,7 +878,9 @@ export class AgentChatStore {
     this.writeSessionMetadata(nextSession)
     this.writeMessagesFile(sessionId, nextMessages)
     this.sessionCache.set(sessionId, nextSession)
-    this.writeSessionIndex(nextSession, nextMessages)
+    this.upsertSessionIndexMessages(nextSession, [
+      { message: updatedMessage, lineIndex: updatedMessageIndex },
+    ])
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-visibility-updated",
@@ -1245,7 +1252,8 @@ export class AgentChatStore {
       participantId ?? activeProviderParticipantIdForSession(currentSession)
     const targets = new Set(messageIds)
     let changed = false
-    const nextMessages = currentMessages.map((message) => {
+    const changedMessageEntries: MessageIndexEntry[] = []
+    const nextMessages = currentMessages.map((message, index) => {
       if (!targets.has(message.id)) {
         return message
       }
@@ -1264,7 +1272,7 @@ export class AgentChatStore {
         return message
       }
       changed = true
-      return {
+      const nextMessage = {
         ...message,
         providerSeenAtMs:
           message.providerSeenAtMs === null
@@ -1272,6 +1280,8 @@ export class AgentChatStore {
             : message.providerSeenAtMs,
         deliveryRecords: nextDeliveryRecords,
       }
+      changedMessageEntries.push({ message: nextMessage, lineIndex: index })
+      return nextMessage
     })
 
     if (!changed) {
@@ -1283,7 +1293,7 @@ export class AgentChatStore {
     const metadata = this.readSessionMetadata(sessionId)
     const nextSession = sessionSummary(metadata, nextMessages)
     this.sessionCache.set(sessionId, nextSession)
-    this.writeSessionIndex(nextSession, nextMessages)
+    this.upsertSessionIndexMessages(nextSession, changedMessageEntries)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-visibility-updated",
@@ -1656,17 +1666,20 @@ export class AgentChatStore {
     }
   }
 
-  private appendSessionIndexMessage(
+  private upsertSessionIndexMessages(
     session: StoredSession,
-    message: StoredMessage,
-    lineIndex: number,
+    entries: MessageIndexEntry[],
   ) {
     try {
+      if (entries.length === 0) {
+        this.writeSessionIndex(session)
+        return
+      }
       const metadata = this.sessionMetadata(session)
       const sessionState = this.fileState(this.sessionMetadataPath(session.id))
       const messagesState = this.fileState(this.messagesPath(session.id))
       const indexedAtMs = Date.now()
-      const writeMessage = this.indexDb.transaction(() => {
+      const writeMessages = this.indexDb.transaction(() => {
         this.indexDb
           .query(
             `INSERT INTO session_index (
@@ -1705,9 +1718,8 @@ export class AgentChatStore {
             indexedAtMs,
             session.updatedAtMs,
           )
-        this.indexDb
-          .query(
-            `INSERT INTO message_index (
+        const upsertMessage = this.indexDb.query(
+          `INSERT INTO message_index (
               session_id,
               id,
               created_at_ms,
@@ -1719,19 +1731,21 @@ export class AgentChatStore {
               created_at_ms = excluded.created_at_ms,
               line_index = excluded.line_index,
               message_json = excluded.message_json`,
-          )
-          .run(
+        )
+        for (const { message, lineIndex } of entries) {
+          upsertMessage.run(
             session.id,
             message.id,
             message.createdAtMs,
             lineIndex,
             JSON.stringify(message),
           )
+        }
       })
-      writeMessage()
+      writeMessages()
     } catch (error) {
       console.error(
-        `[agent-chat-store] failed to append session index message sessionId=${session.id}`,
+        `[agent-chat-store] failed to upsert session index messages sessionId=${session.id}`,
         error,
       )
     }
