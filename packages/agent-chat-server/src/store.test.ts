@@ -266,4 +266,36 @@ describe("AgentChatStore multi-agent delivery", () => {
       }),
     )
   })
+
+  test("debounces canonical message file rewrites after message updates", async () => {
+    const { dataDir, store } = createStoreContext()
+    const session = store.createSession({
+      title: "Debounced message flush",
+      providerKind: "codex-app-server",
+      modelRef: "openai-codex/gpt-5.4",
+      cwd: "/home/ec2-user/workspace",
+      authProfile: "chatgpt",
+    })
+    const message = store.appendMessage(session.id, {
+      role: "assistant",
+      content: [{ type: "text", text: "first" }],
+    })
+    const messagesPath = join(dataDir, "sessions", session.id, "messages.jsonl")
+
+    store.updateMessageContent(session.id, message.id, [
+      { type: "text", text: "second" },
+    ])
+
+    const immediateStore = new AgentChatStore({ dataDir })
+    expect(
+      immediateStore
+        .listMessages(session.id)
+        .find((candidate) => candidate.id === message.id)?.content,
+    ).toEqual([{ type: "text", text: "second" }])
+    expect(Bun.file(messagesPath).text()).resolves.toContain("first")
+
+    await new Promise((resolve) => setTimeout(resolve, 350))
+
+    expect(await Bun.file(messagesPath).text()).toContain("second")
+  })
 })

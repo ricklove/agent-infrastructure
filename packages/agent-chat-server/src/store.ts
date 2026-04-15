@@ -505,7 +505,12 @@ export class AgentChatStore {
   private readonly indexDb: Database
   private readonly sessionCache = new Map<string, StoredSession>()
   private readonly messageCache = new Map<string, StoredMessage[]>()
+  private readonly pendingMessageFileFlushes = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >()
   private readonly indexReconcileBatchSize = 10
+  private readonly messageFileFlushDelayMs = 250
 
   constructor(options: AgentChatStoreOptions) {
     this.dataDir = options.dataDir
@@ -876,7 +881,7 @@ export class AgentChatStore {
 
     this.messageCache.set(sessionId, nextMessages)
     this.writeSessionMetadata(nextSession)
-    this.writeMessagesFile(sessionId, nextMessages)
+    this.scheduleMessagesFileFlush(sessionId)
     this.sessionCache.set(sessionId, nextSession)
     this.upsertSessionIndexMessages(nextSession, [
       { message: updatedMessage, lineIndex: updatedMessageIndex },
@@ -1289,7 +1294,7 @@ export class AgentChatStore {
     }
 
     this.messageCache.set(sessionId, nextMessages)
-    this.writeMessagesFile(sessionId, nextMessages)
+    this.scheduleMessagesFileFlush(sessionId)
     const metadata = this.readSessionMetadata(sessionId)
     const nextSession = sessionSummary(metadata, nextMessages)
     this.sessionCache.set(sessionId, nextSession)
@@ -1824,6 +1829,26 @@ export class AgentChatStore {
     mkdirSync(dirname(this.messagesPath(sessionId)), { recursive: true })
     const lines = messages.map((message) => JSON.stringify(message)).join("\n")
     writeFileSync(this.messagesPath(sessionId), lines ? `${lines}\n` : "")
+  }
+
+  private scheduleMessagesFileFlush(sessionId: string) {
+    const existing = this.pendingMessageFileFlushes.get(sessionId)
+    if (existing) {
+      clearTimeout(existing)
+    }
+    const timeout = setTimeout(() => {
+      this.pendingMessageFileFlushes.delete(sessionId)
+      this.flushMessagesFile(sessionId)
+    }, this.messageFileFlushDelayMs)
+    this.pendingMessageFileFlushes.set(sessionId, timeout)
+  }
+
+  private flushMessagesFile(sessionId: string) {
+    const messages = this.messageCache.get(sessionId)
+    if (!messages) {
+      return
+    }
+    this.writeMessagesFile(sessionId, messages)
   }
 
   private writeSessionMetadata(session: StoredSession) {
