@@ -1181,9 +1181,6 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         store.state$.totalKnownSessions.set(payload.totalKnownSessions)
         store.state$.connection.status.set("ready")
         connectSessionSummariesSocket()
-        if (!store.state$.activeSessionId.get() && payload.sessions[0]) {
-          await openSession(payload.sessions[0].id)
-        }
       } catch (error) {
         store.state$.connection.status.set("error")
         store.state$.connection.error.set(

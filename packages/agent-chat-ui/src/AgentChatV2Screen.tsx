@@ -552,12 +552,14 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   useEffect(() => {
     void actions.loadSessions().then(async () => {
       const requestedSessionId = readRequestedSessionIdFromLocation()
-      if (requestedSessionId) {
-        await actions.openSession(requestedSessionId)
+      const fallbackSessionId = store.state$.sessions.peek()[0]?.id ?? ""
+      const sessionId = requestedSessionId || fallbackSessionId
+      if (sessionId) {
+        await actions.openSession(sessionId)
       }
     })
     return () => actions.close()
-  }, [actions])
+  }, [actions, store])
 
   useEffect(() => {
     return subscribeDashboardPreferences(() => {
