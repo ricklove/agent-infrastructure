@@ -272,6 +272,7 @@ const sessionSockets = new Map<
   string,
   Set<Bun.ServerWebSocket<ChatSocketData>>
 >()
+const v2SessionSummarySockets = new Set<Bun.ServerWebSocket<ChatSocketData>>()
 const activeSessionRuns = new Set<string>()
 const sessionRuntime = new Map<string, SessionRuntimeState>()
 const sessionWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -372,6 +373,7 @@ function markV2DashboardSessionRead(sessionId: string, atMs = Date.now()) {
   state.sessions[sessionId] = { lastReadAtMs: atMs }
   writeV2DashboardReadState(state)
   requestWorkspacePersistence(`agent-chat:v2-read-state:${sessionId}`)
+  broadcastV2SessionSummary(sessionId)
 }
 
 function buildSessionV2ReadState(sessionId: string): SessionV2ReadState {
@@ -424,13 +426,40 @@ function toSessionActivity(sessionId: string): SessionActivity {
 
 function buildSessionSummary(
   session: StoredSession,
-  options?: { includeV2ReadState?: boolean },
+  options?: { compactV2?: boolean; includeV2ReadState?: boolean },
 ): SessionSummaryResponseItem {
   const runtime = ensureRuntimeState(session.id)
   const modelRef =
     session.providerKind === "claude-agent-sdk"
       ? normalizeClaudeSessionModelRef(session.modelRef)
       : session.modelRef
+  if (options?.compactV2) {
+    const summary = {
+      id: session.id,
+      title: session.title,
+      archived: session.archived,
+      processBlueprintId: session.processBlueprintId,
+      watchdogState: session.watchdogState,
+      providerKind: session.providerKind,
+      modelRef,
+      cwd: session.cwd,
+      pendingSystemInstruction: session.pendingSystemInstruction,
+      authProfile: session.authProfile,
+      imageModelRef: session.imageModelRef,
+      createdAtMs: session.createdAtMs,
+      updatedAtMs: session.updatedAtMs,
+      preview: session.preview,
+      messageCount: session.messageCount,
+      activity: toSessionActivity(session.id),
+      queuedMessageCount: store.listQueuedMessages(session.id).length,
+      providerUsage: runtime.providerUsage,
+      activeTicket: ticketStore.getActiveTicketForSession(session.id),
+    } as SessionSummaryResponseItem
+    if (options.includeV2ReadState) {
+      summary.v2ReadState = buildSessionV2ReadState(session.id)
+    }
+    return summary
+  }
   const summary: SessionSummaryResponseItem = {
     ...session,
     modelRef,
@@ -443,6 +472,24 @@ function buildSessionSummary(
     summary.v2ReadState = buildSessionV2ReadState(session.id)
   }
   return summary
+}
+
+function compactMessageForV2(message: StoredMessage): StoredMessage {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    role: message.role,
+    kind: message.kind,
+    replyToMessageId: message.replyToMessageId,
+    ticketId: message.ticketId,
+    providerSeenAtMs: message.providerSeenAtMs,
+    content: message.content,
+    createdAtMs: message.createdAtMs,
+  } as StoredMessage
+}
+
+function compactMessagesForV2(messages: StoredMessage[]): StoredMessage[] {
+  return messages.map(compactMessageForV2)
 }
 
 function buildSessionSnapshot(
@@ -496,9 +543,12 @@ function buildSessionWindow(
   const activity = toSessionActivity(sessionId)
   return {
     ok: true,
-    session: buildSessionSummary(session, { includeV2ReadState: true }),
-    messages: page.messages,
-    queuedMessages: store.listQueuedMessages(sessionId),
+    session: buildSessionSummary(session, {
+      compactV2: true,
+      includeV2ReadState: true,
+    }),
+    messages: compactMessagesForV2(page.messages),
+    queuedMessages: compactMessagesForV2(store.listQueuedMessages(sessionId)),
     activity,
     providerUsage: ensureRuntimeState(sessionId).providerUsage,
     hasOlderMessages: page.hasOlderMessages,
@@ -2286,6 +2336,21 @@ function broadcastSession(sessionId: string, event: unknown) {
   for (const socket of getSessionSockets(sessionId)) {
     socket.send(JSON.stringify(eventForSocket(event, socket)))
   }
+  broadcastV2SessionSummary(sessionId)
+}
+
+function broadcastV2SessionSummary(sessionId: string) {
+  const session = buildV2SessionSummaryOrNull(sessionId)
+  if (!session) {
+    return
+  }
+  const payload = JSON.stringify({
+    type: "session.summary",
+    session,
+  })
+  for (const socket of v2SessionSummarySockets) {
+    socket.send(payload)
+  }
 }
 
 function broadcastSnapshot(sessionId: string) {
@@ -2336,7 +2401,10 @@ function buildSessionSummaryOrNull(sessionId: string) {
 function buildV2SessionSummaryOrNull(sessionId: string) {
   const session = store.getSession(sessionId)
   return session
-    ? buildSessionSummary(session, { includeV2ReadState: true })
+    ? buildSessionSummary(session, {
+        compactV2: true,
+        includeV2ReadState: true,
+      })
     : null
 }
 
@@ -2356,10 +2424,24 @@ function eventForSocket(
   if (!session?.id || typeof session.id !== "string") {
     return event
   }
-  return {
+  const nextEvent = {
     ...event,
     session: buildV2SessionSummaryOrNull(session.id),
+  } as {
+    messages?: unknown
+    queuedMessages?: unknown
   }
+  if (Array.isArray(nextEvent.messages)) {
+    nextEvent.messages = compactMessagesForV2(
+      nextEvent.messages as StoredMessage[],
+    )
+  }
+  if (Array.isArray(nextEvent.queuedMessages)) {
+    nextEvent.queuedMessages = compactMessagesForV2(
+      nextEvent.queuedMessages as StoredMessage[],
+    )
+  }
+  return nextEvent
 }
 
 function decodeMatchGroup(match: RegExpExecArray, index: number) {
@@ -2945,10 +3027,28 @@ const server = Bun.serve<ChatSocketData>({
 
     if (url.pathname === "/api/agent-chat/ws") {
       const sessionId = url.searchParams.get("sessionId")
+      const clientMode = url.searchParams.get("mode") === "v2" ? "v2" : "v1"
+      const socketScope = url.searchParams.get("scope")
+      if (clientMode === "v2" && socketScope === "sessions") {
+        if (
+          serverInstance.upgrade(request, {
+            data: {
+              socketId: randomUUID(),
+              sessionId: null,
+              clientMode,
+            },
+          })
+        ) {
+          return undefined
+        }
+        return jsonResponse(
+          { ok: false, error: "websocket upgrade failed" },
+          500,
+        )
+      }
       if (!sessionId || !store.getSession(sessionId)) {
         return jsonResponse({ ok: false, error: "sessionId required" }, 400)
       }
-      const clientMode = url.searchParams.get("mode") === "v2" ? "v2" : "v1"
 
       if (
         serverInstance.upgrade(request, {
@@ -2969,7 +3069,7 @@ const server = Bun.serve<ChatSocketData>({
     }
 
     if (url.pathname === "/api/agent-chat/providers") {
-      await refreshClaudeModelCatalog()
+      void refreshClaudeModelCatalog()
       return jsonResponse({
         ok: true,
         providers: listProviderCatalog(),
@@ -3295,9 +3395,7 @@ const server = Bun.serve<ChatSocketData>({
     ) {
       const limit = normalizeV2Limit(url.searchParams.get("limit"), 40)
       const cursor = url.searchParams.get("cursor")?.trim() || ""
-      const sessions = store
-        .listSessions()
-        .map((session) => buildSessionSummary(session))
+      const sessions = store.listSessions()
       const startIndex = cursor
         ? Math.max(
             0,
@@ -3308,7 +3406,10 @@ const server = Bun.serve<ChatSocketData>({
       return jsonResponse({
         ok: true,
         sessions: boundedSessions.map((session) =>
-          buildSessionSummary(session, { includeV2ReadState: true }),
+          buildSessionSummary(session, {
+            compactV2: true,
+            includeV2ReadState: true,
+          }),
         ),
         nextCursor:
           startIndex + limit < sessions.length
@@ -4025,6 +4126,9 @@ const server = Bun.serve<ChatSocketData>({
   websocket: {
     open(ws) {
       if (!ws.data.sessionId) {
+        if (ws.data.clientMode === "v2") {
+          v2SessionSummarySockets.add(ws)
+        }
         return
       }
       getSessionSockets(ws.data.sessionId).add(ws)
@@ -4053,6 +4157,7 @@ const server = Bun.serve<ChatSocketData>({
     message() {},
     close(ws) {
       if (!ws.data.sessionId) {
+        v2SessionSummarySockets.delete(ws)
         return
       }
       const sockets = sessionSockets.get(ws.data.sessionId)

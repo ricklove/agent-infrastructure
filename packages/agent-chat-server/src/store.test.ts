@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test"
-import { appendFileSync, mkdtempSync, rmSync } from "node:fs"
+import { appendFileSync, mkdtempSync, rmSync, unlinkSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { AgentChatStore } from "./store.js"
@@ -219,6 +219,9 @@ describe("AgentChatStore multi-agent delivery", () => {
     })
     const messagesPath = join(dataDir, "sessions", session.id, "messages.jsonl")
     appendFileSync(messagesPath, '{"id":"broken"\n')
+    rmSync(join(dataDir, "agent-chat-cache.sqlite"), { force: true })
+    rmSync(join(dataDir, "agent-chat-cache.sqlite-shm"), { force: true })
+    rmSync(join(dataDir, "agent-chat-cache.sqlite-wal"), { force: true })
 
     const reloadedStore = new AgentChatStore({ dataDir })
 
@@ -234,5 +237,33 @@ describe("AgentChatStore multi-agent delivery", () => {
       ),
     )
     consoleError.mockRestore()
+  })
+
+  test("serves startup summaries from the sqlite cache before message hydration", () => {
+    const { dataDir, store } = createStoreContext()
+    const session = store.createSession({
+      title: "Cached startup summary",
+      providerKind: "codex-app-server",
+      modelRef: "openai-codex/gpt-5.4",
+      cwd: "/home/ec2-user/workspace",
+      authProfile: "chatgpt",
+    })
+    store.appendMessage(session.id, {
+      role: "assistant",
+      content: [{ type: "text", text: "cached summary preview" }],
+    })
+
+    unlinkSync(join(dataDir, "sessions", session.id, "messages.jsonl"))
+
+    const reloadedStore = new AgentChatStore({ dataDir })
+    const [cachedSession] = reloadedStore.listSessions()
+
+    expect(cachedSession).toEqual(
+      expect.objectContaining({
+        id: session.id,
+        preview: "cached summary preview",
+        messageCount: 1,
+      }),
+    )
   })
 })
