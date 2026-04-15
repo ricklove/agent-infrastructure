@@ -937,14 +937,9 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     store.state$.connection.wsStatus.set("idle")
   }
 
-  function clearActiveSessionState(sessionId: string) {
-    store.state$.messagesBySessionId[sessionId].set([])
-    store.state$.queuedMessagesBySessionId[sessionId].set([])
-    store.state$.pendingMessagesBySessionId[sessionId].set([])
-    store.state$.hasOlderMessagesBySessionId[sessionId].set(false)
-    store.state$.nextBeforeMessageIdBySessionId[sessionId].set(null)
-    store.state$.sessionVersionBySessionId[sessionId].set("")
-    clearActiveSessionView(store)
+  function prepareActiveSessionSwitch(sessionId: string) {
+    store.state$.activeSessionId.set(sessionId)
+    syncActiveSession(store, sessionId)
     store.state$.streamingAssistantText.set("")
     store.state$.composerText.set("")
     store.state$.sending.set(false)
@@ -1023,18 +1018,27 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
   async function openSession(sessionId: string): Promise<void> {
     const requestId = ++openSessionRequestId
     closeSocket()
-    store.state$.activeSessionId.set(sessionId)
-    clearActiveSessionState(sessionId)
-    const payload = await readJson<SessionWindowResponse>(
-      apiPath(store, `/v2/sessions/${encodeURIComponent(sessionId)}/window`),
-    )
-    if (requestId !== openSessionRequestId) {
-      return
-    }
-    store.state$.activeSessionId.set(sessionId)
-    setSessionWindow(store, payload, "replace")
     connectSocket(sessionId)
-    void markSessionReadById(store, sessionId)
+    prepareActiveSessionSwitch(sessionId)
+    try {
+      const payload = await readJson<SessionWindowResponse>(
+        apiPath(store, `/v2/sessions/${encodeURIComponent(sessionId)}/window`),
+      )
+      if (requestId !== openSessionRequestId) {
+        return
+      }
+      store.state$.activeSessionId.set(sessionId)
+      setSessionWindow(store, payload, "replace")
+      void markSessionReadById(store, sessionId)
+    } catch (error) {
+      if (requestId !== openSessionRequestId) {
+        return
+      }
+      store.state$.connection.error.set(
+        error instanceof Error ? error.message : "Failed to load session.",
+      )
+      syncActiveSession(store, sessionId)
+    }
   }
 
   const actions = {
