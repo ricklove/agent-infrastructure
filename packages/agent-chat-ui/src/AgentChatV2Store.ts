@@ -1131,7 +1131,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       }
       if (payload.type === "run.delta") {
         store.state$.streamingAssistantText.set(payload.text)
-        syncActiveSession(store, sessionId)
+        store.state$.activeSession.streamingAssistantText.set(payload.text)
         return
       }
       if (payload.type === "run.activity") {
