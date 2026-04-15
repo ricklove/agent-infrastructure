@@ -780,7 +780,11 @@ export class AgentChatStore {
     this.writeSessionMetadata(nextSession)
     appendFileSync(this.messagesPath(sessionId), `${JSON.stringify(message)}\n`)
     this.sessionCache.set(sessionId, nextSession)
-    this.writeSessionIndex(nextSession, nextMessages)
+    this.appendSessionIndexMessage(
+      nextSession,
+      message,
+      nextMessages.length - 1,
+    )
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-appended",
@@ -1513,6 +1517,17 @@ export class AgentChatStore {
 
   private rebuildSessionIndex(sessionId: string) {
     try {
+      if (!existsSync(this.sessionMetadataPath(sessionId))) {
+        this.indexDb
+          .query(`DELETE FROM message_index WHERE session_id = ?`)
+          .run(sessionId)
+        this.indexDb
+          .query(`DELETE FROM session_index WHERE id = ?`)
+          .run(sessionId)
+        this.sessionCache.delete(sessionId)
+        this.messageCache.delete(sessionId)
+        return
+      }
       const metadata = this.readSessionMetadata(sessionId)
       const baseSession = sessionSummary(metadata, [])
       const messages = this.readMessages(baseSession)
@@ -1618,6 +1633,87 @@ export class AgentChatStore {
     }
   }
 
+  private appendSessionIndexMessage(
+    session: StoredSession,
+    message: StoredMessage,
+    lineIndex: number,
+  ) {
+    try {
+      const metadata = this.sessionMetadata(session)
+      const sessionState = this.fileState(this.sessionMetadataPath(session.id))
+      const messagesState = this.fileState(this.messagesPath(session.id))
+      const indexedAtMs = Date.now()
+      const writeMessage = this.indexDb.transaction(() => {
+        this.indexDb
+          .query(
+            `INSERT INTO session_index (
+              id,
+              metadata_json,
+              preview,
+              message_count,
+              session_mtime_ms,
+              session_size,
+              messages_mtime_ms,
+              messages_size,
+              indexed_at_ms,
+              updated_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              metadata_json = excluded.metadata_json,
+              preview = excluded.preview,
+              message_count = excluded.message_count,
+              session_mtime_ms = excluded.session_mtime_ms,
+              session_size = excluded.session_size,
+              messages_mtime_ms = excluded.messages_mtime_ms,
+              messages_size = excluded.messages_size,
+              indexed_at_ms = excluded.indexed_at_ms,
+              updated_at_ms = excluded.updated_at_ms`,
+          )
+          .run(
+            session.id,
+            JSON.stringify(metadata),
+            session.preview,
+            session.messageCount,
+            sessionState.mtimeMs,
+            sessionState.size,
+            messagesState.mtimeMs,
+            messagesState.size,
+            indexedAtMs,
+            session.updatedAtMs,
+          )
+        this.indexDb
+          .query(
+            `INSERT INTO message_index (
+              session_id,
+              id,
+              created_at_ms,
+              line_index,
+              message_json
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(session_id, id) DO UPDATE SET
+              created_at_ms = excluded.created_at_ms,
+              line_index = excluded.line_index,
+              message_json = excluded.message_json`,
+          )
+          .run(
+            session.id,
+            message.id,
+            message.createdAtMs,
+            lineIndex,
+            JSON.stringify(message),
+          )
+      })
+      writeMessage()
+    } catch (error) {
+      console.error(
+        `[agent-chat-store] failed to append session index message sessionId=${session.id}`,
+        error,
+      )
+    }
+  }
+
   private fileState(path: string): FileState {
     try {
       const stats = statSync(path)
@@ -1703,7 +1799,7 @@ export class AgentChatStore {
       this.sessionMetadataPath(session.id),
       `${JSON.stringify(metadata, null, 2)}\n`,
     )
-    this.writeSessionIndex(session, this.messageCache.get(session.id))
+    this.writeSessionIndex(session)
   }
 
   private sessionMetadata(session: StoredSession): SessionMetadata {
