@@ -336,7 +336,6 @@ type AgentChatV2SessionRowProps = {
 type AgentChatV2TranscriptItemViewProps = {
   item$: Observable<AgentChatV2TranscriptItem>
   apiRootUrl: string
-  streamingAssistantText: string
   onCopyMessageLink: (sessionId: string, messageId: string) => Promise<void>
   actionSequenceMode: AgentChatV2ActionSequenceMode
   onActionToggle: () => void
@@ -352,7 +351,7 @@ const AgentChatV2TranscriptItemView = observer(
       return (
         <ActionSequence
           messages={item.messages}
-          showPreview={item.showIdlePreview && !props.streamingAssistantText}
+          showPreview={item.showIdlePreview}
           autoSelectStreamCheckpoint={props.actionSequenceMode === "checkpoint"}
           onToggle={props.onActionToggle}
         />
@@ -1590,7 +1589,6 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                     <AgentChatV2TranscriptItemView
                       item$={item$ as Observable<AgentChatV2TranscriptItem>}
                       apiRootUrl={apiRootUrl}
-                      streamingAssistantText={streamingAssistantText}
                       onCopyMessageLink={copyMessageLink}
                       actionSequenceMode={actionSequenceMode}
                       onActionToggle={scheduleTranscriptScrollToBottom}
