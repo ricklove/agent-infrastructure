@@ -146,6 +146,26 @@ type AgentChatStoreOptions = {
 
 type SessionMetadata = Omit<StoredSession, "preview" | "messageCount">
 
+type SessionIndexRow = {
+  id: string
+  metadata_json: string
+  preview: string | null
+  message_count: number
+  session_mtime_ms: number
+  session_size: number
+  messages_mtime_ms: number
+  messages_size: number
+}
+
+type MessageIndexRow = {
+  message_json: string
+}
+
+type FileState = {
+  mtimeMs: number
+  size: number
+}
+
 const defaultWatchdogState = (
   processBlueprintId: string | null,
 ): SessionWatchdogState => ({
@@ -474,15 +494,20 @@ function normalizeDeliveryRecordsForMessage(args: {
 }
 
 export class AgentChatStore {
+  private readonly dataDir: string
   private readonly sessionsDir: string
   private readonly onCanonicalWrite?: (event: CanonicalWriteEvent) => void
+  private readonly indexDb: Database
   private readonly sessionCache = new Map<string, StoredSession>()
   private readonly messageCache = new Map<string, StoredMessage[]>()
+  private readonly indexReconcileBatchSize = 10
 
   constructor(options: AgentChatStoreOptions) {
+    this.dataDir = options.dataDir
     this.sessionsDir = join(options.dataDir, "sessions")
     this.onCanonicalWrite = options.onCanonicalWrite
     mkdirSync(this.sessionsDir, { recursive: true })
+    this.indexDb = this.openSessionIndex()
     this.importLegacySqliteIfNeeded(options.legacySqlitePath ?? null)
     this.loadCache()
   }
@@ -527,6 +552,7 @@ export class AgentChatStore {
     const summary = sessionSummary(metadata, messages)
     this.sessionCache.set(sessionId, summary)
     this.messageCache.set(sessionId, messages)
+    this.writeSessionIndex(summary, messages)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "session-created",
@@ -535,7 +561,7 @@ export class AgentChatStore {
   }
 
   listMessages(sessionId: string): StoredMessage[] {
-    return [...(this.messageCache.get(sessionId) ?? [])]
+    return [...this.ensureMessagesLoaded(sessionId)]
   }
 
   listMessagesPage(
@@ -548,7 +574,7 @@ export class AgentChatStore {
     messages: StoredMessage[]
     hasOlderMessages: boolean
   } {
-    const allMessages = this.messageCache.get(sessionId) ?? []
+    const allMessages = this.ensureMessagesLoaded(sessionId)
     const limit = Math.max(1, Math.min(200, input?.limit ?? 50))
     const beforeMessageId = input?.beforeMessageId?.trim() ?? ""
 
@@ -741,7 +767,7 @@ export class AgentChatStore {
       createdAtMs,
     }
 
-    const nextMessages = [...(this.messageCache.get(sessionId) ?? []), message]
+    const nextMessages = [...this.ensureMessagesLoaded(sessionId), message]
     this.messageCache.set(sessionId, nextMessages)
 
     const nextSession: StoredSession = {
@@ -754,6 +780,11 @@ export class AgentChatStore {
     this.writeSessionMetadata(nextSession)
     appendFileSync(this.messagesPath(sessionId), `${JSON.stringify(message)}\n`)
     this.sessionCache.set(sessionId, nextSession)
+    this.appendSessionIndexMessage(
+      nextSession,
+      message,
+      nextMessages.length - 1,
+    )
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-appended",
@@ -780,8 +811,8 @@ export class AgentChatStore {
       ticketId?: string | null
     },
   ): StoredMessage | null {
-    const currentMessages = this.messageCache.get(sessionId)
     const currentSession = this.sessionCache.get(sessionId)
+    const currentMessages = this.ensureMessagesLoaded(sessionId)
     if (!currentMessages?.length || !currentSession) {
       return null
     }
@@ -842,6 +873,7 @@ export class AgentChatStore {
     this.writeSessionMetadata(nextSession)
     this.writeMessagesFile(sessionId, nextMessages)
     this.sessionCache.set(sessionId, nextSession)
+    this.writeSessionIndex(nextSession, nextMessages)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-visibility-updated",
@@ -1203,8 +1235,8 @@ export class AgentChatStore {
       return
     }
 
-    const currentMessages = this.messageCache.get(sessionId)
     const currentSession = this.sessionCache.get(sessionId)
+    const currentMessages = this.ensureMessagesLoaded(sessionId)
     if (!currentMessages?.length || !currentSession) {
       return
     }
@@ -1249,7 +1281,9 @@ export class AgentChatStore {
     this.messageCache.set(sessionId, nextMessages)
     this.writeMessagesFile(sessionId, nextMessages)
     const metadata = this.readSessionMetadata(sessionId)
-    this.sessionCache.set(sessionId, sessionSummary(metadata, nextMessages))
+    const nextSession = sessionSummary(metadata, nextMessages)
+    this.sessionCache.set(sessionId, nextSession)
+    this.writeSessionIndex(nextSession, nextMessages)
     this.notifyCanonicalWrite({
       sessionId,
       reason: "message-visibility-updated",
@@ -1266,13 +1300,455 @@ export class AgentChatStore {
     this.sessionCache.clear()
     this.messageCache.clear()
 
-    for (const sessionId of this.listSessionDirectories()) {
+    const sessionIds = new Set(this.listSessionDirectories())
+    const indexedSessions = this.readSessionsFromIndex(sessionIds)
+    for (const session of indexedSessions) {
+      this.sessionCache.set(session.id, session)
+    }
+
+    for (const sessionId of sessionIds) {
+      if (this.sessionCache.has(sessionId)) {
+        continue
+      }
+      try {
+        const metadata = this.readSessionMetadata(sessionId)
+        this.sessionCache.set(sessionId, sessionSummary(metadata, []))
+      } catch (error) {
+        console.error(
+          `[agent-chat-store] skipped unreadable session metadata sessionId=${sessionId}`,
+          error,
+        )
+      }
+    }
+
+    if (sessionIds.size > 0 && indexedSessions.length === 0) {
+      this.reconcileSessionIndexNow(sessionIds)
+      return
+    }
+
+    this.reconcileSessionIndexInBackground(sessionIds)
+  }
+
+  private openSessionIndex() {
+    mkdirSync(this.dataDir, { recursive: true })
+    const db = new Database(join(this.dataDir, "agent-chat-cache.sqlite"), {
+      create: true,
+    })
+    db.exec(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
+
+      CREATE TABLE IF NOT EXISTS session_index (
+        id TEXT PRIMARY KEY,
+        metadata_json TEXT NOT NULL,
+        preview TEXT,
+        message_count INTEGER NOT NULL,
+        session_mtime_ms REAL NOT NULL,
+        session_size INTEGER NOT NULL,
+        messages_mtime_ms REAL NOT NULL,
+        messages_size INTEGER NOT NULL,
+        indexed_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS message_index (
+        session_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        line_index INTEGER NOT NULL,
+        message_json TEXT NOT NULL,
+        PRIMARY KEY (session_id, id)
+      );
+
+      CREATE INDEX IF NOT EXISTS message_index_session_order
+        ON message_index (session_id, created_at_ms, line_index, id);
+
+      CREATE INDEX IF NOT EXISTS session_index_updated
+        ON session_index (updated_at_ms DESC, id);
+    `)
+    return db
+  }
+
+  private readSessionsFromIndex(sessionIds: Set<string>): StoredSession[] {
+    const rows = this.indexDb
+      .query(
+        `SELECT id, metadata_json, preview, message_count, session_mtime_ms, session_size, messages_mtime_ms, messages_size
+         FROM session_index`,
+      )
+      .all() as SessionIndexRow[]
+    const sessions: StoredSession[] = []
+    for (const row of rows) {
+      if (!sessionIds.has(row.id)) {
+        continue
+      }
+      const metadata = safeJsonParse<SessionMetadata>(row.metadata_json)
+      if (!metadata) {
+        continue
+      }
+      sessions.push({
+        ...metadata,
+        preview: row.preview,
+        messageCount: Number(row.message_count),
+      })
+    }
+    return sessions
+  }
+
+  private ensureMessagesLoaded(sessionId: string): StoredMessage[] {
+    const cachedMessages = this.messageCache.get(sessionId)
+    if (cachedMessages) {
+      return cachedMessages
+    }
+
+    const session = this.sessionCache.get(sessionId)
+    if (!session) {
+      return []
+    }
+
+    const indexedMessages = this.readMessagesFromIndex(session)
+    if (
+      this.hasSessionIndex(sessionId) &&
+      indexedMessages.length === session.messageCount
+    ) {
+      this.messageCache.set(sessionId, indexedMessages)
+      return indexedMessages
+    }
+
+    const messages = this.readMessages(session)
+    const metadata = this.readSessionMetadata(sessionId)
+    const nextSession = sessionSummary(metadata, messages)
+    this.messageCache.set(sessionId, messages)
+    this.sessionCache.set(sessionId, nextSession)
+    this.writeSessionIndex(nextSession, messages)
+    return messages
+  }
+
+  private readMessagesFromIndex(session: StoredSession): StoredMessage[] {
+    try {
+      const rows = this.indexDb
+        .query(
+          `SELECT message_json
+           FROM message_index
+           WHERE session_id = ?
+           ORDER BY created_at_ms ASC, line_index ASC, id ASC`,
+        )
+        .all(session.id) as MessageIndexRow[]
+      return rows
+        .map((row) => safeJsonParse<StoredMessage>(row.message_json))
+        .filter(
+          (message): message is StoredMessage =>
+            message !== null && message.sessionId === session.id,
+        )
+    } catch (error) {
+      console.error(
+        `[agent-chat-store] failed to read message index sessionId=${session.id}`,
+        error,
+      )
+      return []
+    }
+  }
+
+  private hasSessionIndex(sessionId: string) {
+    const row = this.indexDb
+      .query(`SELECT 1 AS ok FROM session_index WHERE id = ? LIMIT 1`)
+      .get(sessionId) as { ok: number } | null
+    return row !== null
+  }
+
+  private reconcileSessionIndexInBackground(sessionIds: Set<string>) {
+    setTimeout(() => {
+      void this.reconcileSessionIndex(sessionIds)
+    }, 0)
+  }
+
+  private reconcileSessionIndexNow(sessionIds: Set<string>) {
+    try {
+      this.deleteRemovedSessionsFromIndex(sessionIds)
+      for (const sessionId of sessionIds) {
+        if (!this.isSessionIndexFresh(sessionId)) {
+          this.rebuildSessionIndex(sessionId)
+        }
+      }
+    } catch (error) {
+      console.error("[agent-chat-store] failed to seed session index", error)
+    }
+  }
+
+  private async reconcileSessionIndex(sessionIds: Set<string>) {
+    try {
+      this.deleteRemovedSessionsFromIndex(sessionIds)
+
+      let processed = 0
+      for (const sessionId of sessionIds) {
+        if (this.isSessionIndexFresh(sessionId)) {
+          continue
+        }
+        this.rebuildSessionIndex(sessionId)
+        processed += 1
+        if (processed % this.indexReconcileBatchSize === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 0))
+        }
+      }
+    } catch (error) {
+      console.error(
+        "[agent-chat-store] failed to reconcile session index",
+        error,
+      )
+    }
+  }
+
+  private deleteRemovedSessionsFromIndex(sessionIds: Set<string>) {
+    const indexedIds = new Set(
+      (
+        this.indexDb.query(`SELECT id FROM session_index`).all() as Array<{
+          id: string
+        }>
+      ).map((row) => row.id),
+    )
+    for (const indexedId of indexedIds) {
+      if (!sessionIds.has(indexedId)) {
+        this.indexDb
+          .query(`DELETE FROM message_index WHERE session_id = ?`)
+          .run(indexedId)
+        this.indexDb
+          .query(`DELETE FROM session_index WHERE id = ?`)
+          .run(indexedId)
+      }
+    }
+  }
+
+  private isSessionIndexFresh(sessionId: string) {
+    const row = this.indexDb
+      .query(
+        `SELECT session_mtime_ms, session_size, messages_mtime_ms, messages_size
+         FROM session_index
+         WHERE id = ?`,
+      )
+      .get(sessionId) as SessionIndexRow | null
+    if (!row) {
+      return false
+    }
+    const sessionState = this.fileState(this.sessionMetadataPath(sessionId))
+    const messagesState = this.fileState(this.messagesPath(sessionId))
+    return (
+      row.session_mtime_ms === sessionState.mtimeMs &&
+      row.session_size === sessionState.size &&
+      row.messages_mtime_ms === messagesState.mtimeMs &&
+      row.messages_size === messagesState.size
+    )
+  }
+
+  private rebuildSessionIndex(sessionId: string) {
+    try {
+      if (!existsSync(this.sessionMetadataPath(sessionId))) {
+        this.indexDb
+          .query(`DELETE FROM message_index WHERE session_id = ?`)
+          .run(sessionId)
+        this.indexDb
+          .query(`DELETE FROM session_index WHERE id = ?`)
+          .run(sessionId)
+        this.sessionCache.delete(sessionId)
+        this.messageCache.delete(sessionId)
+        return
+      }
       const metadata = this.readSessionMetadata(sessionId)
-      const summary = sessionSummary(metadata, [])
-      const messages = this.readMessages(summary)
-      const hydratedSummary = sessionSummary(summary, messages)
-      this.sessionCache.set(sessionId, hydratedSummary)
-      this.messageCache.set(sessionId, messages)
+      const baseSession = sessionSummary(metadata, [])
+      const messages = this.readMessages(baseSession)
+      const nextSession = sessionSummary(metadata, messages)
+      this.writeSessionIndex(nextSession, messages)
+      this.sessionCache.set(sessionId, nextSession)
+      if (this.messageCache.has(sessionId)) {
+        this.messageCache.set(sessionId, messages)
+      }
+    } catch (error) {
+      console.error(
+        `[agent-chat-store] failed to rebuild session index sessionId=${sessionId}`,
+        error,
+      )
+    }
+  }
+
+  private writeSessionIndex(
+    session: StoredSession,
+    messages?: StoredMessage[],
+  ) {
+    try {
+      const metadata = this.sessionMetadata(session)
+      const sessionState = this.fileState(this.sessionMetadataPath(session.id))
+      const messagesState = this.fileState(this.messagesPath(session.id))
+      const indexedAtMs = Date.now()
+      const runSessionUpsert = () => {
+        this.indexDb
+          .query(
+            `INSERT INTO session_index (
+              id,
+              metadata_json,
+              preview,
+              message_count,
+              session_mtime_ms,
+              session_size,
+              messages_mtime_ms,
+              messages_size,
+              indexed_at_ms,
+              updated_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              metadata_json = excluded.metadata_json,
+              preview = excluded.preview,
+              message_count = excluded.message_count,
+              session_mtime_ms = excluded.session_mtime_ms,
+              session_size = excluded.session_size,
+              messages_mtime_ms = excluded.messages_mtime_ms,
+              messages_size = excluded.messages_size,
+              indexed_at_ms = excluded.indexed_at_ms,
+              updated_at_ms = excluded.updated_at_ms`,
+          )
+          .run(
+            session.id,
+            JSON.stringify(metadata),
+            session.preview,
+            session.messageCount,
+            sessionState.mtimeMs,
+            sessionState.size,
+            messagesState.mtimeMs,
+            messagesState.size,
+            indexedAtMs,
+            session.updatedAtMs,
+          )
+      }
+
+      if (!messages) {
+        runSessionUpsert()
+        return
+      }
+
+      const writeMessages = this.indexDb.transaction(() => {
+        runSessionUpsert()
+        this.indexDb
+          .query(`DELETE FROM message_index WHERE session_id = ?`)
+          .run(session.id)
+        const insertMessage = this.indexDb.query(
+          `INSERT INTO message_index (
+            session_id,
+            id,
+            created_at_ms,
+            line_index,
+            message_json
+          ) VALUES (?, ?, ?, ?, ?)`,
+        )
+        messages.forEach((message, index) => {
+          insertMessage.run(
+            session.id,
+            message.id,
+            message.createdAtMs,
+            index,
+            JSON.stringify(message),
+          )
+        })
+      })
+      writeMessages()
+    } catch (error) {
+      console.error(
+        `[agent-chat-store] failed to write session index sessionId=${session.id}`,
+        error,
+      )
+    }
+  }
+
+  private appendSessionIndexMessage(
+    session: StoredSession,
+    message: StoredMessage,
+    lineIndex: number,
+  ) {
+    try {
+      const metadata = this.sessionMetadata(session)
+      const sessionState = this.fileState(this.sessionMetadataPath(session.id))
+      const messagesState = this.fileState(this.messagesPath(session.id))
+      const indexedAtMs = Date.now()
+      const writeMessage = this.indexDb.transaction(() => {
+        this.indexDb
+          .query(
+            `INSERT INTO session_index (
+              id,
+              metadata_json,
+              preview,
+              message_count,
+              session_mtime_ms,
+              session_size,
+              messages_mtime_ms,
+              messages_size,
+              indexed_at_ms,
+              updated_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              metadata_json = excluded.metadata_json,
+              preview = excluded.preview,
+              message_count = excluded.message_count,
+              session_mtime_ms = excluded.session_mtime_ms,
+              session_size = excluded.session_size,
+              messages_mtime_ms = excluded.messages_mtime_ms,
+              messages_size = excluded.messages_size,
+              indexed_at_ms = excluded.indexed_at_ms,
+              updated_at_ms = excluded.updated_at_ms`,
+          )
+          .run(
+            session.id,
+            JSON.stringify(metadata),
+            session.preview,
+            session.messageCount,
+            sessionState.mtimeMs,
+            sessionState.size,
+            messagesState.mtimeMs,
+            messagesState.size,
+            indexedAtMs,
+            session.updatedAtMs,
+          )
+        this.indexDb
+          .query(
+            `INSERT INTO message_index (
+              session_id,
+              id,
+              created_at_ms,
+              line_index,
+              message_json
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(session_id, id) DO UPDATE SET
+              created_at_ms = excluded.created_at_ms,
+              line_index = excluded.line_index,
+              message_json = excluded.message_json`,
+          )
+          .run(
+            session.id,
+            message.id,
+            message.createdAtMs,
+            lineIndex,
+            JSON.stringify(message),
+          )
+      })
+      writeMessage()
+    } catch (error) {
+      console.error(
+        `[agent-chat-store] failed to append session index message sessionId=${session.id}`,
+        error,
+      )
+    }
+  }
+
+  private fileState(path: string): FileState {
+    try {
+      const stats = statSync(path)
+      return {
+        mtimeMs: stats.mtimeMs,
+        size: stats.size,
+      }
+    } catch {
+      return {
+        mtimeMs: 0,
+        size: 0,
+      }
     }
   }
 
@@ -1337,7 +1813,20 @@ export class AgentChatStore {
   }
 
   private writeSessionMetadata(session: StoredSession) {
-    const metadata: SessionMetadata = {
+    const metadata = this.sessionMetadata(session)
+    mkdirSync(this.sessionDir(session.id), { recursive: true })
+    mkdirSync(dirname(this.sessionMetadataPath(session.id)), {
+      recursive: true,
+    })
+    writeFileSync(
+      this.sessionMetadataPath(session.id),
+      `${JSON.stringify(metadata, null, 2)}\n`,
+    )
+    this.writeSessionIndex(session)
+  }
+
+  private sessionMetadata(session: StoredSession): SessionMetadata {
+    return {
       id: session.id,
       title: session.title,
       archived: session.archived,
@@ -1355,14 +1844,6 @@ export class AgentChatStore {
       createdAtMs: session.createdAtMs,
       updatedAtMs: session.updatedAtMs,
     }
-    mkdirSync(this.sessionDir(session.id), { recursive: true })
-    mkdirSync(dirname(this.sessionMetadataPath(session.id)), {
-      recursive: true,
-    })
-    writeFileSync(
-      this.sessionMetadataPath(session.id),
-      `${JSON.stringify(metadata, null, 2)}\n`,
-    )
   }
 
   private readSessionMetadata(sessionId: string): SessionMetadata {

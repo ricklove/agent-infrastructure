@@ -6,6 +6,8 @@ import { batch, ObservableHint, observable, observe } from "@legendapp/state"
 import type { AgentTicket } from "./ticket-types"
 
 const dashboardSessionWebSocketProtocolPrefix = "dashboard-session.v1."
+const actionSequenceModeStorageKey = "agent-chat-v2:action-sequence-mode"
+const draftStorageKeyPrefix = "agent-chat-v2:draft:"
 
 export type AgentChatV2ActionSequenceMode = "condensed" | "checkpoint"
 
@@ -213,6 +215,11 @@ type RunActivityEvent = {
   queuedMessages: AgentChatV2Message[]
 }
 
+type SessionSummaryEvent = {
+  type: "session.summary"
+  session: AgentChatV2Session
+}
+
 type AgentChatV2StoreState = {
   connection: {
     status: "idle" | "loading" | "ready" | "error"
@@ -251,6 +258,15 @@ const activeSessionActionsByStore = new WeakMap<
   AgentChatV2Store,
   Map<string, AgentChatV2ActiveSessionActions>
 >()
+const bootstrapRequestCacheTtlMs = 2_000
+const sessionListRequestCache = new Map<
+  string,
+  { createdAtMs: number; promise: Promise<SessionsResponse> }
+>()
+const sessionWindowRequestCache = new Map<
+  string,
+  { createdAtMs: number; promise: Promise<SessionWindowResponse> }
+>()
 
 function emptyActiveSessionView(): AgentChatV2ActiveSession {
   return {
@@ -269,6 +285,49 @@ function emptyActiveSessionView(): AgentChatV2ActiveSession {
     sessionVersion: "",
     streamingAssistantText: "",
   }
+}
+
+function isAgentChatV2ActionSequenceMode(
+  value: string | null,
+): value is AgentChatV2ActionSequenceMode {
+  return value === "condensed" || value === "checkpoint"
+}
+
+function readActionSequenceMode(): AgentChatV2ActionSequenceMode {
+  if (typeof window === "undefined") {
+    return "condensed"
+  }
+  const value = window.localStorage.getItem(actionSequenceModeStorageKey)
+  return isAgentChatV2ActionSequenceMode(value) ? value : "condensed"
+}
+
+function writeActionSequenceMode(mode: AgentChatV2ActionSequenceMode): void {
+  if (typeof window === "undefined") {
+    return
+  }
+  window.localStorage.setItem(actionSequenceModeStorageKey, mode)
+}
+
+function draftStorageKey(sessionId: string): string {
+  return `${draftStorageKeyPrefix}${sessionId}`
+}
+
+function readDraft(sessionId: string): string {
+  if (typeof window === "undefined" || !sessionId) {
+    return ""
+  }
+  return window.localStorage.getItem(draftStorageKey(sessionId)) ?? ""
+}
+
+function writeDraft(sessionId: string, draft: string): void {
+  if (typeof window === "undefined" || !sessionId) {
+    return
+  }
+  if (draft) {
+    window.localStorage.setItem(draftStorageKey(sessionId), draft)
+    return
+  }
+  window.localStorage.removeItem(draftStorageKey(sessionId))
 }
 
 function writeActiveSessionView(
@@ -332,7 +391,7 @@ export function createAgentChatV2Store(apiRootUrl: string, wsRootUrl: string) {
     composerHasText: false,
     sending: false,
     interrupting: false,
-    actionSequenceMode: "condensed",
+    actionSequenceMode: readActionSequenceMode(),
     connectionSummary: () => ({
       error: state$.connection.error.get(),
       status: state$.connection.status.get(),
@@ -361,6 +420,14 @@ function wsUrl(store: AgentChatV2Store, sessionId: string): string {
   return url.toString()
 }
 
+function sessionSummariesWsUrl(store: AgentChatV2Store): string {
+  const root = store.state$.connection.wsRootUrl.get()
+  const url = new URL(root, window.location.href)
+  url.searchParams.set("mode", "v2")
+  url.searchParams.set("scope", "sessions")
+  return url.toString()
+}
+
 async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = (await dashboardSessionFetch(path, init)) as Response
   const payload = (await response.json()) as T & { error?: string }
@@ -368,6 +435,23 @@ async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(payload.error ?? `Request failed with ${response.status}`)
   }
   return payload
+}
+
+function readCachedBootstrapJson<T>(
+  cache: Map<string, { createdAtMs: number; promise: Promise<T> }>,
+  path: string,
+): Promise<T> {
+  const now = Date.now()
+  const cached = cache.get(path)
+  if (cached && now - cached.createdAtMs < bootstrapRequestCacheTtlMs) {
+    return cached.promise
+  }
+  const promise = readJson<T>(path).catch((error) => {
+    cache.delete(path)
+    throw error
+  })
+  cache.set(path, { createdAtMs: now, promise })
+  return promise
 }
 
 function upsertSession(
@@ -714,7 +798,11 @@ function updateActiveSessionActivity(
 async function markSessionReadById(
   store: AgentChatV2Store,
   sessionId: string,
+  options?: { requireActive?: boolean },
 ): Promise<void> {
+  if (shouldSkipInactiveSessionAction(store, sessionId, options)) {
+    return
+  }
   const payload = await readJson<{
     ok: true
     session: AgentChatV2Session | null
@@ -823,6 +911,7 @@ async function sendMessageForSession(
   ])
   syncActiveSession(store, sessionId)
   store.state$.composerText.set("")
+  writeDraft(sessionId, "")
   store.state$.sending.set(true)
   try {
     const payload = await readJson<{
@@ -866,6 +955,7 @@ async function sendMessageForSession(
     )
     syncActiveSession(store, sessionId)
     store.state$.composerText.set(text)
+    writeDraft(sessionId, text)
     throw error
   } finally {
     store.state$.sending.set(false)
@@ -929,6 +1019,7 @@ async function interruptSessionById(
 
 export function createAgentChatV2Actions(store: AgentChatV2Store) {
   let socket: WebSocket | null = null
+  let sessionSummariesSocket: WebSocket | null = null
   let openSessionRequestId = 0
 
   function closeSocket() {
@@ -937,13 +1028,66 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     store.state$.connection.wsStatus.set("idle")
   }
 
+  function closeSessionSummariesSocket() {
+    sessionSummariesSocket?.close()
+    sessionSummariesSocket = null
+  }
+
+  function connectSessionSummariesSocket() {
+    if (sessionSummariesSocket) {
+      return
+    }
+    const protocols = dashboardSessionWebSocketProtocols(
+      dashboardSessionWebSocketProtocolPrefix,
+    )
+    const nextSocket =
+      protocols.length > 0
+        ? new WebSocket(sessionSummariesWsUrl(store), protocols)
+        : new WebSocket(sessionSummariesWsUrl(store))
+    sessionSummariesSocket = nextSocket
+    nextSocket.addEventListener("message", (event) => {
+      if (sessionSummariesSocket !== nextSocket) {
+        return
+      }
+      const payload = JSON.parse(String(event.data)) as SessionSummaryEvent
+      if (payload.type !== "session.summary") {
+        return
+      }
+      store.state$.sessions.set(
+        upsertSession(store.state$.sessions.get(), payload.session),
+      )
+      syncActiveSession(store, payload.session.id)
+      if (
+        store.state$.activeSessionId.get() === payload.session.id &&
+        payload.session.v2ReadState?.hasUnread &&
+        document.visibilityState === "visible"
+      ) {
+        void markSessionReadById(store, payload.session.id, {
+          requireActive: true,
+        })
+      }
+    })
+    nextSocket.addEventListener("close", () => {
+      if (sessionSummariesSocket === nextSocket) {
+        sessionSummariesSocket = null
+      }
+    })
+    nextSocket.addEventListener("error", () => {
+      if (sessionSummariesSocket === nextSocket) {
+        sessionSummariesSocket = null
+      }
+    })
+  }
+
   function prepareActiveSessionSwitch(sessionId: string) {
-    store.state$.activeSessionId.set(sessionId)
-    syncActiveSession(store, sessionId)
-    store.state$.streamingAssistantText.set("")
-    store.state$.composerText.set("")
-    store.state$.sending.set(false)
-    store.state$.interrupting.set(false)
+    batch(() => {
+      store.state$.activeSessionId.set(sessionId)
+      syncActiveSession(store, sessionId)
+      store.state$.streamingAssistantText.set("")
+      store.state$.composerText.set(readDraft(sessionId))
+      store.state$.sending.set(false)
+      store.state$.interrupting.set(false)
+    })
   }
 
   function connectSocket(sessionId: string) {
@@ -1021,7 +1165,8 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     connectSocket(sessionId)
     prepareActiveSessionSwitch(sessionId)
     try {
-      const payload = await readJson<SessionWindowResponse>(
+      const payload = await readCachedBootstrapJson(
+        sessionWindowRequestCache,
         apiPath(store, `/v2/sessions/${encodeURIComponent(sessionId)}/window`),
       )
       if (requestId !== openSessionRequestId) {
@@ -1051,9 +1196,10 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         if (cursor) {
           params.set("cursor", cursor)
         }
-        const payload = await readJson<SessionsResponse>(
-          apiPath(store, `/v2/sessions?${params.toString()}`),
-        )
+        const requestPath = apiPath(store, `/v2/sessions?${params.toString()}`)
+        const payload = append
+          ? await readJson<SessionsResponse>(requestPath)
+          : await readCachedBootstrapJson(sessionListRequestCache, requestPath)
         store.state$.sessions.set(
           append
             ? mergeSessionPages(store.state$.sessions.get(), payload.sessions)
@@ -1062,9 +1208,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         store.state$.nextSessionsCursor.set(payload.nextCursor)
         store.state$.totalKnownSessions.set(payload.totalKnownSessions)
         store.state$.connection.status.set("ready")
-        if (!store.state$.activeSessionId.get() && payload.sessions[0]) {
-          await openSession(payload.sessions[0].id)
-        }
+        connectSessionSummariesSocket()
       } catch (error) {
         store.state$.connection.status.set("error")
         store.state$.connection.error.set(
@@ -1109,6 +1253,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       )
       store.state$.activeSessionId.set(payload.session.id)
       setSessionWindow(store, payload, "replace")
+      store.state$.composerText.set(readDraft(payload.session.id))
       connectSocket(payload.session.id)
       void markSessionReadById(store, payload.session.id)
       return payload.session.id
@@ -1130,6 +1275,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
 
     setActionSequenceMode(mode: AgentChatV2ActionSequenceMode): void {
       store.state$.actionSequenceMode.set(mode)
+      writeActionSequenceMode(mode)
       const sessionId = store.state$.activeSessionId.get()
       if (sessionId) {
         syncActiveSession(store, sessionId)
@@ -1150,6 +1296,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
 
     close(): void {
       closeSocket()
+      closeSessionSummariesSocket()
     },
   }
 
