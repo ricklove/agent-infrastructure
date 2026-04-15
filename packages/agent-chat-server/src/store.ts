@@ -1301,7 +1301,8 @@ export class AgentChatStore {
     this.messageCache.clear()
 
     const sessionIds = new Set(this.listSessionDirectories())
-    for (const session of this.readSessionsFromIndex(sessionIds)) {
+    const indexedSessions = this.readSessionsFromIndex(sessionIds)
+    for (const session of indexedSessions) {
       this.sessionCache.set(session.id, session)
     }
 
@@ -1318,6 +1319,11 @@ export class AgentChatStore {
           error,
         )
       }
+    }
+
+    if (sessionIds.size > 0 && indexedSessions.length === 0) {
+      this.reconcileSessionIndexNow(sessionIds)
+      return
     }
 
     this.reconcileSessionIndexInBackground(sessionIds)
@@ -1455,25 +1461,22 @@ export class AgentChatStore {
     }, 0)
   }
 
-  private async reconcileSessionIndex(sessionIds: Set<string>) {
+  private reconcileSessionIndexNow(sessionIds: Set<string>) {
     try {
-      const indexedIds = new Set(
-        (
-          this.indexDb.query(`SELECT id FROM session_index`).all() as Array<{
-            id: string
-          }>
-        ).map((row) => row.id),
-      )
-      for (const indexedId of indexedIds) {
-        if (!sessionIds.has(indexedId)) {
-          this.indexDb
-            .query(`DELETE FROM message_index WHERE session_id = ?`)
-            .run(indexedId)
-          this.indexDb
-            .query(`DELETE FROM session_index WHERE id = ?`)
-            .run(indexedId)
+      this.deleteRemovedSessionsFromIndex(sessionIds)
+      for (const sessionId of sessionIds) {
+        if (!this.isSessionIndexFresh(sessionId)) {
+          this.rebuildSessionIndex(sessionId)
         }
       }
+    } catch (error) {
+      console.error("[agent-chat-store] failed to seed session index", error)
+    }
+  }
+
+  private async reconcileSessionIndex(sessionIds: Set<string>) {
+    try {
+      this.deleteRemovedSessionsFromIndex(sessionIds)
 
       let processed = 0
       for (const sessionId of sessionIds) {
@@ -1491,6 +1494,26 @@ export class AgentChatStore {
         "[agent-chat-store] failed to reconcile session index",
         error,
       )
+    }
+  }
+
+  private deleteRemovedSessionsFromIndex(sessionIds: Set<string>) {
+    const indexedIds = new Set(
+      (
+        this.indexDb.query(`SELECT id FROM session_index`).all() as Array<{
+          id: string
+        }>
+      ).map((row) => row.id),
+    )
+    for (const indexedId of indexedIds) {
+      if (!sessionIds.has(indexedId)) {
+        this.indexDb
+          .query(`DELETE FROM message_index WHERE session_id = ?`)
+          .run(indexedId)
+        this.indexDb
+          .query(`DELETE FROM session_index WHERE id = ?`)
+          .run(indexedId)
+      }
     }
   }
 
