@@ -215,6 +215,11 @@ type RunActivityEvent = {
   queuedMessages: AgentChatV2Message[]
 }
 
+type SessionSummaryEvent = {
+  type: "session.summary"
+  session: AgentChatV2Session
+}
+
 type AgentChatV2StoreState = {
   connection: {
     status: "idle" | "loading" | "ready" | "error"
@@ -403,6 +408,14 @@ function wsUrl(store: AgentChatV2Store, sessionId: string): string {
   const url = new URL(root, window.location.href)
   url.searchParams.set("sessionId", sessionId)
   url.searchParams.set("mode", "v2")
+  return url.toString()
+}
+
+function sessionSummariesWsUrl(store: AgentChatV2Store): string {
+  const root = store.state$.connection.wsRootUrl.get()
+  const url = new URL(root, window.location.href)
+  url.searchParams.set("mode", "v2")
+  url.searchParams.set("scope", "sessions")
   return url.toString()
 }
 
@@ -976,12 +989,55 @@ async function interruptSessionById(
 
 export function createAgentChatV2Actions(store: AgentChatV2Store) {
   let socket: WebSocket | null = null
+  let sessionSummariesSocket: WebSocket | null = null
   let openSessionRequestId = 0
 
   function closeSocket() {
     socket?.close()
     socket = null
     store.state$.connection.wsStatus.set("idle")
+  }
+
+  function closeSessionSummariesSocket() {
+    sessionSummariesSocket?.close()
+    sessionSummariesSocket = null
+  }
+
+  function connectSessionSummariesSocket() {
+    if (sessionSummariesSocket) {
+      return
+    }
+    const protocols = dashboardSessionWebSocketProtocols(
+      dashboardSessionWebSocketProtocolPrefix,
+    )
+    const nextSocket =
+      protocols.length > 0
+        ? new WebSocket(sessionSummariesWsUrl(store), protocols)
+        : new WebSocket(sessionSummariesWsUrl(store))
+    sessionSummariesSocket = nextSocket
+    nextSocket.addEventListener("message", (event) => {
+      if (sessionSummariesSocket !== nextSocket) {
+        return
+      }
+      const payload = JSON.parse(String(event.data)) as SessionSummaryEvent
+      if (payload.type !== "session.summary") {
+        return
+      }
+      store.state$.sessions.set(
+        upsertSession(store.state$.sessions.get(), payload.session),
+      )
+      syncActiveSession(store, payload.session.id)
+    })
+    nextSocket.addEventListener("close", () => {
+      if (sessionSummariesSocket === nextSocket) {
+        sessionSummariesSocket = null
+      }
+    })
+    nextSocket.addEventListener("error", () => {
+      if (sessionSummariesSocket === nextSocket) {
+        sessionSummariesSocket = null
+      }
+    })
   }
 
   function prepareActiveSessionSwitch(sessionId: string) {
@@ -1111,6 +1167,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         store.state$.nextSessionsCursor.set(payload.nextCursor)
         store.state$.totalKnownSessions.set(payload.totalKnownSessions)
         store.state$.connection.status.set("ready")
+        connectSessionSummariesSocket()
         if (!store.state$.activeSessionId.get() && payload.sessions[0]) {
           await openSession(payload.sessions[0].id)
         }
@@ -1201,6 +1258,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
 
     close(): void {
       closeSocket()
+      closeSessionSummariesSocket()
     },
   }
 

@@ -272,6 +272,7 @@ const sessionSockets = new Map<
   string,
   Set<Bun.ServerWebSocket<ChatSocketData>>
 >()
+const v2SessionSummarySockets = new Set<Bun.ServerWebSocket<ChatSocketData>>()
 const activeSessionRuns = new Set<string>()
 const sessionRuntime = new Map<string, SessionRuntimeState>()
 const sessionWatchdogTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -2286,6 +2287,21 @@ function broadcastSession(sessionId: string, event: unknown) {
   for (const socket of getSessionSockets(sessionId)) {
     socket.send(JSON.stringify(eventForSocket(event, socket)))
   }
+  broadcastV2SessionSummary(sessionId)
+}
+
+function broadcastV2SessionSummary(sessionId: string) {
+  const session = buildV2SessionSummaryOrNull(sessionId)
+  if (!session) {
+    return
+  }
+  const payload = JSON.stringify({
+    type: "session.summary",
+    session,
+  })
+  for (const socket of v2SessionSummarySockets) {
+    socket.send(payload)
+  }
 }
 
 function broadcastSnapshot(sessionId: string) {
@@ -2945,10 +2961,28 @@ const server = Bun.serve<ChatSocketData>({
 
     if (url.pathname === "/api/agent-chat/ws") {
       const sessionId = url.searchParams.get("sessionId")
+      const clientMode = url.searchParams.get("mode") === "v2" ? "v2" : "v1"
+      const socketScope = url.searchParams.get("scope")
+      if (clientMode === "v2" && socketScope === "sessions") {
+        if (
+          serverInstance.upgrade(request, {
+            data: {
+              socketId: randomUUID(),
+              sessionId: null,
+              clientMode,
+            },
+          })
+        ) {
+          return undefined
+        }
+        return jsonResponse(
+          { ok: false, error: "websocket upgrade failed" },
+          500,
+        )
+      }
       if (!sessionId || !store.getSession(sessionId)) {
         return jsonResponse({ ok: false, error: "sessionId required" }, 400)
       }
-      const clientMode = url.searchParams.get("mode") === "v2" ? "v2" : "v1"
 
       if (
         serverInstance.upgrade(request, {
@@ -4025,6 +4059,9 @@ const server = Bun.serve<ChatSocketData>({
   websocket: {
     open(ws) {
       if (!ws.data.sessionId) {
+        if (ws.data.clientMode === "v2") {
+          v2SessionSummarySockets.add(ws)
+        }
         return
       }
       getSessionSockets(ws.data.sessionId).add(ws)
@@ -4053,6 +4090,7 @@ const server = Bun.serve<ChatSocketData>({
     message() {},
     close(ws) {
       if (!ws.data.sessionId) {
+        v2SessionSummarySockets.delete(ws)
         return
       }
       const sockets = sessionSockets.get(ws.data.sessionId)
