@@ -373,6 +373,7 @@ function markV2DashboardSessionRead(sessionId: string, atMs = Date.now()) {
   state.sessions[sessionId] = { lastReadAtMs: atMs }
   writeV2DashboardReadState(state)
   requestWorkspacePersistence(`agent-chat:v2-read-state:${sessionId}`)
+  broadcastV2SessionSummary(sessionId)
 }
 
 function buildSessionV2ReadState(sessionId: string): SessionV2ReadState {

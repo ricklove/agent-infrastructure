@@ -772,7 +772,11 @@ function updateActiveSessionActivity(
 async function markSessionReadById(
   store: AgentChatV2Store,
   sessionId: string,
+  options?: { requireActive?: boolean },
 ): Promise<void> {
+  if (shouldSkipInactiveSessionAction(store, sessionId, options)) {
+    return
+  }
   const payload = await readJson<{
     ok: true
     session: AgentChatV2Session | null
@@ -1027,6 +1031,15 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         upsertSession(store.state$.sessions.get(), payload.session),
       )
       syncActiveSession(store, payload.session.id)
+      if (
+        store.state$.activeSessionId.get() === payload.session.id &&
+        payload.session.v2ReadState?.hasUnread &&
+        document.visibilityState === "visible"
+      ) {
+        void markSessionReadById(store, payload.session.id, {
+          requireActive: true,
+        })
+      }
     })
     nextSocket.addEventListener("close", () => {
       if (sessionSummariesSocket === nextSocket) {
