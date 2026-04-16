@@ -16,6 +16,18 @@ export type OutboxMessage = AgentChatV2Message & {
   pendingStatus: "pending" | "queued"
 }
 
+const messageBodyScrollClassName =
+  "max-h-[min(34rem,calc(100dvh-14rem))] overflow-y-auto overscroll-contain pr-2"
+const largeMessageCharacterThreshold = 12_000
+const largeMessagePreviewCharacterLimit = 120_000
+const largeMessageLineThreshold = 260
+
+type MessageTextStats = {
+  characterCount: number
+  lineCount: number
+  large: boolean
+}
+
 export function messageText(message: AgentChatV2Message): string {
   return message.content
     .map((block) => (block.type === "text" ? block.text : "[image]"))
@@ -458,6 +470,76 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
   return nodes
 }
 
+function messageTextStats(blocks: { text: string }[]): MessageTextStats {
+  let characterCount = 0
+  let lineCount = 0
+  for (const block of blocks) {
+    characterCount += block.text.length
+    lineCount += 1
+    let newlineIndex = block.text.indexOf("\n")
+    while (newlineIndex !== -1) {
+      lineCount += 1
+      if (lineCount > largeMessageLineThreshold) {
+        break
+      }
+      newlineIndex = block.text.indexOf("\n", newlineIndex + 1)
+    }
+    if (
+      characterCount > largeMessageCharacterThreshold ||
+      lineCount > largeMessageLineThreshold
+    ) {
+      return { characterCount, lineCount, large: true }
+    }
+  }
+  return { characterCount, lineCount, large: false }
+}
+
+function largeMessagePreviewText(blocks: { text: string }[]): {
+  text: string
+  truncated: boolean
+} {
+  let remaining = largeMessagePreviewCharacterLimit
+  const chunks: string[] = []
+  for (const block of blocks) {
+    if (remaining <= 0) {
+      return { text: chunks.join("\n\n").trim(), truncated: true }
+    }
+    if (chunks.length > 0) {
+      chunks.push("\n\n")
+      remaining -= 2
+    }
+    if (block.text.length > remaining) {
+      chunks.push(block.text.slice(0, remaining))
+      return { text: chunks.join("").trim(), truncated: true }
+    }
+    chunks.push(block.text)
+    remaining -= block.text.length
+  }
+  return { text: chunks.join("").trim(), truncated: false }
+}
+
+function LargeMessageContent(props: {
+  blocks: { text: string }[]
+  stats: MessageTextStats
+}) {
+  useRenderCounter("AgentChatV2.LargeMessageContent")
+  const preview = largeMessagePreviewText(props.blocks)
+  return (
+    <div className="space-y-2">
+      <div className="rounded border border-amber-400/30 bg-amber-950/20 px-3 py-2 text-xs leading-5 text-amber-100">
+        Large message shown as raw text to keep the dashboard responsive. Full
+        size: {props.stats.characterCount.toLocaleString()} characters.
+        {preview.truncated
+          ? ` Showing the first ${largeMessagePreviewCharacterLimit.toLocaleString()} characters.`
+          : null}
+      </div>
+      <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-zinc-100">
+        {preview.text}
+      </pre>
+    </div>
+  )
+}
+
 export function queuedMessageLabel(message: AgentChatV2Message): string {
   if (message.kind === "directoryInstruction") {
     return "Next-turn instruction"
@@ -748,6 +830,8 @@ function MessageContent(props: {
   const textBlocks = props.message.content.filter(
     (block): block is { type: "text"; text: string } => block.type === "text",
   )
+  const textStats = messageTextStats(textBlocks)
+  const largeTextMessage = textStats.large
   const imageReferences = [
     ...props.message.content
       .filter(
@@ -758,13 +842,19 @@ function MessageContent(props: {
         sourceUrl: block.url,
         altText: "Attached image",
       })),
-    ...textBlocks.flatMap((block) => textImageReferences(block.text)),
+    ...(largeTextMessage
+      ? []
+      : textBlocks.flatMap((block) => textImageReferences(block.text))),
   ]
 
   return (
     <div className="space-y-3">
-      {textBlocks.flatMap((block, index) =>
-        renderMarkdownBlocks(block.text, `${props.message.id}-text-${index}`),
+      {largeTextMessage ? (
+        <LargeMessageContent blocks={textBlocks} stats={textStats} />
+      ) : (
+        textBlocks.flatMap((block, index) =>
+          renderMarkdownBlocks(block.text, `${props.message.id}-text-${index}`),
+        )
       )}
       {imageReferences.map((image) => (
         <MessageImagePreview
@@ -784,16 +874,29 @@ function MessageContent(props: {
 
 function RawMessageContent(props: { message: AgentChatV2Message }) {
   useRenderCounter("AgentChatV2.RawMessageContent")
+  const blockOccurrences = new Map<string, number>()
   return (
-    <div className="space-y-2">
+    <div className={`space-y-2 ${messageBodyScrollClassName}`}>
       {props.message.content.map((block) => {
         const value = block.type === "text" ? block.text : block.url
+        const keySignature = `${block.type}-${value.length}-${value.slice(0, 48)}`
+        const occurrence = blockOccurrences.get(keySignature) ?? 0
+        blockOccurrences.set(keySignature, occurrence + 1)
+        const truncated = value.length > largeMessagePreviewCharacterLimit
+        const visibleValue = truncated
+          ? value.slice(0, largeMessagePreviewCharacterLimit)
+          : value
         return (
           <pre
-            key={`${props.message.id}-raw-${block.type}-${value}`}
-            className="overflow-x-auto rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-200"
+            key={`${props.message.id}-raw-${occurrence}-${keySignature}`}
+            className="overflow-x-auto whitespace-pre-wrap break-words rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-200"
           >
-            <code className="font-mono">{value}</code>
+            <code className="font-mono">
+              {visibleValue}
+              {truncated
+                ? `\n\n[raw view capped at ${largeMessagePreviewCharacterLimit.toLocaleString()} characters]`
+                : null}
+            </code>
           </pre>
         )
       })}
@@ -852,7 +955,12 @@ export function MessageBubble(props: {
       {raw ? (
         <RawMessageContent message={props.message} />
       ) : (
-        <MessageContent message={props.message} apiRootUrl={props.apiRootUrl} />
+        <div className={messageBodyScrollClassName}>
+          <MessageContent
+            message={props.message}
+            apiRootUrl={props.apiRootUrl}
+          />
+        </div>
       )}
     </article>
   )
