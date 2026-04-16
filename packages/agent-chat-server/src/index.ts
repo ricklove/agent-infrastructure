@@ -2490,12 +2490,58 @@ function decodeImageDataUrl(dataUrl: string) {
   }
 }
 
+function largePasteAttachmentText(attachmentUrl: string) {
+  return `Large paste attached: [download full text](${attachmentUrl})`
+}
+
+const largeTextAttachmentCharacterThreshold = 12_000
+const largeTextAttachmentLineThreshold = 260
+
+function shouldPersistTextAsAttachment(text: string) {
+  if (text.length > largeTextAttachmentCharacterThreshold) {
+    return true
+  }
+  let lineCount = 1
+  let newlineIndex = text.indexOf("\n")
+  while (newlineIndex !== -1) {
+    lineCount += 1
+    if (lineCount > largeTextAttachmentLineThreshold) {
+      return true
+    }
+    newlineIndex = text.indexOf("\n", newlineIndex + 1)
+  }
+  return false
+}
+
+function textContentBlockOrAttachment(
+  sessionId: string,
+  text: string,
+): StoredMessageContentBlock | null {
+  const trimmedText = text.trim()
+  if (!trimmedText) {
+    return null
+  }
+  if (!shouldPersistTextAsAttachment(trimmedText)) {
+    return { type: "text", text: trimmedText }
+  }
+  const attachment = store.persistAttachment(sessionId, {
+    mediaType: "text/plain",
+    bytes: Buffer.from(trimmedText, "utf8"),
+  })
+  return {
+    type: "text",
+    text: largePasteAttachmentText(attachment.url),
+  }
+}
+
 function normalizeMessageContent(
   sessionId: string,
   payload: {
     text?: string
     content?: Array<
-      { type?: "text"; text?: string } | { type?: "image"; dataUrl?: string }
+      | { type?: "text"; text?: string }
+      | { type?: "image"; dataUrl?: string }
+      | { type?: "textFile"; text?: string }
     >
   },
 ): StoredMessageContentBlock[] {
@@ -2503,9 +2549,23 @@ function normalizeMessageContent(
 
   for (const block of payload.content ?? []) {
     if (block?.type === "text") {
-      const text = block.text?.trim() || ""
-      if (text) {
-        nextContent.push({ type: "text", text })
+      const textBlock = textContentBlockOrAttachment(
+        sessionId,
+        block.text || "",
+      )
+      if (textBlock) {
+        nextContent.push(textBlock)
+      }
+      continue
+    }
+
+    if (block?.type === "textFile") {
+      const textBlock = textContentBlockOrAttachment(
+        sessionId,
+        block.text || "",
+      )
+      if (textBlock) {
+        nextContent.push(textBlock)
       }
       continue
     }
@@ -2529,7 +2589,8 @@ function normalizeMessageContent(
   }
 
   const text = payload.text?.trim() || ""
-  return text ? [{ type: "text", text }] : []
+  const textBlock = textContentBlockOrAttachment(sessionId, text)
+  return textBlock ? [textBlock] : []
 }
 
 function buildProviderInputContent(
@@ -4033,6 +4094,7 @@ const server = Bun.serve<ChatSocketData>({
           content?: Array<
             | { type?: "text"; text?: string }
             | { type?: "image"; dataUrl?: string }
+            | { type?: "textFile"; text?: string }
           >
         }
         let content: StoredMessageContentBlock[]

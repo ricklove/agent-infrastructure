@@ -161,6 +161,9 @@ export type AgentChatV2ComposerImage = {
   dataUrl: string
 }
 
+const largePasteAttachmentCharacterThreshold = 12_000
+const largePasteAttachmentLineThreshold = 260
+
 type SessionsResponse = {
   ok: boolean
   sessions: AgentChatV2Session[]
@@ -847,6 +850,26 @@ function shouldSkipInactiveSessionAction(
   )
 }
 
+function shouldSendTextAsAttachment(text: string) {
+  if (text.length > largePasteAttachmentCharacterThreshold) {
+    return true
+  }
+  let lineCount = 1
+  let newlineIndex = text.indexOf("\n")
+  while (newlineIndex !== -1) {
+    lineCount += 1
+    if (lineCount > largePasteAttachmentLineThreshold) {
+      return true
+    }
+    newlineIndex = text.indexOf("\n", newlineIndex + 1)
+  }
+  return false
+}
+
+function largePasteAttachmentLabel(text: string) {
+  return `Large paste attached (${text.length.toLocaleString()} characters).`
+}
+
 async function loadOlderMessagesForSession(
   store: AgentChatV2Store,
   sessionId: string,
@@ -886,8 +909,12 @@ async function sendMessageForSession(
   if (!text && images.length === 0) {
     return
   }
+  const sendTextAsAttachment = text ? shouldSendTextAsAttachment(text) : false
+  const pendingText = sendTextAsAttachment
+    ? largePasteAttachmentLabel(text)
+    : text
   const content: AgentChatV2Message["content"] = [
-    ...(text ? [{ type: "text" as const, text }] : []),
+    ...(pendingText ? [{ type: "text" as const, text: pendingText }] : []),
     ...images.map((image) => ({
       type: "image" as const,
       url: image.dataUrl,
@@ -921,9 +948,14 @@ async function sendMessageForSession(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        text,
         content: [
-          ...(text ? [{ type: "text" as const, text }] : []),
+          ...(text
+            ? [
+                sendTextAsAttachment
+                  ? ({ type: "textFile" as const, text } as const)
+                  : ({ type: "text" as const, text } as const),
+              ]
+            : []),
           ...images.map((image) => ({
             type: "image" as const,
             dataUrl: image.dataUrl,

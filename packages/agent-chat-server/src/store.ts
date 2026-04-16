@@ -2246,6 +2246,8 @@ const attachmentUrlPattern =
 
 function fileExtensionForMediaType(mediaType: string) {
   switch (mediaType) {
+    case "text/plain":
+      return "txt"
     case "image/jpeg":
       return "jpg"
     case "image/gif":
@@ -2259,6 +2261,9 @@ function fileExtensionForMediaType(mediaType: string) {
 
 function mediaTypeForFileName(fileName: string) {
   const normalized = fileName.toLowerCase()
+  if (normalized.endsWith(".txt")) {
+    return "text/plain"
+  }
   if (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg")) {
     return "image/jpeg"
   }
