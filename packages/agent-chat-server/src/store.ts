@@ -38,6 +38,10 @@ import {
 } from "./schema.js"
 
 const attachmentRoutePrefix = "/api/agent-chat/sessions"
+const userChatAttachmentCharacterThreshold = 12_000
+const userChatAttachmentLineThreshold = 260
+const legacyAttachmentCharacterThreshold = 100_000
+const legacyAttachmentLineThreshold = 2_000
 
 export type StoredMessageContentBlock =
   | { type: "text"; text: string }
@@ -136,6 +140,7 @@ type CanonicalWriteEvent = {
     | "message-appended"
     | "session-metadata-updated"
     | "message-visibility-updated"
+    | "message-content-migrated"
 }
 
 type AgentChatStoreOptions = {
@@ -1425,17 +1430,126 @@ export class AgentChatStore {
       this.hasSessionIndex(sessionId) &&
       indexedMessages.length === session.messageCount
     ) {
-      this.messageCache.set(sessionId, indexedMessages)
-      return indexedMessages
+      const migration = this.migrateLargeInlineMessages(
+        session,
+        indexedMessages,
+      )
+      const nextMessages = migration.messages
+      const nextSession = migration.changed
+        ? sessionSummary(this.sessionMetadata(session), nextMessages)
+        : session
+      this.messageCache.set(sessionId, nextMessages)
+      if (migration.changed) {
+        this.sessionCache.set(sessionId, nextSession)
+        this.writeSessionFiles(this.sessionMetadata(nextSession), nextMessages)
+        this.writeSessionIndex(nextSession, nextMessages)
+        this.notifyCanonicalWrite({
+          sessionId,
+          reason: "message-content-migrated",
+        })
+      }
+      return nextMessages
     }
 
     const messages = this.readMessages(session)
     const metadata = this.readSessionMetadata(sessionId)
-    const nextSession = sessionSummary(metadata, messages)
-    this.messageCache.set(sessionId, messages)
+    const migration = this.migrateLargeInlineMessages(session, messages)
+    const nextMessages = migration.messages
+    const nextSession = sessionSummary(metadata, nextMessages)
+    this.messageCache.set(sessionId, nextMessages)
     this.sessionCache.set(sessionId, nextSession)
-    this.writeSessionIndex(nextSession, messages)
-    return messages
+    if (migration.changed) {
+      this.writeSessionFiles(metadata, nextMessages)
+      this.notifyCanonicalWrite({
+        sessionId,
+        reason: "message-content-migrated",
+      })
+    }
+    this.writeSessionIndex(nextSession, nextMessages)
+    return nextMessages
+  }
+
+  private migrateLargeInlineMessages(
+    session: StoredSession,
+    messages: StoredMessage[],
+  ): { messages: StoredMessage[]; changed: boolean } {
+    let changed = false
+    const migratedMessages = messages.map((message) => {
+      let messageChanged = false
+      const nextContent = message.content.map((block, blockIndex) => {
+        if (
+          block.type !== "text" ||
+          !this.shouldMigrateInlineTextBlock(message, block.text)
+        ) {
+          return block
+        }
+        changed = true
+        messageChanged = true
+        return {
+          type: "text" as const,
+          text: this.persistLegacyTextAttachment(
+            session.id,
+            message,
+            blockIndex,
+            block.text,
+          ),
+        }
+      })
+      return !messageChanged
+        ? message
+        : {
+            ...message,
+            content: nextContent,
+          }
+    })
+    return { messages: migratedMessages, changed }
+  }
+
+  private shouldMigrateInlineTextBlock(message: StoredMessage, text: string) {
+    if (isLargePasteAttachmentText(text)) {
+      return false
+    }
+    const threshold =
+      message.role === "user" && message.kind === "chat"
+        ? {
+            characters: userChatAttachmentCharacterThreshold,
+            lines: userChatAttachmentLineThreshold,
+          }
+        : {
+            characters: legacyAttachmentCharacterThreshold,
+            lines: legacyAttachmentLineThreshold,
+          }
+    if (text.length > threshold.characters) {
+      return true
+    }
+    let lineCount = 1
+    let newlineIndex = text.indexOf("\n")
+    while (newlineIndex !== -1) {
+      lineCount += 1
+      if (lineCount > threshold.lines) {
+        return true
+      }
+      newlineIndex = text.indexOf("\n", newlineIndex + 1)
+    }
+    return false
+  }
+
+  private persistLegacyTextAttachment(
+    sessionId: string,
+    message: StoredMessage,
+    blockIndex: number,
+    text: string,
+  ) {
+    const fileName =
+      message.content.filter((block) => block.type === "text").length <= 1
+        ? `${message.id}.txt`
+        : `${message.id}-${blockIndex + 1}.txt`
+    const attachmentPath = this.attachmentPath(sessionId, fileName)
+    mkdirSync(dirname(attachmentPath), { recursive: true })
+    if (!existsSync(attachmentPath)) {
+      writeFileSync(attachmentPath, text)
+    }
+    return largePasteAttachmentText(this.attachmentUrl(sessionId, fileName))
   }
 
   private readMessagesFromIndex(session: StoredSession): StoredMessage[] {
@@ -2274,4 +2388,14 @@ function mediaTypeForFileName(fileName: string) {
     return "image/webp"
   }
   return "image/png"
+}
+
+function largePasteAttachmentText(attachmentUrl: string) {
+  return `Large paste attached: [download full text](${attachmentUrl})`
+}
+
+function isLargePasteAttachmentText(text: string) {
+  return /^Large paste attached: \[download full text\]\(\/api\/agent-chat\/sessions\/[^)]+\/attachments\/[^)]+\.txt\)$/u.test(
+    text.trim(),
+  )
 }
