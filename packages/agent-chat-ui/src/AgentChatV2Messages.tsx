@@ -19,7 +19,8 @@ export type OutboxMessage = AgentChatV2Message & {
 const messageBodyScrollClassName =
   "max-h-[min(34rem,calc(100dvh-14rem))] overflow-y-auto overscroll-contain pr-2"
 const largeMessageCharacterThreshold = 12_000
-const largeMessagePreviewCharacterLimit = 120_000
+const largeMessagePreviewCharacterLimit = 16_000
+const rawMessagePreviewCharacterLimit = 120_000
 const largeMessageLineThreshold = 260
 
 type MessageTextStats = {
@@ -518,7 +519,26 @@ function largeMessagePreviewText(blocks: { text: string }[]): {
   return { text: chunks.join("").trim(), truncated: false }
 }
 
+function largeMessageDownloadName(message: AgentChatV2Message) {
+  return `agent-chat-${message.sessionId}-${message.id}.txt`
+}
+
+function downloadLargeMessage(message: AgentChatV2Message) {
+  const text = message.content
+    .map((block) => (block.type === "text" ? block.text : block.url))
+    .join("\n\n")
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }))
+  const link = document.createElement("a")
+  link.href = url
+  link.download = largeMessageDownloadName(message)
+  document.body.append(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 function LargeMessageContent(props: {
+  message: AgentChatV2Message
   blocks: { text: string }[]
   stats: MessageTextStats
 }) {
@@ -526,12 +546,22 @@ function LargeMessageContent(props: {
   const preview = largeMessagePreviewText(props.blocks)
   return (
     <div className="space-y-2">
-      <div className="rounded border border-amber-400/30 bg-amber-950/20 px-3 py-2 text-xs leading-5 text-amber-100">
-        Large message shown as raw text to keep the dashboard responsive. Full
-        size: {props.stats.characterCount.toLocaleString()} characters.
-        {preview.truncated
-          ? ` Showing the first ${largeMessagePreviewCharacterLimit.toLocaleString()} characters.`
-          : null}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-amber-400/30 bg-amber-950/20 px-3 py-2 text-xs leading-5 text-amber-100">
+        <span>
+          Large message. Showing the first{" "}
+          {Math.min(
+            props.stats.characterCount,
+            largeMessagePreviewCharacterLimit,
+          ).toLocaleString()}{" "}
+          of {props.stats.characterCount.toLocaleString()} characters.
+        </span>
+        <button
+          type="button"
+          onClick={() => downloadLargeMessage(props.message)}
+          className="rounded border border-amber-300/40 px-2 py-1 text-[11px] font-semibold uppercase text-amber-50 hover:bg-amber-900/40"
+        >
+          Download full text
+        </button>
       </div>
       <pre className="whitespace-pre-wrap break-words text-sm leading-6 text-zinc-100">
         {preview.text}
@@ -850,7 +880,11 @@ function MessageContent(props: {
   return (
     <div className="space-y-3">
       {largeTextMessage ? (
-        <LargeMessageContent blocks={textBlocks} stats={textStats} />
+        <LargeMessageContent
+          message={props.message}
+          blocks={textBlocks}
+          stats={textStats}
+        />
       ) : (
         textBlocks.flatMap((block, index) =>
           renderMarkdownBlocks(block.text, `${props.message.id}-text-${index}`),
@@ -882,9 +916,9 @@ function RawMessageContent(props: { message: AgentChatV2Message }) {
         const keySignature = `${block.type}-${value.length}-${value.slice(0, 48)}`
         const occurrence = blockOccurrences.get(keySignature) ?? 0
         blockOccurrences.set(keySignature, occurrence + 1)
-        const truncated = value.length > largeMessagePreviewCharacterLimit
+        const truncated = value.length > rawMessagePreviewCharacterLimit
         const visibleValue = truncated
-          ? value.slice(0, largeMessagePreviewCharacterLimit)
+          ? value.slice(0, rawMessagePreviewCharacterLimit)
           : value
         return (
           <pre
@@ -894,7 +928,7 @@ function RawMessageContent(props: { message: AgentChatV2Message }) {
             <code className="font-mono">
               {visibleValue}
               {truncated
-                ? `\n\n[raw view capped at ${largeMessagePreviewCharacterLimit.toLocaleString()} characters]`
+                ? `\n\n[raw view capped at ${rawMessagePreviewCharacterLimit.toLocaleString()} characters]`
                 : null}
             </code>
           </pre>
