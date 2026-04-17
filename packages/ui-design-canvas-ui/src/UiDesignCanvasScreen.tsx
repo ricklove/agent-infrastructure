@@ -1,6 +1,4 @@
 import {
-  dashboardEnterStyleHint,
-  dashboardEnterStyleShortLabel,
   isDashboardSendShortcut,
   readDashboardPreferences,
   subscribeDashboardPreferences,
@@ -495,13 +493,13 @@ function DraftPromptCard({
         <span className="rounded-full border border-amber-300/35 bg-amber-300/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-amber-100">
           Prompt Draft
         </span>
-        <span className="text-[10px] uppercase tracking-[0.24em] text-stone-500">
-          {data.sessionStatus === "provisioning"
-            ? "Starting chat"
-            : data.sessionStatus === "failed"
-              ? "Chat failed"
-              : dashboardEnterStyleShortLabel(enterStyle)}
-        </span>
+        {data.sessionStatus !== "ready" ? (
+          <span className="text-[10px] uppercase tracking-[0.24em] text-stone-500">
+            {data.sessionStatus === "provisioning"
+              ? "Starting chat"
+              : "Chat failed"}
+          </span>
+        ) : null}
       </div>
       <textarea
         ref={inputRef}
@@ -520,12 +518,12 @@ function DraftPromptCard({
         className="nodrag h-28 w-full resize-none rounded-[20px] border border-stone-700/80 bg-stone-900/85 px-4 py-3 text-sm leading-6 text-stone-100 outline-none placeholder:text-stone-500"
         placeholder="Describe a direction, sketch note, or ask the agent what to change."
       />
-      <div className="mt-3 flex items-center justify-between text-xs text-stone-400">
-        <span>
-          {data.sessionStatus === "ready"
-            ? dashboardEnterStyleHint(enterStyle)
-            : "Preparing session"}
-        </span>
+      <div
+        className={`mt-3 flex items-center text-xs text-stone-400 ${
+          data.sessionStatus === "ready" ? "justify-end" : "justify-between"
+        }`}
+      >
+        {data.sessionStatus === "ready" ? null : <span>Preparing session</span>}
         <button
           type="button"
           onClick={data.onSubmit}
@@ -1834,8 +1832,7 @@ export function UiDesignCanvasScreen({
                 className="h-24 w-full resize-none rounded-[20px] border border-stone-800/90 bg-stone-900/90 px-4 py-3 text-sm leading-6 text-stone-100 outline-none placeholder:text-stone-500"
                 placeholder="Continue the linked agent-chat session."
               />
-              <div className="mt-3 flex items-center justify-between text-xs text-stone-400">
-                <span>{dashboardEnterStyleHint(enterStyle)}</span>
+              <div className="mt-3 flex items-center justify-end text-xs text-stone-400">
                 <button
                   type="button"
                   onClick={() => void submitChatDraft()}
