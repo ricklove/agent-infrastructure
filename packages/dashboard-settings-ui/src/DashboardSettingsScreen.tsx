@@ -1,6 +1,5 @@
 import {
   dashboardSessionFetch,
-  dashboardEnterStyleHint,
   readDashboardPreferences,
   subscribeDashboardPreferences,
   writeDashboardPreferences,
@@ -247,9 +246,6 @@ export function DashboardSettingsScreen() {
                 onChange={updateEnterStyle}
               />
             </div>
-            <p className="mt-4 text-sm text-slate-400">
-              Current behavior: {dashboardEnterStyleHint(preferences.enterStyle)}
-            </p>
           </SettingsCard>
 
           <SettingsCard

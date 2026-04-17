@@ -1,10 +1,10 @@
 import { observer, useValue } from "@legendapp/state/react"
 import { type FormEvent, useEffect, useMemo, useState } from "react"
 import {
-  createAgentChatV2Actions,
-  createAgentChatV2Store,
   type AgentChatV2Message,
   type AgentChatV2Session,
+  createAgentChatV2Actions,
+  createAgentChatV2Store,
 } from "./AgentChatV2Store"
 
 export type AgentChatV2ScreenProps = {
@@ -59,14 +59,16 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   const activeSession = useMemo(
     () =>
       state.activeSessionId
-        ? (state.sessions.find((session) => session.id === state.activeSessionId) ??
-          null)
+        ? (state.sessions.find(
+            (session) => session.id === state.activeSessionId,
+          ) ?? null)
         : null,
     [state.activeSessionId, state.sessions],
   )
   const activeMessages = activeSession
     ? (state.messagesBySessionId[activeSession.id] ?? [])
     : []
+  const streamingAssistantText = state.streamingAssistantText ?? ""
   const queuedMessages = activeSession
     ? (state.queuedMessagesBySessionId[activeSession.id] ?? [])
     : []
@@ -208,9 +210,9 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
                 {activeMessages.map((message) => (
                   <MessageBubble key={message.id} message={message} />
                 ))}
-                {state.streamingAssistantText ? (
+                {streamingAssistantText ? (
                   <div className="rounded border border-emerald-500/30 bg-emerald-950/30 px-4 py-3 text-sm leading-6 text-emerald-50">
-                    {state.streamingAssistantText}
+                    {streamingAssistantText}
                   </div>
                 ) : null}
               </div>
