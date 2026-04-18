@@ -53,6 +53,7 @@ const Layout = {
   bootstrapAsset: define.document("BootstrapAsset"),
   envFile: define.document("RuntimeEnvFile"),
   unitFile: define.document("SystemdUnitFile"),
+  workAtRegistry: define.document("WorkAtRegistry"),
 };
 
 const Tooling = {
@@ -66,6 +67,7 @@ const Tooling = {
 
 const Entrypoint = {
   setup: define.entity("SetupEntrypoint"),
+  workAt: define.entity("WorkAtEntrypoint"),
   manager: define.entity("ManagerEntrypoint"),
   managerNode: define.entity("ManagerNodeEntrypoint"),
   managerController: define.entity("ManagerControllerEntrypoint"),
@@ -141,6 +143,7 @@ SystemRuntime.enforces(`
 - Dashboard recovery should distinguish local origin failure from public tunnel failure.
 - Quick tunnel replacement should be conservative, cooldown-based, and never eager churn.
 - Temporary dashboard ingress should support a backup tunnel provider when the primary provider cannot issue a URL.
+- Runtime-installed work surface tools should use flag-style control commands so registered target names cannot conflict with tool control verbs.
 - Dashboard session issuance should only return a public URL after the manager has verified that the returned URL serves the dashboard.
 - The returned dashboard URL may contain one-time bootstrap session material only for the initial browser redirect; all later dashboard API and WebSocket auth must be enforced by the Bun gateway through headers rather than URL parameters.
 - Workspace durability for canonical app data should be handled by the manager controller's workspace-persistence domain rather than by browser clients or ad hoc cron glue.
@@ -182,6 +185,7 @@ SystemRuntime.defines(`
 - SwarmMonitorProgram means the worker or manager telemetry path that captures cheap host metrics and sparse process context.
 - ManagerController means one thin always-on manager-host control plane with distinct internal domains for dashboard recovery and workspace persistence.
 - Dashboard bootstrap URL means the one-time access URL returned by session issuance before the browser exchanges bootstrap auth into a session-scoped transport token.
+- WorkAtRegistry means a state-backed mapping from a registered work target name to its execution host, working directory, and shell.
 `);
 
 Host.manager.contains(
@@ -199,6 +203,7 @@ Host.worker.contains(Preview.dashboard, Preview.vite, Preview.session, Host.prev
 Host.runtime.contains(Layout.scripts, Layout.tools, Layout.packageScripts);
 Layout.scripts.contains(
   Entrypoint.setup,
+  Entrypoint.workAt,
   Entrypoint.manager,
   Entrypoint.managerNode,
   Entrypoint.managerController,
@@ -233,7 +238,7 @@ Gateway.dashboard.contains(
 );
 Gateway.backend.contains(RuntimeCode.graphServer);
 
-Host.state.contains(Layout.envFile, Layout.unitFile, Host.logFile);
+Host.state.contains(Layout.envFile, Layout.unitFile, Layout.workAtRegistry, Host.logFile);
 Host.logFile.contains(Eventing.start, Eventing.exit, Eventing.error, Eventing.setup, Eventing.teardown, Eventing.mutation);
 
 SystemRuntime.means(`
@@ -368,6 +373,13 @@ when(Host.manager.starts(Host.service))
   )
   .and(SystemRuntime.treats("those scripts as valid systemd boundaries"));
 
+when(Operator.runs(Entrypoint.workAt))
+  .then(SystemRuntime.expects("registered work target names to be bare command arguments"))
+  .and(SystemRuntime.expects("tool control operations to use `--help`, `--list`, `--register`, `--unregister`, and `--check`"))
+  .and(SystemRuntime.expects("`--register <name> -- ...` to separate work-at control arguments from target specification"))
+  .and(SystemRuntime.expects("the work-at registry to live under runtime state rather than inside the deployed checkout"))
+  .and(SystemRuntime.expects("single-command, piped multiline, and interactive shell modes to preserve stdin, TTY behavior, target working directory, and exit codes"));
+
 when(Entrypoint.launchWorker.prepares(Host.worker))
   .then(Entrypoint.launchWorker.injects(Layout.bootstrapAsset))
   .and(Layout.bootstrapAsset.writes(Layout.unitFile))
@@ -443,6 +455,7 @@ SystemRuntime.prescribes(`
 - top-level tools/ is the repository helper surface
 - package scripts remain only for package-local assets such as worker-user-data.sh
 - setup.sh is the host bootstrap controller
+- setup-manager.sh installs work-at from top-level scripts/ as /usr/local/bin/work-at
 - systemd points at top-level runtime scripts
 - Lambda or SSM points at top-level runtime scripts
 - worker user data may remain package-local when it is an internal bootstrap asset rather than an operator entrypoint
