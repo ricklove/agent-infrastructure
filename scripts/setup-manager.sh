@@ -9,6 +9,8 @@ setup_common_install_prereqs
 
 cd "$RUNTIME_ROOT"
 setup_common_system_event_run "scripts/setup-manager.sh" "target=bun-install" bun install --frozen-lockfile
+setup_common_system_event_run "scripts/setup-manager.sh" "target=install-work-at" \
+  install -m 0755 "$RUNTIME_ROOT/scripts/work-at.sh" /usr/local/bin/work-at
 setup_common_system_event_run "scripts/setup-manager.sh" "target=run-setup-manager-host" \
   bun run --filter @agent-infrastructure/swarm-manager run:setup-manager-host -- \
   --runtime-dir "$RUNTIME_ROOT" \
