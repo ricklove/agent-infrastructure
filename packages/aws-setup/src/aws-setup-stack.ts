@@ -203,6 +203,17 @@ export class AwsSetupStack extends Stack {
     )
     managerRole.addToPolicy(
       new iam.PolicyStatement({
+        sid: "ModifyManagerComputeAndStorage",
+        actions: [
+          "ec2:ModifyInstanceCpuOptions",
+          "ec2:ModifyVolume",
+          "ec2:DescribeVolumesModifications",
+        ],
+        resources: ["*"],
+      }),
+    )
+    managerRole.addToPolicy(
+      new iam.PolicyStatement({
         sid: "RunTaggedWorkerInstances",
         actions: ["ec2:RunInstances"],
         resources: ["*"],
