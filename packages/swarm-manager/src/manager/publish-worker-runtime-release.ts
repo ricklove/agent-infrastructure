@@ -72,17 +72,6 @@ async function main(): Promise<void> {
     DEFAULT_WORKER_RUNTIME_RELEASE_MANIFEST_PATH
   const keyPrefix = optionalOne(args, "key-prefix") ?? "releases"
   const releaseId = optionalOne(args, "release-id") ?? utcTimestampReleaseId()
-  const excludePatterns = [
-    ".git/*",
-    ".runtime/*",
-    "node_modules/*",
-    "*/node_modules/*",
-    "cdk.out/*",
-    "*/cdk.out/*",
-    "dist/*",
-    "*/dist/*",
-  ]
-
   const bootstrapContext =
     await readJsonFile<BootstrapContext>(bootstrapContextPath)
   if (
@@ -101,14 +90,8 @@ async function main(): Promise<void> {
   const key = `${keyPrefix.replace(/^\/+|\/+$/g, "")}/${releaseId}.zip`
 
   try {
-    const zipResult = Bun.spawnSync(
-      [
-        "zip",
-        "-qr",
-        archivePath,
-        ".",
-        ...excludePatterns.flatMap((pattern) => ["-x", pattern]),
-      ],
+    const archiveResult = Bun.spawnSync(
+      ["git", "archive", "--format=zip", "--output", archivePath, "HEAD"],
       {
         cwd: archiveCwd,
         stdout: "pipe",
@@ -116,8 +99,10 @@ async function main(): Promise<void> {
       },
     )
 
-    if (zipResult.exitCode !== 0) {
-      throw new Error(zipResult.stderr.toString("utf8").trim() || "zip failed")
+    if (archiveResult.exitCode !== 0) {
+      throw new Error(
+        archiveResult.stderr.toString("utf8").trim() || "git archive failed",
+      )
     }
 
     const uploadResult = Bun.spawnSync(
