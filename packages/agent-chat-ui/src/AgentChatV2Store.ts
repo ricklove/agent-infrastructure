@@ -1053,8 +1053,56 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
   let socket: WebSocket | null = null
   let sessionSummariesSocket: WebSocket | null = null
   let openSessionRequestId = 0
+  let socketReconnectTimeout: ReturnType<typeof setTimeout> | null = null
+  let socketReconnectAttempt = 0
+
+  function clearSocketReconnect() {
+    if (socketReconnectTimeout) {
+      clearTimeout(socketReconnectTimeout)
+      socketReconnectTimeout = null
+    }
+    socketReconnectAttempt = 0
+  }
+
+  async function resyncSessionWindow(
+    sessionId: string,
+    options?: { requireActive?: boolean },
+  ) {
+    if (shouldSkipInactiveSessionAction(store, sessionId, options)) {
+      return
+    }
+    const payload = await readJson<SessionWindowResponse>(
+      apiPath(store, `/v2/sessions/${encodeURIComponent(sessionId)}/window`),
+    )
+    if (shouldSkipInactiveSessionAction(store, sessionId, options)) {
+      return
+    }
+    setSessionWindow(store, payload, "replace")
+  }
+
+  function scheduleSocketReconnect(sessionId: string) {
+    if (
+      socketReconnectTimeout ||
+      store.state$.activeSessionId.get() !== sessionId
+    ) {
+      return
+    }
+    socketReconnectAttempt += 1
+    const delayMs = Math.min(
+      5_000,
+      500 * 2 ** Math.max(0, socketReconnectAttempt - 1),
+    )
+    socketReconnectTimeout = setTimeout(() => {
+      socketReconnectTimeout = null
+      if (store.state$.activeSessionId.get() !== sessionId) {
+        return
+      }
+      connectSocket(sessionId, { resync: true })
+    }, delayMs)
+  }
 
   function closeSocket() {
+    clearSocketReconnect()
     socket?.close()
     socket = null
     store.state$.connection.wsStatus.set("idle")
@@ -1122,7 +1170,13 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     })
   }
 
-  function connectSocket(sessionId: string) {
+  function connectSocket(
+    sessionId: string,
+    options?: {
+      resync?: boolean
+    },
+  ) {
+    clearSocketReconnect()
     closeSocket()
     store.state$.connection.wsStatus.set("connecting")
     const protocols = dashboardSessionWebSocketProtocols(
@@ -1137,7 +1191,22 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
       if (socket !== nextSocket) {
         return
       }
+      clearSocketReconnect()
       store.state$.connection.wsStatus.set("ready")
+      if (options?.resync) {
+        void resyncSessionWindow(sessionId, { requireActive: true }).catch(
+          (error) => {
+            if (store.state$.activeSessionId.get() !== sessionId) {
+              return
+            }
+            store.state$.connection.error.set(
+              error instanceof Error
+                ? error.message
+                : "Failed to resync session.",
+            )
+          },
+        )
+      }
     })
     nextSocket.addEventListener("message", (event) => {
       if (
@@ -1181,6 +1250,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         store.state$.connection.wsStatus.get() !== "idle"
       ) {
         store.state$.connection.wsStatus.set("error")
+        scheduleSocketReconnect(sessionId)
       }
     })
     nextSocket.addEventListener("error", () => {
@@ -1188,6 +1258,7 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
         return
       }
       store.state$.connection.wsStatus.set("error")
+      scheduleSocketReconnect(sessionId)
     })
   }
 
