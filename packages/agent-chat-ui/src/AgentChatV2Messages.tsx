@@ -63,7 +63,8 @@ function parseMarkdownImageLine(line: string): ImageReference | null {
 }
 
 function parseStandaloneMarkdownLinkLine(line: string): ImageReference | null {
-  const match = /^\s*\[([^\]]+)\]\(([^)]+)\)\s*$/u.exec(line)
+  const match =
+    /^\s*(?:[-*+]\s+|\d+\.\s+)?\[([^\]]+)\]\(([^)]+)\)\s*$/u.exec(line)
   if (!match) {
     return null
   }
@@ -88,7 +89,7 @@ function parseRawImageReferenceLine(line: string): ImageReference | null {
   }
 }
 
-function textImageReferences(text: string): ImageReference[] {
+export function textImageReferences(text: string): ImageReference[] {
   return text
     .split(/\r?\n/u)
     .map(
@@ -430,8 +431,11 @@ function renderMarkdownBlocks(text: string, keyPrefix: string): ReactNode[] {
       }
 
       for (const line of lines) {
-        const markdownImage = parseMarkdownImageLine(line)
-        if (markdownImage) {
+        const imageReference =
+          parseMarkdownImageLine(line) ??
+          parseStandaloneMarkdownLinkLine(line) ??
+          parseRawImageReferenceLine(line)
+        if (imageReference) {
           flushPendingLines()
           continue
         }
