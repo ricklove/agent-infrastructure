@@ -31,13 +31,22 @@ export type ResolvedImageSource = {
 type ImageSourceResolverOptions = {
   approvedTempImageDir: string
   mediaCacheDir: string
-  workAtRegistryPath: string
+  workAtRegistryPath?: string
   readAttachmentBytes: StoredAttachmentReader
   listMessages: SessionMessagesReader
   remoteFileReader?: (host: string, filePath: string) => Promise<Uint8Array | null>
 }
 
 const workAtPattern = /\bwork-at\s+([a-z][a-z0-9._-]*)\b/g
+
+function resolveWorkAtRegistryPath(explicitPath?: string) {
+  const trimmedPath = explicitPath?.trim()
+  if (trimmedPath) {
+    return trimmedPath
+  }
+  const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
+  return `${stateDir}/work-at/registry.json`
+}
 
 function shellQuote(value: string) {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`
@@ -223,10 +232,14 @@ export class ImageSourceResolver {
     host: string,
     filePath: string,
   ) => Promise<Uint8Array | null>
+  private readonly workAtRegistryPath: string
 
   constructor(private readonly options: ImageSourceResolverOptions) {
     this.remoteFileReader =
       options.remoteFileReader ?? defaultRemoteFileReader
+    this.workAtRegistryPath = resolveWorkAtRegistryPath(
+      options.workAtRegistryPath,
+    )
   }
 
   async readImageSource(
@@ -287,7 +300,7 @@ export class ImageSourceResolver {
       )
       if (targetName) {
         const target = resolveWorkAtTarget(
-          this.options.workAtRegistryPath,
+          this.workAtRegistryPath,
           targetName,
         )
         if (target && !["local", "localhost", "manager"].includes(target.host)) {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
   appendFileSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   writeFileSync,
@@ -104,9 +105,6 @@ const workspaceProcessStepsDir = resolve(
 const approvedTempImageDir = resolve(
   process.env.AGENT_CHAT_TEMP_IMAGE_DIR?.trim() || "/home/ec2-user/temp",
 )
-const workAtRegistryPath =
-  process.env.WORK_AT_REGISTRY_PATH?.trim() ||
-  `${stateDir}/work-at/registry.json`
 const imageCacheDir = resolve(approvedTempImageDir, "agent-chat-media-cache")
 const DIRECTORY_QUEUE_PREFIX = "Directory will switch to "
 const TITLE_QUEUE_PREFIX = "Chat title will change to "
@@ -628,7 +626,6 @@ function normalizeProviderModelRef(
 const imageSourceResolver = new ImageSourceResolver({
   approvedTempImageDir,
   mediaCacheDir: imageCacheDir,
-  workAtRegistryPath,
   readAttachmentBytes: (url) => store.readAttachmentBytes(url),
   listMessages: (sessionId) => store.listMessages(sessionId),
 })
