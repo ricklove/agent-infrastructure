@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto"
 import {
   appendFileSync,
-  existsSync,
   mkdirSync,
   readFileSync,
   writeFileSync,
@@ -56,6 +55,10 @@ import {
   matchTicketReassignRoute,
   matchTicketStepSelectionRoute,
 } from "./ticket-routes.js"
+import {
+  ImageSourceResolver,
+  normalizeImageSource,
+} from "./image-source-resolver.js"
 
 const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
 const appDataDir =
@@ -101,6 +104,10 @@ const workspaceProcessStepsDir = resolve(
 const approvedTempImageDir = resolve(
   process.env.AGENT_CHAT_TEMP_IMAGE_DIR?.trim() || "/home/ec2-user/temp",
 )
+const workAtRegistryPath =
+  process.env.WORK_AT_REGISTRY_PATH?.trim() ||
+  `${stateDir}/work-at/registry.json`
+const imageCacheDir = resolve(approvedTempImageDir, "agent-chat-media-cache")
 const DIRECTORY_QUEUE_PREFIX = "Directory will switch to "
 const TITLE_QUEUE_PREFIX = "Chat title will change to "
 const DIRECTORY_INSTRUCTION_PREFIX = "Working directory changed to "
@@ -618,129 +625,13 @@ function normalizeProviderModelRef(
   return trimmed
 }
 
-function normalizeImageSource(sourceUrl: string) {
-  const trimmed = sourceUrl.trim()
-  if (!trimmed) {
-    return ""
-  }
-  if (trimmed.startsWith("~/")) {
-    return resolve("/home/ec2-user", trimmed.slice(2))
-  }
-  return trimmed
-}
-
-function isApprovedTempImagePath(path: string) {
-  const resolvedPath = resolve(path)
-  return (
-    resolvedPath === approvedTempImageDir ||
-    resolvedPath.startsWith(`${approvedTempImageDir}/`)
-  )
-}
-
-function inferImageMediaType(
-  sourceUrl: string,
-  fallback: string | null = null,
-) {
-  const normalizedFallback = fallback?.split(";")[0]?.trim() || ""
-  if (normalizedFallback.startsWith("image/")) {
-    return normalizedFallback
-  }
-
-  const lowerSource = sourceUrl.toLowerCase()
-  if (lowerSource.endsWith(".jpg") || lowerSource.endsWith(".jpeg")) {
-    return "image/jpeg"
-  }
-  if (lowerSource.endsWith(".gif")) {
-    return "image/gif"
-  }
-  if (lowerSource.endsWith(".webp")) {
-    return "image/webp"
-  }
-  if (lowerSource.endsWith(".svg")) {
-    return "image/svg+xml"
-  }
-  return "image/png"
-}
-
-function isLikelyLocalImagePath(sourceUrl: string) {
-  return /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(sourceUrl)
-}
-
-async function readImageSource(sourceUrl: string): Promise<{
-  normalizedSource: string
-  provenance: "attachment" | "temp" | "external"
-  mediaType: string
-  bytes: Uint8Array
-}> {
-  const normalizedSource = normalizeImageSource(sourceUrl)
-  if (!normalizedSource) {
-    throw new Error("Image source required.")
-  }
-
-  const attachment = store.readAttachmentBytes(normalizedSource)
-  if (attachment) {
-    return {
-      normalizedSource,
-      provenance: "attachment",
-      mediaType: attachment.attachment.mediaType,
-      bytes: attachment.bytes,
-    }
-  }
-
-  if (isApprovedTempImagePath(normalizedSource)) {
-    if (!existsSync(normalizedSource)) {
-      throw new Error("Temporary image not found.")
-    }
-    const file = Bun.file(normalizedSource)
-    return {
-      normalizedSource,
-      provenance: "temp",
-      mediaType: inferImageMediaType(normalizedSource, file.type),
-      bytes: new Uint8Array(await file.arrayBuffer()),
-    }
-  }
-
-  if (normalizedSource.startsWith("/") && existsSync(normalizedSource)) {
-    if (!isLikelyLocalImagePath(normalizedSource)) {
-      throw new Error("Unsupported local image source.")
-    }
-    const file = Bun.file(normalizedSource)
-    return {
-      normalizedSource,
-      provenance: "external",
-      mediaType: inferImageMediaType(normalizedSource, file.type),
-      bytes: new Uint8Array(await file.arrayBuffer()),
-    }
-  }
-
-  let parsedUrl: URL
-  try {
-    parsedUrl = new URL(normalizedSource)
-  } catch {
-    throw new Error("Unsupported image source.")
-  }
-
-  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-    throw new Error("External images must use http or https URLs.")
-  }
-
-  const response = await fetch(parsedUrl)
-  if (!response.ok) {
-    throw new Error(
-      `External image request failed with status ${response.status}.`,
-    )
-  }
-
-  return {
-    normalizedSource,
-    provenance: "external",
-    mediaType: inferImageMediaType(
-      normalizedSource,
-      response.headers.get("content-type"),
-    ),
-    bytes: new Uint8Array(await response.arrayBuffer()),
-  }
-}
+const imageSourceResolver = new ImageSourceResolver({
+  approvedTempImageDir,
+  mediaCacheDir: imageCacheDir,
+  workAtRegistryPath,
+  readAttachmentBytes: (url) => store.readAttachmentBytes(url),
+  listMessages: (sessionId) => store.listMessages(sessionId),
+})
 
 function replaceMarkdownImageSourceInText(
   text: string,
@@ -3020,7 +2911,10 @@ const server = Bun.serve<ChatSocketData>({
       }
       const sourceUrl = url.searchParams.get("source")?.trim() || ""
       try {
-        const resolvedImage = await readImageSource(sourceUrl)
+        const resolvedImage = await imageSourceResolver.readImageSource(
+          sessionId,
+          sourceUrl,
+        )
         return new Response(resolvedImage.bytes, {
           status: 200,
           headers: {
@@ -3952,7 +3846,10 @@ const server = Bun.serve<ChatSocketData>({
         }
 
         try {
-          const resolvedImage = await readImageSource(rawSourceUrl)
+          const resolvedImage = await imageSourceResolver.readImageSource(
+            sessionId,
+            rawSourceUrl,
+          )
           if (
             resolvedImage.provenance === "attachment" &&
             resolvedImage.normalizedSource.startsWith(
