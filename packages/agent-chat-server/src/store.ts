@@ -582,6 +582,7 @@ export class AgentChatStore {
   listMessagesPage(
     sessionId: string,
     input?: {
+      aroundMessageId?: string | null
       beforeMessageId?: string | null
       limit?: number
     },
@@ -591,7 +592,28 @@ export class AgentChatStore {
   } {
     const allMessages = this.ensureMessagesLoaded(sessionId)
     const limit = Math.max(1, Math.min(200, input?.limit ?? 50))
+    const aroundMessageId = input?.aroundMessageId?.trim() ?? ""
     const beforeMessageId = input?.beforeMessageId?.trim() ?? ""
+
+    if (aroundMessageId) {
+      const targetIndex = allMessages.findIndex(
+        (message) => message.id === aroundMessageId,
+      )
+      if (targetIndex === -1) {
+        return {
+          messages: [],
+          hasOlderMessages: false,
+        }
+      }
+      const halfWindow = Math.floor((limit - 1) / 2)
+      let startIndex = Math.max(0, targetIndex - halfWindow)
+      let endIndex = Math.min(allMessages.length, startIndex + limit)
+      startIndex = Math.max(0, endIndex - limit)
+      return {
+        messages: allMessages.slice(startIndex, endIndex),
+        hasOlderMessages: startIndex > 0,
+      }
+    }
 
     if (!beforeMessageId) {
       const startIndex = Math.max(0, allMessages.length - limit)

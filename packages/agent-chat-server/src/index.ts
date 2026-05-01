@@ -117,6 +117,7 @@ type ChatSocketData = {
   socketId: string
   sessionId: string | null
   clientMode: "v1" | "v2"
+  aroundMessageId: string | null
 }
 
 type SessionActivity = {
@@ -537,6 +538,7 @@ function buildSessionVersion(
 function buildSessionWindow(
   sessionId: string,
   input?: {
+    aroundMessageId?: string | null
     beforeMessageId?: string | null
     limit?: number | null
   },
@@ -546,6 +548,7 @@ function buildSessionWindow(
     return null
   }
   const page = store.listMessagesPage(sessionId, {
+    aroundMessageId: input?.aroundMessageId ?? null,
     beforeMessageId: input?.beforeMessageId ?? null,
     limit: input?.limit ?? 50,
   })
@@ -3005,6 +3008,7 @@ const server = Bun.serve<ChatSocketData>({
               socketId: randomUUID(),
               sessionId: null,
               clientMode,
+              aroundMessageId: null,
             },
           })
         ) {
@@ -3025,6 +3029,8 @@ const server = Bun.serve<ChatSocketData>({
             socketId: randomUUID(),
             sessionId,
             clientMode,
+            aroundMessageId:
+              url.searchParams.get("aroundMessageId")?.trim() || null,
           },
         })
       ) {
@@ -3407,6 +3413,7 @@ const server = Bun.serve<ChatSocketData>({
     if (sessionWindowMatch && request.method === "GET") {
       const sessionId = decodeMatchGroup(sessionWindowMatch, 1)
       const payload = buildSessionWindow(sessionId, {
+        aroundMessageId: url.searchParams.get("aroundMessageId"),
         beforeMessageId: url.searchParams.get("beforeMessageId"),
         limit: normalizeV2Limit(url.searchParams.get("limit"), 80),
       })
@@ -4106,7 +4113,10 @@ const server = Bun.serve<ChatSocketData>({
       }
       getSessionSockets(ws.data.sessionId).add(ws)
       if (ws.data.clientMode === "v2") {
-        const payload = buildSessionWindow(ws.data.sessionId, { limit: 80 })
+        const payload = buildSessionWindow(ws.data.sessionId, {
+          aroundMessageId: ws.data.aroundMessageId,
+          limit: 80,
+        })
         if (payload) {
           ws.send(
             JSON.stringify({
