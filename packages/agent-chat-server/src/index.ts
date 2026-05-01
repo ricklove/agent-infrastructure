@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import {
   appendFileSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   writeFileSync,
