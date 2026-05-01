@@ -581,10 +581,13 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
   useEffect(() => {
     void actions.loadSessions().then(async () => {
       const requestedSessionId = readRequestedSessionIdFromLocation()
+      const requestedMessageId = readRequestedMessageHashFromLocation()
       const fallbackSessionId = store.state$.sessions.peek()[0]?.id ?? ""
       const sessionId = requestedSessionId || fallbackSessionId
       if (sessionId) {
-        await actions.openSession(sessionId)
+        await actions.openSession(sessionId, {
+          targetMessageId: requestedMessageId || null,
+        })
       }
     })
     return () => actions.close()

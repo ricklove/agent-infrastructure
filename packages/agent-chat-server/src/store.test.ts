@@ -31,6 +31,37 @@ function createStoreContext() {
 }
 
 describe("AgentChatStore multi-agent delivery", () => {
+  test("loads a page centered around a requested message", () => {
+    const store = createStore()
+    const session = store.createSession({
+      title: "Around message paging",
+      providerKind: "codex-app-server",
+      modelRef: "openai-codex/gpt-5.4",
+      cwd: "/home/ec2-user/workspace",
+      authProfile: "chatgpt",
+    })
+
+    const messageIds: string[] = []
+    for (let index = 0; index < 7; index += 1) {
+      const message = store.appendMessage(session.id, {
+        role: index % 2 === 0 ? "user" : "assistant",
+        providerSeenAtMs: null,
+        content: [{ type: "text", text: `message-${index}` }],
+      })
+      messageIds.push(message.id)
+    }
+
+    const page = store.listMessagesPage(session.id, {
+      aroundMessageId: messageIds[3],
+      limit: 3,
+    })
+
+    expect(page.messages.map((message) => message.id)).toEqual(
+      messageIds.slice(2, 5),
+    )
+    expect(page.hasOlderMessages).toBe(true)
+  })
+
   test("persists provider bindings on durable chat agents", () => {
     const store = createStore()
     const session = store.createSession({

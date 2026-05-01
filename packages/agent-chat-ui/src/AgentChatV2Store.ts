@@ -412,11 +412,18 @@ function apiPath(store: AgentChatV2Store, path: string): string {
   return `${root}${path.startsWith("/") ? path : `/${path}`}`
 }
 
-function wsUrl(store: AgentChatV2Store, sessionId: string): string {
+function wsUrl(
+  store: AgentChatV2Store,
+  sessionId: string,
+  targetMessageId?: string | null,
+): string {
   const root = store.state$.connection.wsRootUrl.get()
   const url = new URL(root, window.location.href)
   url.searchParams.set("sessionId", sessionId)
   url.searchParams.set("mode", "v2")
+  if (targetMessageId) {
+    url.searchParams.set("aroundMessageId", targetMessageId)
+  }
   return url.toString()
 }
 
@@ -1090,7 +1097,10 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     })
   }
 
-  function connectSocket(sessionId: string) {
+  function connectSocket(
+    sessionId: string,
+    options?: { targetMessageId?: string | null },
+  ) {
     closeSocket()
     store.state$.connection.wsStatus.set("connecting")
     const protocols = dashboardSessionWebSocketProtocols(
@@ -1098,8 +1108,11 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     )
     const nextSocket =
       protocols.length > 0
-        ? new WebSocket(wsUrl(store, sessionId), protocols)
-        : new WebSocket(wsUrl(store, sessionId))
+        ? new WebSocket(
+            wsUrl(store, sessionId, options?.targetMessageId),
+            protocols,
+          )
+        : new WebSocket(wsUrl(store, sessionId, options?.targetMessageId))
     socket = nextSocket
     nextSocket.addEventListener("open", () => {
       if (socket !== nextSocket) {
@@ -1159,15 +1172,30 @@ export function createAgentChatV2Actions(store: AgentChatV2Store) {
     })
   }
 
-  async function openSession(sessionId: string): Promise<void> {
+  async function openSession(
+    sessionId: string,
+    options?: { targetMessageId?: string | null },
+  ): Promise<void> {
     const requestId = ++openSessionRequestId
+    const targetMessageId = options?.targetMessageId?.trim() || ""
     closeSocket()
-    connectSocket(sessionId)
+    connectSocket(sessionId, {
+      targetMessageId: targetMessageId || null,
+    })
     prepareActiveSessionSwitch(sessionId)
     try {
+      const params = new URLSearchParams()
+      if (targetMessageId) {
+        params.set("aroundMessageId", targetMessageId)
+      }
       const payload = await readCachedBootstrapJson(
         sessionWindowRequestCache,
-        apiPath(store, `/v2/sessions/${encodeURIComponent(sessionId)}/window`),
+        apiPath(
+          store,
+          `/v2/sessions/${encodeURIComponent(sessionId)}/window${
+            params.size > 0 ? `?${params.toString()}` : ""
+          }`,
+        ),
       )
       if (requestId !== openSessionRequestId) {
         return
