@@ -50,6 +50,15 @@
       }
     },
     {
+      "id": "target_npx_available",
+      "checkId": "work_at_command_available",
+      "title": "npx is available on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "npx"
+      }
+    },
+    {
       "id": "target_curl_available",
       "checkId": "work_at_command_available",
       "title": "curl is available on target",
