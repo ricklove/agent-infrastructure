@@ -352,6 +352,7 @@ exec "$runner" "$@"
     expect(result.exitCode).toBe(0)
     const stderr = result.stderr.toString("utf8")
     expect(stderr).toContain("browser/tooling hint")
+    expect(stderr).toContain("browser/session hint")
     expect(stderr).toContain("preview/tunnel hint")
     expect(stderr).toContain("suggested health profile for this narrower surface: work_at_expo_preview_surface")
     expect(stderr).toContain("--health-profile work_at_expo_preview_surface")
