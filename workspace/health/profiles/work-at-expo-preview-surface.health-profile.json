@@ -50,12 +50,12 @@
       }
     },
     {
-      "id": "target_npx_available",
+      "id": "target_agent_browser_available",
       "checkId": "work_at_command_available",
-      "title": "npx is available on target",
+      "title": "agent-browser is installed as a first-class CLI on target",
       "severity": "blocking",
       "params": {
-        "commandName": "npx"
+        "commandName": "agent-browser"
       }
     },
     {
