@@ -223,7 +223,8 @@ exec "$runner" "$@"
     const stderr = result.stderr.toString("utf8")
     expect(stderr).toContain("narrower surface than target demo")
     expect(stderr).toContain(`nested path: ${nestedPath}`)
-    expect(stderr).toContain("attach a health profile")
+    expect(stderr).toContain("suggested command: work-at --register demo-demo")
+    expect(stderr).toContain("run: work-at --health demo-demo")
   })
 
   test("successful nested-surface heredoc prints guidance to register a narrower target", () => {
@@ -263,5 +264,55 @@ exec "$runner" "$@"
     const stderr = result.stderr.toString("utf8")
     expect(stderr).toContain("narrower surface than target demo")
     expect(stderr).toContain(`nested path: ${nestedPath}`)
+    expect(stderr).toContain("suggested command: work-at --register demo-demo")
+  })
+
+  test("nested browser workflow prints targeted health-check guidance", () => {
+    const root = createTempRoot()
+    const registryPath = join(root, "registry.json")
+    const targetPath = join(root, "target")
+    const nestedPath = join(targetPath, "repros", "demo")
+    mkdirSync(nestedPath, { recursive: true })
+
+    runWorkAt(
+      [
+        "--register",
+        "demo",
+        "--",
+        "--host",
+        "local",
+        "--path",
+        targetPath,
+        "--health-profile",
+        "work_at_target_default",
+      ],
+      {
+        env: {
+          WORK_AT_REGISTRY_PATH: registryPath,
+        },
+      },
+    )
+
+    const result = runWorkAt(
+      [
+        "demo",
+        "bash",
+        "-lc",
+        `cd ${nestedPath} && printf '%s\n' "npx agent-browser open http://127.0.0.1:19018/feed-public" "cloudflared tunnel --url http://127.0.0.1:19018" >/dev/null`,
+      ],
+      {
+        env: {
+          WORK_AT_REGISTRY_PATH: registryPath,
+        },
+      },
+    )
+
+    expect(result.exitCode).toBe(0)
+    const stderr = result.stderr.toString("utf8")
+    expect(stderr).toContain("browser/tooling hint")
+    expect(stderr).toContain("preview/tunnel hint")
+    expect(stderr).toContain("suggested health profile for this narrower surface: work_at_expo_preview_surface")
+    expect(stderr).toContain("--health-profile work_at_expo_preview_surface")
+    expect(stderr).toContain("generic profile work_at_target_default")
   })
 })

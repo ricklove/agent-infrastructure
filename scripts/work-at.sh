@@ -268,18 +268,82 @@ print_health_guidance() {
   printf 'work-at: if this exposes a repeatable workspace/tool failure, add a fast check to that profile so future agents stay focused on their primary task.\n' >&2
 }
 
+suggest_target_name() {
+  local parent_name="$1"
+  local nested_path="$2"
+  NESTED_PATH="$nested_path" python3 - <<'PY'
+import os
+from pathlib import Path
+
+path = Path(os.environ["NESTED_PATH"])
+name = path.name or "surface"
+value = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in name.lower())
+while "--" in value:
+    value = value.replace("--", "-")
+value = value.strip("._-") or "surface"
+print(value)
+PY
+}
+
+print_tooling_guidance() {
+  local text="$1"
+  local target_name="$2"
+  local suggested_name="$3"
+  local health_profile="$4"
+  local suggested_health_profile="$5"
+
+  if [[ "$text" == *"agent-browser"* ]]; then
+    printf 'work-at: browser/tooling hint: add fast checks for the local preview URL, the public verification route, and the key app paths used by %s.\n' "$suggested_name" >&2
+  fi
+
+  if [[ "$text" == *"cloudflared tunnel"* || "$text" == *"expo start --web"* ]]; then
+    printf 'work-at: preview/tunnel hint: add fast checks for the local dev port, preview process ownership, and the declared public route before more browser retries.\n' >&2
+  fi
+
+  if [[ -n "$suggested_health_profile" && "$suggested_health_profile" != "$health_profile" ]]; then
+    printf 'work-at: suggested health profile for this narrower surface: %s\n' "$suggested_health_profile" >&2
+  fi
+
+  if [[ "$health_profile" == "work_at_target_default" ]]; then
+    printf 'work-at: target %s is still using the generic profile %s; promote this narrower surface into its own target and add task-specific checks.\n' "$target_name" "$health_profile" >&2
+  fi
+}
+
 print_surface_guidance() {
   local name="$1"
   local target_path="$2"
   local nested_path="$3"
+  local command_text="${4:-}"
   [[ -n "$nested_path" ]] || return 0
   [[ "$nested_path" == "$target_path" ]] && return 0
   case "$nested_path" in
     "$target_path"/*)
+      local host shell health_profile suggested_health_profile suffix suggested_name register_command
+      host="$(target_field "$name" host || true)"
+      shell="$(target_field "$name" shell || true)"
+      health_profile="$(target_field "$name" healthProfileId || true)"
+      suggested_health_profile="$health_profile"
+      if [[ "$command_text" == *"agent-browser"* || "$command_text" == *"cloudflared tunnel"* || "$command_text" == *"expo start --web"* ]]; then
+        suggested_health_profile="work_at_expo_preview_surface"
+      fi
+      suffix="$(suggest_target_name "$name" "$nested_path")"
+      suggested_name="${name}-${suffix}"
+      register_command="work-at --register ${suggested_name} -- --host ${host:-local} --path $(shell_quote "$nested_path")"
+      if [[ -n "$shell" ]]; then
+        register_command+=" --shell $(shell_quote "$shell")"
+      fi
+      if [[ -n "$suggested_health_profile" ]]; then
+        register_command+=" --health-profile ${suggested_health_profile}"
+      fi
       printf 'work-at: command is operating inside a narrower surface than target %s\n' "$name" >&2
       printf 'work-at: target path: %s\n' "$target_path" >&2
       printf 'work-at: nested path: %s\n' "$nested_path" >&2
-      printf 'work-at: register this narrower surface as its own work-at target and attach a health profile so agents improve their tooling instead of getting sidetracked.\n' >&2
+      printf 'work-at: register this narrower surface as its own work-at target so agents improve their tooling instead of getting sidetracked.\n' >&2
+      printf 'work-at: suggested command: %s\n' "$register_command" >&2
+      if [[ -n "$suggested_health_profile" ]]; then
+        printf 'work-at: after registering it, run: work-at --health %s\n' "$suggested_name" >&2
+      fi
+      print_tooling_guidance "$command_text" "$name" "$suggested_name" "$health_profile" "$suggested_health_profile"
       ;;
   esac
 }
@@ -328,7 +392,7 @@ run_target() {
     done
     command_string="${command_string# }"
     nested_path="$(detect_nested_surface_from_text "$*" "$path" || true)"
-    print_surface_guidance "$name" "$path" "$nested_path"
+    print_surface_guidance "$name" "$path" "$nested_path" "$*"
     set +e
     if [[ -z "$host" || "$host" == "local" || "$host" == "localhost" ]]; then
       (
@@ -351,7 +415,7 @@ run_target() {
     local script_text nested_path exit_code
     script_text="$(cat)"
     nested_path="$(detect_nested_surface_from_text "$script_text" "$path" || true)"
-    print_surface_guidance "$name" "$path" "$nested_path"
+    print_surface_guidance "$name" "$path" "$nested_path" "$script_text"
     set +e
     if [[ -z "$host" || "$host" == "local" || "$host" == "localhost" ]]; then
       cd "$path"
