@@ -267,6 +267,48 @@ exec "$runner" "$@"
     expect(stderr).toContain("suggested command: work-at --register demo-demo")
   })
 
+  test("absolute nested file paths also trigger narrower-surface guidance", () => {
+    const root = createTempRoot()
+    const registryPath = join(root, "registry.json")
+    const targetPath = join(root, "target")
+    const appPath = join(targetPath, "repros", "demo", "apps", "expo-app")
+    const filePath = join(appPath, "src", "app.tsx")
+    mkdirSync(dirname(filePath), { recursive: true })
+    writeFileSync(filePath, "export const value = 1\n")
+
+    runWorkAt(
+      [
+        "--register",
+        "demo",
+        "--",
+        "--host",
+        "local",
+        "--path",
+        targetPath,
+        "--health-profile",
+        "work_at_target_default",
+      ],
+      {
+        env: {
+          WORK_AT_REGISTRY_PATH: registryPath,
+        },
+      },
+    )
+
+    const result = runWorkAt(["demo", "base64", "-w0", filePath], {
+      env: {
+        WORK_AT_REGISTRY_PATH: registryPath,
+      },
+    })
+
+    expect(result.exitCode).toBe(0)
+    const stderr = result.stderr.toString("utf8")
+    expect(stderr).toContain("narrower surface than target demo")
+    expect(stderr).toContain(`nested path: ${appPath}`)
+    expect(stderr).toContain("suggested command: work-at --register demo-expo-app")
+    expect(stderr).toContain("--health-profile work_at_target_default")
+  })
+
   test("nested browser workflow prints targeted health-check guidance", () => {
     const root = createTempRoot()
     const registryPath = join(root, "registry.json")

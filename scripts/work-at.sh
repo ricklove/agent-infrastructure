@@ -353,17 +353,63 @@ detect_nested_surface_from_text() {
   local target_path="$2"
   TEXT="$text" TARGET_PATH="$target_path" python3 - <<'PY'
 import os, re
+from pathlib import Path
+
 text = os.environ.get("TEXT", "")
 target_path = os.environ.get("TARGET_PATH", "")
+
+target = Path(target_path.rstrip("/"))
+
+def normalize_surface_path(candidate):
+    try:
+        path = Path(candidate.strip())
+    except Exception:
+        return None
+    text_value = str(path)
+    if not text_value.startswith(str(target) + "/"):
+        return None
+
+    parts = path.parts
+    for marker in ("apps", "packages"):
+        if marker in parts:
+            idx = parts.index(marker)
+            if idx + 1 < len(parts):
+                return str(Path(*parts[: idx + 2]))
+
+    if "repros" in parts:
+        idx = parts.index("repros")
+        if idx + 1 < len(parts):
+            return str(Path(*parts[: idx + 2]))
+
+    if "projects-worktrees" in parts:
+        idx = parts.index("projects-worktrees")
+        if idx + 2 < len(parts):
+            return str(Path(*parts[: idx + 3]))
+
+    if path.suffix:
+        return str(path.parent)
+
+    return text_value
+
 patterns = [
     re.compile(r"\bcd\s+(['\"]?)(/[^'\"\s;&|]+)\1"),
+    re.compile(r"(?<![A-Za-z0-9._-])(\/[^\s'\";&|)]+)"),
 ]
+
+best = None
 for pattern in patterns:
     for match in pattern.finditer(text):
-        path = match.group(2).strip()
-        if path and path != target_path and path.startswith(target_path.rstrip("/") + "/"):
-            print(path)
-            raise SystemExit(0)
+        raw = match.group(2) if match.lastindex and match.lastindex >= 2 else match.group(1)
+        candidate = normalize_surface_path(raw)
+        if not candidate or candidate == target_path:
+            continue
+        if best is None or len(candidate) > len(best):
+            best = candidate
+
+if best:
+    print(best)
+    raise SystemExit(0)
+
 raise SystemExit(1)
 PY
 }
