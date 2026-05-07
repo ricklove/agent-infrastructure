@@ -268,6 +268,42 @@ print_health_guidance() {
   printf 'work-at: if this exposes a repeatable workspace/tool failure, add a fast check to that profile so future agents stay focused on their primary task.\n' >&2
 }
 
+print_surface_guidance() {
+  local name="$1"
+  local target_path="$2"
+  local nested_path="$3"
+  [[ -n "$nested_path" ]] || return 0
+  [[ "$nested_path" == "$target_path" ]] && return 0
+  case "$nested_path" in
+    "$target_path"/*)
+      printf 'work-at: command is operating inside a narrower surface than target %s\n' "$name" >&2
+      printf 'work-at: target path: %s\n' "$target_path" >&2
+      printf 'work-at: nested path: %s\n' "$nested_path" >&2
+      printf 'work-at: register this narrower surface as its own work-at target and attach a health profile so agents improve their tooling instead of getting sidetracked.\n' >&2
+      ;;
+  esac
+}
+
+detect_nested_surface_from_text() {
+  local text="$1"
+  local target_path="$2"
+  TEXT="$text" TARGET_PATH="$target_path" python3 - <<'PY'
+import os, re
+text = os.environ.get("TEXT", "")
+target_path = os.environ.get("TARGET_PATH", "")
+patterns = [
+    re.compile(r"\bcd\s+(['\"]?)(/[^'\"\s;&|]+)\1"),
+]
+for pattern in patterns:
+    for match in pattern.finditer(text):
+        path = match.group(2).strip()
+        if path and path != target_path and path.startswith(target_path.rstrip("/") + "/"):
+            print(path)
+            raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 run_target() {
   local name="$1"
   shift
@@ -285,11 +321,14 @@ run_target() {
   if [[ $# -gt 0 ]]; then
     local command_string=""
     local exit_code=0
+    local nested_path=""
     local arg
     for arg in "$@"; do
       command_string+=" $(shell_quote "$arg")"
     done
     command_string="${command_string# }"
+    nested_path="$(detect_nested_surface_from_text "$*" "$path" || true)"
+    print_surface_guidance "$name" "$path" "$nested_path"
     set +e
     if [[ -z "$host" || "$host" == "local" || "$host" == "localhost" ]]; then
       (
@@ -299,6 +338,29 @@ run_target() {
       exit_code=$?
     else
       ssh "$host" "cd ${quoted_path} && ${command_string}"
+      exit_code=$?
+    fi
+    set -e
+    if [[ "$exit_code" -ne 0 ]]; then
+      print_health_guidance "$name"
+    fi
+    exit "$exit_code"
+  fi
+
+  if [[ ! -t 0 ]]; then
+    local script_text nested_path exit_code
+    script_text="$(cat)"
+    nested_path="$(detect_nested_surface_from_text "$script_text" "$path" || true)"
+    print_surface_guidance "$name" "$path" "$nested_path"
+    set +e
+    if [[ -z "$host" || "$host" == "local" || "$host" == "localhost" ]]; then
+      cd "$path"
+      "$shell" -se <<<"$script_text"
+      exit_code=$?
+    else
+      local quoted_shell
+      quoted_shell="$(shell_quote "$shell")"
+      ssh "$host" "cd ${quoted_path} && exec ${quoted_shell} -se" <<<"$script_text"
       exit_code=$?
     fi
     set -e

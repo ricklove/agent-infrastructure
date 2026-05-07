@@ -23,9 +23,16 @@ function runWorkAt(
     ...process.env,
     ...options.env,
   }
+  let stdin: "ignore" | Blob = "ignore"
+  if (options.stdinText != null) {
+    const root = createTempRoot()
+    const stdinPath = join(root, "stdin.sh")
+    writeFileSync(stdinPath, options.stdinText)
+    stdin = Bun.file(stdinPath)
+  }
   return Bun.spawnSync(["bash", scriptPath, ...args], {
     env,
-    stdin: options.stdinText ?? "ignore",
+    stdin,
     stdout: "pipe",
     stderr: "pipe",
   })
@@ -175,5 +182,86 @@ exec "$runner" "$@"
     expect(stderr).toContain("work-at: target health profile detected: demo_profile")
     expect(stderr).toContain("work-at --health demo")
     expect(stderr).toContain("future agents stay focused on their primary task")
+  })
+
+  test("successful nested-surface command prints guidance to register a narrower target", () => {
+    const root = createTempRoot()
+    const registryPath = join(root, "registry.json")
+    const targetPath = join(root, "target")
+    const nestedPath = join(targetPath, "repros", "demo")
+    mkdirSync(nestedPath, { recursive: true })
+
+    runWorkAt(
+      [
+        "--register",
+        "demo",
+        "--",
+        "--host",
+        "local",
+        "--path",
+        targetPath,
+        "--health-profile",
+        "demo_profile",
+      ],
+      {
+        env: {
+          WORK_AT_REGISTRY_PATH: registryPath,
+        },
+      },
+    )
+
+    const result = runWorkAt(
+      ["demo", "bash", "-lc", `cd ${nestedPath} && pwd >/dev/null`],
+      {
+        env: {
+          WORK_AT_REGISTRY_PATH: registryPath,
+        },
+      },
+    )
+
+    expect(result.exitCode).toBe(0)
+    const stderr = result.stderr.toString("utf8")
+    expect(stderr).toContain("narrower surface than target demo")
+    expect(stderr).toContain(`nested path: ${nestedPath}`)
+    expect(stderr).toContain("attach a health profile")
+  })
+
+  test("successful nested-surface heredoc prints guidance to register a narrower target", () => {
+    const root = createTempRoot()
+    const registryPath = join(root, "registry.json")
+    const targetPath = join(root, "target")
+    const nestedPath = join(targetPath, "repros", "demo")
+    mkdirSync(nestedPath, { recursive: true })
+
+    runWorkAt(
+      [
+        "--register",
+        "demo",
+        "--",
+        "--host",
+        "local",
+        "--path",
+        targetPath,
+        "--health-profile",
+        "demo_profile",
+      ],
+      {
+        env: {
+          WORK_AT_REGISTRY_PATH: registryPath,
+        },
+      },
+    )
+
+    const result = runWorkAt(["demo"], {
+      env: {
+        WORK_AT_REGISTRY_PATH: registryPath,
+      },
+      stdinText: `cd ${nestedPath}\npwd >/dev/null\n`,
+    })
+
+    expect(result.exitCode).toBe(0)
+    const stderr = result.stderr.toString("utf8")
+    expect(stderr).toContain("narrower surface than target demo")
+    expect(stderr).toContain(`nested path: ${nestedPath}`)
   })
 })
