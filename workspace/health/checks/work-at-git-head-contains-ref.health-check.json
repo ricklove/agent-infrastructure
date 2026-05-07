@@ -1,0 +1,11 @@
+{
+  "id": "work_at_git_head_contains_ref",
+  "title": "Worker HEAD contains required ref",
+  "description": "Checks that HEAD on the selected worker checkout already contains the expected ref.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["git", "-C", "{{repoPath}}", "merge-base", "--is-ancestor", "{{requiredRef}}", "HEAD"],
+  "timeoutMs": 3000
+}

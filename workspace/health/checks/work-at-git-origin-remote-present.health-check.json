@@ -1,0 +1,11 @@
+{
+  "id": "work_at_git_origin_remote_present",
+  "title": "Worker git origin remote is configured",
+  "description": "Checks that the selected worker checkout has an origin remote.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["git", "-C", "{{repoPath}}", "remote", "get-url", "origin"],
+  "timeoutMs": 3000
+}

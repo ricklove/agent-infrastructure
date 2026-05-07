@@ -1,0 +1,100 @@
+{
+  "id": "work_at_target_default",
+  "title": "work-at Target Default",
+  "description": "Fast generic target health profile for registered work-at surfaces.",
+  "params": {
+    "workspaceRoot": "/home/ec2-user/workspace",
+    "githubConfigPath": "/home/ec2-user/.config/agent-github",
+    "runtimeGithubHelperPath": "/home/ec2-user/runtime/tools/github-app-token.sh"
+  },
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered target path exists",
+      "severity": "blocking",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_available",
+      "checkId": "work_at_command_available",
+      "title": "Git is available on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "git"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_jq_available",
+      "checkId": "work_at_command_available",
+      "title": "jq is available on target",
+      "severity": "error",
+      "params": {
+        "commandName": "jq"
+      }
+    },
+    {
+      "id": "target_rg_available",
+      "checkId": "work_at_command_available",
+      "title": "rg is available on target",
+      "severity": "error",
+      "params": {
+        "commandName": "rg"
+      }
+    },
+    {
+      "id": "target_curl_available",
+      "checkId": "work_at_command_available",
+      "title": "curl is available on target",
+      "severity": "error",
+      "params": {
+        "commandName": "curl"
+      }
+    },
+    {
+      "id": "target_workspace_root_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Workspace root exists on target",
+      "severity": "blocking",
+      "params": {
+        "path": "/home/ec2-user/workspace"
+      }
+    },
+    {
+      "id": "target_github_auth_present",
+      "checkId": "work_at_path_exists",
+      "title": "GitHub App auth config exists on target",
+      "severity": "error",
+      "params": {
+        "path": "/home/ec2-user/.config/agent-github"
+      }
+    },
+    {
+      "id": "target_runtime_github_helper_present",
+      "checkId": "work_at_path_exists",
+      "title": "Runtime GitHub App helper exists on target",
+      "severity": "error",
+      "params": {
+        "path": "/home/ec2-user/runtime/tools/github-app-token.sh"
+      }
+    }
+  ]
+}

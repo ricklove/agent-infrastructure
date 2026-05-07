@@ -1,0 +1,11 @@
+{
+  "id": "work_at_command_available",
+  "title": "Required worker command is available",
+  "description": "Checks that one required CLI is installed on the selected work-at target.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["bash", "-lc", "command -v {{commandName}} >/dev/null 2>&1"],
+  "timeoutMs": 3000
+}

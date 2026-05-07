@@ -1,0 +1,10 @@
+{
+  "id": "work_at_target_reachable",
+  "title": "Registered work-at target is reachable",
+  "description": "Checks that a declared work-at target resolves and its checkout path exists.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": ["work-at", "--check", "{{workTarget}}"],
+  "timeoutMs": 5000
+}

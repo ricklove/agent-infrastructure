@@ -2,16 +2,21 @@
 set -euo pipefail
 
 STATE_ROOT="${AGENT_STATE_DIR:-${AGENT_STATE_ROOT:-/home/ec2-user/state}}"
+RUNTIME_ROOT="${AGENT_RUNTIME_DIR:-/home/ec2-user/runtime}"
 REGISTRY_PATH="${WORK_AT_REGISTRY_PATH:-${STATE_ROOT}/work-at/registry.json}"
+HEALTH_RUNNER_PATH="${WORK_AT_HEALTH_RUNNER_PATH:-${RUNTIME_ROOT}/scripts/work-at-health.ts}"
+HEALTH_BUN_BIN="${WORK_AT_HEALTH_BUN_BIN:-bun}"
 
 usage() {
   cat <<'EOF'
 Usage:
   work-at --help
   work-at --list [--json]
-  work-at --register <name> -- --host <host> --path <path> [--shell <shell>]
+  work-at --register <name> -- --host <host> --path <path> [--shell <shell>] [--health-profile <profile-id>]
   work-at --unregister <name>
   work-at --check <name>
+  work-at --describe <name> [--json]
+  work-at --health <name> [--json]
   work-at <name> [command...]
   work-at <name> < script.sh
   work-at <name>
@@ -42,7 +47,7 @@ Agent Skill:
   - Use `work-at <name> <command...>` for single commands.
   - Use `work-at <name> <<'EOF' ... EOF` for multiline shell work.
   - Use `work-at <name>` only when an interactive shell is needed.
-  - Register targets with `work-at --register <name> -- --host <host> --path <path>`.
+  - Register targets with `work-at --register <name> -- --host <host> --path <path> [--health-profile <profile-id>]`.
   - Treat all `--...` options as work-at control commands; bare names are targets.
 EOF
 }
@@ -104,6 +109,7 @@ register_target() {
   local host=""
   local path=""
   local shell="/bin/bash"
+  local health_profile=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --host)
@@ -119,6 +125,11 @@ register_target() {
       --shell)
         shell="${2:-}"
         [[ -n "$shell" ]] || die "--shell requires a value"
+        shift 2
+        ;;
+      --health-profile)
+        health_profile="${2:-}"
+        [[ -n "$health_profile" ]] || die "--health-profile requires a value"
         shift 2
         ;;
       *)
@@ -137,11 +148,13 @@ register_target() {
     --arg host "$host" \
     --arg path "$path" \
     --arg shell "$shell" \
+    --arg healthProfileId "$health_profile" \
     --arg registeredAt "$registered_at" \
     '.targets[$name] = {
       host: $host,
       path: $path,
       shell: $shell,
+      healthProfileId: ($healthProfileId | select(length > 0)),
       registeredAt: $registeredAt
     }' "$REGISTRY_PATH" | write_registry
 
@@ -194,6 +207,67 @@ check_target() {
   printf 'ok %s\n' "$name"
 }
 
+describe_target() {
+  local name="${1:-}"
+  local json_mode="${2:-}"
+  [[ -n "$name" ]] || die "--describe requires a target name"
+  validate_name "$name"
+  ensure_registry
+  target_exists "$name" || die "target is not registered: ${name}"
+
+  if [[ "$json_mode" == "--json" ]]; then
+    jq -r --arg name "$name" '.targets[$name]' "$REGISTRY_PATH"
+    return
+  fi
+
+  local host path shell health_profile
+  host="$(target_field "$name" host || true)"
+  path="$(target_field "$name" path)"
+  shell="$(target_field "$name" shell || true)"
+  health_profile="$(target_field "$name" healthProfileId || true)"
+  printf 'name=%s\n' "$name"
+  printf 'host=%s\n' "${host}"
+  printf 'path=%s\n' "${path}"
+  printf 'shell=%s\n' "${shell}"
+  if [[ -n "$health_profile" ]]; then
+    printf 'health_profile=%s\n' "${health_profile}"
+  fi
+}
+
+health_target() {
+  local name="${1:-}"
+  shift || true
+  [[ -n "$name" ]] || die "--health requires a target name"
+  validate_name "$name"
+  ensure_registry
+  target_exists "$name" || die "target is not registered: ${name}"
+
+  local health_profile
+  local path
+  health_profile="$(target_field "$name" healthProfileId || true)"
+  path="$(target_field "$name" path)"
+  [[ -n "$health_profile" ]] || die "target has no attached health profile: ${name}"
+  command -v "$HEALTH_BUN_BIN" >/dev/null 2>&1 || die "bun is required for --health"
+  [[ -f "$HEALTH_RUNNER_PATH" ]] || die "health runner does not exist: ${HEALTH_RUNNER_PATH}"
+
+  "$HEALTH_BUN_BIN" "$HEALTH_RUNNER_PATH" \
+    --profile "$health_profile" \
+    --param "workTarget=${name}" \
+    --param "targetPath=${path}" \
+    "$@"
+}
+
+print_health_guidance() {
+  local name="$1"
+  local health_profile
+  health_profile="$(target_field "$name" healthProfileId || true)"
+  [[ -n "$health_profile" ]] || return 0
+
+  printf 'work-at: target health profile detected: %s\n' "$health_profile" >&2
+  printf 'work-at: to verify target health, run: work-at --health %s\n' "$name" >&2
+  printf 'work-at: if this exposes a repeatable workspace/tool failure, add a fast check to that profile so future agents stay focused on their primary task.\n' >&2
+}
+
 run_target() {
   local name="$1"
   shift
@@ -210,16 +284,28 @@ run_target() {
 
   if [[ $# -gt 0 ]]; then
     local command_string=""
+    local exit_code=0
     local arg
     for arg in "$@"; do
       command_string+=" $(shell_quote "$arg")"
     done
     command_string="${command_string# }"
+    set +e
     if [[ -z "$host" || "$host" == "local" || "$host" == "localhost" ]]; then
-      cd "$path"
-      exec "$@"
+      (
+        cd "$path"
+        "$@"
+      )
+      exit_code=$?
+    else
+      ssh "$host" "cd ${quoted_path} && ${command_string}"
+      exit_code=$?
     fi
-    exec ssh "$host" "cd ${quoted_path} && ${command_string}"
+    set -e
+    if [[ "$exit_code" -ne 0 ]]; then
+      print_health_guidance "$name"
+    fi
+    exit "$exit_code"
   fi
 
   if [[ -t 0 ]]; then
@@ -261,6 +347,14 @@ main() {
     --check)
       shift
       check_target "$@"
+      ;;
+    --describe)
+      shift
+      describe_target "${1:-}" "${2:-}"
+      ;;
+    --health)
+      shift
+      health_target "$@"
       ;;
     --*)
       die "unknown option: $1"

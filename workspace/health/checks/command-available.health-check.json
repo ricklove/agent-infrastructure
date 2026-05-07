@@ -1,0 +1,10 @@
+{
+  "id": "command_available",
+  "title": "Required command is available",
+  "description": "Checks that one required CLI is installed and reachable on PATH.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": ["bash", "-lc", "command -v {{commandName}} >/dev/null 2>&1"],
+  "timeoutMs": 2000
+}

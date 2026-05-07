@@ -1,0 +1,11 @@
+{
+  "id": "work_at_http_ok",
+  "title": "Worker HTTP endpoint responds successfully",
+  "description": "Checks that an HTTP endpoint on the selected worker responds with a 2xx or 3xx status.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["bash", "-lc", "code=$(curl -o /dev/null -s -w \"%{http_code}\" --max-time {{timeoutSeconds}} \"{{url}}\" || true); case \"$code\" in 2*|3*) exit 0 ;; *) echo \"$code\"; exit 1 ;; esac"],
+  "timeoutMs": 4000
+}
