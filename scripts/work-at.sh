@@ -258,6 +258,7 @@ health_target() {
 }
 
 print_health_guidance() {
+  [[ "${WORK_AT_SUPPRESS_GUIDANCE:-}" == "1" ]] && return 0
   local name="$1"
   local health_profile
   health_profile="$(target_field "$name" healthProfileId || true)"
@@ -286,6 +287,7 @@ PY
 }
 
 print_tooling_guidance() {
+  [[ "${WORK_AT_SUPPRESS_GUIDANCE:-}" == "1" ]] && return 0
   local text="$1"
   local target_name="$2"
   local suggested_name="$3"
@@ -301,6 +303,10 @@ print_tooling_guidance() {
     printf 'work-at: preview/tunnel hint: add fast checks for the local dev port, preview process ownership, and the declared public route before more browser retries.\n' >&2
   fi
 
+  if [[ "$text" == *"git "* || "$text" == *"npm "* || "$text" == *"node "* || "$text" == *"bun "* ]]; then
+    printf 'work-at: repo/tooling hint: add fast checks for git root, origin remote, package.json, and required CLIs in %s.\n' "$suggested_name" >&2
+  fi
+
   if [[ -n "$suggested_health_profile" && "$suggested_health_profile" != "$health_profile" ]]; then
     printf 'work-at: suggested health profile for this narrower surface: %s\n' "$suggested_health_profile" >&2
   fi
@@ -311,6 +317,7 @@ print_tooling_guidance() {
 }
 
 print_surface_guidance() {
+  [[ "${WORK_AT_SUPPRESS_GUIDANCE:-}" == "1" ]] && return 0
   local name="$1"
   local target_path="$2"
   local nested_path="$3"
@@ -326,6 +333,8 @@ print_surface_guidance() {
       suggested_health_profile="$health_profile"
       if [[ "$command_text" == *"agent-browser"* || "$command_text" == *"cloudflared tunnel"* || "$command_text" == *"expo start --web"* ]]; then
         suggested_health_profile="work_at_expo_preview_surface"
+      elif [[ "$command_text" == *"git "* || "$command_text" == *"npm "* || "$command_text" == *"node "* || "$command_text" == *"bun "* ]]; then
+        suggested_health_profile="work_at_git_repo_surface"
       fi
       suffix="$(suggest_target_name "$name" "$nested_path")"
       suggested_name="${name}-${suffix}"

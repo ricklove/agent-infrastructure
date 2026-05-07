@@ -358,4 +358,48 @@ exec "$runner" "$@"
     expect(stderr).toContain("--health-profile work_at_expo_preview_surface")
     expect(stderr).toContain("generic profile work_at_target_default")
   })
+
+  test("nested git repo workflow suggests the repo surface health profile", () => {
+    const root = createTempRoot()
+    const registryPath = join(root, "registry.json")
+    const targetPath = join(root, "target")
+    const repoPath = join(targetPath, "projects", "demo-app")
+    mkdirSync(repoPath, { recursive: true })
+    writeFileSync(join(repoPath, "package.json"), "{}\n")
+
+    runWorkAt(
+      [
+        "--register",
+        "demo",
+        "--",
+        "--host",
+        "local",
+        "--path",
+        targetPath,
+        "--health-profile",
+        "work_at_target_default",
+      ],
+      {
+        env: {
+          WORK_AT_REGISTRY_PATH: registryPath,
+        },
+      },
+    )
+
+    const result = runWorkAt(
+      ["demo", "bash", "-lc", `cd ${repoPath} && npm run lint -- --help >/dev/null || true`],
+      {
+        env: {
+          WORK_AT_REGISTRY_PATH: registryPath,
+        },
+      },
+    )
+
+    expect(result.exitCode).toBe(0)
+    const stderr = result.stderr.toString("utf8")
+    expect(stderr).toContain(`nested path: ${repoPath}`)
+    expect(stderr).toContain("--health-profile work_at_git_repo_surface")
+    expect(stderr).toContain("suggested health profile for this narrower surface: work_at_git_repo_surface")
+    expect(stderr).toContain("repo/tooling hint")
+  })
 })

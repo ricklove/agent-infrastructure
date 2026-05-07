@@ -368,6 +368,7 @@ function quote(value: string): string {
 function runCommand(
   command: string[],
   timeoutMs: number,
+  envOverrides?: Record<string, string>,
 ): {
   exitCode: number | null
   stdout: string
@@ -377,7 +378,10 @@ function runCommand(
   const startedAt = Date.now()
   const result = spawnSync(command[0], command.slice(1), {
     cwd: process.cwd(),
-    env: process.env,
+    env: {
+      ...process.env,
+      ...(envOverrides ?? {}),
+    },
     encoding: "utf8",
     timeout: timeoutMs,
     maxBuffer: 1024 * 1024,
@@ -464,7 +468,15 @@ export function runWorkspaceHealthProfile(
           ]
         : resolvedCommand
 
-    const result = runCommand(command, check.timeoutMs)
+    const result = runCommand(
+      command,
+      check.timeoutMs,
+      check.execution.kind === "work-at"
+        ? {
+            WORK_AT_SUPPRESS_GUIDANCE: "1",
+          }
+        : undefined,
+    )
     return {
       id: binding.id,
       checkId: check.id,

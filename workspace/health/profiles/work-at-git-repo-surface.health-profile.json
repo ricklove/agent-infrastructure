@@ -1,0 +1,78 @@
+{
+  "id": "work_at_git_repo_surface",
+  "title": "work-at Git Repo Surface",
+  "description": "Fast task-surface health profile for nested git and node/bun repo workspaces.",
+  "params": {},
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered repo path exists",
+      "severity": "blocking",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_root_present",
+      "checkId": "work_at_git_root_present",
+      "title": "Registered repo path is a git checkout",
+      "severity": "blocking",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_origin_present",
+      "checkId": "work_at_git_origin_remote_present",
+      "title": "Registered repo has an origin remote",
+      "severity": "blocking",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_available",
+      "checkId": "work_at_command_available",
+      "title": "Git is available on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "git"
+      }
+    },
+    {
+      "id": "target_node_available",
+      "checkId": "work_at_command_available",
+      "title": "Node is available on target",
+      "severity": "error",
+      "params": {
+        "commandName": "node"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "error",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_package_json_present",
+      "checkId": "work_at_path_exists",
+      "title": "Registered repo package.json exists",
+      "severity": "error",
+      "params": {
+        "path": "{{targetPath}}/package.json"
+      }
+    }
+  ]
+}

@@ -78,6 +78,7 @@ describe("runWorkspaceHealthProfile", () => {
       fakeWorkAtPath,
       `#!/usr/bin/env bash
 set -euo pipefail
+printf 'SUPPRESS=%s\\n' "\${WORK_AT_SUPPRESS_GUIDANCE:-}" > ${JSON.stringify(join(root, "captured-env.txt"))}
 printf '%s\\n' "$@" > ${JSON.stringify(capturePath)}
 shift
 "$@"
@@ -133,6 +134,9 @@ shift
       "-lc",
       "printf ok",
     ])
+    expect(readFileSync(join(root, "captured-env.txt"), "utf8").trim()).toBe(
+      "SUPPRESS=1",
+    )
   })
 
   test("applies explicit parameter overrides", () => {
