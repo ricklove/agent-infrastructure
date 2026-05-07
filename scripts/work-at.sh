@@ -296,6 +296,7 @@ print_tooling_guidance() {
 
   if [[ "$text" == *"agent-browser"* ]]; then
     printf 'work-at: browser/tooling hint: install agent-browser as a first-class CLI on this surface and add fast checks for the local preview URL, the public verification route, and the key app paths used by %s.\n' "$suggested_name" >&2
+    printf 'work-at: browser/tooling hint: npx agent-browser is only a fallback; the preview/browser health profile should remain red until agent-browser resolves directly on PATH.\n' >&2
     printf 'work-at: browser/session hint: avoid overlapping agent-browser commands on the same surface; serialize them, use a distinct AGENT_BROWSER_SESSION_NAME, and clear stale browser processes if commands start hanging.\n' >&2
   fi
 
