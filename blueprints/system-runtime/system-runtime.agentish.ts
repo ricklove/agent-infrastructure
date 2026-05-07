@@ -96,6 +96,7 @@ const Integration = {
   managerController: define.entity("ManagerController"),
   dashboardRecoveryController: define.entity("DashboardRecoveryController"),
   workspacePersistenceController: define.entity("WorkspacePersistenceController"),
+  workspaceHealthController: define.entity("WorkspaceHealthController"),
 };
 
 const Policy = {
@@ -153,6 +154,8 @@ SystemRuntime.enforces(`
 - Worker-host development surfaces must not have direct write access to the manager host shared repository checkout or runtime checkout.
 - Manager-host git credentials and canonical repository authority must remain on the manager integration surface unless an explicit controlled handoff path is invoked.
 - Prompt-driven exploratory surfaces on workers should create AgentChat sessions in the Discuss process by default so they do not begin code-changing work implicitly.
+- The manager host should own workspace health profile execution, stale-result refresh, cached health reports, and incident recording for active chat sessions.
+- Worker-local workspace health probes should run from the manager through the registered work-at surface rather than through a separate always-on worker health daemon.
 - Supported worker dashboard preview should run as a worker-local replica of the dashboard runtime rather than as raw Vite exposed directly to the operator.
 - Supported worker dashboard preview should keep the same dashboard, backend, and feature-service port topology as the manager runtime unless a more specific runtime blueprint explicitly closes a different preview topology.
 - Supported worker dashboard preview should use the Bun dashboard gateway as the public origin and may proxy frontend development traffic to a worker-local Vite dev server so HMR remains available.
@@ -170,6 +173,7 @@ SystemRuntime.defines(`
 - Worker-local workspace root means the checkout and working directory used for worker editing live on the worker and are replaceable without mutating manager-host canonical surfaces.
 - Worker-local runtime root means worker-side services and temporary runtime state stay on the worker rather than sharing the manager runtime tree.
 - Discuss-first exploratory session means a prompt-driven design or critique interaction starts in the Discuss process and only moves into implementation when the operator explicitly asks for that escalation.
+- WorkspaceHealthController means the manager-owned control domain that executes workspace health profiles, refreshes stale health results before gated work, polls active sessions in the background, and records repair incidents.
 - WorkerPreviewTopology means a worker preview uses the same dashboard runtime topology as the manager, with Bun as the public gateway entrypoint and Vite hidden behind a frontend dev proxy when HMR is needed.
 - GatewayBackedPreviewMode means preview requests, API traffic, and websocket upgrades all enter through the Bun dashboard gateway even while frontend assets come from a proxied Vite dev server.
 - Worker recovery means restoring a usable development worker by repair, reboot, or replacement before resuming heavy development work.
@@ -248,6 +252,7 @@ SystemRuntime.means(`
 - a deployment workflow contract
 - a system-level logging contract
 - a lazy gateway-backend contract
+- a manager-owned workspace health execution contract
 - a worker preview dashboard contract
 - a swarm-monitor observability contract
 `);

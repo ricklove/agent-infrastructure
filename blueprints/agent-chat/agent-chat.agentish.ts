@@ -45,6 +45,9 @@ const Session = {
   reference: define.entity("WorkspaceReference"),
   timeline: define.entity("SessionTimeline"),
   ticketWindow: define.entity("TicketWindow"),
+  healthProfile: define.document("SelectedWorkspaceHealthProfile"),
+  healthReport: define.document("CurrentWorkspaceHealthReport"),
+  healthPolicy: define.entity("SessionHealthPolicy"),
 };
 
 const Participant = {
@@ -159,6 +162,9 @@ AgentChat.enforces(`
 - Full browser process end-to-end coverage may be added later, but it is deferred verification rather than the primary requirement for initial process-lifecycle completeness.
 - Provider-backed chat sessions must inherit the shared development-process blueprint so implementation work inside a chat follows the same blueprint-first workflow.
 - A session may optionally select a process blueprint that defines its expectation contract and idle-watchdog behavior.
+- A session may optionally select one workspace health profile that defines its execution preflight and active-session health polling contract.
+- If a selected workspace health profile is stale when the operator triggers work, AgentChat should refresh the stale health checks before allowing mutating agent execution to proceed.
+- AgentChat should surface workspace health failures as explicit session events with evidence and should use session health policy to decide whether a failure warns, blocks the next turn, or interrupts an active run.
 - A session with an active process should surface one active agent ticket whose state is the authoritative runtime holder for that process instance.
 - Chat input must preserve first-class pasted image content rather than flattening clipboard images into text-only prompts.
 - Chat may reference workspace entities.
@@ -259,6 +265,9 @@ Session.conversation.contains(
   Session.reference,
   Session.timeline,
   Session.ticketWindow,
+  Session.healthProfile,
+  Session.healthReport,
+  Session.healthPolicy,
   Provider.binding,
   Context.active,
   Context.revision,
