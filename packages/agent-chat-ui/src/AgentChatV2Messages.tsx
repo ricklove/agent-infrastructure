@@ -64,7 +64,9 @@ function parseMarkdownImageLine(line: string): ImageReference | null {
 
 function parseStandaloneMarkdownLinkLine(line: string): ImageReference | null {
   const match =
-    /^\s*(?:[-*+]\s+|\d+\.\s+)?\[([^\]]+)\]\(([^)]+)\)\s*$/u.exec(line)
+    /^\s*(?:[-*+]\s+|\d+\.\s+)?(?:[^[]*?:\s+)?\[([^\]]+)\]\(([^)]+)\)\s*$/u.exec(
+      line,
+    )
   if (!match) {
     return null
   }
@@ -89,16 +91,60 @@ function parseRawImageReferenceLine(line: string): ImageReference | null {
   }
 }
 
+function imageReferencesFromLine(line: string): ImageReference[] {
+  const references: ImageReference[] = []
+  const seen = new Set<string>()
+
+  function addReference(sourceUrl: string, altText: string) {
+    const normalizedSource = sourceUrl.trim()
+    if (!normalizedSource || !isLikelyImageTarget(normalizedSource)) {
+      return
+    }
+    const entry = {
+      altText: altText.trim() || "Linked image",
+      sourceUrl: normalizedSource,
+    }
+    const key = `${entry.altText}\n${entry.sourceUrl}`
+    if (seen.has(key)) {
+      return
+    }
+    seen.add(key)
+    references.push(entry)
+  }
+
+  for (const match of line.matchAll(
+    /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/gu,
+  )) {
+    addReference(match[2] ?? "", match[1] ?? "Shared image")
+  }
+
+  for (const match of line.matchAll(/\[([^\]]+)\]\(([^)]+)\)/gu)) {
+    addReference(match[2] ?? "", match[1] ?? "Linked image")
+  }
+
+  for (const match of line.matchAll(
+    /`([^`\n]+\.(?:apng|avif|gif|jpe?g|png|webp|svg))`/giu,
+  )) {
+    addReference(match[1] ?? "", "Linked image")
+  }
+
+  if (references.length > 0) {
+    return references
+  }
+
+  const rawReference = parseRawImageReferenceLine(line)
+  return rawReference ? [rawReference] : []
+}
+
 export function textImageReferences(text: string): ImageReference[] {
-  return text
-    .split(/\r?\n/u)
-    .map(
-      (line) =>
-        parseMarkdownImageLine(line) ??
-        parseStandaloneMarkdownLinkLine(line) ??
-        parseRawImageReferenceLine(line),
-    )
-    .filter((entry): entry is ImageReference => entry !== null)
+  return text.split(/\r?\n/u).flatMap((line) => {
+    const standaloneReference =
+      parseMarkdownImageLine(line) ?? parseStandaloneMarkdownLinkLine(line)
+    if (standaloneReference) {
+      return [standaloneReference]
+    }
+    return imageReferencesFromLine(line)
+  })
 }
 
 function isLikelyLocalFileReferenceTarget(value: string): boolean {
