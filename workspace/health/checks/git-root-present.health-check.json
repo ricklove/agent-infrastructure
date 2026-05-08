@@ -1,0 +1,10 @@
+{
+  "id": "git_root_present",
+  "title": "Git root is present",
+  "description": "Checks that the target directory is a valid git checkout.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": ["git", "-C", "{{repoPath}}", "rev-parse", "--show-toplevel"],
+  "timeoutMs": 3000
+}

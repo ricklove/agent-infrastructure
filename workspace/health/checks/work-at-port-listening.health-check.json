@@ -1,0 +1,15 @@
+{
+  "id": "work_at_port_listening",
+  "title": "Worker port is listening",
+  "description": "Checks that one TCP port is actively listening on the selected work-at target.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": [
+    "bash",
+    "-lc",
+    "if command -v lsof >/dev/null 2>&1; then lsof -iTCP:{{port}} -sTCP:LISTEN >/dev/null 2>&1; else ss -ltn '( sport = :{{port}} )' | tail -n +2 | grep -q .; fi"
+  ],
+  "timeoutMs": 3000
+}

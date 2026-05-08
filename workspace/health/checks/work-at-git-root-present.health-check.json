@@ -1,0 +1,11 @@
+{
+  "id": "work_at_git_root_present",
+  "title": "Worker git root is present",
+  "description": "Checks that the target directory on the selected worker is a valid git checkout.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["git", "-C", "{{repoPath}}", "rev-parse", "--show-toplevel"],
+  "timeoutMs": 3000
+}

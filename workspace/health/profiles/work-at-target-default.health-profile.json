@@ -1,0 +1,125 @@
+{
+  "id": "work_at_target_default",
+  "title": "work-at Target Default",
+  "description": "Fast generic target health profile for registered work-at surfaces.",
+  "params": {
+    "workspaceRoot": "/home/ec2-user/workspace",
+    "githubConfigPath": "/home/ec2-user/.config/agent-github",
+    "runtimeGithubHelperPath": "/home/ec2-user/runtime/tools/github-app-token.sh"
+  },
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "repairHint": "If this target should exist, re-register it or restore worker connectivity, then rerun `work-at --health <target>`.",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered target path exists",
+      "severity": "blocking",
+      "repairHint": "Restore or re-register the target path so the registered work surface exists on the worker.",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_available",
+      "checkId": "work_at_command_available",
+      "title": "Git is available on target",
+      "severity": "blocking",
+      "repairHint": "Install Git on the worker or rerun worker setup before continuing repo work.",
+      "params": {
+        "commandName": "git"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "blocking",
+      "repairHint": "Install Bun on the worker or rerun worker setup before continuing JS tooling work.",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_jq_available",
+      "checkId": "work_at_command_available",
+      "title": "jq is available on target",
+      "severity": "error",
+      "repairHint": "Install jq on the worker so health scripts and structured CLI tooling can run cleanly.",
+      "params": {
+        "commandName": "jq"
+      }
+    },
+    {
+      "id": "target_rg_available",
+      "checkId": "work_at_command_available",
+      "title": "rg is available on target",
+      "severity": "error",
+      "repairHint": "Install ripgrep on the worker so agents can search quickly without falling back to slower tools.",
+      "params": {
+        "commandName": "rg"
+      }
+    },
+    {
+      "id": "target_curl_available",
+      "checkId": "work_at_command_available",
+      "title": "curl is available on target",
+      "severity": "error",
+      "repairHint": "Install curl on the worker so health probes and lightweight verification requests can run.",
+      "params": {
+        "commandName": "curl"
+      }
+    },
+    {
+      "id": "target_apply_patch_available",
+      "checkId": "work_at_command_available",
+      "title": "apply_patch is available on target",
+      "severity": "error",
+      "repairHint": "Expose apply_patch on the worker so agents can make structured file edits there instead of inventing fragile shell workarounds.",
+      "repairCommand": [
+        "bash",
+        "-lc",
+        "wrapper_dir=/home/ec2-user/.local/bin; real_apply_patch=$(find /home/ec2-user/.nvm/versions/node -path '*/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-*/vendor/*/codex/codex' 2>/dev/null | sort | tail -n 1); test -n \"$real_apply_patch\" && test -x \"$real_apply_patch\" && mkdir -p \"$wrapper_dir\" && ln -sfn \"$real_apply_patch\" \"$wrapper_dir/apply_patch\""
+      ],
+      "params": {
+        "commandName": "apply_patch"
+      }
+    },
+    {
+      "id": "target_workspace_root_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Workspace root exists on target",
+      "severity": "blocking",
+      "repairHint": "Restore the worker workspace root or rerun the worker bootstrap so the expected workspace exists.",
+      "params": {
+        "path": "/home/ec2-user/workspace"
+      }
+    },
+    {
+      "id": "target_github_auth_present",
+      "checkId": "work_at_path_exists",
+      "title": "GitHub App auth config exists on target",
+      "severity": "error",
+      "repairHint": "Copy or provision `/home/ec2-user/.config/agent-github` on the worker, then rerun `work-at --health <target>` before any GitHub push or PR workflow.",
+      "params": {
+        "path": "/home/ec2-user/.config/agent-github"
+      }
+    },
+    {
+      "id": "target_runtime_github_helper_present",
+      "checkId": "work_at_path_exists",
+      "title": "Runtime GitHub App helper exists on target",
+      "severity": "error",
+      "repairHint": "Restore `/home/ec2-user/runtime/tools/github-app-token.sh` on the worker so GitHub App token flows work there.",
+      "params": {
+        "path": "/home/ec2-user/runtime/tools/github-app-token.sh"
+      }
+    }
+  ]
+}

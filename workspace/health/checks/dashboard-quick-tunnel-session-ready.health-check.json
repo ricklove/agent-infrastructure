@@ -1,0 +1,14 @@
+{
+  "id": "dashboard_quick_tunnel_session_ready",
+  "title": "Quick tunnel session generator returns a healthy dev URL",
+  "description": "Runs the dashboard quick-tunnel session generator and verifies the tunneled health endpoint succeeds.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": [
+    "/home/ec2-user/runtime/scripts/issue-dashboard-quick-tunnel-session.sh",
+    "--work-target",
+    "{{workTarget}}"
+  ],
+  "timeoutMs": 60000
+}

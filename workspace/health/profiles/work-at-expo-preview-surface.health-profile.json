@@ -1,0 +1,81 @@
+{
+  "id": "work_at_expo_preview_surface",
+  "title": "work-at Expo Preview Surface",
+  "description": "Fast task-surface health profile for nested Expo web preview workspaces and verification flows.",
+  "params": {
+    "localPreviewUrl": "http://127.0.0.1:19018"
+  },
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered surface path exists",
+      "severity": "blocking",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_package_json_present",
+      "checkId": "work_at_path_exists",
+      "title": "Surface package.json exists",
+      "severity": "blocking",
+      "params": {
+        "path": "{{targetPath}}/package.json"
+      }
+    },
+    {
+      "id": "target_node_modules_present",
+      "checkId": "work_at_path_exists",
+      "title": "Surface node_modules exists",
+      "severity": "error",
+      "params": {
+        "path": "{{targetPath}}/node_modules"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_agent_browser_available",
+      "checkId": "work_at_command_available",
+      "title": "agent-browser is installed as a first-class CLI on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "agent-browser"
+      }
+    },
+    {
+      "id": "target_curl_available",
+      "checkId": "work_at_command_available",
+      "title": "curl is available on target",
+      "severity": "error",
+      "params": {
+        "commandName": "curl"
+      }
+    },
+    {
+      "id": "local_preview_url_reachable",
+      "checkId": "work_at_http_ok",
+      "title": "Local preview URL is reachable",
+      "severity": "blocking",
+      "params": {
+        "timeoutSeconds": "2",
+        "url": "{{localPreviewUrl}}"
+      }
+    }
+  ]
+}

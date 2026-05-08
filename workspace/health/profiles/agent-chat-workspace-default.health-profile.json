@@ -1,0 +1,122 @@
+{
+  "id": "agent_chat_workspace_default",
+  "title": "Agent Chat Workspace Default",
+  "description": "Fast manager-side workspace health profile for agent-chat sessions running from the shared workspace root.",
+  "params": {
+    "workspaceRoot": "/home/ec2-user/workspace",
+    "repoPath": "/home/ec2-user/workspace",
+    "remoteRef": "origin/main"
+  },
+  "checks": [
+    {
+      "id": "workspace_root_exists",
+      "checkId": "path_exists",
+      "title": "Workspace root exists",
+      "severity": "blocking",
+      "params": {
+        "path": "/home/ec2-user/workspace"
+      }
+    },
+    {
+      "id": "agent_chat_data_exists",
+      "checkId": "path_exists",
+      "title": "Agent chat data directory exists",
+      "severity": "blocking",
+      "params": {
+        "path": "/home/ec2-user/workspace/data/agent-chat"
+      }
+    },
+    {
+      "id": "projects_registry_exists",
+      "checkId": "path_exists",
+      "title": "Projects registry exists",
+      "severity": "blocking",
+      "params": {
+        "path": "/home/ec2-user/workspace/data/projects/registry.json"
+      }
+    },
+    {
+      "id": "bun_available",
+      "checkId": "command_available",
+      "title": "Bun is available",
+      "severity": "blocking",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "git_available",
+      "checkId": "command_available",
+      "title": "Git is available",
+      "severity": "blocking",
+      "params": {
+        "commandName": "git"
+      }
+    },
+    {
+      "id": "jq_available",
+      "checkId": "command_available",
+      "title": "jq is available",
+      "severity": "error",
+      "params": {
+        "commandName": "jq"
+      }
+    },
+    {
+      "id": "rg_available",
+      "checkId": "command_available",
+      "title": "rg is available",
+      "severity": "error",
+      "params": {
+        "commandName": "rg"
+      }
+    },
+    {
+      "id": "work_at_available",
+      "checkId": "command_available",
+      "title": "work-at is available",
+      "severity": "blocking",
+      "params": {
+        "commandName": "work-at"
+      }
+    },
+    {
+      "id": "workspace_git_root_present",
+      "checkId": "git_root_present",
+      "title": "Workspace repo is a git checkout",
+      "severity": "blocking",
+      "params": {
+        "repoPath": "/home/ec2-user/workspace"
+      }
+    },
+    {
+      "id": "workspace_origin_remote_present",
+      "checkId": "git_origin_remote_present",
+      "title": "Workspace repo has origin remote",
+      "severity": "blocking",
+      "params": {
+        "repoPath": "/home/ec2-user/workspace"
+      }
+    },
+    {
+      "id": "workspace_cached_origin_main_present",
+      "checkId": "git_remote_ref_present",
+      "title": "Workspace repo has cached origin/main",
+      "severity": "error",
+      "params": {
+        "repoPath": "/home/ec2-user/workspace",
+        "remoteRef": "origin/main"
+      }
+    },
+    {
+      "id": "workspace_head_contains_origin_main",
+      "checkId": "git_head_contains_ref",
+      "title": "Workspace HEAD contains origin/main",
+      "severity": "error",
+      "params": {
+        "repoPath": "/home/ec2-user/workspace",
+        "remoteRef": "origin/main"
+      }
+    }
+  ]
+}

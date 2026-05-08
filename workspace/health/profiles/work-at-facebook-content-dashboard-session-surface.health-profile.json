@@ -1,0 +1,286 @@
+{
+  "id": "work_at_facebook_content_dashboard_session_surface",
+  "title": "work-at Facebook Content Dashboard Session Surface",
+  "description": "Fast session-level health profile for the Facebook content dashboard UI package plus the worker quick-tunnel session generator that serves it.",
+  "params": {
+    "dashboardProxyTarget": "agent-infra-dev",
+    "dashboardQuickTunnelTarget": "agent-infra-dev-dashboard-app",
+    "featureBlueprintPath": "/home/ec2-user/workspace/projects/ricklove-agent-infrastructure/blueprints/dashboard/facebook-content-dashboard.agentish.ts",
+    "featureBlueprintStatePath": "/home/ec2-user/workspace/projects/ricklove-agent-infrastructure/blueprints/dashboard/facebook-content-dashboard.blueprint-state.agentish.ts",
+    "sharedDashboardBlueprintPath": "/home/ec2-user/workspace/projects/ricklove-agent-infrastructure/blueprints/dashboard/dashboard-plugins.agentish.ts",
+    "projectsDashboardBlueprintPath": "/home/ec2-user/workspace/projects/ricklove-agent-infrastructure/blueprints/projects/projects-dashboard.agentish.ts",
+    "uiScreenPath": "/home/ec2-user/workspace/projects/ricklove-agent-infrastructure/packages/facebook-content-dashboard-ui/src/FacebookContentDashboardScreen.tsx",
+    "serverPluginPath": "/home/ec2-user/workspace/projects/ricklove-agent-infrastructure/packages/facebook-content-dashboard-server/src/dashboard-plugin.ts"
+  },
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "repairHint": "Restore worker connectivity or re-register the Facebook UI target before working in this session surface.",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered Facebook UI path exists",
+      "severity": "blocking",
+      "repairHint": "Restore or re-register the Facebook UI package path so the expected session surface exists on the worker.",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_package_json_present",
+      "checkId": "work_at_path_exists",
+      "title": "Facebook UI package.json exists",
+      "severity": "blocking",
+      "repairHint": "Restore `package.json` for the Facebook UI package before editing or building it.",
+      "params": {
+        "path": "{{targetPath}}/package.json"
+      }
+    },
+    {
+      "id": "target_agentish_blueprint_present",
+      "checkId": "path_exists",
+      "title": "Feature Agentish blueprint exists",
+      "severity": "blocking",
+      "repairHint": "Restore the feature Agentish blueprint and use it as the primary design source instead of ad hoc package docs.",
+      "params": {
+        "path": "{{featureBlueprintPath}}"
+      }
+    },
+    {
+      "id": "target_agentish_blueprint_state_present",
+      "checkId": "path_exists",
+      "title": "Feature Agentish blueprint-state exists",
+      "severity": "blocking",
+      "repairHint": "Restore the feature Agentish blueprint-state so current implementation reality is tracked alongside the blueprint.",
+      "params": {
+        "path": "{{featureBlueprintStatePath}}"
+      }
+    },
+    {
+      "id": "target_shared_dashboard_blueprint_present",
+      "checkId": "path_exists",
+      "title": "Shared dashboard blueprint exists",
+      "severity": "warn",
+      "repairHint": "Restore the shared dashboard blueprint so feature work can be aligned with the broader dashboard plugin contract.",
+      "params": {
+        "path": "{{sharedDashboardBlueprintPath}}"
+      }
+    },
+    {
+      "id": "target_projects_dashboard_blueprint_present",
+      "checkId": "path_exists",
+      "title": "Projects dashboard blueprint exists",
+      "severity": "warn",
+      "repairHint": "Restore the Projects dashboard blueprint so feature work can inherit the correct project-level workflow rules.",
+      "params": {
+        "path": "{{projectsDashboardBlueprintPath}}"
+      }
+    },
+    {
+      "id": "target_agentish_blueprint_recent",
+      "checkId": "path_recent_enough",
+      "title": "Feature Agentish blueprint was maintained recently",
+      "severity": "warn",
+      "repairHint": "Review and refresh the feature Agentish blueprint if it has gone stale relative to current dashboard-plugin work.",
+      "params": {
+        "path": "{{featureBlueprintPath}}",
+        "maxAgeSeconds": "1209600"
+      }
+    },
+    {
+      "id": "target_agentish_blueprint_state_recent",
+      "checkId": "path_recent_enough",
+      "title": "Feature Agentish blueprint-state was maintained recently",
+      "severity": "warn",
+      "repairHint": "Refresh the feature blueprint-state if it has not been updated recently to reflect current implementation reality.",
+      "params": {
+        "path": "{{featureBlueprintStatePath}}",
+        "maxAgeSeconds": "604800"
+      }
+    },
+    {
+      "id": "target_blueprint_state_not_older_than_ui_screen",
+      "checkId": "path_not_older_than",
+      "title": "Blueprint-state is not older than the UI screen implementation",
+      "severity": "warn",
+      "repairHint": "Update the feature blueprint-state when the main Facebook dashboard UI screen changes so the documented current reality stays aligned.",
+      "params": {
+        "path": "{{featureBlueprintStatePath}}",
+        "referencePath": "{{uiScreenPath}}"
+      }
+    },
+    {
+      "id": "target_blueprint_state_not_older_than_server_plugin",
+      "checkId": "path_not_older_than",
+      "title": "Blueprint-state is not older than the server plugin implementation",
+      "severity": "warn",
+      "repairHint": "Update the feature blueprint-state when the Facebook dashboard server plugin changes so the documented current reality stays aligned.",
+      "params": {
+        "path": "{{featureBlueprintStatePath}}",
+        "referencePath": "{{serverPluginPath}}"
+      }
+    },
+    {
+      "id": "target_dashboard_plugin_entry_present",
+      "checkId": "work_at_path_exists",
+      "title": "Facebook dashboard plugin entry exists",
+      "severity": "blocking",
+      "repairHint": "Restore `dashboard-plugin.ts` so the Facebook UI package still exports the expected dashboard plugin entrypoint.",
+      "params": {
+        "path": "{{targetPath}}/src/dashboard-plugin.ts"
+      }
+    },
+    {
+      "id": "target_node_available",
+      "checkId": "work_at_command_available",
+      "title": "Node is available on target",
+      "severity": "error",
+      "repairHint": "Install Node on the worker before running Facebook UI scripts.",
+      "params": {
+        "commandName": "node"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "error",
+      "repairHint": "Install Bun on the worker before running Facebook UI scripts.",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_rg_available",
+      "checkId": "work_at_command_available",
+      "title": "rg is available on target",
+      "severity": "error",
+      "repairHint": "Install ripgrep on the worker so agents can search the Facebook UI package quickly.",
+      "params": {
+        "commandName": "rg"
+      }
+    },
+    {
+      "id": "target_apply_patch_available",
+      "checkId": "work_at_command_available",
+      "title": "apply_patch is available on target",
+      "severity": "blocking",
+      "repairHint": "Expose apply_patch on the worker before blueprint or UI rewrites so the agent can make structured file edits there instead of giant inline shell rewrites.",
+      "repairCommand": [
+        "bash",
+        "-lc",
+        "wrapper_dir=/home/ec2-user/.local/bin; real_apply_patch=$(find /home/ec2-user/.nvm/versions/node -path '*/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-*/vendor/*/codex/codex' 2>/dev/null | sort | tail -n 1); test -n \"$real_apply_patch\" && test -x \"$real_apply_patch\" && mkdir -p \"$wrapper_dir\" && ln -sfn \"$real_apply_patch\" \"$wrapper_dir/apply_patch\""
+      ],
+      "params": {
+        "commandName": "apply_patch"
+      }
+    },
+    {
+      "id": "dashboard_proxy_target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "Dashboard proxy target is reachable",
+      "severity": "blocking",
+      "repairHint": "Restore worker connectivity for the dashboard proxy surface before attempting plugin-development validation.",
+      "params": {
+        "workTarget": "{{dashboardProxyTarget}}"
+      }
+    },
+    {
+      "id": "worker_dashboard_proxy_listening",
+      "checkId": "work_at_port_listening",
+      "title": "Worker dashboard proxy is listening on port 3300",
+      "severity": "blocking",
+      "repairHint": "Start or restart the worker dashboard proxy on port 3300 before issuing or validating dashboard plugin sessions.",
+      "params": {
+        "workTarget": "{{dashboardProxyTarget}}",
+        "port": "3300"
+      }
+    },
+    {
+      "id": "worker_vite_dev_server_listening",
+      "checkId": "work_at_port_listening",
+      "title": "Worker dashboard frontend is listening on port 5174",
+      "severity": "blocking",
+      "repairHint": "Start the worker-hosted dashboard frontend on port 5174 before validating the plugin surface.",
+      "params": {
+        "workTarget": "{{dashboardQuickTunnelTarget}}",
+        "port": "5174"
+      }
+    },
+    {
+      "id": "worker_frontend_content_route_ok",
+      "checkId": "work_at_http_ok",
+      "title": "Worker frontend content route responds successfully",
+      "severity": "blocking",
+      "repairHint": "Repair the worker-hosted dashboard frontend until `/content` loads locally before issuing a tunnel URL.",
+      "params": {
+        "workTarget": "{{dashboardQuickTunnelTarget}}",
+        "url": "http://127.0.0.1:5174/content",
+        "timeoutSeconds": "2"
+      }
+    },
+    {
+      "id": "worker_session_exchange_route_sane",
+      "checkId": "work_at_http_status_prefix_contains",
+      "title": "Worker session exchange route fails sanely instead of 500ing",
+      "severity": "blocking",
+      "repairHint": "Repair the worker dashboard proxy until `/api/session/exchange` returns a structured 4xx auth/input failure for bad input instead of crashing.",
+      "params": {
+        "workTarget": "{{dashboardProxyTarget}}",
+        "url": "http://127.0.0.1:3300/api/session/exchange",
+        "method": "POST",
+        "curlArgs": "-H 'content-type: application/json' --data-binary '{\"sessionKey\":\"bad-key-for-healthcheck\"}'",
+        "expectedStatusPrefix": "4",
+        "mustContain": "session key",
+        "timeoutSeconds": "2"
+      }
+    },
+    {
+      "id": "worker_agent_chat_proxy_sane",
+      "checkId": "work_at_http_status_prefix_contains",
+      "title": "Worker agent-chat proxy returns a structured auth failure",
+      "severity": "blocking",
+      "repairHint": "Repair the worker dashboard proxy until `/api/agent-chat/sessions` returns a structured 4xx auth response for a bad bearer token instead of a proxy failure.",
+      "params": {
+        "workTarget": "{{dashboardProxyTarget}}",
+        "url": "http://127.0.0.1:3300/api/agent-chat/sessions",
+        "method": "GET",
+        "curlArgs": "-H 'authorization: Bearer bad-token-for-healthcheck'",
+        "expectedStatusPrefix": "4",
+        "mustContain": "dashboard session required",
+        "timeoutSeconds": "2"
+      }
+    },
+    {
+      "id": "worker_plugin_health_route_ok",
+      "checkId": "work_at_http_status_prefix_contains",
+      "title": "Worker Facebook dashboard health route responds correctly",
+      "severity": "blocking",
+      "repairHint": "Repair the worker Facebook dashboard backend until its health route returns a structured success response.",
+      "params": {
+        "workTarget": "{{dashboardProxyTarget}}",
+        "url": "http://127.0.0.1:3300/api/facebook-content-dashboard/health",
+        "method": "GET",
+        "curlArgs": "",
+        "expectedStatusPrefix": "2",
+        "mustContain": "facebook-content-dashboard",
+        "timeoutSeconds": "2"
+      }
+    },
+    {
+      "id": "target_quick_tunnel_session_ready",
+      "checkId": "dashboard_quick_tunnel_session_ready",
+      "title": "Quick tunnel session generator returns a healthy Facebook UI dev URL",
+      "severity": "blocking",
+      "repairHint": "Repair the dashboard app quick-tunnel generator until it can mint a fresh session URL and the tunneled health endpoint succeeds. The user should be able to get a working authenticated URL immediately.",
+      "params": {
+        "workTarget": "{{dashboardQuickTunnelTarget}}"
+      }
+    }
+  ]
+}

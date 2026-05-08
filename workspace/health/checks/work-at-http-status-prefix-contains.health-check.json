@@ -1,0 +1,15 @@
+{
+  "id": "work_at_http_status_prefix_contains",
+  "title": "Worker HTTP endpoint returns the expected status family and response content",
+  "description": "Checks that an HTTP endpoint on the selected worker returns the expected status prefix and contains a required response fragment.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": [
+    "bash",
+    "-lc",
+    "tmp=$(mktemp); trap 'rm -f \"$tmp\"' EXIT; code=$(curl -sS -o \"$tmp\" -w \"%{http_code}\" --max-time {{timeoutSeconds}} -X {{method}} {{curlArgs}} \"{{url}}\" || true); case \"$code\" in {{expectedStatusPrefix}}*) grep -F -- \"{{mustContain}}\" \"$tmp\" >/dev/null 2>&1 ;; *) echo \"$code\"; cat \"$tmp\"; exit 1 ;; esac"
+  ],
+  "timeoutMs": 5000
+}

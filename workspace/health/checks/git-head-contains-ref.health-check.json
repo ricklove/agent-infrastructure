@@ -1,0 +1,10 @@
+{
+  "id": "git_head_contains_ref",
+  "title": "HEAD contains required base ref",
+  "description": "Checks that HEAD already contains the expected cached remote base ref.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": ["git", "-C", "{{repoPath}}", "merge-base", "--is-ancestor", "{{remoteRef}}", "HEAD"],
+  "timeoutMs": 3000
+}

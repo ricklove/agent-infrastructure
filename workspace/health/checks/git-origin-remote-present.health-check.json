@@ -1,0 +1,10 @@
+{
+  "id": "git_origin_remote_present",
+  "title": "Origin remote is configured",
+  "description": "Checks that the target git checkout has an origin remote.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": ["git", "-C", "{{repoPath}}", "remote", "get-url", "origin"],
+  "timeoutMs": 3000
+}

@@ -1,0 +1,11 @@
+{
+  "id": "work_at_git_ref_present",
+  "title": "Worker git ref exists",
+  "description": "Checks that one git ref exists in the selected worker checkout.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["git", "-C", "{{repoPath}}", "show-ref", "--verify", "--quiet", "{{gitRef}}"],
+  "timeoutMs": 3000
+}

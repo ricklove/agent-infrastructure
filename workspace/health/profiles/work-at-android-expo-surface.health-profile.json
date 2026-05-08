@@ -1,0 +1,120 @@
+{
+  "id": "work_at_android_expo_surface",
+  "title": "work-at Android Expo Surface",
+  "description": "Fast task-surface health profile for Android Expo work on a worker surface.",
+  "params": {},
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered Android repo path exists",
+      "severity": "blocking",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_root_present",
+      "checkId": "work_at_git_root_present",
+      "title": "Registered Android repo path is a git checkout",
+      "severity": "blocking",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_origin_present",
+      "checkId": "work_at_git_origin_remote_present",
+      "title": "Registered Android repo has an origin remote",
+      "severity": "blocking",
+      "repairHint": "Restore the repo origin remote before using this Android worker surface for fetch, pull, or push work.",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_origin_readable",
+      "checkId": "work_at_git_origin_readable",
+      "title": "Registered Android repo can read from origin",
+      "severity": "blocking",
+      "repairHint": "Repair GitHub remote auth on this Android worker so `git fetch` and `git ls-remote origin` succeed before continuing. Do not transfer patches across workers when this check is red.",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_java_available",
+      "checkId": "work_at_command_available",
+      "title": "Java is available on target",
+      "severity": "blocking",
+      "repairHint": "Install or expose Java on the Android worker before running Expo Android build flows.",
+      "params": {
+        "commandName": "java"
+      }
+    },
+    {
+      "id": "target_adb_available",
+      "checkId": "work_at_command_available",
+      "title": "ADB is available on target",
+      "severity": "blocking",
+      "repairHint": "Install or expose adb on the Android worker before using Android device flows.",
+      "params": {
+        "commandName": "adb"
+      }
+    },
+    {
+      "id": "target_agent_device_available",
+      "checkId": "work_at_command_available",
+      "title": "agent-device is available on target",
+      "severity": "blocking",
+      "repairHint": "Install `agent-device` as a first-class CLI on the Android worker before asking the agent to use device automation there.",
+      "params": {
+        "commandName": "agent-device"
+      }
+    },
+    {
+      "id": "target_npx_available",
+      "checkId": "work_at_command_available",
+      "title": "npx is available on target",
+      "severity": "error",
+      "repairHint": "Expose `npx` on the Android worker before using Expo fallback CLI flows.",
+      "params": {
+        "commandName": "npx"
+      }
+    },
+    {
+      "id": "target_expo_app_exists",
+      "checkId": "work_at_path_exists",
+      "title": "apps/expo-app exists on target",
+      "severity": "blocking",
+      "repairHint": "Use the correct Android Expo checkout or recreate the missing `apps/expo-app` workspace before continuing.",
+      "params": {
+        "path": "{{targetPath}}/apps/expo-app"
+      }
+    },
+    {
+      "id": "target_package_json_present",
+      "checkId": "work_at_path_exists",
+      "title": "Registered Android repo package.json exists",
+      "severity": "error",
+      "params": {
+        "path": "{{targetPath}}/package.json"
+      }
+    },
+    {
+      "id": "target_adb_device_present",
+      "checkId": "work_at_adb_device_present",
+      "title": "ADB sees at least one device on target",
+      "severity": "blocking",
+      "repairHint": "Connect or boot an Android emulator/device on the worker before using device automation or `expo run:android`.",
+      "params": {}
+    }
+  ]
+}

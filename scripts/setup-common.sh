@@ -89,6 +89,217 @@ setup_common_prepare_environment() {
   mkdir -p "$RUNTIME_ROOT" "$STATE_ROOT" "$WORKSPACE_ROOT"
 }
 
+setup_common_install_apply_patch_wrapper() {
+  local agent_home="${AGENT_HOME:-/home/ec2-user}"
+  local wrapper_dir="${agent_home}/.local/bin"
+  local wrapper_path="${wrapper_dir}/apply_patch"
+  local real_apply_patch=""
+
+  real_apply_patch="$(find "${agent_home}/.nvm/versions/node" -path '*/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-*/vendor/*/codex/codex' 2>/dev/null | sort | tail -n 1)"
+  if [[ -z "${real_apply_patch}" || ! -x "${real_apply_patch}" ]]; then
+    printf '%s\n' 'apply_patch cannot be installed on this host because the Codex vendor binary was not found.' >&2
+    return 127
+  fi
+
+  mkdir -p "${wrapper_dir}"
+  ln -sfn "${real_apply_patch}" "${wrapper_path}"
+}
+
+setup_common_install_agent_browser_wrapper() {
+  local wrapper_path="/usr/local/bin/agent-browser"
+  local agent_browser_path=""
+  local bun_wrapper_path="/opt/bun/bin/bun"
+  local bun_real_path="/opt/bun/bin/bun.real"
+  local node_path=""
+  local npx_path=""
+  local npm_path=""
+
+  agent_browser_path="$(command -v agent-browser 2>/dev/null || true)"
+  node_path="$(command -v node 2>/dev/null || true)"
+  npx_path="$(command -v npx 2>/dev/null || true)"
+  npm_path="$(command -v npm 2>/dev/null || true)"
+
+  if [[ -w "$(dirname "${wrapper_path}")" ]]; then
+    cat > "${wrapper_path}" <<'WRAPPEREOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+runtime_target_path="${AGENT_RUNTIME_TARGET_PATH:-/home/ec2-user/runtime-target.json}"
+role="${DASHBOARD_HOST_ROLE:-}"
+if [[ -z "${role}" && -f "${runtime_target_path}" ]]; then
+  role="$(jq -r '.role // empty' "${runtime_target_path}" 2>/dev/null || true)"
+fi
+
+if [[ "${role}" == "manager" ]]; then
+  printf '%s\n' 'agent-browser is forbidden on the manager. Run browser commands on a worker surface via work-at.' >&2
+  exit 126
+fi
+
+real_agent_browser="$(find /home/ec2-user/.nvm/versions/node -path '*/lib/node_modules/agent-browser/bin/agent-browser-linux-*' 2>/dev/null | sort | tail -n 1)"
+if [[ -z "${real_agent_browser}" || ! -x "${real_agent_browser}" ]]; then
+  printf '%s\n' 'agent-browser is not installed as a first-class CLI on this host.' >&2
+  exit 127
+fi
+
+exec "${real_agent_browser}" "$@"
+WRAPPEREOF
+    chmod 0755 "${wrapper_path}"
+  fi
+
+  if [[ -n "${agent_browser_path}" ]]; then
+    rm -f "${agent_browser_path}"
+    cat > "${agent_browser_path}" <<'WRAPPEREOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+runtime_target_path="${AGENT_RUNTIME_TARGET_PATH:-/home/ec2-user/runtime-target.json}"
+role="${DASHBOARD_HOST_ROLE:-}"
+if [[ -z "${role}" && -f "${runtime_target_path}" ]]; then
+  role="$(jq -r '.role // empty' "${runtime_target_path}" 2>/dev/null || true)"
+fi
+
+if [[ "${role}" == "manager" ]]; then
+  printf '%s\n' 'agent-browser is forbidden on the manager. Run browser commands on a worker surface via work-at.' >&2
+  exit 126
+fi
+
+real_agent_browser="$(find /home/ec2-user/.nvm/versions/node -path '*/lib/node_modules/agent-browser/bin/agent-browser-linux-*' 2>/dev/null | sort | tail -n 1)"
+if [[ -z "${real_agent_browser}" || ! -x "${real_agent_browser}" ]]; then
+  printf '%s\n' 'agent-browser is not installed as a first-class CLI on this host.' >&2
+  exit 127
+fi
+
+exec "${real_agent_browser}" "$@"
+WRAPPEREOF
+    chmod 0755 "${agent_browser_path}"
+  fi
+
+  if [[ -n "${npx_path}" && -n "${node_path}" ]]; then
+    rm -f "${npx_path}"
+    cat > "${npx_path}" <<WRAPPEREOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+runtime_target_path="\${AGENT_RUNTIME_TARGET_PATH:-/home/ec2-user/runtime-target.json}"
+role="\${DASHBOARD_HOST_ROLE:-}"
+if [[ -z "\${role}" && -f "\${runtime_target_path}" ]]; then
+  role="\$(jq -r '.role // empty' "\${runtime_target_path}" 2>/dev/null || true)"
+fi
+
+if [[ "\${role}" == "manager" ]]; then
+  first_command=""
+  for arg in "\$@"; do
+    case "\${arg}" in
+      -*) ;;
+      *) first_command="\${arg}"; break ;;
+    esac
+  done
+  if [[ "\${first_command}" == "agent-browser" ]]; then
+    printf '%s\n' 'agent-browser is forbidden on the manager. Run browser commands on a worker surface via work-at.' >&2
+    exit 126
+  fi
+fi
+
+npx_cli="\$(find /home/ec2-user/.nvm/versions/node -path '*/lib/node_modules/npm/bin/npx-cli.js' 2>/dev/null | sort | tail -n 1)"
+if [[ -z "\${npx_cli}" || ! -f "\${npx_cli}" ]]; then
+  printf '%s\n' 'npx is not installed on this host.' >&2
+  exit 127
+fi
+
+exec "${node_path}" "\${npx_cli}" "\$@"
+WRAPPEREOF
+    chmod 0755 "${npx_path}"
+  fi
+
+  if [[ -n "${npm_path}" && -n "${node_path}" ]]; then
+    rm -f "${npm_path}"
+    cat > "${npm_path}" <<WRAPPEREOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+runtime_target_path="\${AGENT_RUNTIME_TARGET_PATH:-/home/ec2-user/runtime-target.json}"
+role="\${DASHBOARD_HOST_ROLE:-}"
+if [[ -z "\${role}" && -f "\${runtime_target_path}" ]]; then
+  role="\$(jq -r '.role // empty' "\${runtime_target_path}" 2>/dev/null || true)"
+fi
+
+if [[ "\${role}" == "manager" ]]; then
+  if [[ "\${1:-}" == "exec" || "\${1:-}" == "x" ]]; then
+    first_command=""
+    for arg in "\${@:2}"; do
+      case "\${arg}" in
+        -*) ;;
+        *) first_command="\${arg}"; break ;;
+      esac
+    done
+    if [[ "\${first_command}" == "agent-browser" ]]; then
+      printf '%s\n' 'agent-browser is forbidden on the manager. Run browser commands on a worker surface via work-at.' >&2
+      exit 126
+    fi
+  fi
+fi
+
+npm_cli="\$(find /home/ec2-user/.nvm/versions/node -path '*/lib/node_modules/npm/bin/npm-cli.js' 2>/dev/null | sort | tail -n 1)"
+if [[ -z "\${npm_cli}" || ! -f "\${npm_cli}" ]]; then
+  printf '%s\n' 'npm is not installed on this host.' >&2
+  exit 127
+fi
+
+exec "${node_path}" "\${npm_cli}" "\$@"
+WRAPPEREOF
+    chmod 0755 "${npm_path}"
+  fi
+
+  if [[ -x "${bun_wrapper_path}" && ! -e "${bun_real_path}" ]]; then
+    mv "${bun_wrapper_path}" "${bun_real_path}"
+  fi
+  if [[ -x "${bun_real_path}" ]]; then
+    cat > "${bun_wrapper_path}" <<'WRAPPEREOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+runtime_target_path="${AGENT_RUNTIME_TARGET_PATH:-/home/ec2-user/runtime-target.json}"
+role="${DASHBOARD_HOST_ROLE:-}"
+if [[ -z "${role}" && -f "${runtime_target_path}" ]]; then
+  role="$(jq -r '.role // empty' "${runtime_target_path}" 2>/dev/null || true)"
+fi
+
+mode="$(basename "$0")"
+if [[ "${role}" == "manager" ]]; then
+  first_command=""
+  if [[ "${mode}" == "bunx" ]]; then
+    for arg in "$@"; do
+      case "${arg}" in
+        -*) ;;
+        *) first_command="${arg}"; break ;;
+      esac
+    done
+  elif [[ "${1:-}" == "x" ]]; then
+    for arg in "${@:2}"; do
+      case "${arg}" in
+        -*) ;;
+        *) first_command="${arg}"; break ;;
+      esac
+    done
+  fi
+  if [[ "${first_command}" == "agent-browser" ]]; then
+    printf '%s\n' 'agent-browser is forbidden on the manager. Run browser commands on a worker surface via work-at.' >&2
+    exit 126
+  fi
+fi
+
+if [[ "${mode}" == "bunx" ]]; then
+  exec /opt/bun/bin/bun.real x "$@"
+fi
+
+exec /opt/bun/bin/bun.real "$@"
+WRAPPEREOF
+    chmod 0755 "${bun_wrapper_path}"
+    rm -f /opt/bun/bin/bunx
+    ln -s bun /opt/bun/bin/bunx
+  fi
+}
+
 setup_common_install_prereqs() {
   if [[ "${AGENT_SETUP_BOOTSTRAPPED:-0}" == "1" ]]; then
     return
@@ -162,6 +373,10 @@ TIMEOUTEOF
   fi
   setup_common_system_event_run "setup-bootstrap" "target=install-bun-binary" \
     install -m 0755 "$BUN_INSTALL/bin/bun" /usr/local/bin/bun
+  setup_common_system_event_run "setup-bootstrap" "target=install-apply-patch-wrapper" \
+    setup_common_install_apply_patch_wrapper
+  setup_common_system_event_run "setup-bootstrap" "target=install-agent-browser-wrapper" \
+    setup_common_install_agent_browser_wrapper
 
   export AGENT_SETUP_BOOTSTRAPPED=1
 }

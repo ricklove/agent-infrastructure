@@ -1,0 +1,95 @@
+{
+  "id": "work_at_dashboard_app_quick_tunnel_surface",
+  "title": "work-at Dashboard App Quick Tunnel Surface",
+  "description": "Fast health profile for the worker-hosted dashboard-app quick-tunnel surface.",
+  "params": {},
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "repairHint": "Restore worker connectivity or re-register the dashboard-app target before attempting a quick tunnel.",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "dashboard-app path exists",
+      "severity": "blocking",
+      "repairHint": "Restore or re-register the dashboard-app path on the worker before attempting a quick tunnel.",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "blocking",
+      "repairHint": "Install Bun on the worker before running the dashboard app dev server.",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_cloudflared_available",
+      "checkId": "work_at_command_available",
+      "title": "cloudflared is available on target",
+      "severity": "blocking",
+      "repairHint": "Install or expose `cloudflared` on the worker before attempting a quick tunnel. Do not fall back to localhost.run for this workflow.",
+      "params": {
+        "commandName": "cloudflared"
+      }
+    },
+    {
+      "id": "target_package_json_exists",
+      "checkId": "work_at_path_exists",
+      "title": "dashboard-app package.json exists on target",
+      "severity": "blocking",
+      "repairHint": "Restore `package.json` in the dashboard-app surface before starting a quick tunnel workflow.",
+      "params": {
+        "path": "{{targetPath}}/package.json"
+      }
+    },
+    {
+      "id": "target_vite_config_exists",
+      "checkId": "work_at_path_exists",
+      "title": "dashboard-app vite config exists on target",
+      "severity": "blocking",
+      "repairHint": "Restore `vite.config.ts` in the dashboard-app surface before starting a worker quick tunnel workflow.",
+      "params": {
+        "path": "{{targetPath}}/vite.config.ts"
+      }
+    },
+    {
+      "id": "target_dev_frontend_reachable",
+      "checkId": "work_at_http_ok",
+      "title": "dashboard-app local dev frontend is reachable",
+      "severity": "blocking",
+      "repairHint": "Start the dashboard-app dev server on the worker and verify it responds locally before attempting a quick tunnel.",
+      "params": {
+        "url": "http://127.0.0.1:5174",
+        "timeoutSeconds": "2"
+      }
+    },
+    {
+      "id": "target_cloudflared_quick_tunnel_active",
+      "checkId": "work_at_process_active",
+      "title": "cloudflared quick tunnel is active for the dev frontend",
+      "severity": "blocking",
+      "repairHint": "Run a worker-local `cloudflared tunnel --url http://127.0.0.1:5174 --no-autoupdate` for this surface. Do not use localhost.run for this workflow.",
+      "params": {
+        "processPattern": "cloudflared tunnel --url http://127.0.0.1:5174"
+      }
+    },
+    {
+      "id": "target_quick_tunnel_session_ready",
+      "checkId": "dashboard_quick_tunnel_session_ready",
+      "title": "quick tunnel session generator returns a healthy dev URL",
+      "severity": "blocking",
+      "repairHint": "Repair the worker dev backend or the quick-tunnel session generator so a fresh quick tunnel URL can be issued and its health endpoint succeeds before handing a URL to the user.",
+      "params": {}
+    }
+  ]
+}
