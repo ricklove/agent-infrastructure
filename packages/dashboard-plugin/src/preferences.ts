@@ -43,6 +43,7 @@ const defaultDashboardPreferences: DashboardPreferences = {
 export const dashboardBasicFeatureIds = [
   "chat",
   "chat-v2",
+  "content",
   "swarm",
   "projects",
   "settings",
@@ -51,6 +52,7 @@ export const dashboardBasicFeatureIds = [
 export const dashboardFeatureOrder = [
   "chat",
   "chat-v2",
+  "content",
   "swarm",
   "workbench",
   "design",

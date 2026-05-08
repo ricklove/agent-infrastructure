@@ -598,6 +598,15 @@ function copyResponseHeaders(headers: Headers): Record<string, string> {
   return copied
 }
 
+function stripProxyEncodedHeaders(
+  headers: Record<string, string>,
+): Record<string, string> {
+  const nextHeaders = { ...headers }
+  delete nextHeaders["content-encoding"]
+  delete nextHeaders["content-length"]
+  return nextHeaders
+}
+
 function proxiedRequestHeaders(request: Request): Headers {
   const headers = new Headers(request.headers)
   headers.delete("host")
@@ -665,6 +674,62 @@ async function proxyRequestToMainDashboard(
   })
 }
 
+async function proxySessionExchangeToMainDashboard(
+  request: Request,
+): Promise<Response> {
+  const url = new URL(request.url)
+  logSystemStep(
+    "dashboard-server",
+    `session_exchange upstream=${mainDashboardHttpUrl(url)}`,
+  )
+  const response = await fetch(mainDashboardHttpUrl(url), {
+    method: request.method,
+    headers: mainDashboardProxyRequestHeaders(request),
+    body: await request.arrayBuffer(),
+  })
+  const responseHeaders = copyResponseHeaders(response.headers)
+  const payloadText = await response.text()
+  const contentType = response.headers.get("content-type") ?? ""
+
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return new Response(payloadText, {
+      status: response.status,
+      headers: stripProxyEncodedHeaders(responseHeaders),
+    })
+  }
+
+  let payload: unknown
+  try {
+    payload = JSON.parse(payloadText)
+  } catch {
+    return new Response(payloadText, {
+      status: response.status,
+      headers: responseHeaders,
+    })
+  }
+
+  if (
+    response.ok &&
+    payload &&
+    typeof payload === "object" &&
+    "sessionToken" in payload &&
+    typeof payload.sessionToken === "string" &&
+    "expiresAtMs" in payload &&
+    typeof payload.expiresAtMs === "number"
+  ) {
+    logSystemStep("dashboard-server", "session_exchange mirror_local_token")
+    storeBrowserSessionToken({
+      sessionToken: payload.sessionToken,
+      expiresAtMs: payload.expiresAtMs,
+    })
+  }
+
+  return new Response(JSON.stringify(payload), {
+    status: response.status,
+    headers: stripProxyEncodedHeaders(responseHeaders),
+  })
+}
+
 function hashSessionToken(token: string): string {
   return createHash("sha256").update(token).digest("hex")
 }
@@ -687,6 +752,58 @@ function readSessionStore(): DashboardSessionStore {
 function writeSessionStore(store: DashboardSessionStore): void {
   mkdirSync(resolve(sessionStorePath, ".."), { recursive: true })
   writeFileSync(sessionStorePath, JSON.stringify(store, null, 2))
+}
+
+function storeBrowserSessionToken(input: {
+  sessionToken: string
+  expiresAtMs: number
+}): void {
+  const trimmed = input.sessionToken.trim()
+  if (!trimmed) {
+    return
+  }
+
+  const currentTime = Date.now()
+  const tokenHash = hashSessionToken(trimmed)
+  const idleTimeoutMs = Math.max(
+    60_000,
+    input.expiresAtMs - currentTime,
+    browserSessionIdleTimeoutMs,
+  )
+  const nextStore: DashboardSessionStore = { sessions: [] }
+  let matched = false
+
+  for (const session of readSessionStore().sessions) {
+    if (session.expiresAtMs <= currentTime) {
+      continue
+    }
+
+    if (session.kind === "browser" && session.tokenHash === tokenHash) {
+      nextStore.sessions.push({
+        ...session,
+        expiresAtMs: input.expiresAtMs,
+        lastAccessAtMs: currentTime,
+        idleTimeoutMs,
+      })
+      matched = true
+      continue
+    }
+
+    nextStore.sessions.push(session)
+  }
+
+  if (!matched) {
+    nextStore.sessions.push({
+      tokenHash,
+      expiresAtMs: input.expiresAtMs,
+      createdAtMs: currentTime,
+      kind: "browser",
+      lastAccessAtMs: currentTime,
+      idleTimeoutMs,
+    })
+  }
+
+  writeSessionStore(nextStore)
 }
 
 function isLoopbackRequest(request: Request): boolean {
@@ -1637,6 +1754,7 @@ async function handleApi(request: Request): Promise<Response> {
       return jsonResponse({ ok: false, error: "sessionKey is required" }, 400)
     }
 
+    logSystemStep("dashboard-server", "session_exchange local_fallback")
     const exchanged = exchangeBootstrapSessionKey(body.sessionKey)
     if (!exchanged) {
       return jsonResponse({ ok: false, error: "invalid session key" }, 401)
@@ -2105,6 +2223,14 @@ const server = Bun.serve<DashboardWsData>({
     const wsBackend = findWsBackend(url.pathname)
     const requestWantsWebSocket =
       request.headers.get("upgrade")?.toLowerCase() === "websocket"
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/session/exchange" &&
+      dashboardDevMainDashboardProxyEnabled
+    ) {
+      return proxySessionExchangeToMainDashboard(request)
+    }
 
     if (shouldProxyToMainDashboard(url.pathname)) {
       if (requestWantsWebSocket) {

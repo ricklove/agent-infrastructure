@@ -5,6 +5,7 @@ import { agentWorkbenchDashboardPlugin } from "@agent-infrastructure/agent-workb
 import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin"
 import { dashboardSettingsDashboardPlugin } from "@agent-infrastructure/dashboard-settings-ui/plugin"
 import { dashboardTerminalPlugin } from "@agent-infrastructure/dashboard-terminal-ui/plugin"
+import { facebookContentDashboardPlugin } from "@agent-infrastructure/facebook-content-dashboard-server/plugin"
 import { floatingWindowDebugDashboardPlugin } from "@agent-infrastructure/floating-window-debug-ui/plugin"
 import { projectsDashboardPlugin } from "@agent-infrastructure/projects-server/plugin"
 import { stackAdminDashboardPlugin } from "@agent-infrastructure/stack-admin-server/plugin"
@@ -14,6 +15,7 @@ export type DashboardHostRole = "manager" | "admin"
 
 const managerDashboardFeaturePlugins: DashboardFeaturePlugin[] = [
   agentChatDashboardPlugin,
+  facebookContentDashboardPlugin,
   agentSwarmDashboardPlugin,
   agentWorkbenchDashboardPlugin,
   uiDesignCanvasDashboardPlugin,
