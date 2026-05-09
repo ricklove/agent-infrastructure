@@ -1231,15 +1231,25 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
       {showingOutsidePicker ? (
         <Section>
           {!ui.outsidePage ? (
-            <div className="grid gap-2 md:grid-cols-2">
-              {sourcePageOptions.map((page) => (
-                <ChoiceCardSurface
-                  key={page}
-                  title={page}
-                  meta={(postsByPage.get(page) ?? []).length + " top posts"}
-                  onClick={() => props.store.chooseOutsidePage(page)}
+            <div className="flex flex-col gap-3">
+              {ui.destinationPage ? (
+                <SelectedCardSurface
+                  title={ui.destinationPage}
+                  meta={`${destinationPosts.length} top posts`}
+                  tone="active"
+                  onClick={() => props.store.reopenDestination()}
                 />
-              ))}
+              ) : null}
+              <div className="grid gap-2 md:grid-cols-2">
+                {sourcePageOptions.map((page) => (
+                  <ChoiceCardSurface
+                    key={page}
+                    title={page}
+                    meta={(postsByPage.get(page) ?? []).length + " top posts"}
+                    onClick={() => props.store.chooseOutsidePage(page)}
+                  />
+                ))}
+              </div>
             </div>
           ) : null}
         </Section>
