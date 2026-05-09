@@ -18,6 +18,64 @@ function requireOpenAiKey(): string {
   return apiKey
 }
 
+function escapeSvgText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+}
+
+function buildMockImagePreview(
+  title: string,
+  captionPreview: string,
+  index: number,
+  timestamp: number,
+): string {
+  const palettes = [
+    { top: "#0f172a", bottom: "#1d4ed8", accent: "#f59e0b" },
+    { top: "#111827", bottom: "#6d28d9", accent: "#22c55e" },
+    { top: "#172554", bottom: "#991b1b", accent: "#fb7185" },
+  ] as const
+
+  const palette = palettes[index % palettes.length]
+  const trimmedCaption = captionPreview.replace(/\s+/gu, " ").trim()
+  const lines = [
+    `[MOCK IMAGE ${index + 1}]`,
+    title.slice(0, 44),
+    trimmedCaption.slice(0, 96),
+  ]
+
+  const lineMarkup = lines
+    .map(
+      (line, lineIndex) =>
+        `<text x="64" y="${150 + lineIndex * 86}" fill="#f8fafc" font-size="${
+          lineIndex === 0 ? 34 : lineIndex === 1 ? 58 : 30
+        }" font-family="Inter, Arial, sans-serif" font-weight="${
+          lineIndex === 1 ? 700 : 500
+        }">${escapeSvgText(line)}</text>`,
+    )
+    .join("")
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Mock generated preview">
+  <defs>
+    <linearGradient id="mockGradient-${timestamp}-${index}" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="${palette.top}" />
+      <stop offset="100%" stop-color="${palette.bottom}" />
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="48" fill="url(#mockGradient-${timestamp}-${index})" />
+  <rect x="64" y="64" width="896" height="896" rx="40" fill="rgba(15, 23, 42, 0.16)" stroke="rgba(248, 250, 252, 0.24)" />
+  <circle cx="156" cy="880" r="34" fill="${palette.accent}" />
+  <rect x="214" y="846" width="544" height="18" rx="9" fill="rgba(248, 250, 252, 0.80)" />
+  <rect x="214" y="886" width="420" height="16" rx="8" fill="rgba(248, 250, 252, 0.48)" />
+  ${lineMarkup}
+</svg>`
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
 function parseJsonArray<T>(raw: string): T[] {
   const trimmed = raw.trim()
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]+?)\s*```/u)?.[1] ?? trimmed
@@ -59,58 +117,79 @@ export async function generateTextDrafts(
 
   if (request.provider === "mock") {
     const timestamp = Date.now()
+    const captions = [
+      `[MOCK TEXT VARIANT 1] Rebuilt from the source into a community-support message for ${destinationPage}. ${source.adaptationRule}`,
+      `[MOCK TEXT VARIANT 2] THANK YOU TO THE PEOPLE WHO KEEP SHOWING UP. ${source.hook.toUpperCase()}`,
+      `[MOCK TEXT VARIANT 3] ${source.whyItWorked} This draft deliberately reframes the source into a more protective and story-led post for ${destinationPage}.`,
+    ] as const
+
     return {
       ok: true,
       drafts: [
         {
           id: `gen-${timestamp}-1`,
           sourceId: source.id,
-          title: `${destinationPage} · Community support`,
+          title: `[MOCK] ${destinationPage} - Community support`,
           format: "image",
           stage: "draft",
           positioning: "Supportive, civic, family-safe",
-          captionPreview: `Support shows up in everyday moments too. ${source.adaptationRule}`,
-          goal: "High-share supportive derivative",
+          captionPreview: captions[0],
+          goal: "Generate a visibly transformed supportive derivative",
           originality: "Mock generation",
           tone: "warm, clear, civic",
-          note: "Mock provider generated a community-led derivative.",
-          previewMediaPath: source.mediaPath,
+          note: "Mock generation visibly transformed the source text.",
+          previewMediaPath: buildMockImagePreview(
+            `[MOCK] ${destinationPage} - Community support`,
+            captions[0],
+            0,
+            timestamp,
+          ),
           textProvider: "mock",
-          imageProvider: "seed",
+          imageProvider: "mock",
           generatedKind: "generated",
         },
         {
           id: `gen-${timestamp}-2`,
           sourceId: source.id,
-          title: `${destinationPage} · Gratitude statement`,
+          title: `[MOCK] ${destinationPage} - Gratitude statement`,
           format: "quote",
           stage: "draft",
           positioning: "Short gratitude-led statement",
-          captionPreview: `Respect the people who keep showing up when it counts. ${source.hook}`,
+          captionPreview: captions[1],
           goal: "Fast-scrolling agreement post",
           originality: "Mock generation",
           tone: "brief, respectful, declarative",
-          note: "Mock provider generated a short gratitude variant.",
-          previewMediaPath: source.mediaPath,
+          note: "Mock generation converted the source into a loud gratitude-led variant.",
+          previewMediaPath: buildMockImagePreview(
+            `[MOCK] ${destinationPage} - Gratitude statement`,
+            captions[1],
+            1,
+            timestamp,
+          ),
           textProvider: "mock",
-          imageProvider: "seed",
+          imageProvider: "mock",
           generatedKind: "generated",
         },
         {
           id: `gen-${timestamp}-3`,
           sourceId: source.id,
-          title: `${destinationPage} · Story-led perspective`,
+          title: `[MOCK] ${destinationPage} - Story-led perspective`,
           format: "story",
           stage: "draft",
           positioning: "Empathy and public-service framing",
-          captionPreview: `${source.whyItWorked} Reframed into a safer, more original story-led draft for ${destinationPage}.`,
+          captionPreview: captions[2],
           goal: "Broader reach beyond core followers",
           originality: "Mock generation",
           tone: "protective, grounded, useful",
-          note: "Mock provider generated a broader-reach story variant.",
-          previewMediaPath: source.mediaPath,
+          note: "Mock generation widened the structure and visibly changed the source language.",
+          previewMediaPath: buildMockImagePreview(
+            `[MOCK] ${destinationPage} - Story-led perspective`,
+            captions[2],
+            2,
+            timestamp,
+          ),
           textProvider: "mock",
-          imageProvider: "seed",
+          imageProvider: "mock",
           generatedKind: "generated",
         },
       ],
@@ -209,10 +288,22 @@ export async function generateImageDraft(
   const destinationPage = request.destinationPage?.trim() || "Your page"
 
   if (request.provider === "mock") {
+    const timestamp = Date.now()
+    const imageIndex = Math.abs(
+      request.draft.id
+        .split("")
+        .reduce((total, character) => total + character.charCodeAt(0), 0),
+    ) % 3
+
     return {
       ok: true,
-      previewMediaPath: source.mediaPath,
-      note: "Mock image generation kept the source image.",
+      previewMediaPath: buildMockImagePreview(
+        request.draft.title,
+        request.draft.captionPreview,
+        imageIndex,
+        timestamp,
+      ),
+      note: "Mock image generation applied a visible preview transformation.",
       imageProvider: "mock",
     }
   }

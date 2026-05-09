@@ -323,27 +323,22 @@ export function createFacebookContentDashboardStore() {
     state$.ui.draftEditorOpen.set(false)
     state$.ui.savedDraftId.set(null)
 
-    const source = state$.sourcePosts.get().find((post) => post.id === sourceId)
-    if (source) {
-      const generatedDrafts = buildGeneratedDrafts(source, state$.ui.textGenerationProvider.get())
-      const remainingDrafts = state$
-        .drafts.get()
-        .filter((draft) => draft.sourceId !== source.id)
-      state$.drafts.set([...generatedDrafts, ...remainingDrafts])
-      state$.selection.activeDraftId.set(generatedDrafts[0].id)
+    const existingDraft = preferredDraftForSource(state$.drafts.get(), sourceId)
+    if (existingDraft) {
+      state$.ui.savedDraftId.set(
+        existingDraft.stage === "draft" ? null : existingDraft.id,
+      )
+      state$.selection.activeDraftId.set(existingDraft.id)
+      state$.workflow.statusMessage.set(
+        "Source selected. Continue editing, compare variants, or generate a fresh set.",
+      )
     } else {
-      const nextDraft = preferredDraftForSource(state$.drafts.get(), sourceId)
-      if (nextDraft) {
-        state$.ui.savedDraftId.set(
-          nextDraft.stage === "draft" ? null : nextDraft.id,
-        )
-        state$.selection.activeDraftId.set(nextDraft.id)
-      }
+      state$.selection.activeDraftId.set("")
+      state$.workflow.statusMessage.set(
+        "Source selected. Generate text or image ideas to start a new draft.",
+      )
     }
     state$.workflow.activeStep.set("create")
-    state$.workflow.statusMessage.set(
-      "Source selected. Review why it worked, then generate or choose a draft.",
-    )
     persistStateNow()
   }
 
@@ -440,21 +435,21 @@ export function createFacebookContentDashboardStore() {
     const provider = state$.ui.textGenerationProvider.get()
     let generatedDrafts: DraftRecord[]
 
-    if (provider === "mock") {
-      generatedDrafts = buildGeneratedDrafts(source, provider)
-    } else {
-      try {
-        generatedDrafts = await generateContentDashboardTextDrafts({
-          provider,
-          destinationPage: state$.scheduling.targetPage.get(),
-          sourcePost: source,
-        })
-      } catch (error) {
-        state$.workflow.statusMessage.set(
-          error instanceof Error ? error.message : "Codex text generation failed.",
-        )
-        return
-      }
+    try {
+      generatedDrafts = await generateContentDashboardTextDrafts({
+        provider,
+        destinationPage: state$.scheduling.targetPage.get(),
+        sourcePost: source,
+      })
+    } catch (error) {
+      state$.workflow.statusMessage.set(
+        error instanceof Error
+          ? error.message
+          : provider === "mock"
+            ? "Mock text generation failed."
+            : "Codex text generation failed.",
+      )
+      return
     }
 
     const remainingDrafts = state$
@@ -467,7 +462,7 @@ export function createFacebookContentDashboardStore() {
     state$.workflow.activeStep.set("create")
     state$.workflow.statusMessage.set(
       provider === "mock"
-        ? `Generated ${generatedDrafts.length} mock text ideas.`
+        ? `Generated ${generatedDrafts.length} mock text variants.`
         : `Generated ${generatedDrafts.length} Codex text ideas.`,
     )
     persistStateNow()
