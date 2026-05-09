@@ -407,12 +407,17 @@ export function createFacebookContentDashboardStore() {
 
     const existingDraft = preferredDraftForSource(state$.drafts.get(), sourceId)
     if (existingDraft) {
-      state$.ui.savedDraftId.set(
-        existingDraft.stage === "draft" ? null : existingDraft.id,
+      state$.drafts.set(
+        state$.drafts
+          .get()
+          .map((draft): DraftRecord =>
+            draft.id === existingDraft.id ? { ...draft, stage: "draft" } : draft,
+          ),
       )
+      state$.ui.savedDraftId.set(null)
       state$.selection.activeDraftId.set(existingDraft.id)
       state$.workflow.statusMessage.set(
-        "Source selected. Continue editing, compare variants, or generate a fresh set.",
+        "Source selected. Edit this draft or generate a fresh set.",
       )
     } else {
       state$.selection.activeDraftId.set("")

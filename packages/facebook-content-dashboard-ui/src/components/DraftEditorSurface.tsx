@@ -58,20 +58,6 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
           >
             {props.draftSaved ? "saved" : "editing"}
           </div>
-          {props.showSaveAction === false ? null : (
-            <button
-              type="button"
-              onClick={props.onSave}
-              className={[
-                "inline-flex min-w-[120px] items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition",
-                props.draftSaved
-                  ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
-                  : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
-              ].join(" ")}
-            >
-              {props.draftSaved ? <><CheckIcon /><span>Saved draft</span></> : <span>Save draft</span>}
-            </button>
-          )}
           <button
             type="button"
             onClick={props.onDeleteCurrentDraft}
@@ -170,13 +156,27 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         {props.preview}
       </div>
 
+      {props.showSaveAction === false ? null : (
+        <button
+          type="button"
+          onClick={props.onSave}
+          className={[
+            "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-semibold transition",
+            props.draftSaved
+              ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
+              : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
+          ].join(" ")}
+        >
+          {props.draftSaved ? <><CheckIcon /><span>Saved draft</span></> : <span>Save draft</span>}
+        </button>
+      )}
+
       {props.draftSaved && !props.queuedMeta ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-3 text-sm text-cyan-100">
-          <span>Saved</span>
-          <span className="text-xs text-cyan-100/80">Choose a time and queue it.</span>
+          <span>Draft saved.</span>
+          <span className="text-xs text-cyan-100/80">Queue it when ready.</span>
         </div>
       ) : null}
-
 
       {props.queuedMeta ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-100">

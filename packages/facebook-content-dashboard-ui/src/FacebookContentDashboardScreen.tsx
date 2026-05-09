@@ -1389,17 +1389,18 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
     <div className="flex min-w-0 flex-col gap-4 items-start">
       <Section>
         <div className="flex w-full max-w-[840px] flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
-            <div className="flex min-w-0 items-center gap-2">
+          <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 text-sm font-medium text-zinc-200">
                 {selectedSource.sourcePage} · {formatCompactFeedDate(selectedSource.publishDate)}
               </div>
               <button
                 type="button"
-                onClick={() => props.store.reopenSourceList()}
-                className="inline-flex items-center rounded-md border border-zinc-800 bg-zinc-950/70 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
+                onClick={() => props.store.setSourceDetailsOpen(!ui.sourceDetailsOpen)}
+                className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/70 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
               >
-                Choose another source
+                <span>{ui.sourceDetailsOpen ? "Hide details" : "Source details"}</span>
+                <span className={ui.sourceDetailsOpen ? "rotate-180 transition-transform" : "transition-transform"}><ChevronDownIcon /></span>
               </button>
             </div>
             <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px]">
@@ -1409,11 +1410,10 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
             </div>
             <button
               type="button"
-              onClick={() => props.store.setSourceDetailsOpen(!ui.sourceDetailsOpen)}
-              className="inline-flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-950/70 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
+              onClick={() => props.store.reopenSourceList()}
+              className="inline-flex min-h-11 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
             >
-              <span>{ui.sourceDetailsOpen ? "Hide details" : "Source details"}</span>
-              <span className={ui.sourceDetailsOpen ? "rotate-180 transition-transform" : "transition-transform"}><ChevronDownIcon /></span>
+              Choose another source
             </button>
           </div>
           {ui.sourceDetailsOpen ? (
