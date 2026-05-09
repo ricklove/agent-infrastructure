@@ -174,31 +174,21 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
                   </div>
                 ) : null}
               </div>
-              <DraftPanel store={props.store} derived={derived} showInlineSchedule />
+              <DraftPanel store={props.store} derived={derived} showInlineSchedule hideEditorSaveAction />
               {selectedDraft ? (
                 <div className="sticky bottom-3 z-20 -mt-1 grid gap-2 rounded-xl border border-zinc-800 bg-zinc-950/95 p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur">
-                  <div className="grid grid-cols-[1fr_auto] gap-2">
-                    <button
-                      type="button"
-                      onClick={() => props.store.saveActiveDraft(selectedDraft.id)}
-                      className={[
-                        "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-semibold transition",
-                        draftSaved
-                          ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
-                          : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
-                      ].join(" ")}
-                    >
-                      {draftSaved ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => props.store.scheduleActiveDraft()}
-                      className="inline-flex min-h-11 min-w-[132px] items-center justify-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-3 text-sm font-semibold text-emerald-100 transition hover:border-emerald-400/60"
-                    >
-                      <QueueIcon />
-                      <span>{queuedPost ? "Queued" : "Queue draft"}</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => props.store.saveActiveDraft(selectedDraft.id)}
+                    className={[
+                      "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-semibold transition",
+                      draftSaved
+                        ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
+                        : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
+                    ].join(" ")}
+                  >
+                    {draftSaved ? <><CheckIcon /><span>Saved draft</span></> : <span>Save draft</span>}
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -1365,7 +1355,7 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
   )
 }
 
-function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived>; showInlineSchedule?: boolean }) {
+function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived>; showInlineSchedule?: boolean; hideEditorSaveAction?: boolean }) {
   const { selectedSource, draftsForSelectedSource, selectedDraft, ui, state } = props.derived
   if (!selectedSource) {
     return <Section className="min-h-[240px]" />
@@ -1463,9 +1453,9 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 onSave={() => props.store.saveActiveDraft(selectedDraft.id)}
                 preview={<DraftCardPreview draft={selectedDraft} pageName={ui.destinationPage ?? "Your page"} expanded />}
                 queuedMeta={queuedPost ? `${queuedPost.pageName} · ${queuedPost.scheduledFor}` : null}
-                showSaveAction={!props.showInlineSchedule}
+                showSaveAction={!props.hideEditorSaveAction}
               />
-              {props.showInlineSchedule ? <SchedulePanel store={props.store} derived={props.derived} /> : null}
+              {props.showInlineSchedule ? <SchedulePanel store={props.store} derived={props.derived} draftSaved={draftSaved} /> : null}
               <DraftAlternativesStrip
                 generationTag={generationTag}
                 alternatives={alternativeDrafts.map((draft) => ({
@@ -1485,7 +1475,7 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
     </div>
   )
 }
-function SchedulePanel(props: { store: Store; derived: ReturnType<typeof useDerived> }) {
+function SchedulePanel(props: { store: Store; derived: ReturnType<typeof useDerived>; draftSaved?: boolean }) {
   const { selectedDraft, ui, state } = props.derived
   if (!selectedDraft) {
     return null
@@ -1535,10 +1525,16 @@ function SchedulePanel(props: { store: Store; derived: ReturnType<typeof useDeri
           <button
             type="button"
             onClick={() => props.store.scheduleActiveDraft()}
-            className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-3 text-sm font-semibold text-emerald-100 transition hover:border-emerald-400/60"
+            disabled={!props.draftSaved}
+            className={[
+              "inline-flex min-w-[150px] items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-semibold transition",
+              props.draftSaved
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100 hover:border-emerald-400/60"
+                : "cursor-not-allowed border-zinc-800 bg-zinc-950/50 text-zinc-500",
+            ].join(" ")}
           >
             <QueueIcon />
-            <span>Queue draft</span>
+            <span>{props.draftSaved ? "Queue draft" : "Save draft first"}</span>
           </button>
         </div>
       </div>

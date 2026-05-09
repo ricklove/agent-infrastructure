@@ -69,7 +69,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
                   : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
               ].join(" ")}
             >
-              {props.draftSaved ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
+              {props.draftSaved ? <><CheckIcon /><span>Saved draft</span></> : <span>Save draft</span>}
             </button>
           )}
           <button
