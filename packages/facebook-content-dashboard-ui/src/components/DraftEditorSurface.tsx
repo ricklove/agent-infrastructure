@@ -31,6 +31,7 @@ type DraftEditorSurfaceProps = {
   onSave: () => void
   preview: ReactNode
   queuedMeta?: string | null
+  showSaveAction?: boolean
 }
 
 export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
@@ -57,18 +58,20 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
           >
             {props.draftSaved ? "saved" : "editing"}
           </div>
-          <button
-            type="button"
-            onClick={props.onSave}
-            className={[
-              "inline-flex min-w-[120px] items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition",
-              props.draftSaved
-                ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
-                : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
-            ].join(" ")}
-          >
-            {props.draftSaved ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
-          </button>
+          {props.showSaveAction === false ? null : (
+            <button
+              type="button"
+              onClick={props.onSave}
+              className={[
+                "inline-flex min-w-[120px] items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition",
+                props.draftSaved
+                  ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
+                  : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
+              ].join(" ")}
+            >
+              {props.draftSaved ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
+            </button>
+          )}
           <button
             type="button"
             onClick={props.onDeleteCurrentDraft}
