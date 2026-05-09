@@ -1474,7 +1474,14 @@ function SchedulePanel(props: { store: Store; derived: ReturnType<typeof useDeri
           />
         </div>
         <div className="flex justify-end">
-          <IconButton label="Queue draft" onClick={() => props.store.queueActiveDraft(selectedDraft.id)} tone="success"><QueueIcon /></IconButton>
+          <button
+            type="button"
+            onClick={() => props.store.scheduleActiveDraft()}
+            className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-3 text-sm font-semibold text-emerald-100 transition hover:border-emerald-400/60"
+          >
+            <QueueIcon />
+            <span>Queue draft</span>
+          </button>
         </div>
       </div>
     </Section>

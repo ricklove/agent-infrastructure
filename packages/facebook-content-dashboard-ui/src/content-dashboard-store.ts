@@ -432,10 +432,10 @@ export function createFacebookContentDashboardStore() {
       state$.ui.captionOptions.set(fieldOptions.captionOptions)
       state$.ui.imageOptions.set(fieldOptions.imageOptions)
     }
-    state$.ui.draftEditorOpen.set(false)
-    state$.workflow.activeStep.set("review")
+    state$.ui.draftEditorOpen.set(true)
+    state$.workflow.activeStep.set("create")
     state$.workflow.statusMessage.set(
-      "Draft selected. Review originality, tone, and approval readiness.",
+      "Draft selected. Edit the fields, save it, or queue it.",
     )
     persistStateNow()
   }
@@ -783,7 +783,7 @@ export function createFacebookContentDashboardStore() {
       state$.drafts
         .get()
         .map((draft): DraftRecord =>
-          draft.id === activeDraftId ? { ...draft, captionPreview } : draft,
+          draft.id === activeDraftId ? { ...draft, captionPreview, stage: "draft" } : draft,
         ),
     )
   }
@@ -796,7 +796,7 @@ export function createFacebookContentDashboardStore() {
       state$.drafts
         .get()
         .map((draft): DraftRecord =>
-          draft.id === activeDraftId ? { ...draft, title } : draft,
+          draft.id === activeDraftId ? { ...draft, title, stage: "draft" } : draft,
         ),
     )
   }
@@ -810,7 +810,7 @@ export function createFacebookContentDashboardStore() {
         .get()
         .map((draft): DraftRecord =>
           draft.id === activeDraftId
-            ? { ...draft, previewMediaPath, imageProvider: "mock" }
+            ? { ...draft, previewMediaPath, imageProvider: "mock", stage: "draft" }
             : draft,
         ),
     )
@@ -939,18 +939,18 @@ export function createFacebookContentDashboardStore() {
     }
     state$.selection.activeDraftId.set(activeDraftId)
     state$.ui.savedDraftId.set(activeDraftId)
-    state$.ui.draftEditorOpen.set(false)
+    state$.ui.draftEditorOpen.set(true)
     state$.drafts.set(
       state$.drafts
         .get()
         .map((draft): DraftRecord =>
           draft.id === activeDraftId
-            ? { ...draft, stage: draft.stage === "approved" ? "approved" : "review" }
+            ? { ...draft, stage: "approved" }
             : draft,
         ),
     )
-    state$.workflow.activeStep.set("review")
-    state$.workflow.statusMessage.set("Draft saved. Ready to queue.")
+    state$.workflow.activeStep.set("schedule")
+    state$.workflow.statusMessage.set("Draft saved. Choose a time and queue it.")
     persistStateNow()
   }
 
@@ -967,6 +967,24 @@ export function createFacebookContentDashboardStore() {
       return
     }
 
+    const scheduledFor = state$.scheduling.scheduledFor.get()
+    const scheduledAt = parseScheduledUtc(scheduledFor)
+    if (scheduledAt === null) {
+      state$.workflow.statusMessage.set(
+        "Enter a schedule time in YYYY-MM-DD HH:MM UTC format.",
+      )
+      return
+    }
+    if (scheduledAt <= Date.now()) {
+      state$.workflow.statusMessage.set(
+        "Choose a future UTC time before queueing this draft.",
+      )
+      return
+    }
+
+    state$.selection.activeDraftId.set(activeDraftId)
+    state$.ui.savedDraftId.set(activeDraftId)
+    state$.ui.draftEditorOpen.set(true)
     state$.drafts.set(
       state$.drafts
         .get()
@@ -979,13 +997,14 @@ export function createFacebookContentDashboardStore() {
         id: `sched-${Date.now()}`,
         pageName: state$.scheduling.targetPage.get(),
         creative: activeDraft.title,
-        scheduledFor: state$.scheduling.scheduledFor.get(),
+        scheduledFor,
         stage: "scheduled",
       },
       ...state$.scheduledPosts.get(),
     ])
     state$.workflow.activeStep.set("schedule")
     state$.workflow.statusMessage.set("Draft queued.")
+    persistStateNow()
   }
 
   function setSourceDetailsOpen(open: boolean) {
@@ -1043,45 +1062,7 @@ export function createFacebookContentDashboardStore() {
   }
 
   function scheduleActiveDraft() {
-    const activeDraft = state$
-      .drafts.get()
-      .find((draft) => draft.id === state$.selection.activeDraftId.get())
-    if (!activeDraft || activeDraft.stage !== "approved") {
-      state$.workflow.statusMessage.set(
-        "Approve the active draft before scheduling it.",
-      )
-      return
-    }
-
-    const scheduledFor = state$.scheduling.scheduledFor.get()
-    const scheduledAt = parseScheduledUtc(scheduledFor)
-    if (scheduledAt === null) {
-      state$.workflow.statusMessage.set(
-        "Enter a schedule time in YYYY-MM-DD HH:MM UTC format.",
-      )
-      return
-    }
-    if (scheduledAt <= Date.now()) {
-      state$.workflow.statusMessage.set(
-        "Choose a future UTC time before queueing this draft.",
-      )
-      return
-    }
-
-    state$.scheduledPosts.set([
-      {
-        id: `sched-${Date.now()}`,
-        pageName: state$.scheduling.targetPage.get(),
-        creative: activeDraft.title,
-        scheduledFor,
-        stage: "scheduled",
-      },
-      ...state$.scheduledPosts.get(),
-    ])
-    state$.workflow.activeStep.set("schedule")
-    state$.workflow.statusMessage.set(
-      "Draft scheduled successfully. The queue now reflects the new slot.",
-    )
+    queueActiveDraft()
   }
 
   return {

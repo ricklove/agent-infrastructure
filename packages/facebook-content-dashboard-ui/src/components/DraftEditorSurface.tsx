@@ -47,7 +47,14 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
               set {props.generationTag}
             </div>
           ) : null}
-          <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-400">
+          <div
+            className={[
+              "rounded-full border px-2 py-1 text-[11px]",
+              props.draftSaved
+                ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-100"
+                : "border-zinc-800 bg-zinc-950/70 text-zinc-400",
+            ].join(" ")}
+          >
             {props.draftSaved ? "saved" : "editing"}
           </div>
           <button
@@ -141,6 +148,13 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         {props.preview}
       </div>
 
+      {props.draftSaved && !props.queuedMeta ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-3 text-sm text-cyan-100">
+          <span>Saved</span>
+          <span className="text-xs text-cyan-100/80">Choose a time and queue it.</span>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -152,7 +166,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
               : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
           ].join(" ")}
         >
-          {props.draftSaved ? <><CheckIcon /><span>Save draft</span></> : <span>Save draft</span>}
+          {props.draftSaved ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
         </button>
       </div>
 
