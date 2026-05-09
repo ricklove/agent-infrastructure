@@ -25,6 +25,8 @@ export type SourcePostRecord = {
   status: "new" | "drafted" | "approved"
 }
 
+export type AssetGenerationProvider = "seed" | "mock" | "codex"
+
 export type DraftRecord = {
   id: string
   sourceId: string
@@ -38,6 +40,9 @@ export type DraftRecord = {
   tone: string
   note: string
   previewMediaPath: string | null
+  textProvider: AssetGenerationProvider
+  imageProvider: AssetGenerationProvider
+  generatedKind: "seed" | "generated"
 }
 
 export type ScheduledPostRecord = {
@@ -68,6 +73,33 @@ export type ContentDashboardSnapshotResponse = {
   snapshot?: ContentDashboardSnapshot
   mode?: "sample" | "snapshot-file"
   source?: string
+  error?: string
+}
+
+export type GenerateTextDraftsRequest = {
+  provider: Exclude<AssetGenerationProvider, "seed">
+  destinationPage: string
+  sourcePost: SourcePostRecord
+}
+
+export type GenerateTextDraftsResponse = {
+  ok: boolean
+  drafts?: DraftRecord[]
+  error?: string
+}
+
+export type GenerateImageDraftRequest = {
+  provider: Exclude<AssetGenerationProvider, "seed">
+  destinationPage: string
+  sourcePost: SourcePostRecord
+  draft: DraftRecord
+}
+
+export type GenerateImageDraftResponse = {
+  ok: boolean
+  previewMediaPath?: string | null
+  note?: string
+  imageProvider?: Exclude<AssetGenerationProvider, "seed">
   error?: string
 }
 
@@ -186,6 +218,9 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       note:
         "Preserves the one-glance clarity of the original winner but swaps confrontation for community trust.",
       previewMediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-01.jpg",
+      textProvider: "seed",
+      imageProvider: "seed",
+      generatedKind: "seed",
     },
     {
       id: "draft-2",
@@ -202,6 +237,9 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       note:
         "Uses the same support signal as the source post, but anchors it in service and human presence.",
       previewMediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-01.jpg",
+      textProvider: "seed",
+      imageProvider: "seed",
+      generatedKind: "seed",
     },
     {
       id: "draft-3",
@@ -218,6 +256,9 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       note:
         "Still simple, but more branded and more reusable in the long-term content queue.",
       previewMediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-02.jpg",
+      textProvider: "seed",
+      imageProvider: "seed",
+      generatedKind: "seed",
     },
     {
       id: "draft-4",
@@ -234,6 +275,9 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       note:
         "A direct adaptation of the awareness pattern into a practical message with broader audience fit.",
       previewMediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-03.jpg",
+      textProvider: "seed",
+      imageProvider: "seed",
+      generatedKind: "seed",
     },
   ],
   scheduledPosts: [

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { fetchContentDashboardSnapshot } from "./content-dashboard-client"
 import { DraftAlternativesStrip } from "./components/DraftAlternativesStrip"
 import { DraftEditorSurface } from "./components/DraftEditorSurface"
+import { DraftGenerationControls } from "./components/DraftGenerationControls"
 import { DraftPostPreviewFrame } from "./components/DraftPostPreviewFrame"
 import { CompactSelectedSourceCardSurface, SelectedSourceCardSurface, SourcePostOptionCardSurface } from "./components/SourcePostCards"
 import { SourcePostPreviewFrame } from "./components/SourcePostPreviewFrame"
@@ -401,6 +402,22 @@ function debugScenarios(store: Store) {
       ],
     },
     {
+      slug: "draft-generation-controls",
+      title: "Draft generation controls",
+      scenarios: [
+        {
+          slug: "mock-default",
+          title: "Mock default",
+          render: () => <FixtureDraftGenerationControls mode="mock" />,
+        },
+        {
+          slug: "codex-selected",
+          title: "Codex selected",
+          render: () => <FixtureDraftGenerationControls mode="codex" />,
+        },
+      ],
+    },
+    {
       slug: "draft-editor-surface",
       title: "Draft editor surface",
       scenarios: [
@@ -696,6 +713,32 @@ const FixtureDraftPostPreview = observer(function FixtureDraftPostPreview(props:
   )
 })
 
+const FixtureDraftGenerationControls = observer(function FixtureDraftGenerationControls(props: { mode: "mock" | "codex" }) {
+  const [store] = useState(() => createFixtureStore("draft-ideas"))
+  const reactiveFrame = observeContentCreationFrame(store)
+  if (props.mode === "codex") {
+    store.setTextGenerationProvider("codex")
+    store.setImageGenerationProvider("codex")
+  }
+  const ui = store.state$.ui.get()
+
+  return (
+    <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
+      <DraftGenerationControls
+        textProvider={ui.textGenerationProvider}
+        imageProvider={ui.imageGenerationProvider}
+        onTextProviderChange={(provider) => store.setTextGenerationProvider(provider)}
+        onImageProviderChange={(provider) => store.setImageGenerationProvider(provider)}
+        onGenerateText={() => store.generateTextVariants()}
+        onGenerateImage={() => store.generateImageVariants()}
+        onResetImage={() => store.resetActiveDraftImage()}
+        onDeleteCurrentDraft={() => store.deleteActiveDraft()}
+        onDeleteGeneratedByProvider={(provider) => store.deleteGeneratedDraftsByProvider(provider)}
+      />
+    </div>
+  )
+})
+
 const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(props: { mode: "editing" | "saved" | "queued" }) {
   const [store] = useState(() =>
     createFixtureStore(
@@ -736,9 +779,16 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
         generationTag={generationTag}
         draftSaved={draftSaved}
         caption={selectedDraft.captionPreview}
+        textProvider={derived.ui.textGenerationProvider}
+        imageProvider={derived.ui.imageGenerationProvider}
+        onTextProviderChange={(provider) => store.setTextGenerationProvider(provider)}
+        onImageProviderChange={(provider) => store.setImageGenerationProvider(provider)}
         onCaptionChange={(value) => store.updateActiveDraftCaption(value)}
         onGenerateText={() => store.generateTextVariants()}
         onGenerateImage={() => store.generateImageVariants()}
+        onResetImage={() => store.resetActiveDraftImage()}
+        onDeleteCurrentDraft={() => store.deleteActiveDraft()}
+        onDeleteGeneratedByProvider={(provider) => store.deleteGeneratedDraftsByProvider(provider)}
         onSave={() => store.saveActiveDraft(selectedDraft.id)}
         preview={<DraftCardPreview draft={selectedDraft} pageName={derived.ui.destinationPage ?? "Your page"} expanded />}
         queuedMeta={queuedPost ? `${queuedPost.pageName} · ${queuedPost.scheduledFor}` : null}
@@ -1168,9 +1218,16 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 generationTag={generationTag}
                 draftSaved={draftSaved}
                 caption={selectedDraft.captionPreview}
+                textProvider={ui.textGenerationProvider}
+                imageProvider={ui.imageGenerationProvider}
+                onTextProviderChange={(provider) => props.store.setTextGenerationProvider(provider)}
+                onImageProviderChange={(provider) => props.store.setImageGenerationProvider(provider)}
                 onCaptionChange={(value) => props.store.updateActiveDraftCaption(value)}
                 onGenerateText={() => props.store.generateTextVariants()}
                 onGenerateImage={() => props.store.generateImageVariants()}
+                onResetImage={() => props.store.resetActiveDraftImage()}
+                onDeleteCurrentDraft={() => props.store.deleteActiveDraft()}
+                onDeleteGeneratedByProvider={(provider) => props.store.deleteGeneratedDraftsByProvider(provider)}
                 onSave={() => props.store.saveActiveDraft(selectedDraft.id)}
                 preview={<DraftCardPreview draft={selectedDraft} pageName={ui.destinationPage ?? "Your page"} expanded />}
                 queuedMeta={queuedPost ? `${queuedPost.pageName} · ${queuedPost.scheduledFor}` : null}

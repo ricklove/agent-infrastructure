@@ -1,4 +1,5 @@
 import { buildSnapshotResponse, loadContentDashboardSnapshot } from "./snapshot-loader.js"
+import { generateImageDraft, generateTextDrafts } from "./generation-provider.js"
 import { extname, resolve } from "node:path"
 
 const port = Number.parseInt(
@@ -8,6 +9,7 @@ const port = Number.parseInt(
 
 const allowedMediaRoots = [
   "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images",
+  "/home/ec2-user/workspace/tmp/content-creation-generated",
 ]
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -42,14 +44,10 @@ function isAllowedMediaPath(path: string): boolean {
 Bun.serve({
   port,
   idleTimeout: 30,
-  fetch(request) {
+  async fetch(request) {
     const url = new URL(request.url)
 
-    if (request.method !== "GET") {
-      return jsonResponse({ ok: false, error: "method not allowed" }, 405)
-    }
-
-    if (url.pathname === "/api/facebook-content-dashboard/health") {
+    if (request.method === "GET" && url.pathname === "/api/facebook-content-dashboard/health") {
       const loaded = loadContentDashboardSnapshot()
       return jsonResponse({
         ok: true,
@@ -59,11 +57,11 @@ Bun.serve({
       })
     }
 
-    if (url.pathname === "/api/facebook-content-dashboard/snapshot") {
+    if (request.method === "GET" && url.pathname === "/api/facebook-content-dashboard/snapshot") {
       return jsonResponse(buildSnapshotResponse())
     }
 
-    if (url.pathname === "/api/facebook-content-dashboard/media") {
+    if (request.method === "GET" && url.pathname === "/api/facebook-content-dashboard/media") {
       const path = url.searchParams.get("path")
       if (!path || !isAllowedMediaPath(path)) {
         return jsonResponse({ ok: false, error: "invalid media path" }, 400)
@@ -77,6 +75,18 @@ Bun.serve({
           "Cache-Control": "public, max-age=3600",
         },
       })
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/facebook-content-dashboard/generate-text") {
+      return jsonResponse(await generateTextDrafts((await request.json()) as any))
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/facebook-content-dashboard/generate-image") {
+      return jsonResponse(await generateImageDraft((await request.json()) as any))
+    }
+
+    if (request.method !== "GET" && request.method !== "POST") {
+      return jsonResponse({ ok: false, error: "method not allowed" }, 405)
     }
 
     return jsonResponse({ ok: false, error: "not found" }, 404)

@@ -203,6 +203,9 @@ function buildDrafts(sourcePosts: SourcePostRecord[]): DraftRecord[] {
             : "protective, useful, grounded",
     note: `Derivative concept generated from ${sourcePost.pattern}.`,
     previewMediaPath: sourcePost.mediaPath,
+    textProvider: "seed",
+    imageProvider: "seed",
+    generatedKind: "seed",
   }))
 }
 

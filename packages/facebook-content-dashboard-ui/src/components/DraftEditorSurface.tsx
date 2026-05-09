@@ -1,4 +1,6 @@
+import type { AssetGenerationProvider } from "@agent-infrastructure/facebook-content-dashboard-core"
 import type { ReactNode } from "react"
+import { DraftGenerationControls } from "./DraftGenerationControls"
 
 type DraftEditorSurfaceProps = {
   title: string
@@ -6,9 +8,16 @@ type DraftEditorSurfaceProps = {
   generationTag: string | null
   draftSaved: boolean
   caption: string
+  textProvider: Exclude<AssetGenerationProvider, "seed">
+  imageProvider: Exclude<AssetGenerationProvider, "seed">
+  onTextProviderChange: (provider: Exclude<AssetGenerationProvider, "seed">) => void
+  onImageProviderChange: (provider: Exclude<AssetGenerationProvider, "seed">) => void
   onCaptionChange: (value: string) => void
   onGenerateText: () => void
   onGenerateImage: () => void
+  onResetImage: () => void
+  onDeleteCurrentDraft: () => void
+  onDeleteGeneratedByProvider: (provider: Exclude<AssetGenerationProvider, "seed">) => void
   onSave: () => void
   preview: ReactNode
   queuedMeta?: string | null
@@ -34,25 +43,21 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         </div>
       </div>
 
+      <DraftGenerationControls
+        textProvider={props.textProvider}
+        imageProvider={props.imageProvider}
+        onTextProviderChange={props.onTextProviderChange}
+        onImageProviderChange={props.onImageProviderChange}
+        onGenerateText={props.onGenerateText}
+        onGenerateImage={props.onGenerateImage}
+        onResetImage={props.onResetImage}
+        onDeleteCurrentDraft={props.onDeleteCurrentDraft}
+        onDeleteGeneratedByProvider={props.onDeleteGeneratedByProvider}
+      />
+
       <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Post Text</div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={props.onGenerateText}
-              className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
-            >
-              New text ideas
-            </button>
-            <button
-              type="button"
-              onClick={props.onGenerateImage}
-              className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
-            >
-              New image ideas
-            </button>
-          </div>
         </div>
         <textarea
           value={props.caption}
@@ -78,20 +83,6 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
           ].join(" ")}
         >
           <span>{props.draftSaved ? "Saved draft" : "Save draft"}</span>
-        </button>
-        <button
-          type="button"
-          onClick={props.onGenerateText}
-          className="flex min-w-[140px] items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-3 text-sm font-semibold text-zinc-200 transition hover:border-zinc-700"
-        >
-          <span>Regenerate text</span>
-        </button>
-        <button
-          type="button"
-          onClick={props.onGenerateImage}
-          className="flex min-w-[140px] items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-3 text-sm font-semibold text-zinc-200 transition hover:border-zinc-700"
-        >
-          <span>Regenerate image</span>
         </button>
       </div>
 

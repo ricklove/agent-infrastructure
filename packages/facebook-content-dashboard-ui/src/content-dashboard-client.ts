@@ -1,5 +1,10 @@
 import { dashboardSessionFetch } from "@agent-infrastructure/dashboard-plugin"
 import type {
+  DraftRecord,
+  GenerateImageDraftRequest,
+  GenerateImageDraftResponse,
+  GenerateTextDraftsRequest,
+  GenerateTextDraftsResponse,
   ContentDashboardSnapshot,
   ContentDashboardSnapshotResponse,
 } from "./content-dashboard-contract"
@@ -37,4 +42,47 @@ export async function fetchContentDashboardSnapshot(
     mode: payload.mode ?? "sample",
     source: payload.source ?? "unknown",
   }
+}
+
+
+export async function generateContentDashboardTextDrafts(
+  request: GenerateTextDraftsRequest,
+  options: ContentDashboardClientOptions = {},
+): Promise<DraftRecord[]> {
+  const apiRootUrl = normalizeApiRootUrl(options.apiRootUrl)
+  const response = (await dashboardSessionFetch(`${apiRootUrl}/generate-text`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+  })) as Response
+  const payload = (await response.json()) as GenerateTextDraftsResponse
+
+  if (!response.ok || !payload.ok || !payload.drafts) {
+    throw new Error(payload.error ?? "Text generation failed.")
+  }
+
+  return payload.drafts
+}
+
+export async function generateContentDashboardImageDraft(
+  request: GenerateImageDraftRequest,
+  options: ContentDashboardClientOptions = {},
+): Promise<GenerateImageDraftResponse> {
+  const apiRootUrl = normalizeApiRootUrl(options.apiRootUrl)
+  const response = (await dashboardSessionFetch(`${apiRootUrl}/generate-image`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+  })) as Response
+  const payload = (await response.json()) as GenerateImageDraftResponse
+
+  if (!response.ok || !payload.ok) {
+    throw new Error(payload.error ?? "Image generation failed.")
+  }
+
+  return payload
 }

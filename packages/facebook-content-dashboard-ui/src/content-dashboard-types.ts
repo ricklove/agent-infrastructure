@@ -1,4 +1,5 @@
 export type {
+  AssetGenerationProvider,
   ContentWorkflowStep,
   SourcePostRecord,
   DraftRecord,
