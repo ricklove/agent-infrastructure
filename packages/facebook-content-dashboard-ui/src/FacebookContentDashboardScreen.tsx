@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { fetchContentDashboardSnapshot } from "./content-dashboard-client"
 import { DraftAlternativesStrip } from "./components/DraftAlternativesStrip"
 import { DraftEditorSurface } from "./components/DraftEditorSurface"
+import { DraftPostPreviewFrame } from "./components/DraftPostPreviewFrame"
 import { SourcePostPreviewFrame } from "./components/SourcePostPreviewFrame"
 import { createFacebookContentDashboardStore } from "./content-dashboard-store"
 import type { DraftRecord, SourcePostRecord } from "./content-dashboard-types"
@@ -363,6 +364,22 @@ function debugScenarios(store: Store) {
       ],
     },
     {
+      slug: "draft-post-preview",
+      title: "Draft post preview",
+      scenarios: [
+        {
+          slug: "compact",
+          title: "Compact",
+          render: () => <FixtureDraftPostPreview mode="compact" />,
+        },
+        {
+          slug: "expanded",
+          title: "Expanded",
+          render: () => <FixtureDraftPostPreview mode="expanded" />,
+        },
+      ],
+    },
+    {
       slug: "draft-alternatives-strip",
       title: "Draft alternatives strip",
       scenarios: [
@@ -532,6 +549,25 @@ const FixtureDestinationPosts = observer(function FixtureDestinationPosts(props:
   const reactiveFrame = observeContentCreationFrame(store)
   const derived = useDerived(store.state$.get())
   return <div data-reactive-frame={reactiveFrame}><SourcePanel store={store} derived={derived} /></div>
+})
+
+const FixtureDraftPostPreview = observer(function FixtureDraftPostPreview(props: { mode: "compact" | "expanded" }) {
+  const [store] = useState(() => createFixtureStore("draft-ideas"))
+  const reactiveFrame = observeContentCreationFrame(store)
+  const derived = useDerived(store.state$.get())
+  const selectedDraft = derived.selectedDraft
+  if (!selectedDraft) {
+    return null
+  }
+  return (
+    <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
+      <DraftCardPreview
+        draft={selectedDraft}
+        pageName={derived.ui.destinationPage ?? "Your page"}
+        expanded={props.mode === "expanded"}
+      />
+    </div>
+  )
 })
 
 const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(props: { mode: "editing" | "saved" | "queued" }) {
@@ -1386,67 +1422,14 @@ function SourcePostPreview(props: { post: SourcePostRecord }) {
 
 function DraftCardPreview(props: { draft: DraftRecord; pageName?: string; expanded?: boolean }) {
   const pageName = props.pageName ?? "Your page"
-  const previewImage = draftPreviewImage(props.draft, pageName)
   return (
-    <div
-      className={[
-        "w-full max-w-[680px] overflow-hidden rounded-[18px] border border-slate-300 bg-slate-100 shadow-[0_8px_24px_rgba(15,23,42,0.18)]",
-        props.expanded ? "mb-1" : "mb-3",
-      ].join(" ")}
-    >
-      <div className="flex items-center justify-between border-b border-slate-300 bg-white px-4 py-3">
-        <div className="w-8" />
-        <div className="text-[18px] font-semibold text-slate-900">{pageName}'s Post</div>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[#1877f2] text-[22px] leading-none text-[#1877f2]">×</div>
-      </div>
-      <div className="bg-white">
-      <div className="flex items-start gap-3 px-3 py-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-sm font-semibold uppercase text-white">
-          {pageInitials(pageName)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[16px] font-semibold text-slate-900">
-            {pageName}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1 text-[12px] text-slate-500">
-            <span>now</span>
-            <span>·</span>
-            <span>Public</span>
-          </div>
-        </div>
-      </div>
-      <div className="px-3 pb-3">
-        <div className={[props.expanded ? "line-clamp-5" : "line-clamp-3", "text-[15px] leading-5 text-slate-900"].join(" ")}>
-          {props.draft.captionPreview}
-        </div>
-      </div>
-      <div className="overflow-hidden border-y border-slate-200 bg-black">
-        <img
-          src={previewImage}
-          alt={props.draft.title}
-          className={[
-            "block w-full object-contain",
-            props.expanded ? "aspect-[16/10]" : "aspect-[4/5]",
-          ].join(" ")}
-        />
-      </div>
-      <div className="flex items-center justify-between gap-3 px-3 py-2 text-[13px] text-slate-500">
-        <div className="flex items-center gap-2">
-          <div className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold text-white">👍</div>
-          <span>0</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span>0 comments</span>
-          <span>0 shares</span>
-        </div>
-      </div>
-      <div className="grid grid-cols-3 border-t border-slate-200 text-[14px] font-medium text-slate-500">
-        <div className="flex items-center justify-center gap-2 px-3 py-2.5">👍 <span>Like</span></div>
-        <div className="flex items-center justify-center gap-2 border-l border-slate-200 px-3 py-2.5">💬 <span>Comment</span></div>
-        <div className="flex items-center justify-center gap-2 border-l border-slate-200 px-3 py-2.5">↗ <span>Share</span></div>
-      </div>
-      </div>
-    </div>
+    <DraftPostPreviewFrame
+      pageName={pageName}
+      previewImage={draftPreviewImage(props.draft, pageName)}
+      title={props.draft.title}
+      caption={props.draft.captionPreview}
+      expanded={props.expanded}
+    />
   )
 }
 
