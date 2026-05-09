@@ -119,7 +119,7 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
           post.stage === "scheduled",
       ),
   )
-  const mobileStage = hasSelectedSource ? "draft" : "browse"
+  const mobileStage = state.ui.sourcePickerOpen || !hasSelectedSource ? "browse" : "draft"
 
   return (
     <PageShell title="Content Creation">
