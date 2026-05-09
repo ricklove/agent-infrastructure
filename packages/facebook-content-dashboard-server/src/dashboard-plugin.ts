@@ -1,9 +1,9 @@
 import type { DashboardFeaturePlugin } from "@agent-infrastructure/dashboard-plugin"
 
 export const facebookContentDashboardPlugin: DashboardFeaturePlugin = {
-  id: "content",
-  label: "Content",
-  route: "/content",
+  id: "content-creation",
+  label: "Content Creation",
+  route: "/content-creation",
   description:
     "Rank source posts, generate derivatives, and schedule Facebook Page publishing.",
   icon: "content",

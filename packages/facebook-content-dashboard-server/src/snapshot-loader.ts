@@ -42,6 +42,11 @@ const defaultSnapshotCandidates = [
   "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/summary.json",
 ].filter(Boolean)
 
+function sourceMediaPath(rank: number): string | null {
+  const path = `/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-${String(rank).padStart(2, "0")}.jpg`
+  return existsSync(path) ? path : null
+}
+
 function summarizePreview(item: BrightDataSummaryItem): string {
   const preview = `${item.content_preview ?? item.content ?? ""}`.trim()
   if (!preview) {
@@ -130,7 +135,7 @@ function buildSourcePosts(items: BrightDataSummaryItem[]): SourcePostRecord[] {
     id: `src-${index + 1}`,
     title: summarizePreview(item),
     sourcePage: item.page_name?.trim() || "Unknown page",
-    publishDate: item.date_posted?.slice(0, 10) || "Unknown date",
+    publishDate: item.date_posted?.trim() || "Unknown date",
     postUrl: item.url?.trim() || null,
     sourceUrl: inferSourceUrl(item),
     likes: item.likes ?? 0,
@@ -143,6 +148,7 @@ function buildSourcePosts(items: BrightDataSummaryItem[]): SourcePostRecord[] {
     whyItWorked: inferWhyItWorked(item),
     adaptationRule: inferAdaptationRule(item),
     caution: inferCaution(item),
+    mediaPath: sourceMediaPath(index + 1),
     status: index === 0 ? "approved" : index < 3 ? "drafted" : "new",
   }))
 }
@@ -196,6 +202,7 @@ function buildDrafts(sourcePosts: SourcePostRecord[]): DraftRecord[] {
             ? "brief, respectful, declarative"
             : "protective, useful, grounded",
     note: `Derivative concept generated from ${sourcePost.pattern}.`,
+    previewMediaPath: sourcePost.mediaPath,
   }))
 }
 

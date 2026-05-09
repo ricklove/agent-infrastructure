@@ -21,6 +21,7 @@ export type SourcePostRecord = {
   whyItWorked: string
   adaptationRule: string
   caution: string
+  mediaPath: string | null
   status: "new" | "drafted" | "approved"
 }
 
@@ -36,6 +37,7 @@ export type DraftRecord = {
   originality: string
   tone: string
   note: string
+  previewMediaPath: string | null
 }
 
 export type ScheduledPostRecord = {
@@ -104,7 +106,7 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       sourcePage: "Support Law Enforcement",
       publishDate: "2026-04-26",
       postUrl: null,
-      sourceUrl: null,
+      sourceUrl: "https://www.facebook.com/580414970843422/posts/1267116208839958",
       likes: 2229,
       comments: 157,
       shares: 885,
@@ -118,6 +120,7 @@ export const seedSnapshot: ContentDashboardSnapshot = {
         "Keep the speed and clarity, but soften the confrontational edge so the derivative can travel farther without becoming engagement bait.",
       caution:
         "Do not copy the headline structure too closely. Rebuild the message around support, presence, and community trust.",
+      mediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-01.jpg",
       status: "approved",
     },
     {
@@ -126,7 +129,7 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       sourcePage: "Support Law Enforcement",
       publishDate: "2026-04-20",
       postUrl: null,
-      sourceUrl: null,
+      sourceUrl: "https://www.facebook.com/580414970843422/posts/1262339315984314",
       likes: 721,
       comments: 62,
       shares: 129,
@@ -140,6 +143,7 @@ export const seedSnapshot: ContentDashboardSnapshot = {
         "Use the same brevity for caption variants and build stronger art direction around the text so the new post feels intentional.",
       caution:
         "Short statements can become generic fast. Each variant needs a distinct emotional point of view.",
+      mediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-02.jpg",
       status: "drafted",
     },
     {
@@ -162,6 +166,7 @@ export const seedSnapshot: ContentDashboardSnapshot = {
         "Translate the same public-service energy into family-safe visuals and captions that feel protective instead of alarmist.",
       caution:
         "Keep claims grounded and avoid synthetic realism that could be mistaken for a real event photo.",
+      mediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-03.jpg",
       status: "new",
     },
   ],
@@ -180,6 +185,7 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       tone: "confident, warm, civic",
       note:
         "Preserves the one-glance clarity of the original winner but swaps confrontation for community trust.",
+      previewMediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-01.jpg",
     },
     {
       id: "draft-2",
@@ -195,6 +201,7 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       tone: "hopeful, visual, local",
       note:
         "Uses the same support signal as the source post, but anchors it in service and human presence.",
+      previewMediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-01.jpg",
     },
     {
       id: "draft-3",
@@ -210,6 +217,7 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       tone: "brief, respectful, declarative",
       note:
         "Still simple, but more branded and more reusable in the long-term content queue.",
+      previewMediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-02.jpg",
     },
     {
       id: "draft-4",
@@ -225,6 +233,7 @@ export const seedSnapshot: ContentDashboardSnapshot = {
       tone: "protective, useful, grounded",
       note:
         "A direct adaptation of the awareness pattern into a practical message with broader audience fit.",
+      previewMediaPath: "/home/ec2-user/workspace/tmp/brightdata-facebook-eval-100/images/rank-03.jpg",
     },
   ],
   scheduledPosts: [

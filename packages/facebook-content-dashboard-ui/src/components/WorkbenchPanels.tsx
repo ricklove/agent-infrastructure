@@ -1,23 +1,25 @@
-import { observer, useValue } from "@legendapp/state/react"
-import { getActiveDraft, getActiveSource, getDraftsForSource } from "../content-dashboard-selectors"
+import { observer } from "@legendapp/state/react"
+import {
+  getActiveDraft,
+  getActiveSource,
+  getDraftsForSource,
+} from "../content-dashboard-selectors"
 import type { FacebookContentDashboardStore } from "../content-dashboard-store"
 import { FieldPair, MetricChip, Panel, StatusBadge } from "./primitives"
 
 export const SourceAnalysisPanel = observer(function SourceAnalysisPanel(props: {
   store: FacebookContentDashboardStore
 }) {
-  const activeSource = useValue(() => {
-    const state = props.store.state$.get()
-    return getActiveSource(state)
-  })
+  const state = props.store.state$.get()
+  const activeSource = getActiveSource(state)
 
   return (
     <Panel
-      title="Source Analysis"
-      meta={`${activeSource.sourcePage} · ${activeSource.publishDate}`}
+      title="Step 2 · Why This Winner Worked"
+      meta={`Selected source · ${activeSource.sourcePage} · ${activeSource.publishDate}`}
       action={<StatusBadge status={activeSource.status} />}
     >
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricChip label="Likes" value={activeSource.likes.toLocaleString()} />
         <MetricChip
           label="Comments"
@@ -38,42 +40,6 @@ export const SourceAnalysisPanel = observer(function SourceAnalysisPanel(props: 
         <FieldPair label="Adaptation Rule" value={activeSource.adaptationRule} />
       </div>
 
-      {activeSource.postUrl || activeSource.sourceUrl ? (
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
-          {activeSource.postUrl ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                Our post URL
-              </div>
-              <a
-                href={activeSource.postUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 block break-all text-sm leading-6 text-cyan-200 hover:text-cyan-100"
-              >
-                {activeSource.postUrl}
-              </a>
-            </div>
-          ) : null}
-
-          {activeSource.sourceUrl ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-                Source URL
-              </div>
-              <a
-                href={activeSource.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 block break-all text-sm leading-6 text-cyan-200 hover:text-cyan-100"
-              >
-                {activeSource.sourceUrl}
-              </a>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
       <div className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-500/[0.07] p-4">
         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-200">
           Reuse guardrail
@@ -89,33 +55,43 @@ export const SourceAnalysisPanel = observer(function SourceAnalysisPanel(props: 
 export const DraftStudioPanel = observer(function DraftStudioPanel(props: {
   store: FacebookContentDashboardStore
 }) {
-  const activeSourceId = useValue(props.store.state$.selection.activeSourceId)
-  const draftsForSource = useValue(() =>
-    getDraftsForSource(props.store.state$.get(), activeSourceId),
-  )
-  const activeDraftId = useValue(props.store.state$.selection.activeDraftId)
+  const state = props.store.state$.get()
+  const activeSource = getActiveSource(state)
+  const draftsForSource = getDraftsForSource(state, activeSource.id)
   const activeDraft =
-    draftsForSource.find((draft) => draft.id === activeDraftId) ??
-    draftsForSource[0] ??
-    props.store.state$.drafts.get()[0]
+    draftsForSource.find((draft) => draft.id === state.selection.activeDraftId) ??
+    draftsForSource[0]
 
   return (
     <Panel
-      title="Draft Studio"
-      meta="Generate variants from one source, then choose the best derivative instead of shipping the first output."
+      title="Step 3 · Turn It Into Draft Ideas"
+      meta="Choose the winner first, then generate or refine one draft direction."
       action={
         <button
           type="button"
+          onClick={() => props.store.generateDraftVariants()}
           className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-100 hover:border-cyan-300/50"
         >
           Generate 3 Variants
         </button>
       }
     >
+      <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Active source
+        </div>
+        <div className="mt-2 text-sm font-semibold text-zinc-100">
+          {activeSource.title}
+        </div>
+        <p className="mt-2 text-sm leading-6 text-zinc-400">
+          {activeSource.hook}
+        </p>
+      </div>
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
         <div className="space-y-3">
           {draftsForSource.map((draft) => {
-            const active = draft.id === activeDraft.id
+            const active = draft.id === activeDraft?.id
             return (
               <button
                 key={draft.id}
@@ -147,33 +123,44 @@ export const DraftStudioPanel = observer(function DraftStudioPanel(props: {
           })}
         </div>
 
-        <div className="rounded-3xl border border-zinc-800 bg-zinc-950/50 p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <div className="text-lg font-semibold text-zinc-100">
-                {activeDraft.title}
+        {activeDraft ? (
+          <div className="rounded-3xl border border-zinc-800 bg-zinc-950/50 p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-lg font-semibold text-zinc-100">
+                  {activeDraft.title}
+                </div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  {activeDraft.note}
+                </div>
               </div>
-              <div className="mt-2 text-sm text-zinc-400">{activeDraft.note}</div>
+              <StatusBadge status={activeDraft.stage} />
             </div>
-            <StatusBadge status={activeDraft.stage} />
-          </div>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <FieldPair label="Goal" value={activeDraft.goal} />
-            <FieldPair label="Tone" value={activeDraft.tone} />
-            <FieldPair label="Positioning" value={activeDraft.positioning} />
-            <FieldPair label="Originality Estimate" value={activeDraft.originality} />
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              Caption preview
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <FieldPair label="Goal" value={activeDraft.goal} />
+              <FieldPair label="Tone" value={activeDraft.tone} />
+              <FieldPair label="Positioning" value={activeDraft.positioning} />
+              <FieldPair
+                label="Originality Estimate"
+                value={activeDraft.originality}
+              />
             </div>
-            <p className="mt-3 text-sm leading-7 text-zinc-200">
-              {activeDraft.captionPreview}
-            </p>
+
+            <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                Caption preview
+              </div>
+              <p className="mt-3 text-sm leading-7 text-zinc-200">
+                {activeDraft.captionPreview}
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-3xl border border-zinc-800 bg-zinc-950/50 p-5 text-sm text-zinc-400">
+            No drafts exist yet for this source. Generate variants to continue.
+          </div>
+        )}
       </div>
     </Panel>
   )
@@ -182,16 +169,32 @@ export const DraftStudioPanel = observer(function DraftStudioPanel(props: {
 export const ReviewGatePanel = observer(function ReviewGatePanel(props: {
   store: FacebookContentDashboardStore
 }) {
-  const connection = useValue(props.store.state$.connection)
-  const activeDraft = useValue(() => {
-    const state = props.store.state$.get()
-    return getActiveDraft(state)
-  })
+  const state = props.store.state$.get()
+  const connection = state.connection
+  const activeDraft = getActiveDraft(state)
 
   return (
     <Panel
-      title="Review Gate"
-      meta="This is the key UX safeguard: AI generates, but a human still approves before scheduling."
+      title="Step 4 · Review Before Scheduling"
+      meta="Move the active draft through review explicitly instead of guessing whether it is ready."
+      action={
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => props.store.moveDraftToReview()}
+            className="rounded-xl border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-zinc-500"
+          >
+            Mark for review
+          </button>
+          <button
+            type="button"
+            onClick={() => props.store.approveActiveDraft()}
+            className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 hover:border-emerald-300/50"
+          >
+            Approve for scheduling
+          </button>
+        </div>
+      }
     >
       {connection.status === "error" ? (
         <div className="mb-4 rounded-2xl border border-amber-400/20 bg-amber-500/[0.07] p-4">
@@ -204,13 +207,14 @@ export const ReviewGatePanel = observer(function ReviewGatePanel(props: {
           </p>
         </div>
       ) : null}
+
       <div className="grid gap-3 lg:grid-cols-4">
         <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.07] p-4">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
             Source lineage
           </div>
           <p className="mt-2 text-sm leading-6 text-emerald-50/90">
-            Linked to one winning source post with pattern notes preserved.
+            Linked to the selected winning source with pattern notes preserved.
           </p>
         </div>
         <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.07] p-4">

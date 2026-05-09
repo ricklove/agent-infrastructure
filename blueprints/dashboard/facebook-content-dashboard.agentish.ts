@@ -6,11 +6,11 @@ const Agentish = define.language("Agentish");
 
 const FacebookContentDashboard = define.system("FacebookContentDashboard", {
   format: Agentish,
-  role: "Dashboard feature for discovering proven Facebook content patterns, generating derivative drafts, reviewing them, and scheduling approved posts",
+  role: "Dashboard feature for turning a destination Facebook page history and selected inspiration pages into new draft ideas",
 });
 
 const User = define.actor("PageOperator", {
-  role: "Operator who turns high-performing Facebook inspiration into approved scheduled posts",
+  role: "Operator responsible for choosing a destination page, learning from proven content, and generating new drafts for that page",
 });
 
 const Dashboard = {
@@ -28,36 +28,41 @@ const Feature = {
   mode: define.entity("ContentDashboardMode"),
 };
 
-const Workflow = {
-  discover: define.entity("DiscoverStep"),
-  create: define.entity("CreateStep"),
-  review: define.entity("ReviewStep"),
-  schedule: define.entity("ScheduleStep"),
-  learn: define.entity("LearnStep"),
-  editorialCopilot: define.concept("EditorialCopilot"),
-  humanApproval: define.concept("HumanApprovalBeforeScheduling"),
-};
-
 const Content = {
+  destinationPage: define.entity("DestinationPage"),
+  destinationHistory: define.entity("DestinationHistory"),
+  destinationWinner: define.entity("DestinationWinner"),
+  inspirationPage: define.entity("InspirationPage"),
+  inspirationWinner: define.entity("InspirationWinner"),
+  selectedSource: define.entity("SelectedSourcePost"),
   sourcePost: define.entity("SourcePost"),
   sourcePattern: define.entity("SourcePattern"),
   sourceLineage: define.entity("SourceLineage"),
-  draft: define.entity("DraftVariant"),
-  originality: define.entity("OriginalitySignal"),
-  tone: define.entity("ToneSignal"),
-  risk: define.entity("RiskSignal"),
-  scheduledPost: define.entity("ScheduledPost"),
-  learningSignal: define.entity("LearningSignal"),
+  draftIdea: define.entity("DraftIdea"),
+  savedDraft: define.entity("SavedDraft"),
+};
+
+const Workflow = {
+  connectDestination: define.entity("ConnectDestinationStep"),
+  inspectOwnWinners: define.entity("InspectOwnWinnersStep"),
+  addInspirationPages: define.entity("AddInspirationPagesStep"),
+  compareSources: define.entity("CompareSourcesStep"),
+  selectSource: define.entity("SelectSourceStep"),
+  generateIdeas: define.entity("GenerateIdeasStep"),
+  keepDraft: define.entity("KeepDraftStep"),
+  destinationFirst: define.concept("DestinationFirstFlow"),
+  ownHistoryFirst: define.concept("OwnHistoryFirstFlow"),
+  optionalExternalInspiration: define.concept("OptionalExternalInspiration"),
 };
 
 const Ui = {
-  inspirationRail: define.entity("InspirationRail"),
-  sourceAnalysis: define.entity("SourceAnalysisPanel"),
-  draftStudio: define.entity("DraftStudioPanel"),
-  reviewGate: define.entity("ReviewGatePanel"),
-  publishingRail: define.entity("PublishingRail"),
-  queue: define.entity("PublishingQueue"),
-  learningLoop: define.entity("LearningLoopPanel"),
+  destinationChooser: define.entity("DestinationChooser"),
+  pageIdentity: define.entity("PageIdentitySurface"),
+  ownWinnersSurface: define.entity("OwnWinnersSurface"),
+  inspirationPagesSurface: define.entity("InspirationPagesSurface"),
+  sourceComparisonSurface: define.entity("SourceComparisonSurface"),
+  ideaWorkbench: define.entity("IdeaWorkbench"),
+  draftIdeasSurface: define.entity("DraftIdeasSurface"),
 };
 
 const Research = {
@@ -68,116 +73,122 @@ const Research = {
 const Evaluation = {
   uxStory: define.entity("UxStory"),
   uxLoop: define.concept("PurposeOnlySubagentUxLoop"),
+  screenshotArtifact: define.entity("UxScreenshotArtifact"),
   liveTunnel: define.entity("WorkerDashboardTunnel"),
 };
 
 FacebookContentDashboard.enforces(`
-- This feature must feel like an editorial copilot, not an AI autoposter.
-- The primary user flow is Discover -> Create -> Review -> Schedule -> Learn.
-- Every generated draft must preserve source lineage back to the source post or imported pattern.
-- Every draft must expose originality, tone, and risk signals before it can be scheduled.
-- Human approval is required before scheduling; generation alone must never imply publish readiness.
-- The dashboard should optimize for moving from inspiration to a scheduled post quickly, not for maximizing the number of raw analytics widgets.
+- This feature must start from the destination page, because destination context determines voice, fit, and what should be published.
+- If the destination page has enough historical content, the first meaningful source material must be that page history and best past posts.
+- Additional inspiration pages are optional and secondary to destination history.
+- The first product slice is Connect destination -> Review own winners -> Optionally add inspiration pages -> Select one source -> Generate draft ideas -> Keep one draft.
+- The first product slice must not bury the user in scheduling, review gates, analytics, or queue management before they have produced their first useful draft.
+- Every generated draft idea must preserve source lineage back to the selected source post.
 - The feature should support imported Facebook summary data and must make its data mode explicit rather than pretending sample data is live data.
 - The plugin must remain dashboard-session-auth compatible and use shared dashboard auth behavior instead of inventing per-feature browser auth.
 - UX evaluation should use purpose-only user stories and must not leak current UI structure to the evaluator.
 `);
 
 FacebookContentDashboard.defines(`
-- EditorialCopilot means the system helps an operator reason from a successful source pattern to a safe, original derivative and then to a scheduled post.
+- DestinationFirstFlow means the user first identifies where they want to publish, and that destination drives the rest of the workflow.
+- OwnHistoryFirstFlow means an established page should begin by learning from its own top-performing posts before reaching for outside sources.
+- OptionalExternalInspiration means the operator may add other pages after destination selection to broaden the source pool when needed.
 - ContentDashboardSnapshot means the feature-owned backend payload that drives the dashboard screen state.
 - ImportedBrightDataSummary means a previously generated summary artifact derived from Bright Data exports rather than a live scrape at render time.
-- HumanApprovalBeforeScheduling means the workflow enforces a review boundary between draft generation and queue placement.
-- PurposeOnlySubagentUxLoop means a subagent receives only a user-purpose story and a live app URL, attempts the task, and reports friction without being primed with UI details.
+- PurposeOnlySubagentUxLoop means a subagent receives only a user-purpose story, a live app URL, and viewport instructions, attempts the task, captures screenshots, and reports friction without being primed with UI details.
 `);
 
 Dashboard.plugin.contains(Dashboard.route, Dashboard.screen, Feature.backend);
 Feature.backend.contains(Feature.snapshot, Feature.importedSummary, Feature.mode);
 Dashboard.screen.contains(
-  Ui.inspirationRail,
-  Ui.sourceAnalysis,
-  Ui.draftStudio,
-  Ui.reviewGate,
-  Ui.publishingRail,
-  Ui.queue,
-  Ui.learningLoop,
+  Ui.destinationChooser,
+  Ui.pageIdentity,
+  Ui.ownWinnersSurface,
+  Ui.inspirationPagesSurface,
+  Ui.sourceComparisonSurface,
+  Ui.ideaWorkbench,
+  Ui.draftIdeasSurface,
 );
 Feature.snapshot.contains(
-  Workflow.discover,
-  Workflow.create,
-  Workflow.review,
-  Workflow.schedule,
-  Workflow.learn,
+  Content.destinationPage,
+  Content.destinationWinner,
+  Content.inspirationPage,
+  Content.inspirationWinner,
   Content.sourcePost,
-  Content.draft,
-  Content.scheduledPost,
-  Content.learningSignal,
+  Content.draftIdea,
+  Content.savedDraft,
 );
-Content.sourcePost.contains(
-  Content.sourcePattern,
-  Content.sourceLineage,
-  Content.originality,
-  Content.tone,
-  Content.risk,
-);
-Content.draft.contains(
-  Content.sourceLineage,
-  Content.originality,
-  Content.tone,
-  Content.risk,
-);
-Dashboard.screen.contains(Evaluation.uxStory, Evaluation.liveTunnel);
-Dashboard.screen.contains(Research.brightData, Research.metaPublishApi);
+Content.destinationPage.contains(Content.destinationHistory, Content.destinationWinner);
+Content.sourcePost.contains(Content.sourcePattern, Content.sourceLineage);
+Content.draftIdea.contains(Content.sourceLineage);
 
 when(User.uses(Dashboard.screen))
-  .then(User.movesThrough(Workflow.discover))
-  .and(User.movesThrough(Workflow.create))
-  .and(User.movesThrough(Workflow.review))
-  .and(User.movesThrough(Workflow.schedule))
-  .and(User.movesThrough(Workflow.learn));
+  .then(User.movesThrough(Workflow.connectDestination))
+  .and(User.movesThrough(Workflow.inspectOwnWinners))
+  .and(User.mayMoveThrough(Workflow.addInspirationPages))
+  .and(User.mayMoveThrough(Workflow.compareSources))
+  .and(User.movesThrough(Workflow.selectSource))
+  .and(User.movesThrough(Workflow.generateIdeas))
+  .and(User.movesThrough(Workflow.keepDraft));
 
-when(Ui.inspirationRail.renders(Content.sourcePost))
-  .then(Ui.inspirationRail.optimizesFor("fast discovery of reusable winners"))
-  .and(Ui.sourceAnalysis.explains("why the source post worked"))
-  .and(Ui.draftStudio.derives("several draft variants from one selected source"));
+when(Ui.destinationChooser.selects(Content.destinationPage))
+  .then(Ui.pageIdentity.confirms("where the user is creating for"))
+  .and(Workflow.destinationFirst.applies(User));
 
-when(Ui.reviewGate.checks(Content.draft))
-  .then(Ui.reviewGate.requires(Content.originality))
-  .and(Ui.reviewGate.requires(Content.tone))
-  .and(Ui.reviewGate.requires(Content.risk))
-  .and(Ui.reviewGate.applies(Workflow.humanApproval));
+when(Content.destinationPage.has("sufficient history"))
+  .then(Ui.ownWinnersSurface.prioritizes(Content.destinationWinner))
+  .and(Workflow.ownHistoryFirst.applies(User));
 
-when(Ui.publishingRail.queues(Content.scheduledPost))
-  .then(Ui.queue.exposes("needs review, approved, scheduled"))
-  .and(Ui.learningLoop.updates(Content.learningSignal));
+when(User.adds(Content.inspirationPage))
+  .then(Ui.inspirationPagesSurface.reveals(Content.inspirationWinner))
+  .and(Workflow.optionalExternalInspiration.applies(User));
+
+when(User.selects(Content.selectedSource))
+  .then(Ui.ideaWorkbench.generates(Content.draftIdea))
+  .and(Ui.draftIdeasSurface.supports(Content.savedDraft));
 
 Evaluation.uxLoop.means(`
 - choose one purpose-only user story
-- give a subagent only the live URL and that story
+- give a subagent only the live worker URL, viewport instructions, and that story
 - do not disclose UI structure, implementation details, or intended click path
+- require the subagent to attempt the story at both large and small screen sizes
+- require screenshots for the main success state and the main failure or confusion state
 - collect friction as user-task feedback, not design-theory feedback
 - revise the UX based on that feedback and rerun the loop
+- run up to three subagents in parallel on independent or adjacent stories for broader coverage
 `);
 
 Evaluation.uxStory.examples(`
-- Discover Winning Posts
-- Understand Why A Post Worked
-- Turn A Winning Post Into Draft Ideas
-- Compare Draft Variants Quickly
-- Check Originality Before Reuse
-- Review Tone And Safety
-- Approve A Draft For Publishing
-- Schedule A Post To The Right Page
-- Manage The Publishing Queue
-- Revisit Past Winners
-- Learn From Published Results
-- Move From Inspiration To Scheduled Post Fast
+- Connect my destination page
+- Confirm I am creating for the right page
+- Review my page top past posts
+- Understand why a past post performed well
+- Choose one of my own winning posts to build from
+- Expand the source list when the first winners are not enough
+- Add another page as an inspiration source
+- See that page top-performing posts
+- Compare my page winners with outside winners
+- Choose whether to work from my own history or an outside source
+- Generate new post ideas for my destination page
+- Compare the generated ideas
+- Keep one idea and discard the rest
+- Review the first generated draft before editing it
+- Change the selected source after seeing the first generated draft
+- Edit a kept draft without losing the generated baseline
+- Save the chosen idea as a draft
+- Confirm what happens next after saving the draft
+- Queue the saved draft for a page and time
+- Verify that the queued draft appears in the publish queue
+- Know the next step after saving the draft
 `);
 
 FacebookContentDashboard.prescribes(`
 - The first backend seam is a snapshot contract, not a large mutable workflow API.
 - Imported Bright Data summary artifacts should map into the same source-post model used by the UI.
-- The screen should make sample-vs-imported data obvious in the header and connection state.
-- The feature should converge toward real editorial actions: promote source -> create draft -> review -> schedule.
-- UX work for this feature should be evaluated against user-purpose completion, not aesthetics alone.
+- The UI should present destination context before source selection.
+- The first live workflow should prove that a user can move from destination selection to one saved draft with minimal noise.
+- The next live workflow should prove that a user can move from one saved draft to one queued post without leaving the feature.
+- The first-view source chooser should stay intentionally short, and expansion should be explicit instead of forcing immediate scroll.
+- Once a source is chosen, the generated draft should become the primary nearby reading target before editing controls dominate the surface.
+- UX work for this feature should be evaluated against user-purpose completion, not visual novelty or generic dashboard density.
 `);

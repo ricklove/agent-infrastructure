@@ -336,12 +336,16 @@ function dashboardSessionWebSocketProtocols(sessionToken: string): string[] {
   return [`${dashboardSessionWebSocketProtocolPrefix}${trimmed}`]
 }
 
+function routeMatchesPath(route: string, pathname: string): boolean {
+  return pathname === route || pathname.startsWith(`${route}/`)
+}
+
 function featureIdFromPath(
   pathname: string,
   plugins: DashboardFeatureUiPlugin[],
 ): FeatureId {
   return (
-    plugins.find((plugin) => plugin.route === pathname)?.id ??
+    plugins.find((plugin) => routeMatchesPath(plugin.route, pathname))?.id ??
     plugins[0]?.id ??
     "chat"
   )
@@ -475,7 +479,7 @@ export function DashboardShell({
 
     const currentPath = window.location.pathname
     const matchedFeature = visibleFeatureDefinitions.find(
-      (feature) => feature.route === currentPath,
+      (feature) => routeMatchesPath(feature.route, currentPath),
     )
 
     if (!matchedFeature || currentPath === "/") {
@@ -760,15 +764,18 @@ export function DashboardShell({
           })
 
           if (!exchangeResponse.ok) {
-            throw new Error("failed to exchange dashboard session key")
+            const existingSessionToken = readStoredSessionToken()
+            if (!existingSessionToken) {
+              throw new Error("failed to exchange dashboard session key")
+            }
+          } else {
+            const exchangePayload =
+              (await exchangeResponse.json()) as SessionExchangeResponse
+            window.sessionStorage.setItem(
+              sessionStorageKey,
+              exchangePayload.sessionToken,
+            )
           }
-
-          const exchangePayload =
-            (await exchangeResponse.json()) as SessionExchangeResponse
-          window.sessionStorage.setItem(
-            sessionStorageKey,
-            exchangePayload.sessionToken,
-          )
         }
 
         if (nextConfig.requiresSession && !readStoredSessionToken()) {

@@ -5,6 +5,7 @@ export type DashboardFeatureId =
   | "chat"
   | "chat-v2"
   | "content"
+  | "content-creation"
   | "graph"
   | "terminal"
   | "projects"

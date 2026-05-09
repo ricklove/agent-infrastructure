@@ -1,35 +1,73 @@
-import { observer, useValue } from "@legendapp/state/react"
+import { observer } from "@legendapp/state/react"
 import { getActiveDraft } from "../content-dashboard-selectors"
 import type { FacebookContentDashboardStore } from "../content-dashboard-store"
 import { Panel, StatusBadge } from "./primitives"
 
+const pageOptions = [
+  "Thin Blue Line Supporters",
+  "Support Law Enforcement",
+  "Community Safety Network",
+]
+
 export const PublishingRail = observer(function PublishingRail(props: {
   store: FacebookContentDashboardStore
 }) {
-  const scheduledPosts = useValue(props.store.state$.scheduledPosts)
-  const activeDraft = useValue(() => {
-    return getActiveDraft(props.store.state$.get())
-  })
+  const state = props.store.state$.get()
+  const scheduledPosts = state.scheduledPosts
+  const activeDraft = getActiveDraft(state)
+  const workflow = state.workflow
+  const scheduling = state.scheduling
 
   return (
-    <aside className="min-h-0 space-y-3 2xl:overflow-y-auto 2xl:pr-1">
+    <aside className="space-y-3 xl:sticky xl:top-3">
       <Panel
-        title="Schedule"
-        meta="Assign the final creative to a page and time without leaving the approval surface."
+        title="Step 5 · Schedule The Approved Draft"
+        meta="Confirm the page and queue slot here instead of inferring it from static text."
       >
         <div className="space-y-4">
           <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.07] p-4">
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
-              Ready to queue
+              Selected creative
             </div>
             <div className="mt-2 text-sm font-semibold text-cyan-50">
               {activeDraft.title}
             </div>
             <p className="mt-2 text-sm leading-6 text-cyan-50/85">
-              Recommended page: Thin Blue Line Supporters. Best slot based on the
-              current queue: 2026-05-08 14:00 UTC.
+              Current step: {workflow.activeStep}. Approval and scheduling now
+              happen through explicit controls.
             </p>
           </div>
+
+          <label className="block">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Target page
+            </div>
+            <select
+              value={scheduling.targetPage}
+              onChange={(event) => props.store.setTargetPage(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-zinc-100 outline-none focus:border-cyan-400/50"
+            >
+              {pageOptions.map((pageName) => (
+                <option key={pageName} value={pageName}>
+                  {pageName}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Scheduled slot
+            </div>
+            <input
+              type="text"
+              value={scheduling.scheduledFor}
+              onChange={(event) =>
+                props.store.setScheduledFor(event.target.value)
+              }
+              className="mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-zinc-100 outline-none focus:border-cyan-400/50"
+            />
+          </label>
 
           <div className="grid gap-3">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
@@ -38,7 +76,7 @@ export const PublishingRail = observer(function PublishingRail(props: {
               </div>
               <div className="mt-2 flex items-center justify-between gap-3">
                 <div className="text-sm text-zinc-200">
-                  Human approval required before publish
+                  Human approval remains required before scheduling
                 </div>
                 <StatusBadge status={activeDraft.stage} />
               </div>
@@ -51,12 +89,14 @@ export const PublishingRail = observer(function PublishingRail(props: {
               <div className="mt-3 space-y-3">
                 <button
                   type="button"
+                  onClick={() => props.store.scheduleActiveDraft()}
                   className="w-full rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-left text-sm font-semibold text-cyan-50 hover:border-cyan-300/50"
                 >
                   Approve and schedule
                 </button>
                 <button
                   type="button"
+                  onClick={() => props.store.sendBackToDraftStudio()}
                   className="w-full rounded-xl border border-zinc-700 bg-zinc-950/80 px-4 py-3 text-left text-sm font-semibold text-zinc-200 hover:border-zinc-500"
                 >
                   Send back to Draft Studio
