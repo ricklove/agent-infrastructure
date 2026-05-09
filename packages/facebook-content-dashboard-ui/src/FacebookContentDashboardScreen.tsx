@@ -4,6 +4,7 @@ import { fetchContentDashboardSnapshot } from "./content-dashboard-client"
 import { DraftAlternativesStrip } from "./components/DraftAlternativesStrip"
 import { DraftEditorSurface } from "./components/DraftEditorSurface"
 import { DraftPostPreviewFrame } from "./components/DraftPostPreviewFrame"
+import { CompactSelectedSourceCardSurface, SelectedSourceCardSurface, SourcePostOptionCardSurface } from "./components/SourcePostCards"
 import { SourcePostPreviewFrame } from "./components/SourcePostPreviewFrame"
 import { createFacebookContentDashboardStore } from "./content-dashboard-store"
 import type { DraftRecord, SourcePostRecord } from "./content-dashboard-types"
@@ -317,6 +318,32 @@ function debugScenarios(store: Store) {
       ],
     },
     {
+      slug: "source-post-cards",
+      title: "Source post cards",
+      scenarios: [
+        {
+          slug: "compact-selected",
+          title: "Compact selected",
+          render: () => <FixtureSourcePostCards mode="compact-selected" />,
+        },
+        {
+          slug: "selected",
+          title: "Selected",
+          render: () => <FixtureSourcePostCards mode="selected" />,
+        },
+        {
+          slug: "option",
+          title: "Option",
+          render: () => <FixtureSourcePostCards mode="option" />,
+        },
+        {
+          slug: "option-active",
+          title: "Option active",
+          render: () => <FixtureSourcePostCards mode="option-active" />,
+        },
+      ],
+    },
+    {
       slug: "draft-ideas-panel",
       title: "Draft ideas panel",
       scenarios: [
@@ -517,6 +544,37 @@ const FixtureOutsidePages = observer(function FixtureOutsidePages(props: { mode:
   const reactiveFrame = observeContentCreationFrame(store)
   const derived = useDerived(store.state$.get())
   return <div data-reactive-frame={reactiveFrame}><SourcePanel store={store} derived={derived} /></div>
+})
+
+const FixtureSourcePostCards = observer(function FixtureSourcePostCards(props: { mode: "compact-selected" | "selected" | "option" | "option-active" }) {
+  const [store] = useState(() => createFixtureStore("destination-posts"))
+  const reactiveFrame = observeContentCreationFrame(store)
+  const derived = useDerived(store.state$.get())
+  const post = derived.destinationPosts[0]
+  if (!post) {
+    return null
+  }
+  const cardPost = {
+    title: post.title,
+    sourcePage: post.sourcePage,
+    dateLabel: formatCompactFeedDate(post.publishDate),
+    previewText: sourcePostPrimaryText(post),
+    imageSrc: sourcePostPreviewImage(post),
+    likesLabel: formatCompactCount(post.likes),
+    commentsLabel: formatCompactCount(post.comments),
+    sharesLabel: formatCompactCount(post.shares),
+  }
+  return (
+    <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
+      {props.mode === "compact-selected" ? (
+        <CompactSelectedSourceCardSurface post={cardPost} onClick={() => store.reopenSourceList()} />
+      ) : props.mode === "selected" ? (
+        <SelectedSourceCardSurface post={cardPost} preview={<SourcePostPreview post={post} />} onClick={() => store.reopenSourceList()} />
+      ) : (
+        <SourcePostOptionCardSurface post={cardPost} active={props.mode === "option-active"} onClick={() => store.selectSource(post.id)} />
+      )}
+    </div>
+  )
 })
 
 const FixtureSourcePostPreview = observer(function FixtureSourcePostPreview(props: { mode: "destination" | "outside" }) {
@@ -1318,88 +1376,57 @@ function SelectedCard(props: {
 
 function SelectedSourceCard(props: { post: SourcePostRecord; onClick: () => void }) {
   return (
-    <button
-      type="button"
+    <SelectedSourceCardSurface
+      post={{
+        title: props.post.title,
+        sourcePage: props.post.sourcePage,
+        dateLabel: formatCompactFeedDate(props.post.publishDate),
+        previewText: sourcePostPrimaryText(props.post),
+        imageSrc: sourcePostPreviewImage(props.post),
+        likesLabel: formatCompactCount(props.post.likes),
+        commentsLabel: formatCompactCount(props.post.comments),
+        sharesLabel: formatCompactCount(props.post.shares),
+      }}
+      preview={<SourcePostPreview post={props.post} />}
       onClick={props.onClick}
-      className="w-full rounded-lg border border-cyan-500/30 bg-cyan-500/[0.08] p-3 text-left transition hover:border-cyan-400/40 hover:bg-cyan-500/[0.11]"
-    >
-      <SourcePostPreview post={props.post} />
-      <div className="flex items-center justify-between gap-3 text-xs text-zinc-400">
-        <span>{formatCompactFeedDate(props.post.publishDate)}</span>
-        <div className="flex items-center gap-3 text-zinc-500">
-          <span>{formatCompactCount(props.post.likes)} likes</span>
-          <span>{formatCompactCount(props.post.comments)} comments</span>
-          <span>{formatCompactCount(props.post.shares)} shares</span>
-        </div>
-      </div>
-    </button>
+    />
   )
 }
 
 function CompactSelectedSourceCard(props: { post: SourcePostRecord; onClick: () => void }) {
   return (
-    <button
-      type="button"
+    <CompactSelectedSourceCardSurface
+      post={{
+        title: props.post.title,
+        sourcePage: props.post.sourcePage,
+        dateLabel: formatCompactFeedDate(props.post.publishDate),
+        previewText: sourcePostPrimaryText(props.post),
+        imageSrc: sourcePostPreviewImage(props.post),
+        likesLabel: formatCompactCount(props.post.likes),
+        commentsLabel: formatCompactCount(props.post.comments),
+        sharesLabel: formatCompactCount(props.post.shares),
+      }}
       onClick={props.onClick}
-      className="flex w-full max-w-[760px] items-start gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/[0.08] p-3 text-left transition hover:border-cyan-400/40 hover:bg-cyan-500/[0.11]"
-    >
-      <img
-        src={sourcePostPreviewImage(props.post)}
-        alt={props.post.title}
-        className="h-16 w-16 shrink-0 rounded-md border border-zinc-800 object-cover"
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3 text-[11px] text-zinc-500">
-          <span className="truncate font-medium text-zinc-200">{props.post.sourcePage}</span>
-          <span>{formatCompactFeedDate(props.post.publishDate)}</span>
-        </div>
-        <div className="mt-2 line-clamp-2 text-sm leading-5 text-zinc-100">
-          {sourcePostPrimaryText(props.post)}
-        </div>
-        <div className="mt-2 flex items-center gap-3 text-[11px] text-zinc-500">
-          <span>{formatCompactCount(props.post.likes)} likes</span>
-          <span>{formatCompactCount(props.post.comments)} comments</span>
-          <span>{formatCompactCount(props.post.shares)} shares</span>
-        </div>
-      </div>
-    </button>
+    />
   )
 }
 
 function PostCard(props: { post: SourcePostRecord; active: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
+    <SourcePostOptionCardSurface
+      post={{
+        title: props.post.title,
+        sourcePage: props.post.sourcePage,
+        dateLabel: formatFacebookDate(props.post.publishDate),
+        previewText: sourcePostPrimaryText(props.post),
+        imageSrc: sourcePostPreviewImage(props.post),
+        likesLabel: formatCompactCount(props.post.likes),
+        commentsLabel: formatCompactCount(props.post.comments),
+        sharesLabel: formatCompactCount(props.post.shares),
+      }}
+      active={props.active}
       onClick={props.onClick}
-      className={[
-        "w-full rounded-lg border px-3 py-3 text-left transition",
-        props.active
-          ? "border-cyan-500/40 bg-cyan-500/10"
-          : "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700",
-      ].join(" ")}
-    >
-      <div className="flex items-start gap-3">
-        <img
-          src={sourcePostPreviewImage(props.post)}
-          alt={props.post.title}
-          className="mt-0.5 block h-24 w-20 shrink-0 rounded-md border border-zinc-800 object-cover sm:h-28 sm:w-24"
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3 text-[11px] text-zinc-500">
-            <span className="truncate font-medium text-zinc-300">{props.post.sourcePage}</span>
-            <span>{formatFacebookDate(props.post.publishDate)}</span>
-          </div>
-          <div className="mt-2 line-clamp-4 text-sm leading-5 text-zinc-100">
-            {sourcePostPrimaryText(props.post)}
-          </div>
-          <div className="mt-2.5 flex items-center gap-2.5 text-[11px] text-zinc-500">
-            <span>{formatCompactCount(props.post.likes)} likes</span>
-            <span>{formatCompactCount(props.post.comments)} comments</span>
-            <span>{formatCompactCount(props.post.shares)} shares</span>
-          </div>
-        </div>
-      </div>
-    </button>
+    />
   )
 }
 
