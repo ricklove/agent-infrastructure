@@ -1,6 +1,7 @@
 import { observer } from "@legendapp/state/react"
 import { useEffect, useMemo, useState } from "react"
 import { fetchContentDashboardSnapshot } from "./content-dashboard-client"
+import { DraftAlternativesStrip } from "./components/DraftAlternativesStrip"
 import { DraftEditorSurface } from "./components/DraftEditorSurface"
 import { createFacebookContentDashboardStore } from "./content-dashboard-store"
 import type { DraftRecord, SourcePostRecord } from "./content-dashboard-types"
@@ -344,6 +345,22 @@ function debugScenarios(store: Store) {
         },
       ],
     },
+    {
+      slug: "draft-alternatives-strip",
+      title: "Draft alternatives strip",
+      scenarios: [
+        {
+          slug: "multiple",
+          title: "Multiple alternatives",
+          render: () => <FixtureDraftAlternativesStrip mode="multiple" />,
+        },
+        {
+          slug: "saved",
+          title: "Saved alternatives",
+          render: () => <FixtureDraftAlternativesStrip mode="saved" />,
+        },
+      ],
+    },
   ]
 }
 
@@ -529,6 +546,37 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
         onSave={() => store.saveActiveDraft(selectedDraft.id)}
         preview={<DraftCardPreview draft={selectedDraft} pageName={derived.ui.destinationPage ?? "Your page"} expanded />}
         queuedMeta={queuedPost ? `${queuedPost.pageName} · ${queuedPost.scheduledFor}` : null}
+      />
+    </div>
+  )
+})
+
+const FixtureDraftAlternativesStrip = observer(function FixtureDraftAlternativesStrip(props: { mode: "multiple" | "saved" }) {
+  const [store] = useState(() =>
+    createFixtureStore(props.mode === "saved" ? "draft-saved" : "draft-ideas"),
+  )
+  const reactiveFrame = observeContentCreationFrame(store)
+  const derived = useDerived(store.state$.get())
+  const selectedDraft = derived.selectedDraft
+  const selectedSource = derived.selectedSource
+  if (!selectedDraft || !selectedSource) {
+    return null
+  }
+  const alternativeDrafts = derived.draftsForSelectedSource.filter((draft) => draft.id !== selectedDraft.id)
+  const generationTag = selectedDraft.id.match(/gen-(\d+)-/)?.[1]?.slice(-4) ?? null
+
+  return (
+    <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
+      <DraftAlternativesStrip
+        generationTag={generationTag}
+        alternatives={alternativeDrafts.map((draft) => ({
+          id: draft.id,
+          title: compactDraftTitle(draft, selectedSource),
+          caption: draft.captionPreview,
+          previewImage: draftPreviewImage(draft, derived.ui.destinationPage ?? "Your page"),
+        }))}
+        onSelectDraft={(draftId) => store.selectDraft(draftId)}
+        onRegenerateSet={() => store.generateTextVariants()}
       />
     </div>
   )
@@ -931,43 +979,17 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 preview={<DraftCardPreview draft={selectedDraft} pageName={ui.destinationPage ?? "Your page"} expanded />}
                 queuedMeta={queuedPost ? `${queuedPost.pageName} · ${queuedPost.scheduledFor}` : null}
               />
-              {alternativeDrafts.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-zinc-100">Alternatives</div>
-                    {generationTag ? (
-                      <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-500">
-                        set {generationTag}
-                      </div>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => props.store.generateTextVariants()}
-                      className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
-                    >
-                      Regenerate set
-                    </button>
-                  </div>
-                  <div className="flex gap-3 overflow-x-auto pb-1">
-                    {alternativeDrafts.map((draft) => (
-                      <button
-                        key={draft.id}
-                        type="button"
-                        onClick={() => props.store.selectDraft(draft.id)}
-                        className="flex min-w-[240px] max-w-[240px] shrink-0 flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-left transition hover:border-zinc-700"
-                      >
-                        <img
-                          src={draftPreviewImage(draft, ui.destinationPage ?? "Your page")}
-                          alt={draft.title}
-                          className="h-28 w-full rounded-md border border-zinc-800 object-cover"
-                        />
-                        <div className="text-sm font-semibold text-zinc-100">{compactDraftTitle(draft, selectedSource)}</div>
-                        <div className="line-clamp-4 text-sm leading-5 text-zinc-300">{draft.captionPreview}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+              <DraftAlternativesStrip
+                generationTag={generationTag}
+                alternatives={alternativeDrafts.map((draft) => ({
+                  id: draft.id,
+                  title: compactDraftTitle(draft, selectedSource),
+                  caption: draft.captionPreview,
+                  previewImage: draftPreviewImage(draft, ui.destinationPage ?? "Your page"),
+                }))}
+                onSelectDraft={(draftId) => props.store.selectDraft(draftId)}
+                onRegenerateSet={() => props.store.generateTextVariants()}
+              />
             </>
           ) : null}
         </div>
