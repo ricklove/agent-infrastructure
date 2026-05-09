@@ -39,8 +39,10 @@ export function SourcePostPreviewFrame(props: SourcePostPreviewFrameProps) {
             <div className="mt-2 truncate text-[12px] text-slate-500">{props.previewLink}</div>
           ) : null}
         </div>
-        <div className="overflow-hidden border-y border-slate-200 bg-black">
-          <img src={props.previewImage} alt={props.title} className="block aspect-[4/5] w-full object-contain" />
+        <div className="flex items-center justify-center overflow-hidden border-y border-slate-200 bg-black">
+          <div className="flex aspect-square w-full max-h-[520px] max-w-[520px] items-center justify-center overflow-hidden bg-black">
+            <img src={props.previewImage} alt={props.title} className="block h-full max-h-full w-full max-w-full object-contain" />
+          </div>
         </div>
         <div className="flex items-center justify-between gap-3 px-3 py-2 text-[13px] text-slate-500">
           <div className="flex items-center gap-2">

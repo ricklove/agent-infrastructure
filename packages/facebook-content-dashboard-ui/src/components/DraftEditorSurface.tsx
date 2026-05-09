@@ -135,7 +135,9 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         onSelectOption={props.onSelectImage}
         input={
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-            <img src={props.imageValue} alt="Selected creative" className="h-56 w-full rounded-lg object-cover" />
+            <div className="flex aspect-square w-full max-h-[520px] max-w-[520px] items-center justify-center overflow-hidden rounded-lg bg-zinc-950">
+              <img src={props.imageValue} alt="Selected creative" className="h-full max-h-full w-full max-w-full object-contain" />
+            </div>
           </div>
         }
         renderOption={(option, isSelected, onSelect, index) => (
@@ -151,7 +153,9 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
                 : "border-zinc-800 hover:border-zinc-700",
             ].join(" ")}
           >
-            <img src={option} alt={`Image option ${index + 1}`} className="h-24 w-full object-cover" />
+            <div className="flex aspect-square w-full max-h-[112px] max-w-[112px] items-center justify-center bg-zinc-950">
+              <img src={option} alt={`Image option ${index + 1}`} className="h-full max-h-full w-full max-w-full object-contain" />
+            </div>
             {isSelected ? (
               <div className="absolute right-2 top-2 rounded-full border border-cyan-400/50 bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-50">
                 Selected

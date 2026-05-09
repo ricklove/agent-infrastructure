@@ -66,11 +66,13 @@ export function DraftAlternativesStrip(props: DraftAlternativesStripProps) {
               onClick={() => props.onSelectDraft(draft.id)}
               className="flex flex-col gap-3 text-left"
             >
-              <img
-                src={draft.previewImage}
-                alt={draft.title}
-                className="h-28 w-full rounded-md border border-zinc-800 object-cover"
-              />
+              <div className="flex aspect-square w-full max-h-[214px] max-w-[214px] items-center justify-center overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">
+                <img
+                  src={draft.previewImage}
+                  alt={draft.title}
+                  className="h-full max-h-full w-full max-w-full object-contain"
+                />
+              </div>
               <div className="line-clamp-4 text-sm leading-5 text-zinc-300">{draft.caption}</div>
             </button>
             <button
