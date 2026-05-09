@@ -360,6 +360,26 @@ export function createFacebookContentDashboardStore() {
     }
   }
 
+  function createFreshDraftForDestination(source: SourcePostRecord, destinationPage: string): DraftRecord {
+    return {
+      id: `draft-${source.id}-${Date.now()}`,
+      sourceId: source.id,
+      title: source.title,
+      format: "image",
+      stage: "draft",
+      positioning: `Adapted for ${destinationPage}`,
+      captionPreview: source.whyItWorked,
+      goal: `First-pass draft for ${destinationPage}`,
+      originality: "Fresh destination draft",
+      tone: source.angle,
+      note: "Fresh working draft created for a destination with no post history.",
+      previewMediaPath: source.mediaPath,
+      textProvider: "seed",
+      imageProvider: "seed",
+      generatedKind: "seed",
+    }
+  }
+
   function restorePersistedState(
     persisted: Partial<Pick<FacebookContentDashboardStoreState, "drafts" | "scheduledPosts" | "selection" | "ui" | "workflow" | "scheduling">>,
   ) {
@@ -401,7 +421,25 @@ export function createFacebookContentDashboardStore() {
     state$.ui.savedDraftId.set(null)
 
     const source = state$.sourcePosts.get().find((post) => post.id === sourceId) ?? null
-    const sourceDrafts = state$.drafts.get().filter((draft) => draft.sourceId === sourceId)
+    const destinationPage = state$.ui.destinationPage.get()
+    const destinationHasHistory = destinationPage
+      ? state$.sourcePosts.get().some((post) => post.sourcePage === destinationPage)
+      : false
+
+    let nextDrafts = state$.drafts.get()
+    let sourceDrafts = nextDrafts.filter((draft) => draft.sourceId === sourceId)
+
+    if (source && !destinationHasHistory) {
+      nextDrafts = nextDrafts.filter((draft) => draft.sourceId !== sourceId)
+      const freshDraft = createFreshDraftForDestination(
+        source,
+        destinationPage ?? state$.scheduling.targetPage.get(),
+      )
+      nextDrafts = [freshDraft, ...nextDrafts]
+      sourceDrafts = [freshDraft]
+      state$.drafts.set(nextDrafts)
+    }
+
     const fieldOptions = buildFieldOptions(
       source,
       state$.sourcePosts.get(),
@@ -412,19 +450,20 @@ export function createFacebookContentDashboardStore() {
     state$.ui.captionOptions.set(fieldOptions.captionOptions)
     state$.ui.imageOptions.set(fieldOptions.imageOptions)
 
-    const existingDraft = preferredDraftForSource(state$.drafts.get(), sourceId)
+    const existingDraft = sourceDrafts[0] ?? preferredDraftForSource(nextDrafts, sourceId)
     if (existingDraft) {
       state$.drafts.set(
-        state$.drafts
-          .get()
-          .map((draft): DraftRecord =>
-            draft.id === existingDraft.id ? { ...draft, stage: "draft" } : draft,
-          ),
+        nextDrafts.map((draft): DraftRecord =>
+          draft.id === existingDraft.id ? { ...draft, stage: "draft" } : draft,
+        ),
       )
       state$.ui.savedDraftId.set(null)
       state$.selection.activeDraftId.set(existingDraft.id)
+      state$.ui.draftEditorOpen.set(true)
       state$.workflow.statusMessage.set(
-        "Source selected. Edit this draft or generate a fresh set.",
+        destinationHasHistory
+          ? "Source selected. Edit this draft or generate a fresh set."
+          : "Source selected. Start from this fresh draft or generate new options.",
       )
     } else {
       state$.selection.activeDraftId.set("")
@@ -541,6 +580,9 @@ export function createFacebookContentDashboardStore() {
     }
 
     const provider = state$.ui.textGenerationProvider.get()
+    state$.workflow.statusMessage.set(
+      provider === "mock" ? "Generating a full mock post…" : "Generating a full Codex post…",
+    )
     let generatedDrafts: DraftRecord[]
 
     try {
@@ -579,12 +621,12 @@ export function createFacebookContentDashboardStore() {
     state$.ui.imageOptions.set(fieldOptions.imageOptions)
     state$.selection.activeDraftId.set(generatedDrafts[0]?.id ?? "")
     state$.ui.savedDraftId.set(null)
-    state$.ui.draftEditorOpen.set(false)
+    state$.ui.draftEditorOpen.set(true)
     state$.workflow.activeStep.set("create")
     state$.workflow.statusMessage.set(
       provider === "mock"
-        ? `Generated ${generatedDrafts.length} mock text variants.`
-        : `Generated ${generatedDrafts.length} Codex text ideas.`,
+        ? `Generated ${generatedDrafts.length} full-post variants. Newest draft selected.`
+        : `Generated ${generatedDrafts.length} Codex full-post variants. Newest draft selected.`,
     )
     persistStateNow()
   }
@@ -597,6 +639,9 @@ export function createFacebookContentDashboardStore() {
     }
 
     const provider = state$.ui.textGenerationProvider.get()
+    state$.workflow.statusMessage.set(
+      provider === "mock" ? "Generating title options…" : "Generating Codex title options…",
+    )
     let generatedDrafts: DraftRecord[]
 
     try {
@@ -626,7 +671,11 @@ export function createFacebookContentDashboardStore() {
       updateActiveDraftTitle(generatedTitles[0])
     }
     state$.workflow.activeStep.set("create")
-    state$.workflow.statusMessage.set("Generated new title options.")
+    state$.workflow.statusMessage.set(
+      generatedTitles[0]
+        ? `Generated ${generatedTitles.length} title options. Newest option selected.`
+        : "No new title options were added.",
+    )
     persistStateNow()
   }
 
@@ -638,6 +687,9 @@ export function createFacebookContentDashboardStore() {
     }
 
     const provider = state$.ui.textGenerationProvider.get()
+    state$.workflow.statusMessage.set(
+      provider === "mock" ? "Generating text options…" : "Generating Codex text options…",
+    )
     let generatedDrafts: DraftRecord[]
 
     try {
@@ -667,7 +719,11 @@ export function createFacebookContentDashboardStore() {
       updateActiveDraftCaption(generatedCaptions[0])
     }
     state$.workflow.activeStep.set("create")
-    state$.workflow.statusMessage.set("Generated new text options.")
+    state$.workflow.statusMessage.set(
+      generatedCaptions[0]
+        ? `Generated ${generatedCaptions.length} text options. Newest option selected.`
+        : "No new text options were added.",
+    )
     persistStateNow()
   }
 
@@ -680,6 +736,9 @@ export function createFacebookContentDashboardStore() {
     }
 
     const provider = state$.ui.imageGenerationProvider.get()
+    state$.workflow.statusMessage.set(
+      provider === "mock" ? "Generating image options…" : "Generating Codex image options…",
+    )
 
     if (provider === "mock") {
       await delay(900)
@@ -720,7 +779,7 @@ export function createFacebookContentDashboardStore() {
       )
       state$.ui.savedDraftId.set(null)
       state$.workflow.activeStep.set("create")
-      state$.workflow.statusMessage.set("Generated a fresh set of mock image transformations.")
+      state$.workflow.statusMessage.set("Generated a new image option. Newest option selected.")
       persistStateNow()
       return
     }
@@ -763,7 +822,7 @@ export function createFacebookContentDashboardStore() {
       )
       state$.ui.savedDraftId.set(null)
       state$.workflow.activeStep.set("create")
-      state$.workflow.statusMessage.set("Generated a fresh Codex image.")
+      state$.workflow.statusMessage.set("Generated a new Codex image option. Newest option selected.")
       persistStateNow()
     } catch (error) {
       state$.workflow.statusMessage.set(
@@ -978,6 +1037,12 @@ export function createFacebookContentDashboardStore() {
     state$.ui.sourceListExpanded.set(false)
     state$.ui.draftEditorOpen.set(false)
     state$.ui.savedDraftId.set(null)
+    state$.ui.titleOptions.set([])
+    state$.ui.captionOptions.set([])
+    state$.ui.imageOptions.set([])
+    if (!hasOwnPosts) {
+      state$.drafts.set([])
+    }
     state$.selection.activeSourceId.set("")
     state$.selection.activeDraftId.set("")
     state$.scheduling.targetPage.set(pageName)
@@ -1024,6 +1089,10 @@ export function createFacebookContentDashboardStore() {
     state$.selection.activeSourceId.set("")
     state$.selection.activeDraftId.set("")
     state$.ui.savedDraftId.set(null)
+    state$.ui.titleOptions.set([])
+    state$.ui.captionOptions.set([])
+    state$.ui.imageOptions.set([])
+    state$.drafts.set([])
     state$.scheduling.targetPage.set(rawValue)
     state$.workflow.activeStep.set("discover")
     state$.workflow.statusMessage.set(
@@ -1042,6 +1111,9 @@ export function createFacebookContentDashboardStore() {
     state$.ui.sourceListExpanded.set(false)
     state$.ui.draftEditorOpen.set(false)
     state$.ui.savedDraftId.set(null)
+    state$.ui.titleOptions.set([])
+    state$.ui.captionOptions.set([])
+    state$.ui.imageOptions.set([])
     state$.selection.activeSourceId.set("")
     state$.selection.activeDraftId.set("")
     state$.workflow.activeStep.set("discover")
@@ -1081,7 +1153,15 @@ export function createFacebookContentDashboardStore() {
         ),
     )
     state$.workflow.activeStep.set("schedule")
-    state$.workflow.statusMessage.set("Draft saved. Choose a time and queue it.")
+    const activeDraft = state$.drafts.get().find((draft) => draft.id === activeDraftId)
+    const activeSource = activeDraft
+      ? state$.sourcePosts.get().find((post) => post.id === activeDraft.sourceId) ?? null
+      : null
+    state$.workflow.statusMessage.set(
+      activeSource
+        ? `Draft saved for ${state$.scheduling.targetPage.get()} from ${activeSource.sourcePage}. Choose a time and queue it.`
+        : "Draft saved. Choose a time and queue it.",
+    )
     persistStateNow()
   }
 
@@ -1134,7 +1214,9 @@ export function createFacebookContentDashboardStore() {
       ...state$.scheduledPosts.get(),
     ])
     state$.workflow.activeStep.set("schedule")
-    state$.workflow.statusMessage.set("Draft queued.")
+    state$.workflow.statusMessage.set(
+      `Draft queued for ${state$.scheduling.targetPage.get()} at ${scheduledFor}.`,
+    )
     persistStateNow()
   }
 

@@ -86,6 +86,7 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
   const [viewportWidth, setViewportWidth] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth : 1600,
   )
+  const [scrollTop, setScrollTop] = useState(0)
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -122,6 +123,12 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
   const mobileStage = state.ui.sourcePickerOpen || !hasSelectedSource ? "browse" : "draft"
   const selectedDraft = derived.selectedDraft
   const selectedSource = derived.selectedSource
+  const showFloatingMobilePreview = Boolean(
+    !isMediumDesktop &&
+      selectedDraft &&
+      mobileStage === "draft" &&
+      scrollTop < 520,
+  )
   const draftSaved = Boolean(
     selectedDraft &&
       (state.ui.savedDraftId === selectedDraft.id ||
@@ -137,11 +144,18 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
     : undefined
 
   return (
-    <PageShell title="Content Creation">
+    <PageShell title="Content Creation" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
       <div data-reactive-frame={reactiveFrame} className="contents">
         <StatusBanner message={state.workflow.statusMessage} />
       {!isMediumDesktop ? (
         <div className="flex flex-col gap-4">
+          {showFloatingMobilePreview && selectedDraft ? (
+            <div className="pointer-events-none fixed bottom-3 left-3 z-30 origin-bottom-left scale-[0.5] drop-shadow-[0_16px_32px_rgba(0,0,0,0.45)]">
+              <div className="pointer-events-auto">
+                <DraftCardPreview draft={selectedDraft} pageName={state.ui.destinationPage ?? "Your page"} />
+              </div>
+            </div>
+          ) : null}
           {mobileStage === "browse" ? (
             <div className="flex flex-col gap-4">
               <DestinationPanel store={props.store} derived={derived} />
@@ -197,38 +211,33 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
       ) : null}
 
       {isMediumDesktop && !isWideDesktop ? (
-        <div className="grid items-start gap-4 grid-cols-[300px_minmax(0,1fr)]">
+        <div className="grid items-start" style={{ gridTemplateColumns: "300px minmax(0, 1fr) 380px", gap: "1rem" }}>
           <div className="sticky top-[76px] flex max-h-[calc(100vh-96px)] flex-col gap-4 overflow-y-auto pr-1">
             <DestinationPanel store={props.store} derived={derived} />
             <SourcePanel store={props.store} derived={derived} />
           </div>
           <div className="min-w-0 flex flex-col gap-4">
-            <DraftPanel store={props.store} derived={derived} showInlineSchedule />
+            <DraftPanel store={props.store} derived={derived} showInlineSchedule showInlinePreview={false} />
+          </div>
+          <div className="sticky top-[76px] min-w-0">
+            <PreviewRail draft={selectedDraft} pageName={state.ui.destinationPage ?? "Your page"} />
           </div>
         </div>
       ) : null}
 
       {isWideDesktop ? (
-        <div
-          className={[
-            "grid items-start gap-5",
-            showScheduleRail
-              ? "grid-cols-[320px_minmax(0,760px)_320px]"
-              : "grid-cols-[320px_minmax(0,760px)]",
-          ].join(" ")}
-        >
+        <div className="grid items-start" style={{ gridTemplateColumns: "320px minmax(0, 760px) 420px", gap: "1.25rem" }}>
           <div className="sticky top-[76px] flex max-h-[calc(100vh-96px)] flex-col gap-4 overflow-y-auto pr-1">
             <DestinationPanel store={props.store} derived={derived} />
             <SourcePanel store={props.store} derived={derived} />
           </div>
           <div className="min-w-0">
-            <DraftPanel store={props.store} derived={derived} />
+            <DraftPanel store={props.store} derived={derived} showInlinePreview={false} />
           </div>
-          {showScheduleRail ? (
-            <div className="sticky top-[76px] min-w-0">
-              <SchedulePanel store={props.store} derived={derived} />
-            </div>
-          ) : null}
+          <div className="sticky top-[76px] min-w-0 space-y-4">
+            <PreviewRail draft={selectedDraft} pageName={state.ui.destinationPage ?? "Your page"} />
+            {showScheduleRail ? <SchedulePanel store={props.store} derived={derived} /> : null}
+          </div>
         </div>
       ) : null}
       </div>
@@ -838,8 +847,6 @@ const FixtureDraftGenerationControls = observer(function FixtureDraftGenerationC
         imageProvider={ui.imageGenerationProvider}
         onTextProviderChange={(provider) => store.setTextGenerationProvider(provider)}
         onImageProviderChange={(provider) => store.setImageGenerationProvider(provider)}
-        onGenerateText={() => store.generateTextVariants()}
-        onGenerateImage={() => store.generateImageVariants()}
         onGeneratePost={() => store.generateFullPost()}
         onResetImage={() => store.resetActiveDraftImage()}
       />
@@ -1162,9 +1169,9 @@ function StatusBanner(props: { message: string | null }) {
   )
 }
 
-function PageShell(props: { title: string; children: React.ReactNode }) {
+function PageShell(props: { title: string; children: React.ReactNode; onScroll?: (event: React.UIEvent<HTMLDivElement>) => void }) {
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-zinc-950 text-zinc-100">
+    <div onScroll={props.onScroll} className="flex h-full min-h-0 flex-col overflow-y-auto bg-zinc-950 text-zinc-100">
       <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
         <div className="mx-auto flex w-full max-w-[1480px] items-center justify-between gap-4 px-4 py-3 sm:px-5">
           <div className="min-w-0">
@@ -1300,11 +1307,13 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
         <Section>
           {ui.sourcePickerOpen || !selectedSource || selectedSource.sourcePage !== ui.outsidePage ? (
             <div className="flex flex-col gap-3">
-              <ContextCardSurface
-                title={ui.outsidePage ?? ""}
-                meta={`${outsidePosts.length} top posts`}
-                onClick={() => props.store.reopenOutsidePage()}
-              />
+              <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-800/60 bg-zinc-950/10 px-3 py-2 text-left">
+                <div>
+                  <div className="text-sm font-semibold text-zinc-200">{ui.outsidePage ?? ""}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{outsidePosts.length} top posts</div>
+                </div>
+                <span className="text-zinc-600">•</span>
+              </div>
               {destinationPosts.length > 0 ? (
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2.5">
@@ -1342,11 +1351,13 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
             </div>
           ) : selectedSource ? (
             <div className="flex flex-col gap-3">
-              <ContextCardSurface
-                title={ui.outsidePage ?? ""}
-                meta={`${outsidePosts.length} top posts`}
-                onClick={() => props.store.reopenOutsidePage()}
-              />
+              <div className="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-800/60 bg-zinc-950/10 px-3 py-2 text-left">
+                <div>
+                  <div className="text-sm font-semibold text-zinc-200">{ui.outsidePage ?? ""}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{outsidePosts.length} top posts</div>
+                </div>
+                <span className="text-zinc-600">•</span>
+              </div>
               <CompactSelectedSourceCard post={selectedSource} onClick={() => props.store.reopenSourceList()} />
             </div>
           ) : null}
@@ -1356,7 +1367,7 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
   )
 }
 
-function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived>; showInlineSchedule?: boolean; hideEditorSaveAction?: boolean }) {
+function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived>; showInlineSchedule?: boolean; hideEditorSaveAction?: boolean; showInlinePreview?: boolean }) {
   const { selectedSource, draftsForSelectedSource, selectedDraft, ui, state } = props.derived
   if (!selectedSource) {
     return <Section className="min-h-[240px]" />
@@ -1385,6 +1396,10 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
   const titleOptions = state.ui.titleOptions
   const captionOptions = state.ui.captionOptions
   const imageOptions = state.ui.imageOptions
+  const statusMessage = state.workflow.statusMessage
+  const titleFeedback = statusMessage?.toLowerCase().includes("title") ? statusMessage : null
+  const captionFeedback = statusMessage?.toLowerCase().includes("text") ? statusMessage : null
+  const imageFeedback = statusMessage?.toLowerCase().includes("image") ? statusMessage : null
 
   return (
     <div className="flex min-w-0 flex-col gap-4 items-start">
@@ -1431,12 +1446,16 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 subtitle={`${selectedDraft.format} · ${selectedDraft.positioning}`}
                 generationTag={generationTag}
                 draftSaved={draftSaved}
+                statusMessage={statusMessage}
                 titleValue={selectedDraft.title}
                 titleOptions={titleOptions}
+                titleFeedback={titleFeedback}
                 caption={selectedDraft.captionPreview}
                 captionOptions={captionOptions}
+                captionFeedback={captionFeedback}
                 imageValue={draftPreviewImage(selectedDraft, ui.destinationPage ?? "Your page")}
                 imageOptions={imageOptions}
+                imageFeedback={imageFeedback}
                 textProvider={ui.textGenerationProvider}
                 imageProvider={ui.imageGenerationProvider}
                 onTextProviderChange={(provider) => props.store.setTextGenerationProvider(provider)}
@@ -1456,6 +1475,7 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 preview={<DraftCardPreview draft={selectedDraft} pageName={ui.destinationPage ?? "Your page"} expanded />}
                 queuedMeta={queuedPost ? `${queuedPost.pageName} · ${queuedPost.scheduledFor}` : null}
                 showSaveAction={!props.hideEditorSaveAction}
+                showPreview={props.showInlinePreview !== false}
               />
               {props.showInlineSchedule ? <SchedulePanel store={props.store} derived={props.derived} draftSaved={draftSaved} /> : null}
               <DraftAlternativesStrip
@@ -1477,6 +1497,24 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
     </div>
   )
 }
+function PreviewRail(props: { draft: DraftRecord | null; pageName: string }) {
+  if (!props.draft) {
+    return null
+  }
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-cyan-500/30 bg-gradient-to-b from-cyan-500/[0.10] via-zinc-900/95 to-zinc-950 shadow-[0_18px_50px_rgba(8,145,178,0.18)]">
+      <div className="border-b border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-200">Live Preview</div>
+        <div className="mt-1 text-sm text-zinc-300">How this post will read on the destination page.</div>
+      </div>
+      <div className="grid gap-3 p-4">
+        <DraftCardPreview draft={props.draft} pageName={props.pageName} expanded />
+      </div>
+    </section>
+  )
+}
+
 function SchedulePanel(props: { store: Store; derived: ReturnType<typeof useDerived>; draftSaved?: boolean }) {
   const { selectedDraft, ui, state } = props.derived
   if (!selectedDraft) {

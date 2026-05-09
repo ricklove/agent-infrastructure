@@ -8,12 +8,16 @@ type DraftEditorSurfaceProps = {
   subtitle: string
   generationTag: string | null
   draftSaved: boolean
+  statusMessage?: string | null
   titleValue: string
   titleOptions: string[]
+  titleFeedback?: string | null
   caption: string
   captionOptions: string[]
+  captionFeedback?: string | null
   imageValue: string
   imageOptions: string[]
+  imageFeedback?: string | null
   textProvider: Exclude<AssetGenerationProvider, "seed">
   imageProvider: Exclude<AssetGenerationProvider, "seed">
   onTextProviderChange: (provider: Exclude<AssetGenerationProvider, "seed">) => void
@@ -33,6 +37,7 @@ type DraftEditorSurfaceProps = {
   preview: ReactNode
   queuedMeta?: string | null
   showSaveAction?: boolean
+  showPreview?: boolean
 }
 
 export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
@@ -75,10 +80,9 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         imageProvider={props.imageProvider}
         onTextProviderChange={props.onTextProviderChange}
         onImageProviderChange={props.onImageProviderChange}
-        onGenerateText={props.onGenerateCaption}
-        onGenerateImage={props.onGenerateImage}
         onGeneratePost={props.onGeneratePost}
         onResetImage={props.onResetImage}
+        generatePostLabel={props.statusMessage?.includes("Generating a full") ? "Generating full post…" : "Generate full post"}
       />
 
       <DraftFieldEditor
@@ -86,6 +90,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         value={props.titleValue}
         onGenerate={props.onGenerateTitle}
         generateLabel="Generate titles"
+        feedback={props.titleFeedback}
         options={props.titleOptions}
         onSelectOption={props.onSelectTitle}
         input={
@@ -102,6 +107,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         value={props.caption}
         onGenerate={props.onGenerateCaption}
         generateLabel="Generate text"
+        feedback={props.captionFeedback}
         options={props.captionOptions}
         onSelectOption={props.onSelectCaption}
         input={
@@ -118,6 +124,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         value={props.imageValue}
         onGenerate={props.onGenerateImage}
         generateLabel="Generate image"
+        feedback={props.imageFeedback}
         options={props.imageOptions}
         onSelectOption={props.onSelectImage}
         input={
@@ -152,10 +159,12 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         )}
       />
 
-      <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Preview</div>
-        {props.preview}
-      </div>
+      {props.showPreview === false ? null : (
+        <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Preview</div>
+          {props.preview}
+        </div>
+      )}
 
       {props.showSaveAction === false ? null : (
         <button
@@ -174,7 +183,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
 
       {props.draftSaved && !props.queuedMeta ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-3 text-sm text-cyan-100">
-          <span>Draft saved.</span>
+          <span>{props.statusMessage?.includes("saved") ? props.statusMessage : "Draft saved."}</span>
           <span className="text-xs text-cyan-100/80">Queue it when ready.</span>
         </div>
       ) : null}
@@ -186,15 +195,6 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         </div>
       ) : null}
     </div>
-  )
-}
-
-function SparklesIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
-      <path d="M10 2.5 11.6 6.4 15.5 8 11.6 9.6 10 13.5 8.4 9.6 4.5 8 8.4 6.4 10 2.5Z" />
-      <path d="M14.8 12.8 15.6 14.7 17.5 15.5 15.6 16.3 14.8 18.2 14 16.3 12.1 15.5 14 14.7 14.8 12.8Z" />
-    </svg>
   )
 }
 

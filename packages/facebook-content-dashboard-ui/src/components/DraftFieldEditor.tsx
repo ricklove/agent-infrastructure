@@ -5,6 +5,7 @@ type DraftFieldEditorProps = {
   value: string
   onGenerate: () => void
   generateLabel: string
+  feedback?: string | null
   options: string[]
   onSelectOption: (value: string) => void
   input: ReactNode
@@ -27,6 +28,11 @@ export function DraftFieldEditor(props: DraftFieldEditorProps) {
         </button>
       </div>
       {props.input}
+      {props.feedback ? (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs text-zinc-400">
+          {props.feedback}
+        </div>
+      ) : null}
       {visibleOptions.length > 0 ? (
         <div className="grid gap-2">
           <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Options</div>
@@ -50,7 +56,10 @@ export function DraftFieldEditor(props: DraftFieldEditorProps) {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Option {index + 1}</span>
-                    {isSelected ? <span className="rounded-full border border-cyan-500/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100">Selected</span> : null}
+                    <div className="flex items-center gap-2">
+                      {index === 0 ? <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-300">Newest</span> : null}
+                      {isSelected ? <span className="rounded-full border border-cyan-500/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100">Selected</span> : null}
+                    </div>
                   </div>
                   <div className="line-clamp-4 leading-5">{option}</div>
                 </button>
