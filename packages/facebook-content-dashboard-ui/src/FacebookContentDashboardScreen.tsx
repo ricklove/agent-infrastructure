@@ -867,6 +867,7 @@ const FixtureDraftFieldEditor = observer(function FixtureDraftFieldEditor(props:
   const titleOptions = derived.state.ui.titleOptions
   const captionOptions = derived.state.ui.captionOptions
   const imageOptions = derived.state.ui.imageOptions
+  const resolvedImageOptions = imageOptions.map((option) => resolveMediaSource(option))
 
   return (
     <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
@@ -973,6 +974,7 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
   const titleOptions = derived.state.ui.titleOptions
   const captionOptions = derived.state.ui.captionOptions
   const imageOptions = derived.state.ui.imageOptions
+  const resolvedImageOptions = imageOptions.map((option) => resolveMediaSource(option))
 
   return (
     <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
@@ -986,7 +988,7 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
         caption={selectedDraft.captionPreview}
         captionOptions={captionOptions}
         imageValue={draftPreviewImage(selectedDraft, derived.ui.destinationPage ?? "Your page")}
-        imageOptions={imageOptions}
+        imageOptions={resolvedImageOptions}
         textProvider={derived.ui.textGenerationProvider}
         imageProvider={derived.ui.imageGenerationProvider}
         onTextProviderChange={(provider) => store.setTextGenerationProvider(provider)}
@@ -1396,6 +1398,7 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
   const titleOptions = state.ui.titleOptions
   const captionOptions = state.ui.captionOptions
   const imageOptions = state.ui.imageOptions
+  const resolvedImageOptions = imageOptions.map((option) => resolveMediaSource(option))
   const statusMessage = state.workflow.statusMessage
   const pendingGeneration = state.ui.pendingGeneration
   const titleFeedback = pendingGeneration === "title" || statusMessage?.toLowerCase().includes("title") ? statusMessage : null
@@ -1455,7 +1458,7 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 captionOptions={captionOptions}
                 captionFeedback={captionFeedback}
                 imageValue={draftPreviewImage(selectedDraft, ui.destinationPage ?? "Your page")}
-                imageOptions={imageOptions}
+                imageOptions={resolvedImageOptions}
                 imageFeedback={imageFeedback}
                 textProvider={ui.textGenerationProvider}
                 imageProvider={ui.imageGenerationProvider}
