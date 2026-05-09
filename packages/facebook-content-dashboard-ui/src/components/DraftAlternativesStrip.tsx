@@ -73,6 +73,13 @@ export function DraftAlternativesStrip(props: DraftAlternativesStripProps) {
               />
               <div className="line-clamp-4 text-sm leading-5 text-zinc-300">{draft.caption}</div>
             </button>
+            <button
+              type="button"
+              onClick={() => props.onSelectDraft(draft.id)}
+              className="inline-flex min-h-10 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
+            >
+              Use this draft
+            </button>
           </div>
         ))}
       </div>

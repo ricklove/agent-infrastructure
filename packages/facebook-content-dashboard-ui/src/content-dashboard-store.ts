@@ -708,7 +708,25 @@ export function createFacebookContentDashboardStore() {
     persistStateNow()
   }
 
-  function deleteDraftById(draftId: string) {
+  function selectActiveDraftTitleOption(title: string) {
+  updateActiveDraftTitle(title)
+  state$.workflow.statusMessage.set("Title option applied.")
+  persistStateNow()
+}
+
+function selectActiveDraftCaptionOption(captionPreview: string) {
+  updateActiveDraftCaption(captionPreview)
+  state$.workflow.statusMessage.set("Text option applied.")
+  persistStateNow()
+}
+
+function selectActiveDraftImageOption(previewMediaPath: string) {
+  updateActiveDraftPreviewMedia(previewMediaPath)
+  state$.workflow.statusMessage.set("Image option applied.")
+  persistStateNow()
+}
+
+function deleteDraftById(draftId: string) {
     const draft = state$.drafts.get().find((entry) => entry.id === draftId)
     if (!draft) {
       return
@@ -1109,6 +1127,9 @@ export function createFacebookContentDashboardStore() {
     deleteDraftById,
     selectSource,
     selectDraft,
+    selectActiveDraftTitleOption,
+    selectActiveDraftCaptionOption,
+    selectActiveDraftImageOption,
     generateDraftVariants,
     generateTextVariants,
     generateImageVariants,

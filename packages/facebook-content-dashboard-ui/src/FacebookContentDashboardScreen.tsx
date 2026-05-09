@@ -985,10 +985,10 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
         onTextProviderChange={(provider) => store.setTextGenerationProvider(provider)}
         onImageProviderChange={(provider) => store.setImageGenerationProvider(provider)}
         onTitleChange={(value) => store.updateActiveDraftTitle(value)}
-        onSelectTitle={(value) => store.updateActiveDraftTitle(value)}
+        onSelectTitle={(value) => store.selectActiveDraftTitleOption(value)}
         onCaptionChange={(value) => store.updateActiveDraftCaption(value)}
-        onSelectCaption={(value) => store.updateActiveDraftCaption(value)}
-        onSelectImage={(value) => store.updateActiveDraftPreviewMedia(value)}
+        onSelectCaption={(value) => store.selectActiveDraftCaptionOption(value)}
+        onSelectImage={(value) => store.selectActiveDraftImageOption(value)}
         onGenerateText={() => store.generateTextVariants()}
         onGenerateImage={() => store.generateImageVariants()}
         onGeneratePost={() => store.generateFullPost()}
@@ -1441,10 +1441,10 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 onTextProviderChange={(provider) => props.store.setTextGenerationProvider(provider)}
                 onImageProviderChange={(provider) => props.store.setImageGenerationProvider(provider)}
                 onTitleChange={(value) => props.store.updateActiveDraftTitle(value)}
-                onSelectTitle={(value) => props.store.updateActiveDraftTitle(value)}
+                onSelectTitle={(value) => props.store.selectActiveDraftTitleOption(value)}
                 onCaptionChange={(value) => props.store.updateActiveDraftCaption(value)}
-                onSelectCaption={(value) => props.store.updateActiveDraftCaption(value)}
-                onSelectImage={(value) => props.store.updateActiveDraftPreviewMedia(value)}
+                onSelectCaption={(value) => props.store.selectActiveDraftCaptionOption(value)}
+                onSelectImage={(value) => props.store.selectActiveDraftImageOption(value)}
                 onGenerateText={() => props.store.generateTextVariants()}
                 onGenerateImage={() => props.store.generateImageVariants()}
                 onGeneratePost={() => props.store.generateFullPost()}
