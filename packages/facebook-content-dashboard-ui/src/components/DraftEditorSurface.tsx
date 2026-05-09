@@ -41,7 +41,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
           <div className="truncate text-sm font-semibold text-zinc-100">{props.title}</div>
           <div className="mt-1 text-xs text-zinc-500">{props.subtitle}</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {props.generationTag ? (
             <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-500">
               set {props.generationTag}
@@ -57,6 +57,18 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
           >
             {props.draftSaved ? "saved" : "editing"}
           </div>
+          <button
+            type="button"
+            onClick={props.onSave}
+            className={[
+              "inline-flex min-w-[120px] items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition",
+              props.draftSaved
+                ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
+                : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
+            ].join(" ")}
+          >
+            {props.draftSaved ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
+          </button>
           <button
             type="button"
             onClick={props.onDeleteCurrentDraft}
@@ -155,20 +167,6 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={props.onSave}
-          className={[
-            "flex min-w-[140px] items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-semibold transition",
-            props.draftSaved
-              ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
-              : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
-          ].join(" ")}
-        >
-          {props.draftSaved ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
-        </button>
-      </div>
 
       {props.queuedMeta ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-100">
