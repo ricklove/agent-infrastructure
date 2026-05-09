@@ -8,6 +8,7 @@ import { DraftPostPreviewFrame } from "./components/DraftPostPreviewFrame"
 import { CompactSelectedSourceCardSurface, SelectedSourceCardSurface, SourcePostOptionCardSurface } from "./components/SourcePostCards"
 import { SourcePostPreviewFrame } from "./components/SourcePostPreviewFrame"
 import { createFacebookContentDashboardStore } from "./content-dashboard-store"
+import { drafts } from "./content-dashboard-data"
 import type { DraftRecord, SourcePostRecord } from "./content-dashboard-types"
 import {
   ChoiceCardSurface,
@@ -406,9 +407,19 @@ function debugScenarios(store: Store) {
       title: "Draft generation controls",
       scenarios: [
         {
+          slug: "empty-create",
+          title: "Empty create state",
+          render: () => <FixtureDraftGenerationControls mode="empty" />,
+        },
+        {
           slug: "mock-default",
           title: "Mock default",
           render: () => <FixtureDraftGenerationControls mode="mock" />,
+        },
+        {
+          slug: "mock-generated",
+          title: "Mock generated",
+          render: () => <FixtureDraftGenerationControls mode="mock-generated" />,
         },
         {
           slug: "codex-selected",
@@ -555,13 +566,27 @@ function createFixtureStore(
   const source = store.state$.sourcePosts
     .get()
     .find((post) => post.sourcePage === "Support Law Enforcement")
-  if (source) {
-    store.selectSource(source.id)
-  }
-  if (scenario === "draft-single") {
+  if (!source) {
     return store
   }
-  store.generateDraftVariants()
+
+  store.selectSource(source.id)
+  const seededDrafts = drafts.filter((draft) => draft.sourceId === source.id)
+
+  if (scenario === "draft-single") {
+    const singleDraft = seededDrafts[0]
+    if (singleDraft) {
+      store.state$.drafts.set([singleDraft])
+      store.state$.selection.activeDraftId.set(singleDraft.id)
+    }
+    return store
+  }
+
+  if (seededDrafts.length > 0) {
+    store.state$.drafts.set(seededDrafts)
+    store.state$.selection.activeDraftId.set(seededDrafts[0]?.id ?? "")
+  }
+
   if (scenario === "draft-saved") {
     store.saveActiveDraft()
   }
@@ -713,13 +738,34 @@ const FixtureDraftPostPreview = observer(function FixtureDraftPostPreview(props:
   )
 })
 
-const FixtureDraftGenerationControls = observer(function FixtureDraftGenerationControls(props: { mode: "mock" | "codex" }) {
-  const [store] = useState(() => createFixtureStore("draft-ideas"))
+const FixtureDraftGenerationControls = observer(function FixtureDraftGenerationControls(props: { mode: "empty" | "mock" | "mock-generated" | "codex" }) {
+  const [store] = useState(() =>
+    createFixtureStore(props.mode === "empty" ? "destination-posts" : "draft-ideas"),
+  )
   const reactiveFrame = observeContentCreationFrame(store)
-  if (props.mode === "codex") {
-    store.setTextGenerationProvider("codex")
-    store.setImageGenerationProvider("codex")
-  }
+
+  useEffect(() => {
+    if (props.mode === "codex") {
+      store.setTextGenerationProvider("codex")
+      store.setImageGenerationProvider("codex")
+      return
+    }
+
+    store.setTextGenerationProvider("mock")
+    store.setImageGenerationProvider("mock")
+
+    if (props.mode === "empty") {
+      store.state$.drafts.set([])
+      store.state$.selection.activeDraftId.set("")
+      store.state$.ui.savedDraftId.set(null)
+      return
+    }
+
+    if (props.mode === "mock-generated") {
+      void store.generateTextVariants()
+    }
+  }, [props.mode, store])
+
   const ui = store.state$.ui.get()
 
   return (
