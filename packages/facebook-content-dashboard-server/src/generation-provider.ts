@@ -122,10 +122,11 @@ export async function generateTextDrafts(
   if (request.provider === "mock") {
     await delay(900)
     const timestamp = Date.now()
+    const runTag = String(timestamp % 10000).padStart(4, "0")
     const captions = [
-      `[MOCK TEXT VARIANT 1] Rebuilt from the source into a community-support message for ${destinationPage}. ${source.adaptationRule}`,
-      `[MOCK TEXT VARIANT 2] THANK YOU TO THE PEOPLE WHO KEEP SHOWING UP. ${source.hook.toUpperCase()}`,
-      `[MOCK TEXT VARIANT 3] ${source.whyItWorked} This draft deliberately reframes the source into a more protective and story-led post for ${destinationPage}.`,
+      `[MOCK TEXT VARIANT 1 · ${runTag}] Rebuilt from "${source.title}" into a community-support message for ${destinationPage}. ${source.adaptationRule}`,
+      `[MOCK TEXT VARIANT 2 · ${runTag}] ${source.hook.toUpperCase()} THANK YOU TO THE PEOPLE WHO KEEP SHOWING UP.`,
+      `[MOCK TEXT VARIANT 3 · ${runTag}] ${source.whyItWorked} This draft deliberately reframes "${source.title}" into a more protective and story-led post for ${destinationPage}.`,
     ] as const
 
     return {
@@ -134,7 +135,7 @@ export async function generateTextDrafts(
         {
           id: `gen-${timestamp}-1`,
           sourceId: source.id,
-          title: `[MOCK] ${destinationPage} - Community support`,
+          title: `[MOCK ${runTag}] ${destinationPage} - ${source.pattern} support`,
           format: "image",
           stage: "draft",
           positioning: "Supportive, civic, family-safe",
@@ -144,7 +145,7 @@ export async function generateTextDrafts(
           tone: "warm, clear, civic",
           note: "Mock generation visibly transformed the source text.",
           previewMediaPath: buildMockImagePreview(
-            `[MOCK] ${destinationPage} - Community support`,
+            `[MOCK ${runTag}] ${destinationPage} - ${source.pattern} support`,
             captions[0],
             0,
             timestamp,
@@ -156,7 +157,7 @@ export async function generateTextDrafts(
         {
           id: `gen-${timestamp}-2`,
           sourceId: source.id,
-          title: `[MOCK] ${destinationPage} - Gratitude statement`,
+          title: `[MOCK ${runTag}] ${destinationPage} - ${source.angle} gratitude`,
           format: "quote",
           stage: "draft",
           positioning: "Short gratitude-led statement",
@@ -166,7 +167,7 @@ export async function generateTextDrafts(
           tone: "brief, respectful, declarative",
           note: "Mock generation converted the source into a loud gratitude-led variant.",
           previewMediaPath: buildMockImagePreview(
-            `[MOCK] ${destinationPage} - Gratitude statement`,
+            `[MOCK ${runTag}] ${destinationPage} - ${source.angle} gratitude`,
             captions[1],
             1,
             timestamp,
@@ -178,7 +179,7 @@ export async function generateTextDrafts(
         {
           id: `gen-${timestamp}-3`,
           sourceId: source.id,
-          title: `[MOCK] ${destinationPage} - Story-led perspective`,
+          title: `[MOCK ${runTag}] ${destinationPage} - story led from ${source.sourcePage}`,
           format: "story",
           stage: "draft",
           positioning: "Empathy and public-service framing",
@@ -188,7 +189,7 @@ export async function generateTextDrafts(
           tone: "protective, grounded, useful",
           note: "Mock generation widened the structure and visibly changed the source language.",
           previewMediaPath: buildMockImagePreview(
-            `[MOCK] ${destinationPage} - Story-led perspective`,
+            `[MOCK ${runTag}] ${destinationPage} - story led from ${source.sourcePage}`,
             captions[2],
             2,
             timestamp,
