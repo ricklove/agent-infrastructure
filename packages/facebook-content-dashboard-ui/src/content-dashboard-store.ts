@@ -50,6 +50,9 @@ export type FacebookContentDashboardStoreState = {
     knownPagesOpen: boolean
     sourceListExpanded: boolean
     draftEditorOpen: boolean
+    titleOptions: string[]
+    captionOptions: string[]
+    imageOptions: string[]
     textGenerationProvider: Exclude<AssetGenerationProvider, "seed">
     imageGenerationProvider: Exclude<AssetGenerationProvider, "seed">
   }
@@ -112,6 +115,34 @@ function parseScheduledUtc(value: string): number | null {
 
 function int(value: string): number {
   return Number.parseInt(value, 10)
+}
+
+function compactDraftTitleForOptions(draft: DraftRecord, source: SourcePostRecord | null): string {
+  if (!source) {
+    return draft.title
+  }
+  return draft.title.startsWith(source.title) ? draft.title : draft.title
+}
+
+function buildFieldOptions(
+  source: SourcePostRecord | null,
+  allSourcePosts: SourcePostRecord[],
+  sourceDrafts: DraftRecord[],
+  pageName: string,
+): { titleOptions: string[]; captionOptions: string[]; imageOptions: string[] } {
+  if (!source) {
+    return { titleOptions: [], captionOptions: [], imageOptions: [] }
+  }
+
+  const titleOptions = sourceDrafts.map((draft) => compactDraftTitleForOptions(draft, source))
+  const captionOptions = sourceDrafts.map((draft) => draft.captionPreview)
+  const imageOptions = [source.mediaPath, ...availableMediaPathsForSource(allSourcePosts, source), ...sourceDrafts.map((draft) => draft.previewMediaPath)].filter((value): value is string => Boolean(value))
+
+  return {
+    titleOptions,
+    captionOptions,
+    imageOptions,
+  }
 }
 
 function availableMediaPathsForSource(
@@ -209,6 +240,9 @@ export function createFacebookContentDashboardStore() {
       knownPagesOpen: false,
       sourceListExpanded: false,
       draftEditorOpen: false,
+      titleOptions: [],
+      captionOptions: [],
+      imageOptions: [],
       textGenerationProvider: "mock",
       imageGenerationProvider: "mock",
     },
@@ -257,6 +291,9 @@ export function createFacebookContentDashboardStore() {
       knownPagesOpen: false,
       sourceListExpanded: false,
       draftEditorOpen: false,
+      titleOptions: [],
+      captionOptions: [],
+      imageOptions: [],
       textGenerationProvider: "mock",
       imageGenerationProvider: "mock",
     })
@@ -345,6 +382,18 @@ export function createFacebookContentDashboardStore() {
     state$.ui.draftEditorOpen.set(false)
     state$.ui.savedDraftId.set(null)
 
+    const source = state$.sourcePosts.get().find((post) => post.id === sourceId) ?? null
+    const sourceDrafts = state$.drafts.get().filter((draft) => draft.sourceId === sourceId)
+    const fieldOptions = buildFieldOptions(
+      source,
+      state$.sourcePosts.get(),
+      sourceDrafts,
+      state$.scheduling.targetPage.get(),
+    )
+    state$.ui.titleOptions.set(fieldOptions.titleOptions)
+    state$.ui.captionOptions.set(fieldOptions.captionOptions)
+    state$.ui.imageOptions.set(fieldOptions.imageOptions)
+
     const existingDraft = preferredDraftForSource(state$.drafts.get(), sourceId)
     if (existingDraft) {
       state$.ui.savedDraftId.set(
@@ -370,6 +419,19 @@ export function createFacebookContentDashboardStore() {
     state$.ui.savedDraftId.set(
       selectedDraft && selectedDraft.stage !== "draft" ? draftId : null,
     )
+    if (selectedDraft) {
+      const source = state$.sourcePosts.get().find((post) => post.id === selectedDraft.sourceId) ?? null
+      const sourceDrafts = state$.drafts.get().filter((draft) => draft.sourceId === selectedDraft.sourceId)
+      const fieldOptions = buildFieldOptions(
+        source,
+        state$.sourcePosts.get(),
+        sourceDrafts,
+        state$.scheduling.targetPage.get(),
+      )
+      state$.ui.titleOptions.set(fieldOptions.titleOptions)
+      state$.ui.captionOptions.set(fieldOptions.captionOptions)
+      state$.ui.imageOptions.set(fieldOptions.imageOptions)
+    }
     state$.ui.draftEditorOpen.set(false)
     state$.workflow.activeStep.set("review")
     state$.workflow.statusMessage.set(
@@ -478,6 +540,15 @@ export function createFacebookContentDashboardStore() {
       .drafts.get()
       .filter((draft) => draft.sourceId !== source.id)
     state$.drafts.set([...generatedDrafts, ...remainingDrafts])
+    const fieldOptions = buildFieldOptions(
+      source,
+      state$.sourcePosts.get(),
+      generatedDrafts,
+      state$.scheduling.targetPage.get(),
+    )
+    state$.ui.titleOptions.set(fieldOptions.titleOptions)
+    state$.ui.captionOptions.set(fieldOptions.captionOptions)
+    state$.ui.imageOptions.set(fieldOptions.imageOptions)
     state$.selection.activeDraftId.set(generatedDrafts[0]?.id ?? "")
     state$.ui.savedDraftId.set(null)
     state$.ui.draftEditorOpen.set(false)
@@ -507,27 +578,36 @@ export function createFacebookContentDashboardStore() {
     if (provider === "mock") {
       const stamp = Date.now()
       let draftIndex = 0
-      state$.drafts.set(
-        state$.drafts.get().map((draft): DraftRecord => {
-          if (draft.id !== activeDraftId) {
-            return draft
-          }
+      const nextDrafts = state$.drafts.get().map((draft): DraftRecord => {
+        if (draft.id !== activeDraftId) {
+          return draft
+        }
 
-          const nextPreview = buildMockImagePreview(
-            source,
-            draft.captionPreview,
-            draftIndex,
-            stamp,
-          )
-          draftIndex += 1
-          return {
-            ...draft,
-            previewMediaPath: nextPreview,
-            imageProvider: "mock",
-            note: "Mock image generation applied a visible preview transformation.",
-          }
-        }),
+        const nextPreview = buildMockImagePreview(
+          source,
+          draft.captionPreview,
+          draftIndex,
+          stamp,
+        )
+        draftIndex += 1
+        return {
+          ...draft,
+          previewMediaPath: nextPreview,
+          imageProvider: "mock",
+          note: "Mock image generation applied a visible preview transformation.",
+        }
+      })
+      state$.drafts.set(nextDrafts)
+      const sourceDrafts = nextDrafts.filter((draft) => draft.sourceId === source.id)
+      const fieldOptions = buildFieldOptions(
+        source,
+        state$.sourcePosts.get(),
+        sourceDrafts,
+        state$.scheduling.targetPage.get(),
       )
+      state$.ui.titleOptions.set(fieldOptions.titleOptions)
+      state$.ui.captionOptions.set(fieldOptions.captionOptions)
+      state$.ui.imageOptions.set(fieldOptions.imageOptions)
       state$.ui.savedDraftId.set(null)
       state$.workflow.activeStep.set("create")
       state$.workflow.statusMessage.set("Generated a fresh set of mock image transformations.")
@@ -547,18 +627,27 @@ export function createFacebookContentDashboardStore() {
         sourcePost: source,
         draft: activeDraft,
       })
-      state$.drafts.set(
-        state$.drafts.get().map((draft): DraftRecord =>
-          draft.id === activeDraftId
-            ? {
-                ...draft,
-                previewMediaPath: generated.previewMediaPath ?? draft.previewMediaPath,
-                imageProvider: generated.imageProvider ?? provider,
-                note: generated.note ?? draft.note,
-              }
-            : draft,
-        ),
+      const nextDrafts = state$.drafts.get().map((draft): DraftRecord =>
+        draft.id === activeDraftId
+          ? {
+              ...draft,
+              previewMediaPath: generated.previewMediaPath ?? draft.previewMediaPath,
+              imageProvider: generated.imageProvider ?? provider,
+              note: generated.note ?? draft.note,
+            }
+          : draft,
       )
+      state$.drafts.set(nextDrafts)
+      const sourceDrafts = nextDrafts.filter((draft) => draft.sourceId === source.id)
+      const fieldOptions = buildFieldOptions(
+        source,
+        state$.sourcePosts.get(),
+        sourceDrafts,
+        state$.scheduling.targetPage.get(),
+      )
+      state$.ui.titleOptions.set(fieldOptions.titleOptions)
+      state$.ui.captionOptions.set(fieldOptions.captionOptions)
+      state$.ui.imageOptions.set(fieldOptions.imageOptions)
       state$.ui.savedDraftId.set(null)
       state$.workflow.activeStep.set("create")
       state$.workflow.statusMessage.set("Generated a fresh Codex image.")
@@ -611,6 +700,17 @@ export function createFacebookContentDashboardStore() {
 
     const remainingDrafts = state$.drafts.get().filter((entry) => entry.id !== draftId)
     state$.drafts.set(remainingDrafts)
+    const source = state$.sourcePosts.get().find((post) => post.id === draft.sourceId) ?? null
+    const sourceDrafts = remainingDrafts.filter((entry) => entry.sourceId === draft.sourceId)
+    const fieldOptions = buildFieldOptions(
+      source,
+      state$.sourcePosts.get(),
+      sourceDrafts,
+      state$.scheduling.targetPage.get(),
+    )
+    state$.ui.titleOptions.set(fieldOptions.titleOptions)
+    state$.ui.captionOptions.set(fieldOptions.captionOptions)
+    state$.ui.imageOptions.set(fieldOptions.imageOptions)
     const nextDraft = preferredDraftForSource(remainingDrafts, draft.sourceId)
     state$.selection.activeDraftId.set(nextDraft?.id ?? "")
     state$.ui.savedDraftId.set(nextDraft?.stage && nextDraft.stage !== "draft" ? nextDraft.id : null)

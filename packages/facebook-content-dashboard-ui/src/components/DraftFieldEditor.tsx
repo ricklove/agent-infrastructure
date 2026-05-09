@@ -12,7 +12,7 @@ type DraftFieldEditorProps = {
 }
 
 export function DraftFieldEditor(props: DraftFieldEditorProps) {
-  const uniqueOptions = [...new Set(props.options.filter(Boolean))]
+  const visibleOptions = props.options.filter(Boolean)
   return (
     <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -27,18 +27,18 @@ export function DraftFieldEditor(props: DraftFieldEditorProps) {
         </button>
       </div>
       {props.input}
-      {uniqueOptions.length > 0 ? (
+      {visibleOptions.length > 0 ? (
         <div className="grid gap-2">
           <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Options</div>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {uniqueOptions.map((option) => {
+            {visibleOptions.map((option, index) => {
               const isSelected = option === props.value
               const onSelect = () => props.onSelectOption(option)
               return props.renderOption ? (
-                <div key={option}>{props.renderOption(option, isSelected, onSelect, uniqueOptions.indexOf(option))}</div>
+                <div key={`${index}-${option}`}>{props.renderOption(option, isSelected, onSelect, index)}</div>
               ) : (
                 <button
-                  key={option}
+                  key={`${index}-${option}`}
                   type="button"
                   onClick={onSelect}
                   className={[

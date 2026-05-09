@@ -816,9 +816,9 @@ const FixtureDraftFieldEditor = observer(function FixtureDraftFieldEditor(props:
     return null
   }
 
-  const titleOptions = derived.draftsForSelectedSource.map((draft) => compactDraftTitle(draft, selectedSource))
-  const captionOptions = derived.draftsForSelectedSource.map((draft) => draft.captionPreview)
-  const imageOptions = availableImageOptions(selectedSource, derived.state.sourcePosts, derived.draftsForSelectedSource, derived.ui.destinationPage ?? "Your page")
+  const titleOptions = derived.state.ui.titleOptions
+  const captionOptions = derived.state.ui.captionOptions
+  const imageOptions = derived.state.ui.imageOptions
 
   return (
     <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
@@ -922,9 +922,9 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
     props.mode !== "editing" ||
     derived.ui.savedDraftId === selectedDraft.id ||
     (selectedDraft.generatedKind !== "seed" && selectedDraft.stage !== "draft")
-  const titleOptions = derived.draftsForSelectedSource.map((draft) => compactDraftTitle(draft, selectedSource))
-  const captionOptions = derived.draftsForSelectedSource.map((draft) => draft.captionPreview)
-  const imageOptions = availableImageOptions(selectedSource, derived.state.sourcePosts, derived.draftsForSelectedSource, derived.ui.destinationPage ?? "Your page")
+  const titleOptions = derived.state.ui.titleOptions
+  const captionOptions = derived.state.ui.captionOptions
+  const imageOptions = derived.state.ui.imageOptions
 
   return (
     <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
@@ -1340,9 +1340,9 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
       )
     : undefined
   const generationTag = selectedDraft?.id.match(/gen-(\d+)-/)?.[1]?.slice(-4) ?? null
-  const titleOptions = draftsForSelectedSource.map((draft) => compactDraftTitle(draft, selectedSource))
-  const captionOptions = draftsForSelectedSource.map((draft) => draft.captionPreview)
-  const imageOptions = availableImageOptions(selectedSource, state.sourcePosts, draftsForSelectedSource, ui.destinationPage ?? "Your page")
+  const titleOptions = state.ui.titleOptions
+  const captionOptions = state.ui.captionOptions
+  const imageOptions = state.ui.imageOptions
 
   return (
     <div className="flex min-w-0 flex-col gap-4 items-start">
