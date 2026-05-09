@@ -211,30 +211,30 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
       ) : null}
 
       {isMediumDesktop && !isWideDesktop ? (
-        <div className="grid min-h-0 flex-1 items-start" style={{ gridTemplateColumns: "300px minmax(0, 1fr) 380px", gap: "1rem" }}>
-          <div className="sticky top-[76px] flex max-h-[calc(100vh-96px)] flex-col gap-4 overflow-y-auto pr-1">
+        <div className="grid h-[calc(100vh-96px)] min-h-0 flex-1 items-stretch" style={{ gridTemplateColumns: "300px minmax(0, 1fr) 380px", gap: "1rem" }}>
+          <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1">
             <DestinationPanel store={props.store} derived={derived} />
             <SourcePanel store={props.store} derived={derived} />
           </div>
-          <div className="min-h-0 min-w-0 max-h-[calc(100vh-96px)] overflow-y-auto pr-1">
+          <div className="min-h-0 h-full min-w-0 overflow-y-auto pr-1">
             <DraftPanel store={props.store} derived={derived} showInlineSchedule showInlinePreview={false} />
           </div>
-          <div className="sticky top-[76px] min-h-0 max-h-[calc(100vh-96px)] min-w-0 overflow-y-auto pr-1">
+          <div className="min-h-0 h-full min-w-0 overflow-y-auto pr-1">
             <PreviewRail draft={selectedDraft} pageName={state.ui.destinationPage ?? "Your page"} />
           </div>
         </div>
       ) : null}
 
       {isWideDesktop ? (
-        <div className="grid min-h-0 flex-1 items-start" style={{ gridTemplateColumns: "320px minmax(0, 760px) 420px", gap: "1.25rem" }}>
-          <div className="sticky top-[76px] flex max-h-[calc(100vh-96px)] flex-col gap-4 overflow-y-auto pr-1">
+        <div className="grid h-[calc(100vh-96px)] min-h-0 flex-1 items-stretch" style={{ gridTemplateColumns: "320px minmax(0, 760px) 420px", gap: "1.25rem" }}>
+          <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1">
             <DestinationPanel store={props.store} derived={derived} />
             <SourcePanel store={props.store} derived={derived} />
           </div>
-          <div className="min-w-0">
+          <div className="min-h-0 h-full min-w-0 overflow-y-auto pr-1">
             <DraftPanel store={props.store} derived={derived} showInlinePreview={false} />
           </div>
-          <div className="sticky top-[76px] min-h-0 max-h-[calc(100vh-96px)] min-w-0 space-y-4 overflow-y-auto pr-1">
+          <div className="min-h-0 h-full min-w-0 space-y-4 overflow-y-auto pr-1">
             <PreviewRail draft={selectedDraft} pageName={state.ui.destinationPage ?? "Your page"} />
             {showScheduleRail ? <SchedulePanel store={props.store} derived={derived} /> : null}
           </div>
