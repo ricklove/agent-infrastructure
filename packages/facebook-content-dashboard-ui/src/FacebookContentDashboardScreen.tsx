@@ -120,6 +120,21 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
       ),
   )
   const mobileStage = state.ui.sourcePickerOpen || !hasSelectedSource ? "browse" : "draft"
+  const selectedDraft = derived.selectedDraft
+  const selectedSource = derived.selectedSource
+  const draftSaved = Boolean(
+    selectedDraft &&
+      (state.ui.savedDraftId === selectedDraft.id ||
+        (selectedDraft.generatedKind !== "seed" && selectedDraft.stage !== "draft")),
+  )
+  const queuedPost = selectedDraft
+    ? state.scheduledPosts.find(
+        (post) =>
+          post.creative === selectedDraft.title &&
+          post.pageName === state.scheduling.targetPage &&
+          post.stage === "scheduled",
+      )
+    : undefined
 
   return (
     <PageShell title="Content Creation">
@@ -134,21 +149,48 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
             </div>
           ) : (
             <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <IconButton label="Back" onClick={() => props.store.reopenSourceList()}>
+              <div className="sticky top-[56px] z-10 grid gap-3 rounded-xl border border-zinc-800 bg-zinc-950/95 px-3 py-3 backdrop-blur">
+                <div className="flex items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => props.store.reopenSourceList()}
+                    className="inline-flex min-w-[92px] items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
+                  >
                     <BackIcon />
-                  </IconButton>
-                  {state.ui.destinationPage ? (
-                    <div className="min-w-0 text-sm font-medium text-zinc-300">{state.ui.destinationPage}</div>
-                  ) : null}
+                    <span>Back</span>
+                  </button>
+                  <div className="min-w-0 text-right">
+                    {state.ui.destinationPage ? (
+                      <div className="truncate text-sm font-medium text-zinc-200">{state.ui.destinationPage}</div>
+                    ) : null}
+                    {selectedSource ? (
+                      <div className="truncate text-xs text-zinc-500">{selectedSource.sourcePage} · {formatCompactFeedDate(selectedSource.publishDate)}</div>
+                    ) : null}
+                  </div>
                 </div>
-                {derived.selectedSource ? (
-                  <div className="truncate text-xs text-zinc-500">{derived.selectedSource.sourcePage}</div>
+                {selectedDraft ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => props.store.saveActiveDraft(selectedDraft.id)}
+                      className={[
+                        "inline-flex min-w-[132px] items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition",
+                        draftSaved
+                          ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
+                          : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
+                      ].join(" ")}
+                    >
+                      {draftSaved ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
+                    </button>
+                    {queuedPost ? (
+                      <div className="inline-flex min-w-[132px] items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-sm font-semibold text-emerald-100">
+                        Queued
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
-              <DraftPanel store={props.store} derived={derived} />
-              <SchedulePanel store={props.store} derived={derived} />
+              <DraftPanel store={props.store} derived={derived} showInlineSchedule />
             </div>
           )}
         </div>
@@ -161,8 +203,7 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
             <SourcePanel store={props.store} derived={derived} />
           </div>
           <div className="min-w-0 flex flex-col gap-4">
-            <DraftPanel store={props.store} derived={derived} />
-            <SchedulePanel store={props.store} derived={derived} />
+            <DraftPanel store={props.store} derived={derived} showInlineSchedule />
           </div>
         </div>
       ) : null}
@@ -1314,7 +1355,7 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
   )
 }
 
-function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived> }) {
+function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived>; showInlineSchedule?: boolean }) {
   const { selectedSource, draftsForSelectedSource, selectedDraft, ui, state } = props.derived
   if (!selectedSource) {
     return <Section className="min-h-[240px]" />
@@ -1408,6 +1449,7 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 preview={<DraftCardPreview draft={selectedDraft} pageName={ui.destinationPage ?? "Your page"} expanded />}
                 queuedMeta={queuedPost ? `${queuedPost.pageName} · ${queuedPost.scheduledFor}` : null}
               />
+              {props.showInlineSchedule ? <SchedulePanel store={props.store} derived={props.derived} /> : null}
               <DraftAlternativesStrip
                 generationTag={generationTag}
                 alternatives={alternativeDrafts.map((draft) => ({
