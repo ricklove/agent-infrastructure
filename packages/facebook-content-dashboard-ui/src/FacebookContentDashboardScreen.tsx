@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { fetchContentDashboardSnapshot } from "./content-dashboard-client"
 import { DraftAlternativesStrip } from "./components/DraftAlternativesStrip"
 import { DraftEditorSurface } from "./components/DraftEditorSurface"
+import { SourcePostPreviewFrame } from "./components/SourcePostPreviewFrame"
 import { createFacebookContentDashboardStore } from "./content-dashboard-store"
 import type { DraftRecord, SourcePostRecord } from "./content-dashboard-types"
 
@@ -299,6 +300,22 @@ function debugScenarios(store: Store) {
       ],
     },
     {
+      slug: "source-post-preview",
+      title: "Source post preview",
+      scenarios: [
+        {
+          slug: "destination-winner",
+          title: "Destination winner",
+          render: () => <FixtureSourcePostPreview mode="destination" />,
+        },
+        {
+          slug: "outside-winner",
+          title: "Outside winner",
+          render: () => <FixtureSourcePostPreview mode="outside" />,
+        },
+      ],
+    },
+    {
       slug: "draft-ideas-panel",
       title: "Draft ideas panel",
       scenarios: [
@@ -483,6 +500,23 @@ const FixtureOutsidePages = observer(function FixtureOutsidePages(props: { mode:
   const reactiveFrame = observeContentCreationFrame(store)
   const derived = useDerived(store.state$.get())
   return <div data-reactive-frame={reactiveFrame}><SourcePanel store={store} derived={derived} /></div>
+})
+
+const FixtureSourcePostPreview = observer(function FixtureSourcePostPreview(props: { mode: "destination" | "outside" }) {
+  const [store] = useState(() =>
+    createFixtureStore(props.mode === "outside" ? "outside-posts" : "destination-posts"),
+  )
+  const reactiveFrame = observeContentCreationFrame(store)
+  const derived = useDerived(store.state$.get())
+  const post = props.mode === "outside" ? derived.visibleSourcePosts[0] : derived.destinationPosts[0]
+  if (!post) {
+    return null
+  }
+  return (
+    <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
+      <SourcePostPreview post={post} />
+    </div>
+  )
 })
 
 const FixtureDestinationPosts = observer(function FixtureDestinationPosts(props: { mode: "destination" | "destination-expanded" | "outside" }) {
@@ -1334,64 +1368,19 @@ function PostCard(props: { post: SourcePostRecord; active: boolean; onClick: () 
 }
 
 function SourcePostPreview(props: { post: SourcePostRecord }) {
-  const previewImage = sourcePostPreviewImage(props.post)
-  const previewText = sourcePostPrimaryText(props.post)
-  const previewLink = sourcePostSecondaryText(props.post)
   return (
-    <div className="mb-3 w-full max-w-[680px] overflow-hidden rounded-[18px] border border-slate-300 bg-slate-100 shadow-[0_8px_24px_rgba(15,23,42,0.18)]">
-      <div className="flex items-center justify-between border-b border-slate-300 bg-white px-4 py-3">
-        <div className="w-8" />
-        <div className="text-[18px] font-semibold text-slate-900">{props.post.sourcePage}'s Post</div>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[#1877f2] text-[22px] leading-none text-[#1877f2]">×</div>
-      </div>
-      <div className="bg-white">
-      <div className="flex items-start gap-3 px-3 py-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877f2] text-sm font-semibold text-white">
-          {pageInitials(props.post.sourcePage)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[16px] font-semibold text-slate-900">
-            {props.post.sourcePage}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1 text-[12px] text-slate-500">
-            <span>{formatFacebookDate(props.post.publishDate)}</span>
-            <span>·</span>
-            <span>Shared with Public</span>
-          </div>
-        </div>
-      </div>
-      <div className="px-3 pb-3">
-        <div className="line-clamp-4 whitespace-pre-wrap text-[15px] leading-5 text-slate-900">
-          {previewText}
-        </div>
-        {previewLink ? (
-          <div className="mt-2 truncate text-[12px] text-slate-500">{previewLink}</div>
-        ) : null}
-      </div>
-      <div className="overflow-hidden border-y border-slate-200 bg-black">
-        <img
-          src={previewImage}
-          alt={props.post.title}
-          className="block aspect-[4/5] w-full object-contain"
-        />
-      </div>
-      <div className="flex items-center justify-between gap-3 px-3 py-2 text-[13px] text-slate-500">
-        <div className="flex items-center gap-2">
-          <div className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold text-white">👍</div>
-          <span>{formatCompactCount(props.post.likes)}</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span>{formatCompactCount(props.post.comments)} comments</span>
-          <span>{formatCompactCount(props.post.shares)} shares</span>
-        </div>
-      </div>
-      <div className="grid grid-cols-3 border-t border-slate-200 text-[14px] font-medium text-slate-500">
-        <div className="flex items-center justify-center gap-2 px-3 py-2.5">👍 <span>Like</span></div>
-        <div className="flex items-center justify-center gap-2 border-l border-slate-200 px-3 py-2.5">💬 <span>Comment</span></div>
-        <div className="flex items-center justify-center gap-2 border-l border-slate-200 px-3 py-2.5">↗ <span>Share</span></div>
-      </div>
-      </div>
-    </div>
+    <SourcePostPreviewFrame
+      sourcePage={props.post.sourcePage}
+      publishDateLabel={formatFacebookDate(props.post.publishDate)}
+      previewText={sourcePostPrimaryText(props.post)}
+      previewLink={sourcePostSecondaryText(props.post)}
+      previewImage={sourcePostPreviewImage(props.post)}
+      title={props.post.title}
+      pageInitials={pageInitials(props.post.sourcePage)}
+      likesLabel={formatCompactCount(props.post.likes)}
+      commentsLabel={formatCompactCount(props.post.comments)}
+      sharesLabel={formatCompactCount(props.post.shares)}
+    />
   )
 }
 
