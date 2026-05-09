@@ -174,6 +174,13 @@ function availableMediaPathsForSource(
   return [...unique]
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function mergeOptionLists(current: string[], next: string[]): string[] {
+  return uniqueStrings([...next, ...current])
+}
 
 function escapeSvgText(value: string): string {
   return value
@@ -552,14 +559,18 @@ export function createFacebookContentDashboardStore() {
       return
     }
 
+    const existingSourceDrafts = state$
+      .drafts.get()
+      .filter((draft) => draft.sourceId === source.id)
     const remainingDrafts = state$
       .drafts.get()
       .filter((draft) => draft.sourceId !== source.id)
-    state$.drafts.set([...generatedDrafts, ...remainingDrafts])
+    const nextSourceDrafts = [...generatedDrafts, ...existingSourceDrafts]
+    state$.drafts.set([...nextSourceDrafts, ...remainingDrafts])
     const fieldOptions = buildFieldOptions(
       source,
       state$.sourcePosts.get(),
-      generatedDrafts,
+      nextSourceDrafts,
       state$.scheduling.targetPage.get(),
     )
     state$.ui.titleOptions.set(fieldOptions.titleOptions)
@@ -592,6 +603,7 @@ export function createFacebookContentDashboardStore() {
     const provider = state$.ui.imageGenerationProvider.get()
 
     if (provider === "mock") {
+      await delay(900)
       const stamp = Date.now()
       let draftIndex = 0
       const nextDrafts = state$.drafts.get().map((draft): DraftRecord => {
@@ -615,6 +627,7 @@ export function createFacebookContentDashboardStore() {
       })
       state$.drafts.set(nextDrafts)
       const sourceDrafts = nextDrafts.filter((draft) => draft.sourceId === source.id)
+      const previousImageOptions = state$.ui.imageOptions.get()
       const fieldOptions = buildFieldOptions(
         source,
         state$.sourcePosts.get(),
@@ -623,7 +636,9 @@ export function createFacebookContentDashboardStore() {
       )
       state$.ui.titleOptions.set(fieldOptions.titleOptions)
       state$.ui.captionOptions.set(fieldOptions.captionOptions)
-      state$.ui.imageOptions.set(fieldOptions.imageOptions)
+      state$.ui.imageOptions.set(
+        mergeOptionLists(previousImageOptions, fieldOptions.imageOptions),
+      )
       state$.ui.savedDraftId.set(null)
       state$.workflow.activeStep.set("create")
       state$.workflow.statusMessage.set("Generated a fresh set of mock image transformations.")
@@ -655,6 +670,7 @@ export function createFacebookContentDashboardStore() {
       )
       state$.drafts.set(nextDrafts)
       const sourceDrafts = nextDrafts.filter((draft) => draft.sourceId === source.id)
+      const previousImageOptions = state$.ui.imageOptions.get()
       const fieldOptions = buildFieldOptions(
         source,
         state$.sourcePosts.get(),
@@ -663,7 +679,9 @@ export function createFacebookContentDashboardStore() {
       )
       state$.ui.titleOptions.set(fieldOptions.titleOptions)
       state$.ui.captionOptions.set(fieldOptions.captionOptions)
-      state$.ui.imageOptions.set(fieldOptions.imageOptions)
+      state$.ui.imageOptions.set(
+        mergeOptionLists(previousImageOptions, fieldOptions.imageOptions),
+      )
       state$.ui.savedDraftId.set(null)
       state$.workflow.activeStep.set("create")
       state$.workflow.statusMessage.set("Generated a fresh Codex image.")
@@ -709,24 +727,24 @@ export function createFacebookContentDashboardStore() {
   }
 
   function selectActiveDraftTitleOption(title: string) {
-  updateActiveDraftTitle(title)
-  state$.workflow.statusMessage.set("Title option applied.")
-  persistStateNow()
-}
+    updateActiveDraftTitle(title)
+    state$.workflow.statusMessage.set("Title option applied.")
+    persistStateNow()
+  }
 
-function selectActiveDraftCaptionOption(captionPreview: string) {
-  updateActiveDraftCaption(captionPreview)
-  state$.workflow.statusMessage.set("Text option applied.")
-  persistStateNow()
-}
+  function selectActiveDraftCaptionOption(captionPreview: string) {
+    updateActiveDraftCaption(captionPreview)
+    state$.workflow.statusMessage.set("Text option applied.")
+    persistStateNow()
+  }
 
-function selectActiveDraftImageOption(previewMediaPath: string) {
-  updateActiveDraftPreviewMedia(previewMediaPath)
-  state$.workflow.statusMessage.set("Image option applied.")
-  persistStateNow()
-}
+  function selectActiveDraftImageOption(previewMediaPath: string) {
+    updateActiveDraftPreviewMedia(previewMediaPath)
+    state$.workflow.statusMessage.set("Image option applied.")
+    persistStateNow()
+  }
 
-function deleteDraftById(draftId: string) {
+  function deleteDraftById(draftId: string) {
     const draft = state$.drafts.get().find((entry) => entry.id === draftId)
     if (!draft) {
       return

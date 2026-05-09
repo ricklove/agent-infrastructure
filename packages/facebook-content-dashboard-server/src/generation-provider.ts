@@ -10,6 +10,10 @@ import type {
 
 const outputRoot = "/home/ec2-user/workspace/tmp/content-creation-generated"
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function requireOpenAiKey(): string {
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) {
@@ -116,6 +120,7 @@ export async function generateTextDrafts(
   const destinationPage = request.destinationPage?.trim() || "Your page"
 
   if (request.provider === "mock") {
+    await delay(900)
     const timestamp = Date.now()
     const captions = [
       `[MOCK TEXT VARIANT 1] Rebuilt from the source into a community-support message for ${destinationPage}. ${source.adaptationRule}`,
