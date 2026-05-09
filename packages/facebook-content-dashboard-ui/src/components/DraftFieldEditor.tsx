@@ -5,6 +5,7 @@ type DraftFieldEditorProps = {
   value: string
   onGenerate: () => void
   generateLabel: string
+  isGenerating?: boolean
   feedback?: string | null
   options: string[]
   onSelectOption: (value: string) => void
@@ -21,9 +22,10 @@ export function DraftFieldEditor(props: DraftFieldEditorProps) {
         <button
           type="button"
           onClick={props.onGenerate}
-          className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
+          disabled={props.isGenerating}
+          className={["inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-sm font-medium text-zinc-100 transition", props.isGenerating ? "cursor-wait opacity-70" : "hover:border-zinc-600"].join(" ")}
         >
-          <SparklesIcon />
+          {props.isGenerating ? <SpinnerIcon /> : <SparklesIcon />}
           <span>{props.generateLabel}</span>
         </button>
       </div>
@@ -35,7 +37,7 @@ export function DraftFieldEditor(props: DraftFieldEditorProps) {
       ) : null}
       {visibleOptions.length > 0 ? (
         <div className="grid gap-2">
-          <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Options</div>
+          <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.14em] text-zinc-500"><span>Options</span>{props.isGenerating ? <span className="text-cyan-300">Generating…</span> : null}</div>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {visibleOptions.map((option, index) => {
               const isSelected = option === props.value
@@ -77,6 +79,14 @@ function SparklesIcon() {
     <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
       <path d="M10 2.5 11.6 6.4 15.5 8 11.6 9.6 10 13.5 8.4 9.6 4.5 8 8.4 6.4 10 2.5Z" />
       <path d="M14.8 12.8 15.6 14.7 17.5 15.5 15.6 16.3 14.8 18.2 14 16.3 12.1 15.5 14 14.7 14.8 12.8Z" />
+    </svg>
+  )
+}
+
+function SpinnerIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="size-4 animate-spin" stroke="currentColor" strokeWidth="1.8">
+      <path d="M10 3a7 7 0 1 0 7 7" strokeLinecap="round" />
     </svg>
   )
 }

@@ -8,6 +8,8 @@ type DraftGenerationControlsProps = {
   onGeneratePost: () => void
   onResetImage: () => void
   generatePostLabel?: string
+  isGeneratingPost?: boolean
+  isBusy?: boolean
 }
 
 const providerOptions = [
@@ -26,9 +28,10 @@ export function DraftGenerationControls(props: DraftGenerationControlsProps) {
           type="button"
           onClick={props.onGeneratePost}
           title="Generate full post"
-          className="inline-flex items-center gap-2 rounded-lg border border-cyan-700/40 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:border-cyan-600/50"
+          disabled={props.isBusy}
+          className={["inline-flex items-center gap-2 rounded-lg border border-cyan-700/40 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-100 transition", props.isBusy ? "cursor-wait opacity-70" : "hover:border-cyan-600/50"].join(" ")}
         >
-          <SparklesIcon />
+          {props.isGeneratingPost ? <SpinnerIcon /> : <SparklesIcon />}
           <span>{props.generatePostLabel ?? "Generate full post"}</span>
         </button>
       </div>
@@ -39,6 +42,7 @@ export function DraftGenerationControls(props: DraftGenerationControlsProps) {
           </div>
           <select
             value={props.textProvider}
+            disabled={props.isBusy}
             onChange={(event) =>
               props.onTextProviderChange(
                 event.target.value as Exclude<AssetGenerationProvider, "seed">,
@@ -61,6 +65,7 @@ export function DraftGenerationControls(props: DraftGenerationControlsProps) {
           <div className="flex items-center gap-2">
             <select
               value={props.imageProvider}
+              disabled={props.isBusy}
               onChange={(event) =>
                 props.onImageProviderChange(
                   event.target.value as Exclude<AssetGenerationProvider, "seed">,
@@ -78,7 +83,8 @@ export function DraftGenerationControls(props: DraftGenerationControlsProps) {
               type="button"
               onClick={props.onResetImage}
               title="Reset image"
-              className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-zinc-700"
+              disabled={props.isBusy}
+              className={["inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-zinc-300 transition", props.isBusy ? "cursor-not-allowed opacity-60" : "hover:border-zinc-700"].join(" ")}
             >
               <ResetIcon />
               <span>Reset</span>
@@ -106,6 +112,14 @@ function ResetIcon() {
       <path d="M16 14.5h-4v-4" />
       <path d="M6.5 13.5A5 5 0 0 0 15 10" />
       <path d="M13.5 6.5A5 5 0 0 0 5 10" />
+    </svg>
+  )
+}
+
+function SpinnerIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="size-4 animate-spin" stroke="currentColor" strokeWidth="1.8">
+      <path d="M10 3a7 7 0 1 0 7 7" strokeLinecap="round" />
     </svg>
   )
 }

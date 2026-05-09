@@ -294,6 +294,7 @@ export async function generateImageDraft(
   const destinationPage = request.destinationPage?.trim() || "Your page"
 
   if (request.provider === "mock") {
+    await delay(1400)
     const timestamp = Date.now()
     const imageIndex = Math.abs(
       request.draft.id

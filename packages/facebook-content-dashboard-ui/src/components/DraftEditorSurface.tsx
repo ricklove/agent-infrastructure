@@ -20,6 +20,7 @@ type DraftEditorSurfaceProps = {
   imageFeedback?: string | null
   textProvider: Exclude<AssetGenerationProvider, "seed">
   imageProvider: Exclude<AssetGenerationProvider, "seed">
+  pendingGeneration?: null | "post" | "title" | "text" | "image"
   onTextProviderChange: (provider: Exclude<AssetGenerationProvider, "seed">) => void
   onImageProviderChange: (provider: Exclude<AssetGenerationProvider, "seed">) => void
   onTitleChange: (value: string) => void
@@ -82,14 +83,17 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         onImageProviderChange={props.onImageProviderChange}
         onGeneratePost={props.onGeneratePost}
         onResetImage={props.onResetImage}
-        generatePostLabel={props.statusMessage?.includes("Generating a full") ? "Generating full post…" : "Generate full post"}
+        generatePostLabel={props.pendingGeneration === "post" ? "Generating full post…" : "Generate full post"}
+        isGeneratingPost={props.pendingGeneration === "post"}
+        isBusy={Boolean(props.pendingGeneration)}
       />
 
       <DraftFieldEditor
         label="Title"
         value={props.titleValue}
         onGenerate={props.onGenerateTitle}
-        generateLabel="Generate titles"
+        generateLabel={props.pendingGeneration === "title" ? "Generating titles…" : "Generate titles"}
+        isGenerating={props.pendingGeneration === "title"}
         feedback={props.titleFeedback}
         options={props.titleOptions}
         onSelectOption={props.onSelectTitle}
@@ -106,7 +110,8 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         label="Post Text"
         value={props.caption}
         onGenerate={props.onGenerateCaption}
-        generateLabel="Generate text"
+        generateLabel={props.pendingGeneration === "text" ? "Generating text…" : "Generate text"}
+        isGenerating={props.pendingGeneration === "text"}
         feedback={props.captionFeedback}
         options={props.captionOptions}
         onSelectOption={props.onSelectCaption}
@@ -123,7 +128,8 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         label="Image"
         value={props.imageValue}
         onGenerate={props.onGenerateImage}
-        generateLabel="Generate image"
+        generateLabel={props.pendingGeneration === "image" ? "Generating image…" : "Generate image"}
+        isGenerating={props.pendingGeneration === "image"}
         feedback={props.imageFeedback}
         options={props.imageOptions}
         onSelectOption={props.onSelectImage}

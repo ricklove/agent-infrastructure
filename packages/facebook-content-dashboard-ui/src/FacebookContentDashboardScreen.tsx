@@ -1397,9 +1397,10 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
   const captionOptions = state.ui.captionOptions
   const imageOptions = state.ui.imageOptions
   const statusMessage = state.workflow.statusMessage
-  const titleFeedback = statusMessage?.toLowerCase().includes("title") ? statusMessage : null
-  const captionFeedback = statusMessage?.toLowerCase().includes("text") ? statusMessage : null
-  const imageFeedback = statusMessage?.toLowerCase().includes("image") ? statusMessage : null
+  const pendingGeneration = state.ui.pendingGeneration
+  const titleFeedback = pendingGeneration === "title" || statusMessage?.toLowerCase().includes("title") ? statusMessage : null
+  const captionFeedback = pendingGeneration === "text" || statusMessage?.toLowerCase().includes("text") ? statusMessage : null
+  const imageFeedback = pendingGeneration === "image" || statusMessage?.toLowerCase().includes("image") ? statusMessage : null
 
   return (
     <div className="flex min-w-0 flex-col gap-4 items-start">
@@ -1458,6 +1459,7 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 imageFeedback={imageFeedback}
                 textProvider={ui.textGenerationProvider}
                 imageProvider={ui.imageGenerationProvider}
+                pendingGeneration={pendingGeneration}
                 onTextProviderChange={(provider) => props.store.setTextGenerationProvider(provider)}
                 onImageProviderChange={(provider) => props.store.setImageGenerationProvider(provider)}
                 onTitleChange={(value) => props.store.updateActiveDraftTitle(value)}

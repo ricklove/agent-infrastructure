@@ -55,6 +55,7 @@ export type FacebookContentDashboardStoreState = {
     imageOptions: string[]
     textGenerationProvider: Exclude<AssetGenerationProvider, "seed">
     imageGenerationProvider: Exclude<AssetGenerationProvider, "seed">
+    pendingGeneration: null | "post" | "title" | "text" | "image"
   }
   workflow: {
     activeStep: "discover" | "create" | "review" | "schedule"
@@ -263,6 +264,7 @@ export function createFacebookContentDashboardStore() {
       imageOptions: [],
       textGenerationProvider: "mock",
       imageGenerationProvider: "mock",
+      pendingGeneration: null,
     },
     workflow: {
       activeStep: "discover",
@@ -314,6 +316,7 @@ export function createFacebookContentDashboardStore() {
       imageOptions: [],
       textGenerationProvider: "mock",
       imageGenerationProvider: "mock",
+      pendingGeneration: null,
     })
     state$.workflow.set({
       activeStep: "discover",
@@ -578,6 +581,7 @@ export function createFacebookContentDashboardStore() {
     if (!source) {
       return
     }
+    state$.ui.pendingGeneration.set("post")
 
     const provider = state$.ui.textGenerationProvider.get()
     state$.workflow.statusMessage.set(
@@ -586,6 +590,9 @@ export function createFacebookContentDashboardStore() {
     let generatedDrafts: DraftRecord[]
 
     try {
+      if (provider === "mock") {
+        await delay(1500)
+      }
       generatedDrafts = await generateContentDashboardTextDrafts({
         provider,
         destinationPage: state$.scheduling.targetPage.get(),
@@ -600,6 +607,8 @@ export function createFacebookContentDashboardStore() {
             : "Codex text generation failed.",
       )
       return
+    } finally {
+      state$.ui.pendingGeneration.set(null)
     }
 
     const existingSourceDrafts = state$
@@ -637,6 +646,7 @@ export function createFacebookContentDashboardStore() {
     if (!source) {
       return
     }
+    state$.ui.pendingGeneration.set("title")
 
     const provider = state$.ui.textGenerationProvider.get()
     state$.workflow.statusMessage.set(
@@ -645,6 +655,9 @@ export function createFacebookContentDashboardStore() {
     let generatedDrafts: DraftRecord[]
 
     try {
+      if (provider === "mock") {
+        await delay(900)
+      }
       generatedDrafts = await generateContentDashboardTextDrafts({
         provider,
         destinationPage: state$.scheduling.targetPage.get(),
@@ -659,6 +672,8 @@ export function createFacebookContentDashboardStore() {
             : "Codex title generation failed.",
       )
       return
+    } finally {
+      state$.ui.pendingGeneration.set(null)
     }
 
     const generatedTitles = uniqueStrings(
@@ -685,6 +700,7 @@ export function createFacebookContentDashboardStore() {
     if (!source) {
       return
     }
+    state$.ui.pendingGeneration.set("text")
 
     const provider = state$.ui.textGenerationProvider.get()
     state$.workflow.statusMessage.set(
@@ -693,6 +709,9 @@ export function createFacebookContentDashboardStore() {
     let generatedDrafts: DraftRecord[]
 
     try {
+      if (provider === "mock") {
+        await delay(900)
+      }
       generatedDrafts = await generateContentDashboardTextDrafts({
         provider,
         destinationPage: state$.scheduling.targetPage.get(),
@@ -707,6 +726,8 @@ export function createFacebookContentDashboardStore() {
             : "Codex text generation failed.",
       )
       return
+    } finally {
+      state$.ui.pendingGeneration.set(null)
     }
 
     const generatedCaptions = uniqueStrings(
@@ -734,6 +755,7 @@ export function createFacebookContentDashboardStore() {
     if (!source || !activeDraftId) {
       return
     }
+    state$.ui.pendingGeneration.set("image")
 
     const provider = state$.ui.imageGenerationProvider.get()
     state$.workflow.statusMessage.set(
@@ -741,7 +763,7 @@ export function createFacebookContentDashboardStore() {
     )
 
     if (provider === "mock") {
-      await delay(900)
+      await delay(2400)
       const stamp = Date.now()
       let draftIndex = 0
       const nextDrafts = state$.drafts.get().map((draft): DraftRecord => {
@@ -781,6 +803,7 @@ export function createFacebookContentDashboardStore() {
       state$.workflow.activeStep.set("create")
       state$.workflow.statusMessage.set("Generated a new image option. Newest option selected.")
       persistStateNow()
+      state$.ui.pendingGeneration.set(null)
       return
     }
 
@@ -828,6 +851,8 @@ export function createFacebookContentDashboardStore() {
       state$.workflow.statusMessage.set(
         error instanceof Error ? error.message : "Codex image generation failed.",
       )
+    } finally {
+      state$.ui.pendingGeneration.set(null)
     }
   }
 
