@@ -135,7 +135,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         onSelectOption={props.onSelectImage}
         input={
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-            <div className="flex aspect-square w-full max-h-[520px] max-w-[520px] items-center justify-center overflow-hidden rounded-lg bg-zinc-950">
+            <div className="flex aspect-square w-full min-h-[320px] max-h-[520px] max-w-[520px] items-center justify-center overflow-hidden rounded-lg bg-zinc-950">
               <img src={props.imageValue} alt="Selected creative" className="h-full max-h-full w-full max-w-full object-contain" />
             </div>
           </div>
@@ -146,14 +146,15 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
             onClick={onSelect}
             title={`Image option ${index + 1}`}
             aria-label={`Image option ${index + 1}`}
+            style={{ width: 112, height: 112 }}
             className={[
-              "relative overflow-hidden rounded-lg border transition",
+              "relative flex shrink-0 overflow-hidden rounded-lg border transition justify-self-start self-start",
               isSelected
                 ? "border-cyan-500/60 shadow-[0_0_0_1px_rgba(6,182,212,0.24)]"
                 : "border-zinc-800 hover:border-zinc-700",
             ].join(" ")}
           >
-            <div className="flex aspect-square w-full max-h-[112px] max-w-[112px] items-center justify-center bg-zinc-950">
+            <div className="flex h-full w-full items-center justify-center bg-zinc-950">
               <img src={option} alt={`Image option ${index + 1}`} className="h-full max-h-full w-full max-w-full object-contain" />
             </div>
             {isSelected ? (

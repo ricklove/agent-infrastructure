@@ -43,7 +43,7 @@ export function DraftFieldEditor(props: DraftFieldEditorProps) {
               const isSelected = option === props.value
               const onSelect = () => props.onSelectOption(option)
               return props.renderOption ? (
-                <div key={`${index}-${option}`}>{props.renderOption(option, isSelected, onSelect, index)}</div>
+                <div key={"render-option-" + index} className="justify-self-start self-start">{props.renderOption(option, isSelected, onSelect, index)}</div>
               ) : (
                 <button
                   key={`${index}-${option}`}
