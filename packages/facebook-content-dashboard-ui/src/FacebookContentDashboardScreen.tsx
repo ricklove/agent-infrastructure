@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { fetchContentDashboardSnapshot } from "./content-dashboard-client"
 import { DraftAlternativesStrip } from "./components/DraftAlternativesStrip"
 import { DraftEditorSurface } from "./components/DraftEditorSurface"
+import { DraftFieldEditor } from "./components/DraftFieldEditor"
 import { DraftGenerationControls } from "./components/DraftGenerationControls"
 import { DraftPostPreviewFrame } from "./components/DraftPostPreviewFrame"
 import { CompactSelectedSourceCardSurface, SelectedSourceCardSurface, SourcePostOptionCardSurface } from "./components/SourcePostCards"
@@ -429,6 +430,27 @@ function debugScenarios(store: Store) {
       ],
     },
     {
+      slug: "draft-field-editor",
+      title: "Draft field editor",
+      scenarios: [
+        {
+          slug: "title",
+          title: "Title field",
+          render: () => <FixtureDraftFieldEditor mode="title" />,
+        },
+        {
+          slug: "text",
+          title: "Text field",
+          render: () => <FixtureDraftFieldEditor mode="text" />,
+        },
+        {
+          slug: "image",
+          title: "Image field",
+          render: () => <FixtureDraftFieldEditor mode="image" />,
+        },
+      ],
+    },
+    {
       slug: "draft-editor-surface",
       title: "Draft editor surface",
       scenarios: [
@@ -784,6 +806,91 @@ const FixtureDraftGenerationControls = observer(function FixtureDraftGenerationC
   )
 })
 
+const FixtureDraftFieldEditor = observer(function FixtureDraftFieldEditor(props: { mode: "title" | "text" | "image" }) {
+  const [store] = useState(() => createFixtureStore("draft-ideas"))
+  const reactiveFrame = observeContentCreationFrame(store)
+  const derived = useDerived(store.state$.get())
+  const selectedDraft = derived.selectedDraft
+  const selectedSource = derived.selectedSource
+  if (!selectedDraft || !selectedSource) {
+    return null
+  }
+
+  const titleOptions = derived.draftsForSelectedSource.map((draft) => compactDraftTitle(draft, selectedSource))
+  const captionOptions = derived.draftsForSelectedSource.map((draft) => draft.captionPreview)
+  const imageOptions = availableImageOptions(selectedSource, derived.state.sourcePosts, derived.draftsForSelectedSource, derived.ui.destinationPage ?? "Your page")
+
+  return (
+    <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
+      {props.mode === "title" ? (
+        <DraftFieldEditor
+          label="Title"
+          value={selectedDraft.title}
+          onGenerate={() => store.generateTextVariants()}
+          generateLabel="Generate titles"
+          options={titleOptions}
+          onSelectOption={(value) => store.updateActiveDraftTitle(value)}
+          input={
+            <input
+              value={selectedDraft.title}
+              onChange={(event) => store.updateActiveDraftTitle(event.target.value)}
+              className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm text-zinc-100 outline-none"
+            />
+          }
+        />
+      ) : props.mode === "text" ? (
+        <DraftFieldEditor
+          label="Post Text"
+          value={selectedDraft.captionPreview}
+          onGenerate={() => store.generateTextVariants()}
+          generateLabel="Generate text"
+          options={captionOptions}
+          onSelectOption={(value) => store.updateActiveDraftCaption(value)}
+          input={
+            <textarea
+              value={selectedDraft.captionPreview}
+              onChange={(event) => store.updateActiveDraftCaption(event.target.value)}
+              className="min-h-[220px] w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm leading-6 text-zinc-200 outline-none"
+            />
+          }
+        />
+      ) : (
+        <DraftFieldEditor
+          label="Image"
+          value={draftPreviewImage(selectedDraft, derived.ui.destinationPage ?? "Your page")}
+          onGenerate={() => store.generateImageVariants()}
+          generateLabel="Generate image"
+          options={imageOptions}
+          onSelectOption={(value) => store.updateActiveDraftPreviewMedia(value)}
+          input={
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <img src={draftPreviewImage(selectedDraft, derived.ui.destinationPage ?? "Your page")} alt="Selected creative" className="h-56 w-full rounded-lg object-cover" />
+            </div>
+          }
+          renderOption={(option, isSelected, onSelect, index) => (
+            <button
+              type="button"
+              onClick={onSelect}
+              title={`Image option ${index + 1}`}
+              aria-label={`Image option ${index + 1}`}
+              className={[
+                "relative overflow-hidden rounded-lg border transition",
+                isSelected ? "border-cyan-500/50" : "border-zinc-800 hover:border-zinc-700",
+              ].join(" ")}
+            >
+              <img src={option} alt={`Image option ${index + 1}`} className="h-24 w-full object-cover" />
+              <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-[11px] text-white">
+                <span>Option {index + 1}</span>
+                {isSelected ? <span>Selected</span> : null}
+              </div>
+            </button>
+          )}
+        />
+      )}
+    </div>
+  )
+})
+
 const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(props: { mode: "editing" | "saved" | "queued" }) {
   const [store] = useState(() =>
     createFixtureStore(
@@ -814,10 +921,10 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
   const draftSaved =
     props.mode !== "editing" ||
     derived.ui.savedDraftId === selectedDraft.id ||
-    selectedDraft.stage !== "draft"
+    (selectedDraft.generatedKind !== "seed" && selectedDraft.stage !== "draft")
   const titleOptions = derived.draftsForSelectedSource.map((draft) => compactDraftTitle(draft, selectedSource))
   const captionOptions = derived.draftsForSelectedSource.map((draft) => draft.captionPreview)
-  const imageOptions = derived.draftsForSelectedSource.map((draft) => draftPreviewImage(draft, derived.ui.destinationPage ?? "Your page"))
+  const imageOptions = availableImageOptions(selectedSource, derived.state.sourcePosts, derived.draftsForSelectedSource, derived.ui.destinationPage ?? "Your page")
 
   return (
     <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
@@ -1208,7 +1315,8 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
     : draftsForSelectedSource
   const draftSaved = Boolean(
     selectedDraft &&
-      (ui.savedDraftId === selectedDraft.id || selectedDraft.stage !== "draft"),
+      (ui.savedDraftId === selectedDraft.id ||
+        (selectedDraft.generatedKind !== "seed" && selectedDraft.stage !== "draft")),
   )
   const savedDraft = ui.savedDraftId
     ? state.drafts.find((draft) => draft.id === ui.savedDraftId) ?? null
@@ -1224,14 +1332,20 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
   const generationTag = selectedDraft?.id.match(/gen-(\d+)-/)?.[1]?.slice(-4) ?? null
   const titleOptions = draftsForSelectedSource.map((draft) => compactDraftTitle(draft, selectedSource))
   const captionOptions = draftsForSelectedSource.map((draft) => draft.captionPreview)
-  const imageOptions = draftsForSelectedSource.map((draft) => draftPreviewImage(draft, ui.destinationPage ?? "Your page"))
+  const imageOptions = availableImageOptions(selectedSource, state.sourcePosts, draftsForSelectedSource, ui.destinationPage ?? "Your page")
 
   return (
     <div className="flex min-w-0 flex-col gap-4 items-start">
       <Section>
         <div className="flex w-full max-w-[840px] flex-col gap-4">
-          <CompactSelectedSourceCard post={selectedSource} onClick={() => props.store.reopenSourceList()} />
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
+            <button
+              type="button"
+              onClick={() => props.store.reopenSourceList()}
+              className="min-w-0 text-left text-sm font-medium text-zinc-200 transition hover:text-zinc-100"
+            >
+              {selectedSource.sourcePage} · {formatCompactFeedDate(selectedSource.publishDate)}
+            </button>
             <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px]">
               <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-zinc-300">{selectedSource.pattern}</span>
               <span className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-zinc-300">{selectedSource.angle}</span>
@@ -1255,24 +1369,6 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
           ) : null}
           {selectedDraft ? (
             <>
-              {savedDraft ? (
-                <div className={[
-                  "flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5",
-                  savedDraft.id === selectedDraft.id
-                    ? "border-cyan-500/30 bg-cyan-500/10"
-                    : "border-zinc-800 bg-zinc-900/40",
-                ].join(" ")}>
-                  <div className="min-w-0">
-                    <div className={savedDraft.id === selectedDraft.id ? "text-sm font-semibold text-cyan-100" : "text-sm font-semibold text-zinc-200"}>
-                      Saved draft
-                    </div>
-                    <div className="mt-1 truncate text-xs text-zinc-400">{savedDraft.title}</div>
-                  </div>
-                  <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-400">
-                    {savedDraft.id === selectedDraft.id ? "current" : "previous"}
-                  </div>
-                </div>
-              ) : null}
               <DraftEditorSurface
                 title={compactDraftTitle(selectedDraft, selectedSource)}
                 subtitle={`${selectedDraft.format} · ${selectedDraft.positioning}`}
@@ -1635,7 +1731,7 @@ function sourcePostPreviewTone(pattern: string): string {
 
 function sourcePostPreviewImage(post: SourcePostRecord): string {
   if (post.mediaPath) {
-    return contentDashboardMediaUrl(post.mediaPath)
+    return resolveMediaSource(post.mediaPath)
   }
   return socialPreviewDataUri({
     title: post.title,
@@ -1650,9 +1746,31 @@ function sourcePostPreviewImage(post: SourcePostRecord): string {
   })
 }
 
+function availableImageOptions(
+  selectedSource: SourcePostRecord,
+  allPosts: SourcePostRecord[],
+  sourceDrafts: DraftRecord[],
+  pageName: string,
+): string[] {
+  const options = new Set<string>()
+  options.add(sourcePostPreviewImage(selectedSource))
+  for (const draft of sourceDrafts) {
+    options.add(draftPreviewImage(draft, pageName))
+  }
+  for (const post of allPosts) {
+    if (post.id === selectedSource.id) {
+      continue
+    }
+    if (post.sourcePage === selectedSource.sourcePage || post.pattern === selectedSource.pattern) {
+      options.add(sourcePostPreviewImage(post))
+    }
+  }
+  return [...options].slice(0, 4)
+}
+
 function draftPreviewImage(draft: DraftRecord, pageName: string): string {
   if (draft.previewMediaPath) {
-    return contentDashboardMediaUrl(draft.previewMediaPath)
+    return resolveMediaSource(draft.previewMediaPath)
   }
   return socialPreviewDataUri({
     title: draft.title,
@@ -1681,6 +1799,16 @@ function contentDashboardMediaUrl(path: string): string {
   const url = new URL("/api/facebook-content-dashboard/media", contentDashboardApiOrigin())
   url.searchParams.set("path", path)
   return url.toString()
+}
+
+function resolveMediaSource(path: string): string {
+  if (path.startsWith("data:")) {
+    return path
+  }
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path
+  }
+  return contentDashboardMediaUrl(path)
 }
 
 function contentDashboardApiOrigin(): string {

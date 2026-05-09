@@ -90,6 +90,30 @@ function firstAvailableOutsidePage(
   return page ?? null
 }
 
+function nextSchedulingSlot(): string {
+  const date = new Date(Date.now() + 2 * 60 * 60 * 1000)
+  date.setMinutes(Math.ceil(date.getMinutes() / 30) * 30, 0, 0)
+  const yyyy = date.getUTCFullYear()
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0")
+  const dd = String(date.getUTCDate()).padStart(2, "0")
+  const hh = String(date.getUTCHours()).padStart(2, "0")
+  const mi = String(date.getUTCMinutes()).padStart(2, "0")
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi} UTC`
+}
+
+function parseScheduledUtc(value: string): number | null {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}) UTC$/)
+  if (!match) {
+    return null
+  }
+  const [, yyyy, mm, dd, hh, mi] = match
+  return Date.UTC(int(yyyy), int(mm) - 1, int(dd), int(hh), int(mi))
+}
+
+function int(value: string): number {
+  return Number.parseInt(value, 10)
+}
+
 function availableMediaPathsForSource(
   allSourcePosts: SourcePostRecord[],
   source: SourcePostRecord,
@@ -153,8 +177,7 @@ function buildMockImagePreview(
 export function createFacebookContentDashboardStore() {
   const defaultTargetPage =
     scheduledPosts[0]?.pageName ?? "Thin Blue Line Supporters"
-  const defaultScheduledFor =
-    scheduledPosts[0]?.scheduledFor ?? "2026-05-08 14:00 UTC"
+  const defaultScheduledFor = nextSchedulingSlot()
 
   const state$ = observable<FacebookContentDashboardStoreState>({
     connection: {
@@ -243,8 +266,7 @@ export function createFacebookContentDashboardStore() {
     })
     state$.scheduling.set({
       targetPage: snapshot.scheduledPosts[0]?.pageName ?? defaultTargetPage,
-      scheduledFor:
-        snapshot.scheduledPosts[0]?.scheduledFor ?? defaultScheduledFor,
+      scheduledFor: defaultScheduledFor,
     })
   }
 
@@ -931,12 +953,27 @@ export function createFacebookContentDashboardStore() {
       return
     }
 
+    const scheduledFor = state$.scheduling.scheduledFor.get()
+    const scheduledAt = parseScheduledUtc(scheduledFor)
+    if (scheduledAt === null) {
+      state$.workflow.statusMessage.set(
+        "Enter a schedule time in YYYY-MM-DD HH:MM UTC format.",
+      )
+      return
+    }
+    if (scheduledAt <= Date.now()) {
+      state$.workflow.statusMessage.set(
+        "Choose a future UTC time before queueing this draft.",
+      )
+      return
+    }
+
     state$.scheduledPosts.set([
       {
         id: `sched-${Date.now()}`,
         pageName: state$.scheduling.targetPage.get(),
         creative: activeDraft.title,
-        scheduledFor: state$.scheduling.scheduledFor.get(),
+        scheduledFor,
         stage: "scheduled",
       },
       ...state$.scheduledPosts.get(),
