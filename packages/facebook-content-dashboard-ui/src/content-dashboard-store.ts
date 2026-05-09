@@ -589,8 +589,86 @@ export function createFacebookContentDashboardStore() {
     persistStateNow()
   }
 
+  async function generateTitleVariants() {
+    const sourceId = state$.selection.activeSourceId.get()
+    const source = state$.sourcePosts.get().find((post) => post.id === sourceId)
+    if (!source) {
+      return
+    }
+
+    const provider = state$.ui.textGenerationProvider.get()
+    let generatedDrafts: DraftRecord[]
+
+    try {
+      generatedDrafts = await generateContentDashboardTextDrafts({
+        provider,
+        destinationPage: state$.scheduling.targetPage.get(),
+        sourcePost: source,
+      })
+    } catch (error) {
+      state$.workflow.statusMessage.set(
+        error instanceof Error
+          ? error.message
+          : provider === "mock"
+            ? "Mock title generation failed."
+            : "Codex title generation failed.",
+      )
+      return
+    }
+
+    const generatedTitles = uniqueStrings(
+      generatedDrafts.map((draft) => compactDraftTitleForOptions(draft, source)),
+    )
+    state$.ui.titleOptions.set(
+      mergeOptionLists(state$.ui.titleOptions.get(), generatedTitles),
+    )
+    if (generatedTitles[0]) {
+      updateActiveDraftTitle(generatedTitles[0])
+    }
+    state$.workflow.activeStep.set("create")
+    state$.workflow.statusMessage.set("Generated new title options.")
+    persistStateNow()
+  }
+
   async function generateTextVariants() {
-    await generateDraftVariants()
+    const sourceId = state$.selection.activeSourceId.get()
+    const source = state$.sourcePosts.get().find((post) => post.id === sourceId)
+    if (!source) {
+      return
+    }
+
+    const provider = state$.ui.textGenerationProvider.get()
+    let generatedDrafts: DraftRecord[]
+
+    try {
+      generatedDrafts = await generateContentDashboardTextDrafts({
+        provider,
+        destinationPage: state$.scheduling.targetPage.get(),
+        sourcePost: source,
+      })
+    } catch (error) {
+      state$.workflow.statusMessage.set(
+        error instanceof Error
+          ? error.message
+          : provider === "mock"
+            ? "Mock text generation failed."
+            : "Codex text generation failed.",
+      )
+      return
+    }
+
+    const generatedCaptions = uniqueStrings(
+      generatedDrafts.map((draft) => draft.captionPreview),
+    )
+    state$.ui.captionOptions.set(
+      mergeOptionLists(state$.ui.captionOptions.get(), generatedCaptions),
+    )
+    if (generatedCaptions[0]) {
+      updateActiveDraftCaption(generatedCaptions[0])
+    }
+    state$.workflow.activeStep.set("create")
+    state$.workflow.statusMessage.set("Generated new text options.")
+    persistStateNow()
   }
 
   async function generateImageVariants() {
@@ -1150,6 +1228,7 @@ export function createFacebookContentDashboardStore() {
     selectActiveDraftCaptionOption,
     selectActiveDraftImageOption,
     generateDraftVariants,
+    generateTitleVariants,
     generateTextVariants,
     generateImageVariants,
     moveDraftToReview,

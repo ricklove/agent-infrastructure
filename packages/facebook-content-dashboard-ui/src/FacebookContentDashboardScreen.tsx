@@ -867,7 +867,7 @@ const FixtureDraftFieldEditor = observer(function FixtureDraftFieldEditor(props:
         <DraftFieldEditor
           label="Title"
           value={selectedDraft.title}
-          onGenerate={() => store.generateTextVariants()}
+          onGenerate={() => store.generateTitleVariants()}
           generateLabel="Generate titles"
           options={titleOptions}
           onSelectOption={(value) => store.updateActiveDraftTitle(value)}
@@ -989,7 +989,8 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
         onCaptionChange={(value) => store.updateActiveDraftCaption(value)}
         onSelectCaption={(value) => store.selectActiveDraftCaptionOption(value)}
         onSelectImage={(value) => store.selectActiveDraftImageOption(value)}
-        onGenerateText={() => store.generateTextVariants()}
+        onGenerateTitle={() => store.generateTitleVariants()}
+        onGenerateCaption={() => store.generateTextVariants()}
         onGenerateImage={() => store.generateImageVariants()}
         onGeneratePost={() => store.generateFullPost()}
         onResetImage={() => store.resetActiveDraftImage()}
@@ -1445,7 +1446,8 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 onCaptionChange={(value) => props.store.updateActiveDraftCaption(value)}
                 onSelectCaption={(value) => props.store.selectActiveDraftCaptionOption(value)}
                 onSelectImage={(value) => props.store.selectActiveDraftImageOption(value)}
-                onGenerateText={() => props.store.generateTextVariants()}
+                onGenerateTitle={() => props.store.generateTitleVariants()}
+                onGenerateCaption={() => props.store.generateTextVariants()}
                 onGenerateImage={() => props.store.generateImageVariants()}
                 onGeneratePost={() => props.store.generateFullPost()}
                 onResetImage={() => props.store.resetActiveDraftImage()}

@@ -23,7 +23,8 @@ type DraftEditorSurfaceProps = {
   onCaptionChange: (value: string) => void
   onSelectCaption: (value: string) => void
   onSelectImage: (value: string) => void
-  onGenerateText: () => void
+  onGenerateTitle: () => void
+  onGenerateCaption: () => void
   onGenerateImage: () => void
   onGeneratePost: () => void
   onResetImage: () => void
@@ -74,7 +75,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         imageProvider={props.imageProvider}
         onTextProviderChange={props.onTextProviderChange}
         onImageProviderChange={props.onImageProviderChange}
-        onGenerateText={props.onGenerateText}
+        onGenerateText={props.onGenerateCaption}
         onGenerateImage={props.onGenerateImage}
         onGeneratePost={props.onGeneratePost}
         onResetImage={props.onResetImage}
@@ -83,7 +84,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
       <DraftFieldEditor
         label="Title"
         value={props.titleValue}
-        onGenerate={props.onGenerateText}
+        onGenerate={props.onGenerateTitle}
         generateLabel="Generate titles"
         options={props.titleOptions}
         onSelectOption={props.onSelectTitle}
@@ -99,7 +100,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
       <DraftFieldEditor
         label="Post Text"
         value={props.caption}
-        onGenerate={props.onGenerateText}
+        onGenerate={props.onGenerateCaption}
         generateLabel="Generate text"
         options={props.captionOptions}
         onSelectOption={props.onSelectCaption}
