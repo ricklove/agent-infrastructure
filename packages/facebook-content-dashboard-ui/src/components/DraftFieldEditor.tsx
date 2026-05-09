@@ -42,12 +42,16 @@ export function DraftFieldEditor(props: DraftFieldEditorProps) {
                   type="button"
                   onClick={onSelect}
                   className={[
-                    "rounded-lg border px-3 py-2 text-left text-sm transition",
+                    "grid gap-2 rounded-lg border px-3 py-2 text-left text-sm transition",
                     isSelected
-                      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-50"
+                      ? "border-cyan-500/50 bg-cyan-500/12 text-cyan-50 shadow-[0_0_0_1px_rgba(6,182,212,0.18)]"
                       : "border-zinc-800 bg-zinc-950/60 text-zinc-300 hover:border-zinc-700",
                   ].join(" ")}
                 >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Option {index + 1}</span>
+                    {isSelected ? <span className="rounded-full border border-cyan-500/40 bg-cyan-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-100">Selected</span> : null}
+                  </div>
                   <div className="line-clamp-4 leading-5">{option}</div>
                 </button>
               )

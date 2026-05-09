@@ -146,13 +146,20 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
             aria-label={`Image option ${index + 1}`}
             className={[
               "relative overflow-hidden rounded-lg border transition",
-              isSelected ? "border-cyan-500/50" : "border-zinc-800 hover:border-zinc-700",
+              isSelected
+                ? "border-cyan-500/60 shadow-[0_0_0_1px_rgba(6,182,212,0.24)]"
+                : "border-zinc-800 hover:border-zinc-700",
             ].join(" ")}
           >
             <img src={option} alt={`Image option ${index + 1}`} className="h-24 w-full object-cover" />
+            {isSelected ? (
+              <div className="absolute right-2 top-2 rounded-full border border-cyan-400/50 bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-50">
+                Selected
+              </div>
+            ) : null}
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-[11px] text-white">
               <span>Option {index + 1}</span>
-              {isSelected ? <span>Selected</span> : null}
+              {isSelected ? <span>Using</span> : null}
             </div>
           </button>
         )}

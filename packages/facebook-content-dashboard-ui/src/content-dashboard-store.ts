@@ -124,6 +124,17 @@ function compactDraftTitleForOptions(draft: DraftRecord, source: SourcePostRecor
   return draft.title.startsWith(source.title) ? draft.title : draft.title
 }
 
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>()
+  return values.filter((value) => {
+    if (!value || seen.has(value)) {
+      return false
+    }
+    seen.add(value)
+    return true
+  })
+}
+
 function buildFieldOptions(
   source: SourcePostRecord | null,
   allSourcePosts: SourcePostRecord[],
@@ -134,9 +145,9 @@ function buildFieldOptions(
     return { titleOptions: [], captionOptions: [], imageOptions: [] }
   }
 
-  const titleOptions = sourceDrafts.map((draft) => compactDraftTitleForOptions(draft, source))
-  const captionOptions = sourceDrafts.map((draft) => draft.captionPreview)
-  const imageOptions = [source.mediaPath, ...availableMediaPathsForSource(allSourcePosts, source), ...sourceDrafts.map((draft) => draft.previewMediaPath)].filter((value): value is string => Boolean(value))
+  const titleOptions = uniqueStrings(sourceDrafts.map((draft) => compactDraftTitleForOptions(draft, source)))
+  const captionOptions = uniqueStrings(sourceDrafts.map((draft) => draft.captionPreview))
+  const imageOptions = uniqueStrings([source.mediaPath, ...availableMediaPathsForSource(allSourcePosts, source), ...sourceDrafts.map((draft) => draft.previewMediaPath)].filter((value): value is string => Boolean(value)))
 
   return {
     titleOptions,

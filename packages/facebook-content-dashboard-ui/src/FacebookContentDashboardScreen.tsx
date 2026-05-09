@@ -1521,22 +1521,18 @@ function SchedulePanel(props: { store: Store; derived: ReturnType<typeof useDeri
             className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm text-zinc-100 outline-none"
           />
         </div>
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => props.store.scheduleActiveDraft()}
-            disabled={!props.draftSaved}
-            className={[
-              "inline-flex min-w-[150px] items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-semibold transition",
-              props.draftSaved
-                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100 hover:border-emerald-400/60"
-                : "cursor-not-allowed border-zinc-800 bg-zinc-950/50 text-zinc-500",
-            ].join(" ")}
-          >
-            <QueueIcon />
-            <span>{props.draftSaved ? "Queue draft" : "Save draft first"}</span>
-          </button>
-        </div>
+        {props.draftSaved ? (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => props.store.scheduleActiveDraft()}
+              className="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-3 text-sm font-semibold text-emerald-100 transition hover:border-emerald-400/60"
+            >
+              <QueueIcon />
+              <span>Queue draft</span>
+            </button>
+          </div>
+        ) : null}
       </div>
     </Section>
   )
