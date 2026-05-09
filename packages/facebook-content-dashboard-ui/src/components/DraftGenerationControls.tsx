@@ -7,6 +7,7 @@ type DraftGenerationControlsProps = {
   onImageProviderChange: (provider: Exclude<AssetGenerationProvider, "seed">) => void
   onGenerateText: () => void
   onGenerateImage: () => void
+  onGeneratePost: () => void
   onResetImage: () => void
 }
 
@@ -18,10 +19,24 @@ const providerOptions = [
 export function DraftGenerationControls(props: DraftGenerationControlsProps) {
   return (
     <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+          Generation
+        </div>
+        <button
+          type="button"
+          onClick={props.onGeneratePost}
+          title="Generate full post"
+          className="inline-flex items-center gap-2 rounded-lg border border-cyan-700/40 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:border-cyan-600/50"
+        >
+          <SparklesIcon />
+          <span>Generate post</span>
+        </button>
+      </div>
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="grid gap-2">
           <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
-            Text generation
+            Text provider
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -53,7 +68,7 @@ export function DraftGenerationControls(props: DraftGenerationControlsProps) {
 
         <div className="grid gap-2">
           <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
-            Image generation
+            Image provider
           </div>
           <div className="flex items-center gap-2">
             <select

@@ -487,7 +487,7 @@ export function createFacebookContentDashboardStore() {
       let draftIndex = 0
       state$.drafts.set(
         state$.drafts.get().map((draft): DraftRecord => {
-          if (draft.sourceId !== source.id) {
+          if (draft.id !== activeDraftId) {
             return draft
           }
 
@@ -664,6 +664,44 @@ export function createFacebookContentDashboardStore() {
           draft.id === activeDraftId ? { ...draft, captionPreview } : draft,
         ),
     )
+  }
+
+  function updateActiveDraftTitle(title: string) {
+    const activeDraftId = state$.selection.activeDraftId.get()
+    state$.ui.savedDraftId.set(null)
+    state$.ui.draftEditorOpen.set(true)
+    state$.drafts.set(
+      state$.drafts
+        .get()
+        .map((draft): DraftRecord =>
+          draft.id === activeDraftId ? { ...draft, title } : draft,
+        ),
+    )
+  }
+
+  function updateActiveDraftPreviewMedia(previewMediaPath: string) {
+    const activeDraftId = state$.selection.activeDraftId.get()
+    state$.ui.savedDraftId.set(null)
+    state$.ui.draftEditorOpen.set(true)
+    state$.drafts.set(
+      state$.drafts
+        .get()
+        .map((draft): DraftRecord =>
+          draft.id === activeDraftId
+            ? { ...draft, previewMediaPath, imageProvider: "mock" }
+            : draft,
+        ),
+    )
+  }
+
+  async function generateFullPost() {
+    await generateDraftVariants()
+    if (!state$.selection.activeDraftId.get()) {
+      return
+    }
+    await generateImageVariants()
+    state$.workflow.statusMessage.set("Generated a fresh post set across text and image.")
+    persistStateNow()
   }
 
   function chooseDestination(pageName: string, hasOwnPosts: boolean) {
@@ -945,6 +983,9 @@ export function createFacebookContentDashboardStore() {
     sendBackToDraftStudio,
     setTargetPage,
     updateActiveDraftCaption,
+    updateActiveDraftTitle,
+    updateActiveDraftPreviewMedia,
+    generateFullPost,
     setScheduledFor,
     scheduleActiveDraft,
   }

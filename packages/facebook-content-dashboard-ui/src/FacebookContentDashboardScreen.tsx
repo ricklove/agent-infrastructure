@@ -777,6 +777,7 @@ const FixtureDraftGenerationControls = observer(function FixtureDraftGenerationC
         onImageProviderChange={(provider) => store.setImageGenerationProvider(provider)}
         onGenerateText={() => store.generateTextVariants()}
         onGenerateImage={() => store.generateImageVariants()}
+        onGeneratePost={() => store.generateFullPost()}
         onResetImage={() => store.resetActiveDraftImage()}
       />
     </div>
@@ -814,6 +815,9 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
     props.mode !== "editing" ||
     derived.ui.savedDraftId === selectedDraft.id ||
     selectedDraft.stage !== "draft"
+  const titleOptions = derived.draftsForSelectedSource.map((draft) => compactDraftTitle(draft, selectedSource))
+  const captionOptions = derived.draftsForSelectedSource.map((draft) => draft.captionPreview)
+  const imageOptions = derived.draftsForSelectedSource.map((draft) => draftPreviewImage(draft, derived.ui.destinationPage ?? "Your page"))
 
   return (
     <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
@@ -822,14 +826,24 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
         subtitle={`${selectedDraft.format} · ${selectedDraft.positioning}`}
         generationTag={generationTag}
         draftSaved={draftSaved}
+        titleValue={selectedDraft.title}
+        titleOptions={titleOptions}
         caption={selectedDraft.captionPreview}
+        captionOptions={captionOptions}
+        imageValue={draftPreviewImage(selectedDraft, derived.ui.destinationPage ?? "Your page")}
+        imageOptions={imageOptions}
         textProvider={derived.ui.textGenerationProvider}
         imageProvider={derived.ui.imageGenerationProvider}
         onTextProviderChange={(provider) => store.setTextGenerationProvider(provider)}
         onImageProviderChange={(provider) => store.setImageGenerationProvider(provider)}
+        onTitleChange={(value) => store.updateActiveDraftTitle(value)}
+        onSelectTitle={(value) => store.updateActiveDraftTitle(value)}
         onCaptionChange={(value) => store.updateActiveDraftCaption(value)}
+        onSelectCaption={(value) => store.updateActiveDraftCaption(value)}
+        onSelectImage={(value) => store.updateActiveDraftPreviewMedia(value)}
         onGenerateText={() => store.generateTextVariants()}
         onGenerateImage={() => store.generateImageVariants()}
+        onGeneratePost={() => store.generateFullPost()}
         onResetImage={() => store.resetActiveDraftImage()}
         onDeleteCurrentDraft={() => store.deleteActiveDraft()}
         onSave={() => store.saveActiveDraft(selectedDraft.id)}
@@ -1208,6 +1222,9 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
       )
     : undefined
   const generationTag = selectedDraft?.id.match(/gen-(\d+)-/)?.[1]?.slice(-4) ?? null
+  const titleOptions = draftsForSelectedSource.map((draft) => compactDraftTitle(draft, selectedSource))
+  const captionOptions = draftsForSelectedSource.map((draft) => draft.captionPreview)
+  const imageOptions = draftsForSelectedSource.map((draft) => draftPreviewImage(draft, ui.destinationPage ?? "Your page"))
 
   return (
     <div className="flex min-w-0 flex-col gap-4 items-start">
@@ -1261,14 +1278,24 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 subtitle={`${selectedDraft.format} · ${selectedDraft.positioning}`}
                 generationTag={generationTag}
                 draftSaved={draftSaved}
+                titleValue={selectedDraft.title}
+                titleOptions={titleOptions}
                 caption={selectedDraft.captionPreview}
+                captionOptions={captionOptions}
+                imageValue={draftPreviewImage(selectedDraft, ui.destinationPage ?? "Your page")}
+                imageOptions={imageOptions}
                 textProvider={ui.textGenerationProvider}
                 imageProvider={ui.imageGenerationProvider}
                 onTextProviderChange={(provider) => props.store.setTextGenerationProvider(provider)}
                 onImageProviderChange={(provider) => props.store.setImageGenerationProvider(provider)}
+                onTitleChange={(value) => props.store.updateActiveDraftTitle(value)}
+                onSelectTitle={(value) => props.store.updateActiveDraftTitle(value)}
                 onCaptionChange={(value) => props.store.updateActiveDraftCaption(value)}
+                onSelectCaption={(value) => props.store.updateActiveDraftCaption(value)}
+                onSelectImage={(value) => props.store.updateActiveDraftPreviewMedia(value)}
                 onGenerateText={() => props.store.generateTextVariants()}
                 onGenerateImage={() => props.store.generateImageVariants()}
+                onGeneratePost={() => props.store.generateFullPost()}
                 onResetImage={() => props.store.resetActiveDraftImage()}
                 onDeleteCurrentDraft={() => props.store.deleteActiveDraft()}
                 onSave={() => props.store.saveActiveDraft(selectedDraft.id)}

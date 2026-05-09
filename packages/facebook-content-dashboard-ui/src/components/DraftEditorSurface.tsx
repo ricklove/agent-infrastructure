@@ -7,14 +7,24 @@ type DraftEditorSurfaceProps = {
   subtitle: string
   generationTag: string | null
   draftSaved: boolean
+  titleValue: string
+  titleOptions: string[]
   caption: string
+  captionOptions: string[]
+  imageValue: string
+  imageOptions: string[]
   textProvider: Exclude<AssetGenerationProvider, "seed">
   imageProvider: Exclude<AssetGenerationProvider, "seed">
   onTextProviderChange: (provider: Exclude<AssetGenerationProvider, "seed">) => void
   onImageProviderChange: (provider: Exclude<AssetGenerationProvider, "seed">) => void
+  onTitleChange: (value: string) => void
+  onSelectTitle: (value: string) => void
   onCaptionChange: (value: string) => void
+  onSelectCaption: (value: string) => void
+  onSelectImage: (value: string) => void
   onGenerateText: () => void
   onGenerateImage: () => void
+  onGeneratePost: () => void
   onResetImage: () => void
   onDeleteCurrentDraft: () => void
   onSave: () => void
@@ -57,19 +67,70 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         onImageProviderChange={props.onImageProviderChange}
         onGenerateText={props.onGenerateText}
         onGenerateImage={props.onGenerateImage}
+        onGeneratePost={props.onGeneratePost}
         onResetImage={props.onResetImage}
       />
 
-      <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Post Text</div>
-        </div>
-        <textarea
-          value={props.caption}
-          onChange={(event) => props.onCaptionChange(event.target.value)}
-          className="min-h-[220px] w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm leading-6 text-zinc-200 outline-none"
-        />
-      </div>
+      <FieldEditor
+        label="Title"
+        value={props.titleValue}
+        onChange={props.onTitleChange}
+        onGenerate={props.onGenerateText}
+        generateLabel="Generate titles"
+        options={props.titleOptions}
+        onSelectOption={props.onSelectTitle}
+        input={
+          <input
+            value={props.titleValue}
+            onChange={(event) => props.onTitleChange(event.target.value)}
+            className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm text-zinc-100 outline-none"
+          />
+        }
+      />
+
+      <FieldEditor
+        label="Post Text"
+        value={props.caption}
+        onChange={props.onCaptionChange}
+        onGenerate={props.onGenerateText}
+        generateLabel="Generate text"
+        options={props.captionOptions}
+        onSelectOption={props.onSelectCaption}
+        input={
+          <textarea
+            value={props.caption}
+            onChange={(event) => props.onCaptionChange(event.target.value)}
+            className="min-h-[220px] w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm leading-6 text-zinc-200 outline-none"
+          />
+        }
+      />
+
+      <FieldEditor
+        label="Image"
+        value={props.imageValue}
+        onChange={() => {}}
+        onGenerate={props.onGenerateImage}
+        generateLabel="Generate image"
+        options={props.imageOptions}
+        onSelectOption={props.onSelectImage}
+        input={
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+            <img src={props.imageValue} alt="Selected creative" className="h-56 w-full rounded-lg object-cover" />
+          </div>
+        }
+        renderOption={(option, isSelected, onSelect) => (
+          <button
+            type="button"
+            onClick={onSelect}
+            className={[
+              "relative overflow-hidden rounded-lg border transition",
+              isSelected ? "border-cyan-500/50" : "border-zinc-800 hover:border-zinc-700",
+            ].join(" ")}
+          >
+            <img src={option} alt="Generated option" className="h-24 w-full object-cover" />
+          </button>
+        )}
+      />
 
       <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
         <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Preview</div>
@@ -98,6 +159,75 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         </div>
       ) : null}
     </div>
+  )
+}
+
+type FieldEditorProps = {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  onGenerate: () => void
+  generateLabel: string
+  options: string[]
+  onSelectOption: (value: string) => void
+  input: ReactNode
+  renderOption?: (option: string, isSelected: boolean, onSelect: () => void) => ReactNode
+}
+
+function FieldEditor(props: FieldEditorProps) {
+  const uniqueOptions = [...new Set(props.options.filter(Boolean))]
+  return (
+    <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{props.label}</div>
+        <button
+          type="button"
+          onClick={props.onGenerate}
+          className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
+        >
+          <SparklesIcon />
+          <span>{props.generateLabel}</span>
+        </button>
+      </div>
+      {props.input}
+      {uniqueOptions.length > 0 ? (
+        <div className="grid gap-2">
+          <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Options</div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {uniqueOptions.map((option) => {
+              const isSelected = option === props.value
+              const onSelect = () => props.onSelectOption(option)
+              return props.renderOption ? (
+                <div key={option}>{props.renderOption(option, isSelected, onSelect)}</div>
+              ) : (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={onSelect}
+                  className={[
+                    "rounded-lg border px-3 py-2 text-left text-sm transition",
+                    isSelected
+                      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-50"
+                      : "border-zinc-800 bg-zinc-950/60 text-zinc-300 hover:border-zinc-700",
+                  ].join(" ")}
+                >
+                  <div className="line-clamp-4 leading-5">{option}</div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function SparklesIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+      <path d="M10 2.5 11.6 6.4 15.5 8 11.6 9.6 10 13.5 8.4 9.6 4.5 8 8.4 6.4 10 2.5Z" />
+      <path d="M14.8 12.8 15.6 14.7 17.5 15.5 15.6 16.3 14.8 18.2 14 16.3 12.1 15.5 14 14.7 14.8 12.8Z" />
+    </svg>
   )
 }
 
