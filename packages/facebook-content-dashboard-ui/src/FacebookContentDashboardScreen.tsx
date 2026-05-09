@@ -8,6 +8,11 @@ import { CompactSelectedSourceCardSurface, SelectedSourceCardSurface, SourcePost
 import { SourcePostPreviewFrame } from "./components/SourcePostPreviewFrame"
 import { createFacebookContentDashboardStore } from "./content-dashboard-store"
 import type { DraftRecord, SourcePostRecord } from "./content-dashboard-types"
+import {
+  ChoiceCardSurface,
+  ContextCardSurface,
+  SelectedCardSurface,
+} from "./components/SelectionCards"
 
 export type FacebookContentDashboardScreenProps = {
   apiRootUrl?: string
@@ -318,6 +323,32 @@ function debugScenarios(store: Store) {
       ],
     },
     {
+      slug: "selection-cards",
+      title: "Selection cards",
+      scenarios: [
+        {
+          slug: "choice",
+          title: "Choice",
+          render: () => <FixtureSelectionCards mode="choice" />,
+        },
+        {
+          slug: "context",
+          title: "Context",
+          render: () => <FixtureSelectionCards mode="context" />,
+        },
+        {
+          slug: "selected-active",
+          title: "Selected active",
+          render: () => <FixtureSelectionCards mode="selected-active" />,
+        },
+        {
+          slug: "selected-context",
+          title: "Selected context",
+          render: () => <FixtureSelectionCards mode="selected-context" />,
+        },
+      ],
+    },
+    {
       slug: "source-post-cards",
       title: "Source post cards",
       scenarios: [
@@ -544,6 +575,43 @@ const FixtureOutsidePages = observer(function FixtureOutsidePages(props: { mode:
   const reactiveFrame = observeContentCreationFrame(store)
   const derived = useDerived(store.state$.get())
   return <div data-reactive-frame={reactiveFrame}><SourcePanel store={store} derived={derived} /></div>
+})
+
+const FixtureSelectionCards = observer(function FixtureSelectionCards(props: {
+  mode: "choice" | "context" | "selected-active" | "selected-context"
+}) {
+  const [store] = useState(() => createFixtureStore("destination-existing"))
+  const reactiveFrame = observeContentCreationFrame(store)
+  const derived = useDerived(store.state$.get())
+  const title = derived.visibleDestinationPages[0] ?? "Support Law Enforcement"
+  const meta = `${(derived.postsByPage.get(title) ?? []).length || 10} top posts`
+
+  return (
+    <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
+      {props.mode === "choice" ? (
+        <ChoiceCardSurface
+          title={title}
+          meta={meta}
+          onClick={() =>
+            store.chooseDestination(title, (derived.postsByPage.get(title) ?? []).length > 0)
+          }
+        />
+      ) : props.mode === "context" ? (
+        <ContextCardSurface
+          title={title}
+          meta={meta}
+          onClick={() => store.reopenDestination()}
+        />
+      ) : (
+        <SelectedCardSurface
+          title={title}
+          meta={meta}
+          tone={props.mode === "selected-context" ? "context" : "active"}
+          onClick={() => store.reopenDestination()}
+        />
+      )}
+    </div>
+  )
 })
 
 const FixtureSourcePostCards = observer(function FixtureSourcePostCards(props: { mode: "compact-selected" | "selected" | "option" | "option-active" }) {
@@ -871,7 +939,7 @@ function DestinationPanel(props: { store: Store; derived: ReturnType<typeof useD
           {visibleDestinationPages.length > 0 ? (
             <div className="grid gap-2 md:grid-cols-2">
               {visibleDestinationPages.map((page) => (
-                <ChoiceCard
+                <ChoiceCardSurface
                   key={page}
                   title={page}
                   meta={`${(postsByPage.get(page) ?? []).length} top posts`}
@@ -893,7 +961,7 @@ function DestinationPanel(props: { store: Store; derived: ReturnType<typeof useD
           </div>
         </div>
       ) : (
-        <SelectedCard
+        <SelectedCardSurface
           title={ui.destinationPage}
           meta={`${destinationPosts.length} top posts`}
           onClick={() => props.store.reopenDestination()}
@@ -950,7 +1018,7 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
           {!ui.outsidePage ? (
             <div className="grid gap-2 md:grid-cols-2">
               {sourcePageOptions.map((page) => (
-                <ChoiceCard
+                <ChoiceCardSurface
                   key={page}
                   title={page}
                   meta={(postsByPage.get(page) ?? []).length + " top posts"}
@@ -965,7 +1033,7 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
         <Section>
           {ui.sourcePickerOpen || !selectedSource || selectedSource.sourcePage !== ui.outsidePage ? (
             <div className="flex flex-col gap-3">
-              <ContextCard
+              <ContextCardSurface
                 title={ui.outsidePage ?? ""}
                 meta={`${outsidePosts.length} top posts`}
                 onClick={() => props.store.reopenOutsidePage()}
@@ -1007,7 +1075,7 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
             </div>
           ) : selectedSource ? (
             <div className="flex flex-col gap-3">
-              <ContextCard
+              <ContextCardSurface
                 title={ui.outsidePage ?? ""}
                 meta={`${outsidePosts.length} top posts`}
                 onClick={() => props.store.reopenOutsidePage()}
@@ -1305,72 +1373,6 @@ function CheckIcon() {
     <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d="m3.5 8.5 2.75 2.75 6-6" />
     </svg>
-  )
-}
-
-function ChoiceCard(props: { title: string; meta: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onPointerDown={(event) => { event.preventDefault(); props.onClick() }}
-      onClick={props.onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-3 text-left hover:border-zinc-700"
-    >
-      <div>
-        <div className="text-sm font-semibold text-zinc-100">{props.title}</div>
-        <div className="mt-1 text-xs text-zinc-500">{props.meta}</div>
-      </div>
-      <span className="text-zinc-500">›</span>
-    </button>
-  )
-}
-
-function ContextCard(props: { title: string; meta: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onPointerDown={(event) => { event.preventDefault(); props.onClick() }}
-      onClick={props.onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-800/60 bg-zinc-950/10 px-3 py-2 text-left transition hover:border-zinc-700 hover:bg-zinc-950/20"
-    >
-      <div>
-        <div className="text-sm font-semibold text-zinc-200">{props.title}</div>
-        <div className="mt-1 text-xs text-zinc-500">{props.meta}</div>
-      </div>
-      <span className="text-zinc-600">•</span>
-    </button>
-  )
-}
-
-function SelectedCard(props: {
-  title: string
-  meta: string
-  onClick: () => void
-  tone?: "active" | "context"
-}) {
-  const tone = props.tone ?? "active"
-  return (
-    <button
-      type="button"
-      onPointerDown={(event) => { event.preventDefault(); props.onClick() }}
-      onClick={props.onClick}
-      className={[
-        "flex w-full items-center justify-between gap-3 rounded-lg px-3 py-3 text-left transition",
-        tone === "active"
-          ? "border border-cyan-500/30 bg-cyan-500/[0.08] hover:border-cyan-400/40 hover:bg-cyan-500/[0.11]"
-          : "border border-zinc-800/80 bg-zinc-950/20 hover:border-zinc-700 hover:bg-zinc-950/30",
-      ].join(" ")}
-    >
-      <div>
-        <div className="text-sm font-semibold text-zinc-100">{props.title}</div>
-        <div className="mt-1 text-xs text-zinc-500">{props.meta}</div>
-      </div>
-      {tone === "active" ? (
-        <div className="flex h-8 w-8 items-center justify-center rounded-md border border-cyan-500/30 bg-cyan-500/[0.08] text-cyan-200"><EditIcon /></div>
-      ) : (
-        <span className="text-zinc-600">•</span>
-      )}
-    </button>
   )
 }
 
