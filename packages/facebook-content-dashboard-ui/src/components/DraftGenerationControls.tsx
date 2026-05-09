@@ -8,8 +8,6 @@ type DraftGenerationControlsProps = {
   onGenerateText: () => void
   onGenerateImage: () => void
   onResetImage: () => void
-  onDeleteCurrentDraft: () => void
-  onDeleteGeneratedByProvider: (provider: Exclude<AssetGenerationProvider, "seed">) => void
 }
 
 const providerOptions = [
@@ -44,9 +42,11 @@ export function DraftGenerationControls(props: DraftGenerationControlsProps) {
             <button
               type="button"
               onClick={props.onGenerateText}
-              className="rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
+              title="Generate text ideas"
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
             >
-              Generate
+              <SparklesIcon />
+              <span>Generate text</span>
             </button>
           </div>
         </div>
@@ -74,44 +74,54 @@ export function DraftGenerationControls(props: DraftGenerationControlsProps) {
             <button
               type="button"
               onClick={props.onGenerateImage}
-              className="rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
+              title="Generate image ideas"
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
             >
-              Generate
+              <ImageIcon />
+              <span>Generate image</span>
+            </button>
+            <button
+              type="button"
+              onClick={props.onResetImage}
+              title="Reset image"
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-zinc-700"
+            >
+              <ResetIcon />
+              <span>Reset</span>
             </button>
           </div>
         </div>
       </div>
-
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        <button
-          type="button"
-          onClick={props.onResetImage}
-          className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
-        >
-          Reset image
-        </button>
-        <button
-          type="button"
-          onClick={props.onDeleteCurrentDraft}
-          className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-100 transition hover:border-rose-400/40"
-        >
-          Delete draft
-        </button>
-        <button
-          type="button"
-          onClick={() => props.onDeleteGeneratedByProvider("mock")}
-          className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
-        >
-          Delete mock
-        </button>
-        <button
-          type="button"
-          onClick={() => props.onDeleteGeneratedByProvider("codex")}
-          className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
-        >
-          Delete codex
-        </button>
-      </div>
     </div>
+  )
+}
+
+function SparklesIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+      <path d="M10 2.5 11.6 6.4 15.5 8 11.6 9.6 10 13.5 8.4 9.6 4.5 8 8.4 6.4 10 2.5Z" />
+      <path d="M14.8 12.8 15.6 14.7 17.5 15.5 15.6 16.3 14.8 18.2 14 16.3 12.1 15.5 14 14.7 14.8 12.8Z" />
+    </svg>
+  )
+}
+
+function ImageIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
+      <path d="m5.5 13 2.7-2.7a1 1 0 0 1 1.4 0l1.4 1.4 2.2-2.2a1 1 0 0 1 1.4 0l2.4 2.4" />
+      <circle cx="7" cy="7.5" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function ResetIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+      <path d="M4 5.5h4v4" />
+      <path d="M16 14.5h-4v-4" />
+      <path d="M6.5 13.5A5 5 0 0 0 15 10" />
+      <path d="M13.5 6.5A5 5 0 0 0 5 10" />
+    </svg>
   )
 }

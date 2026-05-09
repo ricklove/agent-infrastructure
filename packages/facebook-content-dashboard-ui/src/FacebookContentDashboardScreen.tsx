@@ -732,8 +732,6 @@ const FixtureDraftGenerationControls = observer(function FixtureDraftGenerationC
         onGenerateText={() => store.generateTextVariants()}
         onGenerateImage={() => store.generateImageVariants()}
         onResetImage={() => store.resetActiveDraftImage()}
-        onDeleteCurrentDraft={() => store.deleteActiveDraft()}
-        onDeleteGeneratedByProvider={(provider) => store.deleteGeneratedDraftsByProvider(provider)}
       />
     </div>
   )
@@ -788,7 +786,6 @@ const FixtureDraftEditorSurface = observer(function FixtureDraftEditorSurface(pr
         onGenerateImage={() => store.generateImageVariants()}
         onResetImage={() => store.resetActiveDraftImage()}
         onDeleteCurrentDraft={() => store.deleteActiveDraft()}
-        onDeleteGeneratedByProvider={(provider) => store.deleteGeneratedDraftsByProvider(provider)}
         onSave={() => store.saveActiveDraft(selectedDraft.id)}
         preview={<DraftCardPreview draft={selectedDraft} pageName={derived.ui.destinationPage ?? "Your page"} expanded />}
         queuedMeta={queuedPost ? `${queuedPost.pageName} · ${queuedPost.scheduledFor}` : null}
@@ -822,6 +819,7 @@ const FixtureDraftAlternativesStrip = observer(function FixtureDraftAlternatives
           previewImage: draftPreviewImage(draft, derived.ui.destinationPage ?? "Your page"),
         }))}
         onSelectDraft={(draftId) => store.selectDraft(draftId)}
+        onDeleteDraft={(draftId) => store.deleteDraftById(draftId)}
         onRegenerateSet={() => store.generateTextVariants()}
       />
     </div>
@@ -1227,7 +1225,6 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                 onGenerateImage={() => props.store.generateImageVariants()}
                 onResetImage={() => props.store.resetActiveDraftImage()}
                 onDeleteCurrentDraft={() => props.store.deleteActiveDraft()}
-                onDeleteGeneratedByProvider={(provider) => props.store.deleteGeneratedDraftsByProvider(provider)}
                 onSave={() => props.store.saveActiveDraft(selectedDraft.id)}
                 preview={<DraftCardPreview draft={selectedDraft} pageName={ui.destinationPage ?? "Your page"} expanded />}
                 queuedMeta={queuedPost ? `${queuedPost.pageName} · ${queuedPost.scheduledFor}` : null}
@@ -1241,6 +1238,7 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
                   previewImage: draftPreviewImage(draft, ui.destinationPage ?? "Your page"),
                 }))}
                 onSelectDraft={(draftId) => props.store.selectDraft(draftId)}
+                onDeleteDraft={(draftId) => props.store.deleteDraftById(draftId)}
                 onRegenerateSet={() => props.store.generateTextVariants()}
               />
             </>

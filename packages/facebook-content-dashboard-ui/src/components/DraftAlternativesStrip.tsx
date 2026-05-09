@@ -9,6 +9,7 @@ type DraftAlternativesStripProps = {
   generationTag: string | null
   alternatives: DraftAlternativeCard[]
   onSelectDraft: (draftId: string) => void
+  onDeleteDraft: (draftId: string) => void
   onRegenerateSet: () => void
 }
 
@@ -29,31 +30,75 @@ export function DraftAlternativesStrip(props: DraftAlternativesStripProps) {
           ) : null}
           <button
             type="button"
+            title="Regenerate set"
             onClick={props.onRegenerateSet}
-            className="rounded-md border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-700"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-300 transition hover:border-zinc-700"
           >
-            Regenerate set
+            <RefreshIcon />
           </button>
         </div>
       </div>
       <div className="flex gap-3 overflow-x-auto pb-1">
         {props.alternatives.map((draft) => (
-          <button
+          <div
             key={draft.id}
-            type="button"
-            onClick={() => props.onSelectDraft(draft.id)}
-            className="flex min-w-[240px] max-w-[240px] shrink-0 flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-left transition hover:border-zinc-700"
+            className="flex min-w-[240px] max-w-[240px] shrink-0 flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3"
           >
-            <img
-              src={draft.previewImage}
-              alt={draft.title}
-              className="h-28 w-full rounded-md border border-zinc-800 object-cover"
-            />
-            <div className="text-sm font-semibold text-zinc-100">{draft.title}</div>
-            <div className="line-clamp-4 text-sm leading-5 text-zinc-300">{draft.caption}</div>
-          </button>
+            <div className="flex items-start justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => props.onSelectDraft(draft.id)}
+                className="min-w-0 flex-1 text-left"
+              >
+                <div className="text-sm font-semibold text-zinc-100">{draft.title}</div>
+              </button>
+              <button
+                type="button"
+                title="Delete draft"
+                onClick={() => props.onDeleteDraft(draft.id)}
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 transition hover:border-rose-400/40 hover:text-rose-200"
+              >
+                <TrashIcon />
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => props.onSelectDraft(draft.id)}
+              className="flex flex-col gap-3 text-left"
+            >
+              <img
+                src={draft.previewImage}
+                alt={draft.title}
+                className="h-28 w-full rounded-md border border-zinc-800 object-cover"
+              />
+              <div className="line-clamp-4 text-sm leading-5 text-zinc-300">{draft.caption}</div>
+            </button>
+          </div>
         ))}
       </div>
     </div>
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+      <path d="M4 5.5h4v4" />
+      <path d="M16 14.5h-4v-4" />
+      <path d="M6.5 13.5A5 5 0 0 0 15 10" />
+      <path d="M13.5 6.5A5 5 0 0 0 5 10" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+      <path d="M3.5 5.5h13" />
+      <path d="M8 3.5h4" />
+      <path d="M6 5.5v10a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-10" />
+      <path d="M8 8.5v5" />
+      <path d="M12 8.5v5" />
+    </svg>
   )
 }

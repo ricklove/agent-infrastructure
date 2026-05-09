@@ -17,7 +17,6 @@ type DraftEditorSurfaceProps = {
   onGenerateImage: () => void
   onResetImage: () => void
   onDeleteCurrentDraft: () => void
-  onDeleteGeneratedByProvider: (provider: Exclude<AssetGenerationProvider, "seed">) => void
   onSave: () => void
   preview: ReactNode
   queuedMeta?: string | null
@@ -40,6 +39,14 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
           <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-400">
             {props.draftSaved ? "saved" : "editing"}
           </div>
+          <button
+            type="button"
+            onClick={props.onDeleteCurrentDraft}
+            title="Delete draft"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-100 transition hover:border-rose-400/40"
+          >
+            <TrashIcon />
+          </button>
         </div>
       </div>
 
@@ -51,8 +58,6 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         onGenerateText={props.onGenerateText}
         onGenerateImage={props.onGenerateImage}
         onResetImage={props.onResetImage}
-        onDeleteCurrentDraft={props.onDeleteCurrentDraft}
-        onDeleteGeneratedByProvider={props.onDeleteGeneratedByProvider}
       />
 
       <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
@@ -93,5 +98,17 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         </div>
       ) : null}
     </div>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+      <path d="M3.5 5.5h13" />
+      <path d="M8 3.5h4" />
+      <path d="M6 5.5v10a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-10" />
+      <path d="M8 8.5v5" />
+      <path d="M12 8.5v5" />
+    </svg>
   )
 }

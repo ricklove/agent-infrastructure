@@ -47,32 +47,73 @@ function responseOutputText(payload: any): string {
 export async function generateTextDrafts(
   request: GenerateTextDraftsRequest,
 ): Promise<GenerateTextDraftsResponse> {
+  const source = request.sourcePost
+  if (!source) {
+    return {
+      ok: false,
+      error: "Source post is required for text generation.",
+    }
+  }
+
+  const destinationPage = request.destinationPage?.trim() || "Your page"
+
   if (request.provider === "mock") {
     const timestamp = Date.now()
     return {
       ok: true,
-      drafts: [1, 2, 3].map((index) => ({
-        id: `gen-${timestamp}-${index}`,
-        sourceId: request.sourcePost.id,
-        title: `${request.sourcePost.title} · Mock variant ${index}`,
-        format: index === 2 ? "quote" : index === 3 ? "story" : "image",
-        stage: "draft",
-        positioning: index === 1 ? "Supportive, civic, family-safe" : index === 2 ? "Short gratitude-led statement" : "Empathy and public-service framing",
-        captionPreview:
-          index === 1
-            ? `Support looks strongest when it is visible in everyday community life. ${request.sourcePost.adaptationRule}`
-            : index === 2
-              ? `Respect the people who keep showing up for our neighborhoods. ${request.sourcePost.hook}`
-              : `${request.sourcePost.whyItWorked} Reframed into a safer, more original story-led draft for your page.`,
-        goal: index === 1 ? "Generate a high-share supportive derivative" : index === 2 ? "Fast-scrolling agreement post" : "Broader reach beyond core followers",
-        originality: "Mock generation",
-        tone: index === 1 ? "warm, clear, civic" : index === 2 ? "brief, respectful, declarative" : "protective, grounded, useful",
-        note: "Mock provider generated this draft.",
-        previewMediaPath: request.sourcePost.mediaPath,
-        textProvider: "mock",
-        imageProvider: "seed",
-        generatedKind: "generated",
-      })),
+      drafts: [
+        {
+          id: `gen-${timestamp}-1`,
+          sourceId: source.id,
+          title: `${destinationPage} · Community support`,
+          format: "image",
+          stage: "draft",
+          positioning: "Supportive, civic, family-safe",
+          captionPreview: `Support shows up in everyday moments too. ${source.adaptationRule}`,
+          goal: "High-share supportive derivative",
+          originality: "Mock generation",
+          tone: "warm, clear, civic",
+          note: "Mock provider generated a community-led derivative.",
+          previewMediaPath: source.mediaPath,
+          textProvider: "mock",
+          imageProvider: "seed",
+          generatedKind: "generated",
+        },
+        {
+          id: `gen-${timestamp}-2`,
+          sourceId: source.id,
+          title: `${destinationPage} · Gratitude statement`,
+          format: "quote",
+          stage: "draft",
+          positioning: "Short gratitude-led statement",
+          captionPreview: `Respect the people who keep showing up when it counts. ${source.hook}`,
+          goal: "Fast-scrolling agreement post",
+          originality: "Mock generation",
+          tone: "brief, respectful, declarative",
+          note: "Mock provider generated a short gratitude variant.",
+          previewMediaPath: source.mediaPath,
+          textProvider: "mock",
+          imageProvider: "seed",
+          generatedKind: "generated",
+        },
+        {
+          id: `gen-${timestamp}-3`,
+          sourceId: source.id,
+          title: `${destinationPage} · Story-led perspective`,
+          format: "story",
+          stage: "draft",
+          positioning: "Empathy and public-service framing",
+          captionPreview: `${source.whyItWorked} Reframed into a safer, more original story-led draft for ${destinationPage}.`,
+          goal: "Broader reach beyond core followers",
+          originality: "Mock generation",
+          tone: "protective, grounded, useful",
+          note: "Mock provider generated a broader-reach story variant.",
+          previewMediaPath: source.mediaPath,
+          textProvider: "mock",
+          imageProvider: "seed",
+          generatedKind: "generated",
+        },
+      ],
     }
   }
 
@@ -80,15 +121,15 @@ export async function generateTextDrafts(
     const apiKey = requireOpenAiKey()
     const model = process.env.FACEBOOK_CONTENT_DASHBOARD_CODEX_TEXT_MODEL?.trim() || "gpt-5"
     const prompt = [
-      `Destination page: ${request.destinationPage}`,
-      `Source page: ${request.sourcePost.sourcePage}`,
-      `Source title: ${request.sourcePost.title}`,
-      `Pattern: ${request.sourcePost.pattern}`,
-      `Angle: ${request.sourcePost.angle}`,
-      `Hook: ${request.sourcePost.hook}`,
-      `Why it worked: ${request.sourcePost.whyItWorked}`,
-      `Adaptation rule: ${request.sourcePost.adaptationRule}`,
-      `Caution: ${request.sourcePost.caution}`,
+      `Destination page: ${destinationPage}`,
+      `Source page: ${source.sourcePage}`,
+      `Source title: ${source.title}`,
+      `Pattern: ${source.pattern}`,
+      `Angle: ${source.angle}`,
+      `Hook: ${source.hook}`,
+      `Why it worked: ${source.whyItWorked}`,
+      `Adaptation rule: ${source.adaptationRule}`,
+      `Caution: ${source.caution}`,
       "Return exactly JSON, as an array of 3 objects.",
       'Each object must contain: title, format, positioning, captionPreview, goal, originality, tone, note.',
       "Make the drafts clearly different from each other and suitable for a Facebook page.",
@@ -130,7 +171,7 @@ export async function generateTextDrafts(
       ok: true,
       drafts: items.slice(0, 3).map((item, index) => ({
         id: `gen-${timestamp}-${index + 1}`,
-        sourceId: request.sourcePost.id,
+        sourceId: source.id,
         title: item.title,
         format: item.format,
         stage: "draft",
@@ -140,7 +181,7 @@ export async function generateTextDrafts(
         originality: item.originality || "Codex generation",
         tone: item.tone,
         note: item.note,
-        previewMediaPath: request.sourcePost.mediaPath,
+        previewMediaPath: source.mediaPath,
         textProvider: "codex",
         imageProvider: "seed",
         generatedKind: "generated",
@@ -157,10 +198,20 @@ export async function generateTextDrafts(
 export async function generateImageDraft(
   request: GenerateImageDraftRequest,
 ): Promise<GenerateImageDraftResponse> {
+  const source = request.sourcePost
+  if (!source) {
+    return {
+      ok: false,
+      error: "Source post is required for image generation.",
+    }
+  }
+
+  const destinationPage = request.destinationPage?.trim() || "Your page"
+
   if (request.provider === "mock") {
     return {
       ok: true,
-      previewMediaPath: request.sourcePost.mediaPath,
+      previewMediaPath: source.mediaPath,
       note: "Mock image generation kept the source image.",
       imageProvider: "mock",
     }
@@ -170,10 +221,10 @@ export async function generateImageDraft(
     const apiKey = requireOpenAiKey()
     const model = process.env.FACEBOOK_CONTENT_DASHBOARD_CODEX_IMAGE_MODEL?.trim() || "gpt-image-1"
     const prompt = [
-      `Create a Facebook-ready image for destination page ${request.destinationPage}.`,
-      `Source post title: ${request.sourcePost.title}`,
-      `Winning pattern: ${request.sourcePost.pattern}`,
-      `Angle: ${request.sourcePost.angle}`,
+      `Create a Facebook-ready image for destination page ${destinationPage}.`,
+      `Source post title: ${source.title}`,
+      `Winning pattern: ${source.pattern}`,
+      `Angle: ${source.angle}`,
       `Draft title: ${request.draft.title}`,
       `Draft caption: ${request.draft.captionPreview}`,
       `Positioning: ${request.draft.positioning}`,
