@@ -432,8 +432,7 @@ export function createFacebookContentDashboardStore() {
     let nextDrafts = state$.drafts.get()
     let sourceDrafts = nextDrafts.filter((draft) => draft.sourceId === sourceId)
 
-    if (source && !destinationHasHistory) {
-      nextDrafts = nextDrafts.filter((draft) => draft.sourceId !== sourceId)
+    if (source && sourceDrafts.length === 0) {
       const freshDraft = createFreshDraftForDestination(
         source,
         destinationPage ?? state$.scheduling.targetPage.get(),
@@ -1047,18 +1046,16 @@ export function createFacebookContentDashboardStore() {
       state$.ui.connectedDestinationPages.set([pageName, ...existing])
     }
 
-    const outsidePage = hasOwnPosts
-      ? null
-      : firstAvailableOutsidePage(state$.sourcePosts.get(), pageName)
+    const outsidePage = hasOwnPosts ? null : null
 
     state$.ui.destinationPage.set(pageName)
     state$.ui.destinationDraft.set("")
     state$.ui.destinationPickerOpen.set(false)
     state$.ui.knownPagesOpen.set(false)
     state$.ui.outsidePage.set(outsidePage)
-    state$.ui.outsidePagePickerOpen.set(!hasOwnPosts && !outsidePage)
+    state$.ui.outsidePagePickerOpen.set(!hasOwnPosts)
     state$.ui.sourceMode.set(hasOwnPosts ? "destination" : "outside")
-    state$.ui.sourcePickerOpen.set(hasOwnPosts || Boolean(outsidePage))
+    state$.ui.sourcePickerOpen.set(hasOwnPosts)
     state$.ui.sourceListExpanded.set(false)
     state$.ui.draftEditorOpen.set(false)
     state$.ui.savedDraftId.set(null)
@@ -1075,9 +1072,7 @@ export function createFacebookContentDashboardStore() {
     state$.workflow.statusMessage.set(
       hasOwnPosts
         ? "Choose one of your top posts."
-        : outsidePage
-          ? "Choose one source post."
-          : "Choose a source page with history.",
+        : "Choose a source page with history.",
     )
     persistStateNow()
   }
@@ -1097,19 +1092,16 @@ export function createFacebookContentDashboardStore() {
       state$.ui.connectedDestinationPages.set([rawValue, ...existing])
     }
 
-    const outsidePage = firstAvailableOutsidePage(
-      state$.sourcePosts.get(),
-      rawValue,
-    )
+    const outsidePage = null
 
     state$.ui.destinationDraft.set("")
     state$.ui.destinationPage.set(rawValue)
     state$.ui.destinationPickerOpen.set(false)
     state$.ui.knownPagesOpen.set(false)
     state$.ui.outsidePage.set(outsidePage)
-    state$.ui.outsidePagePickerOpen.set(!outsidePage)
+    state$.ui.outsidePagePickerOpen.set(true)
     state$.ui.sourceMode.set("outside")
-    state$.ui.sourcePickerOpen.set(Boolean(outsidePage))
+    state$.ui.sourcePickerOpen.set(false)
     state$.ui.sourceListExpanded.set(false)
     state$.selection.activeSourceId.set("")
     state$.selection.activeDraftId.set("")
@@ -1120,11 +1112,7 @@ export function createFacebookContentDashboardStore() {
     state$.drafts.set([])
     state$.scheduling.targetPage.set(rawValue)
     state$.workflow.activeStep.set("discover")
-    state$.workflow.statusMessage.set(
-      outsidePage
-        ? "Choose one source post."
-        : "Choose a source page with history.",
-    )
+    state$.workflow.statusMessage.set("Choose a source page with history.")
     persistStateNow()
   }
 
@@ -1168,6 +1156,7 @@ export function createFacebookContentDashboardStore() {
     state$.selection.activeDraftId.set(activeDraftId)
     state$.ui.savedDraftId.set(activeDraftId)
     state$.ui.draftEditorOpen.set(true)
+    state$.ui.sourcePickerOpen.set(false)
     state$.drafts.set(
       state$.drafts
         .get()
@@ -1182,10 +1171,11 @@ export function createFacebookContentDashboardStore() {
     const activeSource = activeDraft
       ? state$.sourcePosts.get().find((post) => post.id === activeDraft.sourceId) ?? null
       : null
+    const savedAt = `${new Date().toISOString().slice(11, 16)} UTC`
     state$.workflow.statusMessage.set(
       activeSource
-        ? `Draft saved for ${state$.scheduling.targetPage.get()} from ${activeSource.sourcePage}. Choose a time and queue it.`
-        : "Draft saved. Choose a time and queue it.",
+        ? `Draft saved at ${savedAt} for ${state$.scheduling.targetPage.get()} from ${activeSource.sourcePage}. Queue it when ready.`
+        : `Draft saved at ${savedAt}. Queue it when ready.`,
     )
     persistStateNow()
   }
@@ -1221,6 +1211,7 @@ export function createFacebookContentDashboardStore() {
     state$.selection.activeDraftId.set(activeDraftId)
     state$.ui.savedDraftId.set(activeDraftId)
     state$.ui.draftEditorOpen.set(true)
+    state$.ui.sourcePickerOpen.set(false)
     state$.drafts.set(
       state$.drafts
         .get()

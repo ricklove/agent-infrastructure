@@ -1,5 +1,5 @@
 import type { AssetGenerationProvider } from "@agent-infrastructure/facebook-content-dashboard-core"
-import type { ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { DraftGenerationControls } from "./DraftGenerationControls"
 import { DraftFieldEditor } from "./DraftFieldEditor"
 
@@ -42,6 +42,27 @@ type DraftEditorSurfaceProps = {
 }
 
 export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
+  const [localSavePulseAt, setLocalSavePulseAt] = useState<number | null>(null)
+  const lastSaveTriggerAt = useRef(0)
+
+  useEffect(() => {
+    setLocalSavePulseAt(null)
+  }, [props.titleValue, props.caption, props.imageValue, props.generationTag])
+
+  const saveAcknowledged = Boolean(
+    props.draftSaved ||
+      props.statusMessage?.startsWith("Draft saved at ") ||
+      localSavePulseAt !== null,
+  )
+  const handleSave = () => {
+    const now = Date.now()
+    if (now - lastSaveTriggerAt.current < 300) {
+      return
+    }
+    lastSaveTriggerAt.current = now
+    setLocalSavePulseAt(now)
+    props.onSave()
+  }
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
       <div className="flex items-center justify-between gap-3">
@@ -58,13 +79,27 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
           <div
             className={[
               "rounded-full border px-2 py-1 text-[11px]",
-              props.draftSaved
+              saveAcknowledged
                 ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-100"
                 : "border-zinc-800 bg-zinc-950/70 text-zinc-400",
             ].join(" ")}
           >
-            {props.draftSaved ? "saved" : "editing"}
+            {saveAcknowledged ? "saved" : "editing"}
           </div>
+          {props.showSaveAction === false ? null : (
+            <button
+              type="button"
+              onClick={handleSave}
+              className={[
+                "inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition",
+                saveAcknowledged
+                  ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
+                  : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
+              ].join(" ")}
+            >
+              {saveAcknowledged ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
+            </button>
+          )}
           <button
             type="button"
             onClick={props.onDeleteCurrentDraft}
@@ -158,11 +193,11 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
               <img src={option} alt={`Image option ${index + 1}`} className="h-full max-h-full w-full max-w-full object-contain" />
             </div>
             {isSelected ? (
-              <div className="absolute right-2 top-2 rounded-full border border-cyan-400/50 bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-50">
+              <div className="pointer-events-none absolute right-2 top-2 rounded-full border border-cyan-400/50 bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-50">
                 Selected
               </div>
             ) : null}
-            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-[11px] text-white">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-[11px] text-white">
               <span>Option {index + 1}</span>
               {isSelected ? <span>Using</span> : null}
             </div>
@@ -177,24 +212,9 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         </div>
       )}
 
-      {props.showSaveAction === false ? null : (
-        <button
-          type="button"
-          onClick={props.onSave}
-          className={[
-            "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm font-semibold transition",
-            props.draftSaved
-              ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
-              : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
-          ].join(" ")}
-        >
-          {props.draftSaved ? <><CheckIcon /><span>Saved draft</span></> : <span>Save draft</span>}
-        </button>
-      )}
-
-      {props.draftSaved && !props.queuedMeta ? (
+      {saveAcknowledged && !props.queuedMeta ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-3 text-sm text-cyan-100">
-          <span>{props.statusMessage?.includes("saved") ? props.statusMessage : "Draft saved."}</span>
+          <span>{props.statusMessage?.includes("saved") ? props.statusMessage : "Draft saved. Queue it when ready."}</span>
           <span className="text-xs text-cyan-100/80">Queue it when ready.</span>
         </div>
       ) : null}

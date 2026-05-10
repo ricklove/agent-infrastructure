@@ -132,7 +132,7 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
   const draftSaved = Boolean(
     selectedDraft &&
       (state.ui.savedDraftId === selectedDraft.id ||
-        (selectedDraft.generatedKind !== "seed" && selectedDraft.stage !== "draft")),
+        selectedDraft.stage === "approved"),
   )
   const queuedPost = selectedDraft
     ? state.scheduledPosts.find(
@@ -211,16 +211,13 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
       ) : null}
 
       {isMediumDesktop && !isWideDesktop ? (
-        <div className="grid h-[calc(100vh-96px)] min-h-0 flex-1 items-stretch" style={{ gridTemplateColumns: "300px minmax(0, 1fr) 380px", gap: "1rem" }}>
-          <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto pr-1">
+        <div className="grid min-h-0 flex-1 items-start" style={{ gridTemplateColumns: "300px minmax(0, 1fr)", gap: "1rem" }}>
+          <div className="flex min-h-0 flex-col gap-4 pr-1">
             <DestinationPanel store={props.store} derived={derived} />
             <SourcePanel store={props.store} derived={derived} />
           </div>
-          <div className="min-h-0 h-full min-w-0 overflow-y-auto pr-1">
-            <DraftPanel store={props.store} derived={derived} showInlineSchedule showInlinePreview={false} />
-          </div>
-          <div className="min-h-0 h-full min-w-0 overflow-y-auto pr-1">
-            <PreviewRail draft={selectedDraft} pageName={state.ui.destinationPage ?? "Your page"} />
+          <div className="min-w-0 pr-1">
+            <DraftPanel store={props.store} derived={derived} showInlineSchedule />
           </div>
         </div>
       ) : null}
@@ -913,7 +910,7 @@ const FixtureDraftFieldEditor = observer(function FixtureDraftFieldEditor(props:
           onSelectOption={(value) => store.updateActiveDraftPreviewMedia(value)}
           input={
             <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-              <img src={draftPreviewImage(selectedDraft, derived.ui.destinationPage ?? "Your page")} alt="Selected creative" className="h-56 w-full rounded-lg object-cover" />
+              <div className="flex aspect-square w-full max-w-[520px] items-center justify-center overflow-hidden rounded-lg bg-zinc-950"><img src={draftPreviewImage(selectedDraft, derived.ui.destinationPage ?? "Your page")} alt="Selected creative" className="h-full max-h-full w-full max-w-full object-contain" /></div>
             </div>
           }
           renderOption={(option, isSelected, onSelect, index) => (
@@ -922,12 +919,13 @@ const FixtureDraftFieldEditor = observer(function FixtureDraftFieldEditor(props:
               onClick={onSelect}
               title={`Image option ${index + 1}`}
               aria-label={`Image option ${index + 1}`}
+              style={{ width: 112, height: 112 }}
               className={[
-                "relative overflow-hidden rounded-lg border transition",
+                "relative flex shrink-0 overflow-hidden rounded-lg border transition justify-self-start self-start",
                 isSelected ? "border-cyan-500/50" : "border-zinc-800 hover:border-zinc-700",
               ].join(" ")}
             >
-              <img src={option} alt={`Image option ${index + 1}`} className="h-24 w-full object-cover" />
+              <div className="flex h-full w-full items-center justify-center bg-zinc-950"><img src={option} alt={`Image option ${index + 1}`} className="h-full max-h-full w-full max-w-full object-contain" /></div>
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-[11px] text-white">
                 <span>Option {index + 1}</span>
                 {isSelected ? <span>Selected</span> : null}
@@ -1195,7 +1193,7 @@ function DestinationPanel(props: { store: Store; derived: ReturnType<typeof useD
   return (
     <Section>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-zinc-100">Destination</div>
+        <div className="text-sm font-semibold text-zinc-100">Where to publish</div>
         {ui.destinationPage && !ui.destinationPickerOpen ? (
           <div className="text-[11px] text-zinc-500">{destinationPosts.length} top posts</div>
         ) : null}
@@ -1208,7 +1206,7 @@ function DestinationPanel(props: { store: Store; derived: ReturnType<typeof useD
                 <ChoiceCardSurface
                   key={page}
                   title={page}
-                  meta={`${(postsByPage.get(page) ?? []).length} top posts`}
+                  meta={`${(postsByPage.get(page) ?? []).length} winners`}
                   onClick={() => props.store.chooseDestination(page, (postsByPage.get(page) ?? []).length > 0)}
                 />
               ))}
@@ -1229,7 +1227,7 @@ function DestinationPanel(props: { store: Store; derived: ReturnType<typeof useD
       ) : (
         <SelectedCardSurface
           title={ui.destinationPage}
-          meta={`${destinationPosts.length} top posts`}
+          meta={`${destinationPosts.length} winners`}
           onClick={() => props.store.reopenDestination()}
         />
       )}
@@ -1282,25 +1280,15 @@ function SourcePanel(props: { store: Store; derived: ReturnType<typeof useDerive
       {showingOutsidePicker ? (
         <Section>
           {!ui.outsidePage ? (
-            <div className="flex flex-col gap-3">
-              {ui.destinationPage ? (
-                <SelectedCardSurface
-                  title={ui.destinationPage}
-                  meta={`${destinationPosts.length} top posts`}
-                  tone="active"
-                  onClick={() => props.store.reopenDestination()}
+            <div className="grid gap-2 md:grid-cols-2">
+              {sourcePageOptions.map((page) => (
+                <ChoiceCardSurface
+                  key={page}
+                  title={page}
+                  meta={(postsByPage.get(page) ?? []).length + " winners"}
+                  onClick={() => props.store.chooseOutsidePage(page)}
                 />
-              ) : null}
-              <div className="grid gap-2 md:grid-cols-2">
-                {sourcePageOptions.map((page) => (
-                  <ChoiceCardSurface
-                    key={page}
-                    title={page}
-                    meta={(postsByPage.get(page) ?? []).length + " top posts"}
-                    onClick={() => props.store.chooseOutsidePage(page)}
-                  />
-                ))}
-              </div>
+              ))}
             </div>
           ) : null}
         </Section>
@@ -1430,7 +1418,7 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
             </div>
             <button
               type="button"
-              onClick={() => props.store.reopenSourceList()}
+              onClick={(event) => { event.preventDefault(); event.stopPropagation(); props.store.reopenSourceList() }}
               className="inline-flex min-h-11 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
             >
               Choose another source
@@ -1675,7 +1663,6 @@ function ExpandButton(props: { count: number; onClick: () => void }) {
   return (
     <button
       type="button"
-      onPointerDown={(event) => { event.preventDefault(); props.onClick() }}
       onClick={props.onClick}
       className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950/60 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-700 hover:text-zinc-100"
     >
