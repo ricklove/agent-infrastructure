@@ -1047,8 +1047,21 @@ function extractWebSocketSessionToken(
 }
 
 function requireDashboardSession(request: Request): Response | null {
+  if (dashboardHostRole !== "admin") {
+    return null
+  }
+
   if (isLoopbackRequest(request)) {
     return null
+  }
+
+  const requestUrl = new URL(request.url)
+  const pathname = requestUrl.pathname
+  if (pathname === "/api/facebook-content-dashboard/media") {
+    const tokenFromQuery = requestUrl.searchParams.get("sessionToken")?.trim() ?? ""
+    if (tokenFromQuery && validateBrowserSessionToken(tokenFromQuery)) {
+      return null
+    }
   }
 
   const sessionToken = extractBearerSessionToken(request)

@@ -1897,6 +1897,14 @@ function pageInitials(value: string): string {
 function contentDashboardMediaUrl(path: string): string {
   const url = new URL("/api/facebook-content-dashboard/media", contentDashboardApiOrigin())
   url.searchParams.set("path", path)
+  if (typeof window !== "undefined") {
+    const sessionToken = window.sessionStorage
+      .getItem("agent-infrastructure.dashboard.session")
+      ?.trim()
+    if (sessionToken) {
+      url.searchParams.set("sessionToken", sessionToken)
+    }
+  }
   return url.toString()
 }
 
