@@ -786,7 +786,7 @@ export function createFacebookContentDashboardStore() {
       })
       state$.drafts.set(nextDrafts)
       const sourceDrafts = nextDrafts.filter((draft) => draft.sourceId === source.id)
-      const previousImageOptions = state$.ui.imageOptions.get()
+      const activePreview = nextDrafts.find((draft) => draft.id === activeDraftId)?.previewMediaPath ?? source.mediaPath
       const fieldOptions = buildFieldOptions(
         source,
         state$.sourcePosts.get(),
@@ -796,7 +796,7 @@ export function createFacebookContentDashboardStore() {
       state$.ui.titleOptions.set(fieldOptions.titleOptions)
       state$.ui.captionOptions.set(fieldOptions.captionOptions)
       state$.ui.imageOptions.set(
-        mergeOptionLists(previousImageOptions, fieldOptions.imageOptions),
+        uniqueStrings([activePreview, ...state$.ui.imageOptions.get(), ...fieldOptions.imageOptions].filter((value): value is string => Boolean(value))),
       )
       state$.ui.savedDraftId.set(null)
       state$.workflow.activeStep.set("create")
@@ -830,7 +830,7 @@ export function createFacebookContentDashboardStore() {
       )
       state$.drafts.set(nextDrafts)
       const sourceDrafts = nextDrafts.filter((draft) => draft.sourceId === source.id)
-      const previousImageOptions = state$.ui.imageOptions.get()
+      const activePreview = generated.previewMediaPath ?? activeDraft.previewMediaPath ?? source.mediaPath
       const fieldOptions = buildFieldOptions(
         source,
         state$.sourcePosts.get(),
@@ -840,7 +840,7 @@ export function createFacebookContentDashboardStore() {
       state$.ui.titleOptions.set(fieldOptions.titleOptions)
       state$.ui.captionOptions.set(fieldOptions.captionOptions)
       state$.ui.imageOptions.set(
-        mergeOptionLists(previousImageOptions, fieldOptions.imageOptions),
+        uniqueStrings([activePreview, ...state$.ui.imageOptions.get(), ...fieldOptions.imageOptions].filter((value): value is string => Boolean(value))),
       )
       state$.ui.savedDraftId.set(null)
       state$.workflow.activeStep.set("create")
@@ -902,7 +902,7 @@ export function createFacebookContentDashboardStore() {
 
   function selectActiveDraftImageOption(previewMediaPath: string) {
     updateActiveDraftPreviewMedia(previewMediaPath)
-    state$.workflow.statusMessage.set("Image option applied.")
+    state$.workflow.statusMessage.set("Image option applied. Save draft to keep it.")
     persistStateNow()
   }
 

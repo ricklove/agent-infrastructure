@@ -1,3 +1,4 @@
+import { SquareImageFrame } from "./SquareImageFrame"
 type DraftPostPreviewFrameProps = {
   pageName: string
   previewImage: string
@@ -31,9 +32,14 @@ export function DraftPostPreviewFrame(props: DraftPostPreviewFrameProps) {
           <div className={[props.expanded ? "line-clamp-5" : "line-clamp-3", "text-[15px] leading-5 text-slate-900"].join(" ")}>{props.caption}</div>
         </div>
         <div className="flex items-center justify-center overflow-hidden border-y border-slate-200 bg-black">
-          <div className={["flex aspect-square w-full items-center justify-center overflow-hidden bg-black", props.expanded ? "max-h-[640px] max-w-[640px]" : "max-h-[520px] max-w-[520px]"].join(" ")}>
-            <img src={props.previewImage} alt={props.title} className="block h-full max-h-full w-full max-w-full object-contain" />
-          </div>
+          <SquareImageFrame
+            src={props.previewImage}
+            alt={props.title}
+            label="Preview image unavailable"
+            sizeClassName={["w-full", props.expanded ? "max-h-[640px] max-w-[640px]" : "max-h-[520px] max-w-[520px]"].join(" ")}
+            frameClassName="bg-black"
+            imageClassName="block"
+          />
         </div>
         <div className="flex items-center justify-between gap-3 px-3 py-2 text-[13px] text-slate-500">
           <div className="flex items-center gap-2"><div className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold text-white">👍</div><span>0</span></div>

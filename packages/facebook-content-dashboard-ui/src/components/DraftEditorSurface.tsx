@@ -1,3 +1,4 @@
+import { SquareImageFrame } from "./SquareImageFrame"
 import type { AssetGenerationProvider } from "@agent-infrastructure/facebook-content-dashboard-core"
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { DraftGenerationControls } from "./DraftGenerationControls"
@@ -142,24 +143,6 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
       />
 
       <DraftFieldEditor
-        label="Post Text"
-        value={props.caption}
-        onGenerate={props.onGenerateCaption}
-        generateLabel={props.pendingGeneration === "text" ? "Generating text…" : "Generate text"}
-        isGenerating={props.pendingGeneration === "text"}
-        feedback={props.captionFeedback}
-        options={props.captionOptions}
-        onSelectOption={props.onSelectCaption}
-        input={
-          <textarea
-            value={props.caption}
-            onChange={(event) => props.onCaptionChange(event.target.value)}
-            className="min-h-[220px] w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm leading-6 text-zinc-200 outline-none"
-          />
-        }
-      />
-
-      <DraftFieldEditor
         label="Image"
         value={props.imageValue}
         onGenerate={props.onGenerateImage}
@@ -170,9 +153,12 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         onSelectOption={props.onSelectImage}
         input={
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-            <div className="flex aspect-square w-full min-h-[320px] max-h-[520px] max-w-[520px] items-center justify-center overflow-hidden rounded-lg bg-zinc-950">
-              <img src={props.imageValue} alt="Selected creative" className="h-full max-h-full w-full max-w-full object-contain" />
-            </div>
+            <SquareImageFrame
+              src={props.imageValue}
+              alt="Selected creative"
+              label="Selected image unavailable"
+              sizeClassName="w-full min-h-[220px] max-h-[420px] max-w-[420px] md:min-h-[260px] md:max-h-[460px] md:max-w-[460px]"
+            />
           </div>
         }
         renderOption={(option, isSelected, onSelect, index) => (
@@ -189,9 +175,12 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
                 : "border-zinc-800 hover:border-zinc-700",
             ].join(" ")}
           >
-            <div className="flex h-full w-full items-center justify-center bg-zinc-950">
-              <img src={option} alt={`Image option ${index + 1}`} className="h-full max-h-full w-full max-w-full object-contain" />
-            </div>
+            <SquareImageFrame
+              src={option}
+              alt={`Image option ${index + 1}`}
+              label="No image"
+              sizeClassName="h-full w-full"
+            />
             {isSelected ? (
               <div className="pointer-events-none absolute right-2 top-2 rounded-full border border-cyan-400/50 bg-cyan-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-50">
                 Selected
@@ -204,6 +193,26 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
           </button>
         )}
       />
+
+      <DraftFieldEditor
+        label="Post Text"
+        value={props.caption}
+        onGenerate={props.onGenerateCaption}
+        generateLabel={props.pendingGeneration === "text" ? "Generating text…" : "Generate text"}
+        isGenerating={props.pendingGeneration === "text"}
+        feedback={props.captionFeedback}
+        options={props.captionOptions}
+        onSelectOption={props.onSelectCaption}
+        input={
+          <textarea
+            value={props.caption}
+            onChange={(event) => props.onCaptionChange(event.target.value)}
+            className="min-h-[180px] w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm leading-6 text-zinc-200 outline-none md:min-h-[200px]"
+          />
+        }
+      />
+
+
 
       {props.showPreview === false ? null : (
         <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">

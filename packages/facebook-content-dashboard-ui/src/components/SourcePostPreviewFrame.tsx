@@ -1,3 +1,4 @@
+import { SquareImageFrame } from "./SquareImageFrame"
 type SourcePostPreviewFrameProps = {
   sourcePage: string
   publishDateLabel: string
@@ -40,9 +41,14 @@ export function SourcePostPreviewFrame(props: SourcePostPreviewFrameProps) {
           ) : null}
         </div>
         <div className="flex items-center justify-center overflow-hidden border-y border-slate-200 bg-black">
-          <div className="flex aspect-square w-full max-h-[520px] max-w-[520px] items-center justify-center overflow-hidden bg-black">
-            <img src={props.previewImage} alt={props.title} className="block h-full max-h-full w-full max-w-full object-contain" />
-          </div>
+          <SquareImageFrame
+            src={props.previewImage}
+            alt={props.title}
+            label="Original image unavailable"
+            sizeClassName="w-full max-h-[520px] max-w-[520px]"
+            frameClassName="bg-black"
+            imageClassName="block"
+          />
         </div>
         <div className="flex items-center justify-between gap-3 px-3 py-2 text-[13px] text-slate-500">
           <div className="flex items-center gap-2">

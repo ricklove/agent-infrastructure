@@ -1,3 +1,4 @@
+import { SquareImageFrame } from "./SquareImageFrame"
 type SourcePostCardData = {
   title: string
   sourcePage: string
@@ -21,13 +22,13 @@ export function CompactSelectedSourceCardSurface(props: SourcePostCardBaseProps)
       onClick={props.onClick}
       className="flex w-full max-w-[760px] items-start gap-3 rounded-lg border border-cyan-500/30 bg-cyan-500/[0.08] p-3 text-left transition hover:border-cyan-400/40 hover:bg-cyan-500/[0.11]"
     >
-      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">
-        <img
-          src={props.post.imageSrc}
-          alt={props.post.title}
-          className="h-full max-h-full w-full max-w-full object-contain"
-        />
-      </div>
+      <SquareImageFrame
+        src={props.post.imageSrc}
+        alt={props.post.title}
+        label="No image"
+        sizeClassName="h-16 w-16 shrink-0"
+        frameClassName="border border-zinc-800 rounded-md"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3 text-[11px] text-zinc-500">
           <span className="truncate font-medium text-zinc-200">{props.post.sourcePage}</span>
@@ -77,13 +78,13 @@ export function SourcePostOptionCardSurface(props: SourcePostCardBaseProps & { a
       ].join(" ")}
     >
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-800 bg-zinc-950 sm:h-28 sm:w-28">
-          <img
-            src={props.post.imageSrc}
-            alt={props.post.title}
-            className="h-full max-h-full w-full max-w-full object-contain"
-          />
-        </div>
+        <SquareImageFrame
+          src={props.post.imageSrc}
+          alt={props.post.title}
+          label="No image"
+          sizeClassName="mt-0.5 h-24 w-24 shrink-0 sm:h-28 sm:w-28"
+          frameClassName="border border-zinc-800 rounded-md"
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3 text-[11px] text-zinc-500">
             <span className="truncate font-medium text-zinc-300">{props.post.sourcePage}</span>

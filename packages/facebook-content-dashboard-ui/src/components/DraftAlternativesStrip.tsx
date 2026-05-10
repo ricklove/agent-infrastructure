@@ -1,3 +1,4 @@
+import { SquareImageFrame } from "./SquareImageFrame"
 export type DraftAlternativeCard = {
   id: string
   title: string
@@ -66,13 +67,13 @@ export function DraftAlternativesStrip(props: DraftAlternativesStripProps) {
               onClick={() => props.onSelectDraft(draft.id)}
               className="flex flex-col gap-3 text-left"
             >
-              <div className="flex aspect-square w-full max-h-[214px] max-w-[214px] items-center justify-center overflow-hidden rounded-md border border-zinc-800 bg-zinc-950">
-                <img
-                  src={draft.previewImage}
-                  alt={draft.title}
-                  className="h-full max-h-full w-full max-w-full object-contain"
-                />
-              </div>
+              <SquareImageFrame
+                src={draft.previewImage}
+                alt={draft.title}
+                label="No image"
+                sizeClassName="w-full max-h-[214px] max-w-[214px]"
+                frameClassName="border border-zinc-800 rounded-md"
+              />
               <div className="line-clamp-4 text-sm leading-5 text-zinc-300">{draft.caption}</div>
             </button>
             <button
