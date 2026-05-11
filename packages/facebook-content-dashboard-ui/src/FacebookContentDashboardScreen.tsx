@@ -7,6 +7,7 @@ import { DraftFieldEditor } from "./components/DraftFieldEditor"
 import { DraftGenerationControls } from "./components/DraftGenerationControls"
 import { DraftPostPreviewFrame } from "./components/DraftPostPreviewFrame"
 import { CompactSelectedSourceCardSurface, SelectedSourceCardSurface, SourcePostOptionCardSurface } from "./components/SourcePostCards"
+import { ContentCreationStoryboardGallery } from "./storyboards/ContentCreationStoryboardGallery"
 import { SourcePostPreviewFrame } from "./components/SourcePostPreviewFrame"
 import { createFacebookContentDashboardStore } from "./content-dashboard-store"
 import { drafts } from "./content-dashboard-data"
@@ -298,6 +299,22 @@ const ContentCreationDebugScreen = observer(function ContentCreationDebugScreen(
 
 function debugScenarios(store: Store) {
   return [
+    {
+      slug: "storyboards",
+      title: "Storyboards",
+      scenarios: [
+        {
+          slug: "connect-destination-page",
+          title: "Connect Destination Page",
+          render: () => <ContentCreationStoryboardGallery story="connect-destination-page" />,
+        },
+        {
+          slug: "review-top-past-posts",
+          title: "Review Top Past Posts",
+          render: () => <ContentCreationStoryboardGallery story="review-top-past-posts" />,
+        },
+      ],
+    },
     {
       slug: "destination-page-selector",
       title: "Destination page selector",
@@ -1397,8 +1414,8 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
   return (
     <div className="flex min-w-0 flex-col gap-4 items-start">
       <Section>
-        <div className="flex w-full max-w-[840px] flex-col gap-4">
-          <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
+        <div className="flex w-full max-w-full flex-col gap-3 md:max-w-[840px] md:gap-4">
+          <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 md:gap-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 text-sm font-medium text-zinc-200">
                 {selectedSource.sourcePage} · {formatCompactFeedDate(selectedSource.publishDate)}
