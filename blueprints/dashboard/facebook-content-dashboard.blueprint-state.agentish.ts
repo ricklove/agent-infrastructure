@@ -23,14 +23,34 @@ FacebookContentDashboardState.records(`
 # Facebook Content Dashboard Implementation Status
 
 ## Current Canonical UX
-The feature now targets a destination-first workflow:
-1. connect the destination page
-2. confirm the publishing context
-3. if the page has history, review that page own top past posts first
-4. optionally add outside inspiration pages
-5. choose one source post
-6. generate draft ideas
-7. keep one draft
+The feature now targets a canonical journey with these top-level phases:
+1. destination
+2. past winners
+3. outside inspiration
+4. draft generation
+5. field editing
+6. field-level generation
+7. whole-post variants
+8. review
+9. save and approve
+10. schedule and publish
+11. workflow continuity
+12. learning
+
+## Current Short MVP Target
+1. Connect Destination Page
+2. Review Top Past Posts
+3. Add Inspiration Page
+4. Choose A Source Post
+5. Generate A First Draft
+6. Generate Field-Level Options
+7. Edit Fields Manually
+8. Select The Best Full Draft
+9. Save Draft
+10. Approve Draft
+11. Schedule Post
+12. Publish Post
+13. Learn From Results
 
 ## Current Alignment
 
@@ -48,11 +68,17 @@ The feature now targets a destination-first workflow:
 - ✅ The UI shows whether it is using sample data or imported snapshot data
 
 ### UX Process
-- ✅ Canonical UX loop is blind subagent testing from purpose-only stories
+- ✅ Canonical UX loop now requires Story Packets, storyboard packs, isolated fixtures, and blind subagent testing
 - ✅ Worker tunnel is the live surface used for UX review
 - ✅ Screenshot artifacts are required inputs to the UX loop
+- ✅ The canonical story list and short MVP subset are now stable in blueprints
 
 ## Current Gaps
+
+### Process Gaps
+- ✅ The first five storyboard packs now exist as concrete files in `blueprints/dashboard/content-creation-storyboards/`
+- ✅ Story Packet, storyboard, and blind-validation templates now exist as canonical repo artifacts
+- Component contracts are still implicit in code more often than explicit in blueprint artifacts
 
 ### Product Gaps
 - The destination-first UX is not yet fully implemented in the live screen
@@ -75,19 +101,23 @@ The feature now targets a destination-first workflow:
 - Bright Data import is not yet a first-class ingestion pipeline inside the feature backend
 
 ## Required UX Evaluation Loop
-1. pick one purpose-only user story
-2. issue a fresh worker session URL
-3. give a subagent only the URL, the story, and viewport instructions
-4. require screenshots for success and confusion states
-5. collect friction from the subagent without priming it with UI structure
-6. revise the feature UX on the worker
-7. rerun the story
+1. choose one to three purpose-only user stories
+2. author or update the Story Packets
+3. author or update the storyboard frames for narrow, medium, and wide layouts
+4. derive the component contracts
+5. prove isolated component fixtures first
+6. issue a fresh worker session URL
+7. give a subagent only the URL, the story, and viewport instructions
+8. require screenshots for start, success, and confusion states
+9. collect friction from the subagent without priming it with UI structure
+10. revise the feature UX on the worker
+11. rerun the story
 
 ## Immediate Next Steps
-1. Complete the live path from saved draft to queued post
-2. Add direct component fixtures for expanded source lists and the saved-draft scheduling state
-3. Keep tightening draft visibility and confidence after source selection
-4. Run fresh blind UX passes against the worker URL on both desktop and small screens
+1. Turn the first five storyboard packs into explicit component contracts
+2. Translate those contracts into isolated fixture requirements
+3. Drive the next live UI changes from those storyboard artifacts instead of direct screen churn
+4. Start blind validation on the first storyboard pack across narrow, medium, and wide viewports
 `);
 
 FacebookContentDashboardState.tracks(`
@@ -95,4 +125,5 @@ FacebookContentDashboardState.tracks(`
 - progress from own-page winners to generated drafts
 - maturity of outside-inspiration support
 - discipline of the screenshot-based blind UX loop
+- presence of explicit Story Packets, storyboards, and component contracts
 `);

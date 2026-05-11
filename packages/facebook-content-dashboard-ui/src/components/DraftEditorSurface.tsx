@@ -65,21 +65,21 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
     props.onSave()
   }
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
-      <div className="flex items-center justify-between gap-3">
+    <div className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 md:gap-3.5 md:p-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-2.5 md:gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-zinc-100">{props.title}</div>
-          <div className="mt-1 text-xs text-zinc-500">{props.subtitle}</div>
+          <div className="truncate text-sm font-semibold leading-5 text-zinc-100">{props.title}</div>
+          <div className="mt-1 text-[11px] leading-4 text-zinc-500">{props.subtitle}</div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2">
           {props.generationTag ? (
-            <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-1 text-[11px] text-zinc-500">
+            <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
               set {props.generationTag}
             </div>
           ) : null}
           <div
             className={[
-              "rounded-full border px-2 py-1 text-[11px]",
+              "rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em]",
               saveAcknowledged
                 ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-100"
                 : "border-zinc-800 bg-zinc-950/70 text-zinc-400",
@@ -92,13 +92,13 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
               type="button"
               onClick={handleSave}
               className={[
-                "inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition",
+                "inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] transition",
                 saveAcknowledged
                   ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
                   : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
               ].join(" ")}
             >
-              {saveAcknowledged ? <><CheckIcon /><span>Saved</span></> : <span>Save draft</span>}
+              {saveAcknowledged ? <><CheckIcon /><span>Saved</span></> : <span>Save</span>}
             </button>
           )}
           <button
@@ -157,7 +157,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
               src={props.imageValue}
               alt="Selected creative"
               label="Selected image unavailable"
-              sizeClassName="w-full min-h-[220px] max-h-[420px] max-w-[420px] md:min-h-[260px] md:max-h-[460px] md:max-w-[460px]"
+              sizeClassName="w-full min-h-[200px] max-h-[360px] max-w-[360px] md:min-h-[220px] md:max-h-[400px] md:max-w-[400px]"
             />
           </div>
         }
@@ -167,7 +167,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
             onClick={onSelect}
             title={`Image option ${index + 1}`}
             aria-label={`Image option ${index + 1}`}
-            style={{ width: 112, height: 112 }}
+            style={{ width: 104, height: 104 }}
             className={[
               "relative flex shrink-0 overflow-hidden rounded-lg border transition justify-self-start self-start",
               isSelected
@@ -207,7 +207,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
           <textarea
             value={props.caption}
             onChange={(event) => props.onCaptionChange(event.target.value)}
-            className="min-h-[180px] w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm leading-6 text-zinc-200 outline-none md:min-h-[200px]"
+            className="min-h-[160px] w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-3 text-sm leading-6 text-zinc-200 outline-none md:min-h-[180px]"
           />
         }
       />

@@ -1028,6 +1028,7 @@ const FixtureDraftAlternativesStrip = observer(function FixtureDraftAlternatives
     <div data-reactive-frame={reactiveFrame} className="flex flex-col gap-4">
       <DraftAlternativesStrip
         generationTag={generationTag}
+        pageName={derived.ui.destinationPage ?? "Your page"}
         alternatives={alternativeDrafts.map((draft) => ({
           id: draft.id,
           title: compactDraftTitle(draft, selectedSource),
@@ -1473,6 +1474,7 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
               {props.showInlineSchedule ? <SchedulePanel store={props.store} derived={props.derived} draftSaved={draftSaved} /> : null}
               <DraftAlternativesStrip
                 generationTag={generationTag}
+                pageName={ui.destinationPage ?? "Your page"}
                 alternatives={alternativeDrafts.map((draft) => ({
                   id: draft.id,
                   title: compactDraftTitle(draft, selectedSource),

@@ -17,13 +17,13 @@ export function DraftFieldEditor(props: DraftFieldEditorProps) {
   const visibleOptions = props.options.filter(Boolean)
   return (
     <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">{props.label}</div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">{props.label}</div>
         <button
           type="button"
           onClick={props.onGenerate}
           disabled={props.isGenerating}
-          className={["inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-sm font-medium text-zinc-100 transition", props.isGenerating ? "cursor-wait opacity-70" : "hover:border-zinc-600"].join(" ")}
+          className={["inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-950/80 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-100 transition", props.isGenerating ? "cursor-wait opacity-70" : "hover:border-zinc-600"].join(" ")}
         >
           {props.isGenerating ? <SpinnerIcon /> : <SparklesIcon />}
           <span>{props.generateLabel}</span>
@@ -50,7 +50,7 @@ export function DraftFieldEditor(props: DraftFieldEditorProps) {
                   type="button"
                   onClick={onSelect}
                   className={[
-                    "grid gap-2 rounded-lg border px-3 py-2 text-left text-sm transition",
+                    "grid gap-1.5 rounded-lg border px-2.5 py-2 text-left text-sm transition",
                     isSelected
                       ? "border-cyan-500/50 bg-cyan-500/12 text-cyan-50 shadow-[0_0_0_1px_rgba(6,182,212,0.18)]"
                       : "border-zinc-800 bg-zinc-950/60 text-zinc-300 hover:border-zinc-700",

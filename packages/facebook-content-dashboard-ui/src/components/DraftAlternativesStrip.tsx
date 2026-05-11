@@ -1,4 +1,5 @@
-import { SquareImageFrame } from "./SquareImageFrame"
+import { DraftPostPreviewFrame } from "./DraftPostPreviewFrame"
+
 export type DraftAlternativeCard = {
   id: string
   title: string
@@ -8,6 +9,7 @@ export type DraftAlternativeCard = {
 
 type DraftAlternativesStripProps = {
   generationTag: string | null
+  pageName: string
   alternatives: DraftAlternativeCard[]
   onSelectDraft: (draftId: string) => void
   onDeleteDraft: (draftId: string) => void
@@ -39,19 +41,19 @@ export function DraftAlternativesStrip(props: DraftAlternativesStripProps) {
           </button>
         </div>
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-1">
+      <div className="flex gap-4 overflow-x-auto pb-2">
         {props.alternatives.map((draft) => (
           <div
             key={draft.id}
-            className="flex min-w-[240px] max-w-[240px] shrink-0 flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3"
+            className="flex w-[356px] min-w-[356px] shrink-0 flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3"
           >
-            <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
                 onClick={() => props.onSelectDraft(draft.id)}
-                className="min-w-0 flex-1 text-left"
+                className="inline-flex min-h-8 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-100 transition hover:border-zinc-600"
               >
-                <div className="text-sm font-semibold text-zinc-100">{draft.title}</div>
+                Use
               </button>
               <button
                 type="button"
@@ -65,23 +67,18 @@ export function DraftAlternativesStrip(props: DraftAlternativesStripProps) {
             <button
               type="button"
               onClick={() => props.onSelectDraft(draft.id)}
-              className="flex flex-col gap-3 text-left"
+              className="block overflow-hidden rounded-lg text-left"
             >
-              <SquareImageFrame
-                src={draft.previewImage}
-                alt={draft.title}
-                label="No image"
-                sizeClassName="w-full max-h-[214px] max-w-[214px]"
-                frameClassName="border border-zinc-800 rounded-md"
-              />
-              <div className="line-clamp-4 text-sm leading-5 text-zinc-300">{draft.caption}</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => props.onSelectDraft(draft.id)}
-              className="inline-flex min-h-10 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-2 text-sm font-medium text-zinc-100 transition hover:border-zinc-600"
-            >
-              Use this draft
+              <div className="h-[252px] w-[340px] overflow-hidden">
+                <div className="origin-top-left scale-50">
+                  <DraftPostPreviewFrame
+                    pageName={props.pageName}
+                    previewImage={draft.previewImage}
+                    title={draft.title}
+                    caption={draft.caption}
+                  />
+                </div>
+              </div>
             </button>
           </div>
         ))}

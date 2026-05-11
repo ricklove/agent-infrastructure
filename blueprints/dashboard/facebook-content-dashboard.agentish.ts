@@ -72,6 +72,12 @@ const Research = {
 
 const Evaluation = {
   uxStory: define.entity("UxStory"),
+  storyPacket: define.entity("StoryPacket"),
+  storyboardPack: define.entity("StoryboardPack"),
+  interactivePrototype: define.entity("InteractivePrototype"),
+  componentContract: define.entity("ComponentContract"),
+  fixtureProof: define.entity("ComponentFixtureProof"),
+  validationRun: define.entity("ValidationRun"),
   uxLoop: define.concept("PurposeOnlySubagentUxLoop"),
   screenshotArtifact: define.entity("UxScreenshotArtifact"),
   liveTunnel: define.entity("WorkerDashboardTunnel"),
@@ -86,6 +92,7 @@ FacebookContentDashboard.enforces(`
 - Every generated draft idea must preserve source lineage back to the selected source post.
 - The feature should support imported Facebook summary data and must make its data mode explicit rather than pretending sample data is live data.
 - The plugin must remain dashboard-session-auth compatible and use shared dashboard auth behavior instead of inventing per-feature browser auth.
+- Storyboards and coded prototypes must become the source of truth for component contracts rather than jumping from story name directly to implementation.
 - UX evaluation should use purpose-only user stories and must not leak current UI structure to the evaluator.
 `);
 
@@ -95,6 +102,10 @@ FacebookContentDashboard.defines(`
 - OptionalExternalInspiration means the operator may add other pages after destination selection to broaden the source pool when needed.
 - ContentDashboardSnapshot means the feature-owned backend payload that drives the dashboard screen state.
 - ImportedBrightDataSummary means a previously generated summary artifact derived from Bright Data exports rather than a live scrape at render time.
+- StoryPacket means the structured story artifact that defines goal, states, data, actions, and viewport constraints for one user story.
+- StoryboardPack means the desktop, medium, and mobile frame set for one Story Packet.
+- InteractivePrototype means a coded route or fixture surface used to exercise storyboard behavior before or alongside integrated implementation.
+- ComponentContract means the source-of-truth definition of one UI unit's props, actions, visual states, and responsive rules derived from the approved storyboard and prototype.
 - PurposeOnlySubagentUxLoop means a subagent receives only a user-purpose story, a live app URL, and viewport instructions, attempts the task, captures screenshots, and reports friction without being primed with UI details.
 `);
 
@@ -148,47 +159,116 @@ when(User.selects(Content.selectedSource))
   .and(Ui.draftIdeasSurface.supports(Content.savedDraft));
 
 Evaluation.uxLoop.means(`
-- choose one purpose-only user story
-- give a subagent only the live worker URL, viewport instructions, and that story
+- choose one to three purpose-only user stories
+- author a Story Packet for each story
+- author a StoryboardPack for each story across narrow, medium, and wide layouts
+- derive ComponentContracts from the approved storyboard
+- build or update isolated fixtures and integrated prototypes before integrated churn
+- give a subagent only the live worker URL, viewport instructions, and that story or two sequential tasks
 - do not disclose UI structure, implementation details, or intended click path
-- require the subagent to attempt the story at both large and small screen sizes
-- require screenshots for the main success state and the main failure or confusion state
+- require the subagent to attempt the story at narrow, medium, and wide screen sizes
+- require screenshots for start, success, and failure or confusion states
 - collect friction as user-task feedback, not design-theory feedback
 - revise the UX based on that feedback and rerun the loop
-- run up to three subagents in parallel on independent or adjacent stories for broader coverage
+- run three subagents in parallel on independent or adjacent stories for broader coverage when capacity allows
 `);
 
 Evaluation.uxStory.examples(`
-- Connect my destination page
-- Confirm I am creating for the right page
-- Review my page top past posts
-- Understand why a past post performed well
-- Choose one of my own winning posts to build from
-- Expand the source list when the first winners are not enough
-- Add another page as an inspiration source
-- See that page top-performing posts
-- Compare my page winners with outside winners
-- Choose whether to work from my own history or an outside source
-- Generate new post ideas for my destination page
-- Compare the generated ideas
-- Keep one idea and discard the rest
-- Review the first generated draft before editing it
-- Change the selected source after seeing the first generated draft
-- Edit a kept draft without losing the generated baseline
-- Save the chosen idea as a draft
-- Confirm what happens next after saving the draft
-- Queue the saved draft for a page and time
-- Verify that the queued draft appears in the publish queue
-- Know the next step after saving the draft
-`);
+## Destination
+- Connect Destination Page
+- Confirm Destination Page
+- Review Page Context
+- Switch Destination Pages
 
-FacebookContentDashboard.prescribes(`
-- The first backend seam is a snapshot contract, not a large mutable workflow API.
-- Imported Bright Data summary artifacts should map into the same source-post model used by the UI.
-- The UI should present destination context before source selection.
-- The first live workflow should prove that a user can move from destination selection to one saved draft with minimal noise.
-- The next live workflow should prove that a user can move from one saved draft to one queued post without leaving the feature.
-- The first-view source chooser should stay intentionally short, and expansion should be explicit instead of forcing immediate scroll.
-- Once a source is chosen, the generated draft should become the primary nearby reading target before editing controls dominate the surface.
-- UX work for this feature should be evaluated against user-purpose completion, not visual novelty or generic dashboard density.
+## Past Winners
+- Check Page History Availability
+- Review Top Past Posts
+- Understand Why A Post Worked
+- Choose A Winning Post
+- Reuse A Proven Pattern
+
+## Outside Inspiration
+- Add An Inspiration Page
+- Review Outside Top Posts
+- Compare Internal And External Winners
+- Choose Between Internal And External Sources
+- Preserve Source Lineage
+
+## Draft Generation
+- Generate A First Draft
+- Generate Multiple Draft Directions
+- Compare Draft Variants
+- Keep One Draft
+- Regenerate From The Same Source
+
+## Field Editing
+- Edit The Title
+- Edit The Post Text
+- Edit The Image Choice
+- Keep Generated Options While Editing
+- See One Coherent Draft Across All Fields
+
+## Field-Level Generation
+- Generate Title Options
+- Generate Text Options
+- Generate Image Options
+- Preserve Older Options
+- Select The Best Option Per Field
+- Reset One Field Only
+
+## Whole-Post Variants
+- Generate A Full Post
+- Compare Full-Post Variants
+- Keep The Best Full Variant
+- Delete Unwanted Variants
+- Preserve Real Generations
+
+## Review
+- Preview The Draft As A Facebook Post
+- Check Fit For The Destination Page
+- Review Originality
+- Review Tone And Safety
+- Confirm Draft Readiness
+
+## Save And Approve
+- Save Draft
+- Return To A Saved Draft
+- Approve Draft
+- Distinguish Draft States
+- Know The Next Step
+
+## Schedule And Publish
+- Choose Publish Time
+- Queue The Draft
+- Review The Publishing Queue
+- Edit A Scheduled Post
+- Publish The Final Post
+
+## Workflow Continuity
+- Change Source Without Refreshing
+- Complete Multiple Tasks In One Session
+- Navigate Back Without Losing Progress
+- Keep Context Clear Across Sources And Drafts
+
+## Learning
+- Review Published Post Performance
+- Compare Performance To The Source
+- Learn Which Generated Choices Worked
+- Feed Results Into Future Generations
+- Build A Library Of Proven Patterns
+
+## Short MVP Subset
+- Connect Destination Page
+- Review Top Past Posts
+- Add Inspiration Page
+- Choose A Source Post
+- Generate A First Draft
+- Generate Field-Level Options
+- Edit Fields Manually
+- Select The Best Full Draft
+- Save Draft
+- Approve Draft
+- Schedule Post
+- Publish Post
+- Learn From Results
 `);
