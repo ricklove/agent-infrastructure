@@ -1,4 +1,5 @@
-import type { ReactNode } from "react"
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react"
+import { useState } from "react"
 
 type StoryKey = "connect-destination-page" | "review-top-past-posts"
 type ViewportKey = "Wide desktop" | "Medium" | "Mobile"
@@ -6,6 +7,7 @@ type ViewportKey = "Wide desktop" | "Medium" | "Mobile"
 type StoryboardFrame = {
   title: string
   note: string
+  actionToNext?: string
   canvas: ReactNode
 }
 
@@ -16,6 +18,30 @@ type StoryboardSection = {
 
 export function ContentCreationStoryboardGallery(props: { story: StoryKey }) {
   const spec = props.story === "connect-destination-page" ? connectDestinationSpec : reviewTopPastPostsSpec
+  const [scale, setScale] = useState(0.72)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [dragState, setDragState] = useState<null | { x: number; y: number; startX: number; startY: number }>(null)
+
+  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    setDragState({
+      x: offset.x,
+      y: offset.y,
+      startX: event.clientX,
+      startY: event.clientY,
+    })
+  }
+
+  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragState) return
+    setOffset({
+      x: dragState.x + (event.clientX - dragState.startX),
+      y: dragState.y + (event.clientY - dragState.startY),
+    })
+  }
+
+  function onPointerUp() {
+    setDragState(null)
+  }
 
   return (
     <div className="flex flex-col gap-8">
@@ -24,28 +50,67 @@ export function ContentCreationStoryboardGallery(props: { story: StoryKey }) {
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">{spec.title}</h1>
         <p className="max-w-3xl text-sm leading-6 text-zinc-400">{spec.summary}</p>
       </div>
-      <div className="flex flex-col gap-10">
-        {spec.sections.map((section) => (
-          <section key={section.viewport} className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-200">{section.viewport}</h2>
-              <div className="text-xs text-zinc-500">{section.frames.length} frames</div>
-            </div>
-            <div className="grid gap-4 xl:grid-cols-2">
-              {section.frames.map((frame, index) => (
-                <StoryboardFrameCard
-                  key={`${section.viewport}-${frame.title}`}
-                  index={index + 1}
-                  title={frame.title}
-                  note={frame.note}
-                >
-                  {frame.canvas}
-                </StoryboardFrameCard>
-              ))}
-            </div>
-          </section>
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3">
+        <div className="text-xs text-zinc-500">Drag to pan. Review each viewport row left to right.</div>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setScale((value) => Math.max(0.45, Number((value - 0.1).toFixed(2))))} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300">-</button>
+          <div className="min-w-[64px] text-center text-xs text-zinc-400">{Math.round(scale * 100)}%</div>
+          <button type="button" onClick={() => setScale((value) => Math.min(1.1, Number((value + 0.1).toFixed(2))))} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300">+</button>
+          <button type="button" onClick={() => { setScale(0.72); setOffset({ x: 0, y: 0 }) }} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300">Reset</button>
+        </div>
+      </div>
+      <div
+        className="overflow-hidden rounded-3xl border border-zinc-800 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.08),_transparent_28%),linear-gradient(180deg,_rgba(9,9,11,1),_rgba(12,12,14,1))]"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+      >
+        <div
+          className="w-max min-w-full origin-top-left p-8"
+          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, cursor: dragState ? "grabbing" : "grab" }}
+        >
+          <div className="flex min-w-[1700px] flex-col gap-8">
+            {spec.sections.map((section) => (
+              <StoryboardRow key={section.viewport} section={section} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StoryboardRow(props: { section: StoryboardSection }) {
+  return (
+    <section className="grid grid-cols-[140px_minmax(0,1fr)] gap-5">
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950/95 px-4 py-4">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Viewport</div>
+        <div className="mt-3 text-lg font-semibold text-zinc-100">{props.section.viewport}</div>
+        <div className="mt-2 text-xs leading-5 text-zinc-500">{props.section.frames.length} frames in one horizontal flow.</div>
+      </div>
+      <div className="flex items-start gap-4">
+        {props.section.frames.map((frame, index) => (
+          <div key={`${props.section.viewport}-${frame.title}`} className="flex items-center gap-4">
+            <StoryboardFrameCard index={index + 1} title={frame.title} note={frame.note}>
+              {frame.canvas}
+            </StoryboardFrameCard>
+            {frame.actionToNext ? <StoryboardAction action={frame.actionToNext} /> : null}
+          </div>
         ))}
       </div>
+    </section>
+  )
+}
+
+function StoryboardAction(props: { action: string }) {
+  return (
+    <div className="flex w-[160px] shrink-0 flex-col items-center gap-3 pt-24">
+      <div className="h-px w-full bg-zinc-700" />
+      <div className="rounded-full border border-zinc-700 bg-zinc-950/90 px-3 py-1.5 text-center text-[11px] font-medium uppercase tracking-[0.12em] text-cyan-300/85">
+        {props.action}
+      </div>
+      <div className="h-px w-full bg-zinc-700" />
     </div>
   )
 }
@@ -57,7 +122,7 @@ function StoryboardFrameCard(props: {
   children: ReactNode
 }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+    <div className="w-[520px] shrink-0 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
       <div className="flex items-start justify-between gap-3 border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
         <div className="space-y-1">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/80">Frame {props.index}</div>
@@ -152,6 +217,7 @@ const connectDestinationSpec = {
         {
           title: "Immediate entry",
           note: "Existing pages and add-page action appear together in the left setup rail.",
+          actionToNext: "Select page",
           canvas: (
             <AppShellMock
               left={
@@ -170,6 +236,7 @@ const connectDestinationSpec = {
         {
           title: "Destination selected",
           note: "The chosen page becomes active and the chooser de-emphasizes.",
+          actionToNext: "Confirm context",
           canvas: (
             <AppShellMock
               left={
@@ -190,6 +257,7 @@ const connectDestinationSpec = {
         {
           title: "Context locked",
           note: "The selected page persists while the workflow narrows to the next branch.",
+          actionToNext: "Reopen if wrong",
           canvas: (
             <AppShellMock
               left={<Surface title="Publishing page"><PageChoice title="Support Law Enforcement" meta="10 top posts · selected" active /></Surface>}
@@ -215,17 +283,17 @@ const connectDestinationSpec = {
       viewport: "Medium" as const,
       frames: [
         { title: "Immediate entry", note: "One vertical start surface with pages first, add-page second.", canvas: <MediumConnectFrame mode="entry" /> },
-        { title: "Destination selected", note: "Selected page stays above the next step, not off to a side rail.", canvas: <MediumConnectFrame mode="selected" /> },
-        { title: "Context locked", note: "The next branch appears directly beneath the selected page context.", canvas: <MediumConnectFrame mode="context" /> },
+        { title: "Destination selected", note: "Selected page stays above the next step, not off to a side rail.", actionToNext: "Confirm context", canvas: <MediumConnectFrame mode="selected" /> },
+        { title: "Context locked", note: "The next branch appears directly beneath the selected page context.", actionToNext: "Reopen if wrong", canvas: <MediumConnectFrame mode="context" /> },
         { title: "Safe reopen", note: "Reopening returns to the chooser in place.", canvas: <MediumConnectFrame mode="reopen" /> },
       ],
     },
     {
       viewport: "Mobile" as const,
       frames: [
-        { title: "Immediate entry", note: "One obvious starting area: select or add a page.", canvas: <MobileConnectFrame mode="entry" /> },
-        { title: "Destination selected", note: "The selected page collapses into a compact trusted card.", canvas: <MobileConnectFrame mode="selected" /> },
-        { title: "Context locked", note: "The next branch appears directly beneath the selected page.", canvas: <MobileConnectFrame mode="context" /> },
+        { title: "Immediate entry", note: "One obvious starting area: select or add a page.", actionToNext: "Select page", canvas: <MobileConnectFrame mode="entry" /> },
+        { title: "Destination selected", note: "The selected page collapses into a compact trusted card.", actionToNext: "Confirm context", canvas: <MobileConnectFrame mode="selected" /> },
+        { title: "Context locked", note: "The next branch appears directly beneath the selected page.", actionToNext: "Reopen if wrong", canvas: <MobileConnectFrame mode="context" /> },
         { title: "Safe reopen", note: "User can reopen destination without losing the session.", canvas: <MobileConnectFrame mode="reopen" /> },
       ],
     },
@@ -243,6 +311,7 @@ const reviewTopPastPostsSpec = {
         {
           title: "Winner list",
           note: "Top posts are visible as believable post previews, not raw metadata rows.",
+          actionToNext: "Choose winner",
           canvas: (
             <AppShellMock
               left={<Surface title="Publishing page"><PageChoice title="Support Law Enforcement" meta="10 top posts · selected" active /></Surface>}
@@ -254,6 +323,7 @@ const reviewTopPastPostsSpec = {
         {
           title: "Source selected",
           note: "One winner becomes the active source and gets a richer preview treatment.",
+          actionToNext: "Generate draft",
           canvas: (
             <AppShellMock
               left={<Surface title="Publishing page"><PageChoice title="Support Law Enforcement" meta="10 top posts · selected" active /></Surface>}
@@ -265,6 +335,7 @@ const reviewTopPastPostsSpec = {
         {
           title: "Generate path visible",
           note: "The source-to-draft step becomes obvious without hiding the chosen source.",
+          actionToNext: "Change source",
           canvas: (
             <AppShellMock
               left={<Surface title="Active source"><PostPreviewCard title="Neighborhood watch turnout doubles" body="A practical recap post with a clear local result and photo evidence." meta="Selected source" selected compact /></Surface>}
@@ -289,18 +360,18 @@ const reviewTopPastPostsSpec = {
     {
       viewport: "Medium" as const,
       frames: [
-        { title: "Winner list", note: "Compact browsing with previews visible before long scrolling starts.", canvas: <MediumWinnersFrame mode="list" /> },
-        { title: "Source selected", note: "Selected source remains above the generation path.", canvas: <MediumWinnersFrame mode="selected" /> },
-        { title: "Generate path visible", note: "Source and generation stay in one nearby reading path.", canvas: <MediumWinnersFrame mode="generate" /> },
+        { title: "Winner list", note: "Compact browsing with previews visible before long scrolling starts.", actionToNext: "Choose winner", canvas: <MediumWinnersFrame mode="list" /> },
+        { title: "Source selected", note: "Selected source remains above the generation path.", actionToNext: "Generate draft", canvas: <MediumWinnersFrame mode="selected" /> },
+        { title: "Generate path visible", note: "Source and generation stay in one nearby reading path.", actionToNext: "Change source", canvas: <MediumWinnersFrame mode="generate" /> },
         { title: "Source change", note: "Source switching happens in place.", canvas: <MediumWinnersFrame mode="change" /> },
       ],
     },
     {
       viewport: "Mobile" as const,
       frames: [
-        { title: "Short winner list", note: "Initial list stays short and scan-friendly.", canvas: <MobileWinnersFrame mode="list" /> },
-        { title: "Source selected", note: "Selected source collapses but remains recognizable.", canvas: <MobileWinnersFrame mode="selected" /> },
-        { title: "Generate path visible", note: "Draft generation appears directly beneath the chosen source.", canvas: <MobileWinnersFrame mode="generate" /> },
+        { title: "Short winner list", note: "Initial list stays short and scan-friendly.", actionToNext: "Choose winner", canvas: <MobileWinnersFrame mode="list" /> },
+        { title: "Source selected", note: "Selected source collapses but remains recognizable.", actionToNext: "Generate draft", canvas: <MobileWinnersFrame mode="selected" /> },
+        { title: "Generate path visible", note: "Draft generation appears directly beneath the chosen source.", actionToNext: "Change source", canvas: <MobileWinnersFrame mode="generate" /> },
         { title: "Source change", note: "User can reopen the winner list without losing destination context.", canvas: <MobileWinnersFrame mode="change" /> },
       ],
     },
