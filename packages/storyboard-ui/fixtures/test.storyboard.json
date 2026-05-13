@@ -9,22 +9,59 @@
         {
           "id": "start-a-voice-call-from-chat-step-0",
           "title": "Open chat",
-          "nextLabel": "Voice call"
+          "description": "The user is inside a direct message thread with the header, recent messages, and the call controls visible.",
+          "transitions": [
+            {
+              "id": "start-a-voice-call-from-chat-step-0-transition-0",
+              "label": "Voice call",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-1"
+            }
+          ]
         },
         {
           "id": "start-a-voice-call-from-chat-step-1",
           "title": "Tap voice call",
-          "nextLabel": "Ring"
+          "description": "The call button press is in progress and the thread context is still visible behind the control state.",
+          "transitions": [
+            {
+              "id": "start-a-voice-call-from-chat-step-1-transition-0",
+              "label": "Ring",
+              "kind": "system",
+              "targetFrameId": "start-a-voice-call-from-chat-step-2"
+            }
+          ]
         },
         {
           "id": "start-a-voice-call-from-chat-step-2",
           "title": "System: ring recipient and show call state",
-          "nextLabel": "Answered"
+          "description": "The call UI shows an active ringing state with cancel affordance, recipient avatar, and connection status.",
+          "transitions": [
+            {
+              "id": "start-a-voice-call-from-chat-step-2-transition-0",
+              "label": "Answered",
+              "kind": "system",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-2-transition-1",
+              "label": "Recipient unavailable",
+              "kind": "system",
+              "targetFrameId": "start-a-voice-call-from-chat-branch-0-step-0"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-2-transition-2",
+              "label": "Recipient blocks calls",
+              "kind": "system",
+              "targetFrameId": "start-a-voice-call-from-chat-branch-1-step-0"
+            }
+          ]
         },
         {
           "id": "start-a-voice-call-from-chat-step-3",
           "title": "Verify: active call UI appears when recipient answers",
-          "nextLabel": "test"
+          "description": "Both participants are connected and the in-call controls, timer, and audio state are visible.",
+          "transitions": []
         }
       ],
       "branches": [
@@ -35,7 +72,9 @@
           "frames": [
             {
               "id": "start-a-voice-call-from-chat-branch-0-step-0",
-              "title": "Show missed call outcome"
+              "title": "Show missed call outcome",
+              "description": "The call attempt resolves to a missed-call state with options to dismiss or retry later.",
+              "transitions": []
             }
           ]
         },
@@ -46,7 +85,9 @@
           "frames": [
             {
               "id": "start-a-voice-call-from-chat-branch-1-step-0",
-              "title": "Action denied"
+              "title": "Action denied",
+              "description": "The thread shows a lightweight blocked-state explanation and disables the outgoing call action.",
+              "transitions": []
             }
           ]
         }
@@ -59,16 +100,40 @@
         {
           "id": "escalate-voice-call-to-video-call-step-0",
           "title": "In active voice call, choose video",
-          "nextLabel": "Upgrade"
+          "description": "The connected voice call is active and the upgrade-to-video control is visible in the call toolbar.",
+          "transitions": [
+            {
+              "id": "escalate-voice-call-to-video-call-step-0-transition-0",
+              "label": "Upgrade",
+              "kind": "user",
+              "targetFrameId": "escalate-voice-call-to-video-call-step-1"
+            }
+          ]
         },
         {
           "id": "escalate-voice-call-to-video-call-step-1",
           "title": "System: request camera permission and send upgrade prompt",
-          "nextLabel": "Accepted"
+          "description": "The voice call remains intact while the app requests camera access and shows the remote participant an upgrade prompt.",
+          "transitions": [
+            {
+              "id": "escalate-voice-call-to-video-call-step-1-transition-0",
+              "label": "Accepted",
+              "kind": "system",
+              "targetFrameId": "escalate-voice-call-to-video-call-step-2"
+            },
+            {
+              "id": "escalate-voice-call-to-video-call-step-1-transition-1",
+              "label": "Recipient declines video",
+              "kind": "system",
+              "targetFrameId": "escalate-voice-call-to-video-call-branch-0-step-0"
+            }
+          ]
         },
         {
           "id": "escalate-voice-call-to-video-call-step-2",
-          "title": "Verify: Both participants transition to video layout when accepted"
+          "title": "Verify: Both participants transition to video layout when accepted",
+          "description": "The call layout switches to video with self preview, remote video, and the upgraded in-call controls visible.",
+          "transitions": []
         }
       ],
       "branches": [
@@ -79,7 +144,9 @@
           "frames": [
             {
               "id": "escalate-voice-call-to-video-call-branch-0-step-0",
-              "title": "Remain on voice call"
+              "title": "Remain on voice call",
+              "description": "The request is declined and the UI returns focus to the existing voice-only call state.",
+              "transitions": []
             }
           ]
         }

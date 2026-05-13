@@ -1,5 +1,6 @@
 import { panZoomContainerDebugDefinition } from "./panZoomScenarios"
 import { screenshotFrameCellDebugDefinition } from "./screenshotFrameCellScenarios"
+import { sidePanelLayoutDebugDefinition } from "./sidePanelLayoutScenarios"
 import { storyboardEditorDebugDefinition } from "./storyboardEditorScenarios"
 import { storyboardGridDebugDefinition } from "./storyboardGridScenarios"
 import type {
@@ -10,6 +11,7 @@ import type {
 export const storyboardDebugComponents: StoryboardDebugComponentDefinition[] = [
   panZoomContainerDebugDefinition,
   screenshotFrameCellDebugDefinition,
+  sidePanelLayoutDebugDefinition,
   storyboardGridDebugDefinition,
   storyboardEditorDebugDefinition,
 ]

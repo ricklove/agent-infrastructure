@@ -4,7 +4,6 @@ export type StoryboardGridFrame = {
   id: string
   title: string
   nextLabel?: string
-  branchLabels?: string[]
 }
 
 function storyboardFrameAnchorId(frameId: string) {
@@ -163,6 +162,7 @@ export type StoryboardGridSequence = {
   frames: StoryboardGridFrame[]
   startColumn?: number
   startLabel?: string
+  sourceFrameId?: string
 }
 
 type StoryboardGridProps = {
@@ -177,6 +177,11 @@ type StoryboardGridProps = {
   onFrameClick?: (frame: StoryboardGridFrame) => void
   selectedSequenceId?: string
   onSequenceTitleClick?: (sequence: StoryboardGridSequence) => void
+  onTransitionClick?: (transition: {
+    sourceFrameId: string
+    label: string
+    sequenceId: string
+  }) => void
 }
 
 const FRAME_CELL_SIZE = 220
@@ -209,6 +214,7 @@ export function StoryboardGrid({
   onFrameClick,
   selectedSequenceId,
   onSequenceTitleClick,
+  onTransitionClick,
 }: StoryboardGridProps) {
   const maxFrames = Math.max(
     0,
@@ -291,12 +297,29 @@ export function StoryboardGrid({
                           actionColumnWidth={actionColumnWidth}
                           label={sequence.startLabel!}
                           nextCellHeight={nextCellHeight}
+                          onClick={
+                            sequence.sourceFrameId
+                              ? () =>
+                                  onTransitionClick?.({
+                                    sourceFrameId: sequence.sourceFrameId!,
+                                    label: sequence.startLabel!,
+                                    sequenceId: sequence.id,
+                                  })
+                              : undefined
+                          }
                         />
                       ) : frame && frameIndex < sequence.frames.length - 1 ? (
                         <StoryboardNextCell
                           actionColumnWidth={actionColumnWidth}
                           frame={frame}
                           nextCellHeight={nextCellHeight}
+                          onClick={() =>
+                            onTransitionClick?.({
+                              sourceFrameId: frame.id,
+                              label: frame.nextLabel ?? "Next",
+                              sequenceId: sequence.id,
+                            })
+                          }
                         />
                       ) : null}
                     </div>
@@ -415,18 +438,28 @@ function StoryboardStartCell({
   label,
   actionColumnWidth,
   nextCellHeight,
+  onClick,
 }: {
   label: string
   actionColumnWidth: number
   nextCellHeight: number
+  onClick?: () => void
 }) {
+  const Component = onClick ? "button" : "div"
   return (
-    <div
-      className="flex w-full items-center justify-center rounded border border-amber-300/20 bg-amber-200/10 text-[11px] uppercase tracking-[0.18em] text-amber-100/80"
+    <Component
+      className={`flex w-full items-center justify-center rounded border border-amber-300/20 bg-amber-200/10 text-[11px] uppercase tracking-[0.18em] text-amber-100/80 ${
+        onClick
+          ? "nopan nowheel cursor-pointer transition hover:border-amber-200/40 hover:bg-amber-200/15"
+          : ""
+      }`}
+      onClick={onClick}
+      onPointerDown={onClick ? (event) => event.stopPropagation() : undefined}
       style={{ width: actionColumnWidth, height: nextCellHeight }}
+      type={onClick ? "button" : undefined}
     >
       {label}
-    </div>
+    </Component>
   )
 }
 
@@ -434,19 +467,29 @@ function StoryboardNextCell({
   frame,
   actionColumnWidth,
   nextCellHeight,
+  onClick,
 }: {
   frame: StoryboardGridFrame
   actionColumnWidth: number
   nextCellHeight: number
+  onClick?: () => void
 }) {
+  const Component = onClick ? "button" : "div"
   return (
-    <div
-      className="flex h-24 w-full items-center justify-center rounded border border-dashed border-white/10 bg-black/20 text-[11px] uppercase tracking-[0.18em] text-white/45"
+    <Component
+      className={`flex h-24 w-full items-center justify-center rounded border border-dashed border-white/10 bg-black/20 text-[11px] uppercase tracking-[0.18em] text-white/45 ${
+        onClick
+          ? "nopan nowheel cursor-pointer transition hover:border-cyan-300/30 hover:bg-white/5 hover:text-cyan-100"
+          : ""
+      }`}
       data-storyboard-next={frame.id}
+      onClick={onClick}
+      onPointerDown={onClick ? (event) => event.stopPropagation() : undefined}
       style={{ width: actionColumnWidth, height: nextCellHeight }}
+      type={onClick ? "button" : undefined}
     >
       {frame.nextLabel ?? "Next"}
-    </div>
+    </Component>
   )
 }
 
@@ -465,22 +508,10 @@ export function TitleOnlyStoryboardFrame({
       data-storyboard-frame={frame.id}
       style={{ width: width ?? FRAME_CELL_SIZE, height: height ?? FRAME_CELL_HEIGHT }}
     >
-      <div className="flex h-full w-full flex-col items-center justify-between gap-3">
+      <div className="flex h-full w-full items-center justify-center">
         <span className="block w-full max-w-full overflow-hidden break-words whitespace-normal">
           {frame.title}
         </span>
-        {frame.branchLabels?.length ? (
-          <div className="flex w-full flex-col items-center gap-2 pt-2">
-            {frame.branchLabels.map((label) => (
-              <div
-                className="w-full border border-amber-300/30 bg-amber-200/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100/85"
-                key={label}
-              >
-                {label}
-              </div>
-            ))}
-          </div>
-        ) : null}
       </div>
     </article>
   )

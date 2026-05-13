@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { PanZoomContainer, type PanZoomContainerHandle } from "../PanZoomContainer"
+import { PanelLayout, type PanelLayoutPanel } from "../PanelLayout"
 import {
   StoryboardGrid,
   TitleOnlyStoryboardFrame,
@@ -11,6 +12,8 @@ import {
   type StoryboardBranchRecord,
   type StoryboardDocument,
   type StoryboardStoryRecord,
+  type StoryboardTransitionRecord,
+  type StoryboardFrameRecord,
 } from "../storyboard-document"
 import type { StoryboardDebugComponentDefinition } from "./types"
 
@@ -34,6 +37,11 @@ type SnapshotJob = {
 type SelectedTarget =
   | { kind: "story"; storyId: string }
   | { kind: "frame"; storyId: string; frameId: string; branchId?: string }
+
+type TransitionSelection = {
+  transitionId: string
+  selected: SelectedTarget
+}
 
 const apiRoot = "/api/storyboard"
 const frameSize = 220
@@ -75,29 +83,18 @@ function updateStory(
   }
 }
 
-function branchLabelsBySource(story: StoryboardStoryRecord) {
-  const map = new Map<string, string[]>()
-  for (const branch of story.branches ?? []) {
-    const sourceFrameId = branch.sourceFrameId
-    if (!sourceFrameId) {
-      continue
-    }
-    const existing = map.get(sourceFrameId) ?? []
-    existing.push(branch.label)
-    map.set(sourceFrameId, existing)
-  }
-  return map
+function frameNextLabel(frame: StoryboardGridFrame & { transitions?: StoryboardTransitionRecord[] }) {
+  return frame.transitions?.[0]?.label ?? frame.nextLabel
 }
 
 function documentToSequences(document: StoryboardDocument): StoryboardGridSequence[] {
   return document.stories.flatMap((story) => {
-    const labels = branchLabelsBySource(story)
     const mainRow: StoryboardGridSequence = {
       id: story.id,
       title: story.title,
       frames: story.frames.map((frame) => ({
         ...frame,
-        branchLabels: labels.get(frame.id),
+        nextLabel: frameNextLabel(frame),
       })),
     }
 
@@ -108,12 +105,16 @@ function documentToSequences(document: StoryboardDocument): StoryboardGridSequen
       return {
         id: branch.id,
         title: `Branch: ${branch.label}`,
+        sourceFrameId: branch.sourceFrameId,
         startColumn:
           sourceIndex >= 0
             ? sourceIndex + 1
             : Math.max(story.frames.length - 1, 0),
         startLabel: branch.label,
-        frames: branch.frames.map((frame) => ({ ...frame })),
+        frames: branch.frames.map((frame) => ({
+          ...frame,
+          nextLabel: frameNextLabel(frame),
+        })),
       } satisfies StoryboardGridSequence
     })
 
@@ -143,12 +144,14 @@ function StoryboardEditorFixture({ fixtureName }: { fixtureName: string }) {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const [snapshotJob, setSnapshotJob] = useState<SnapshotJob | null>(null)
   const [selected, setSelected] = useState<SelectedTarget | null>(null)
+  const [focusedTransitionId, setFocusedTransitionId] = useState<string | null>(null)
   const panZoomRef = useRef<PanZoomContainerHandle>(null)
   const saveTimeoutRef = useRef<number | undefined>(undefined)
   const skipAutosaveRef = useRef(true)
   const saveInFlightRef = useRef(false)
   const pendingSaveRef = useRef<StoryboardDocument | null>(null)
   const lastSavedRef = useRef("")
+  const transitionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   async function loadDocument() {
     setStatus("Loading storyboard…")
@@ -319,6 +322,271 @@ function StoryboardEditorFixture({ fixtureName }: { fixtureName: string }) {
     document,
     selected,
   )
+  const selectedFrameTransitions = selectedFrame?.transitions ?? []
+  const storyFrameOptions = selectedStory
+    ? [
+        ...selectedStory.frames.map((frame) => ({ id: frame.id, title: frame.title })),
+        ...(selectedStory.branches ?? []).flatMap((branch) =>
+          branch.frames.map((frame) => ({ id: frame.id, title: frame.title })),
+        ),
+      ]
+    : []
+
+  const navigatorPanel = useMemo<PanelLayoutPanel>(
+    () => ({
+      id: "story-navigator",
+      title: "Stories",
+      side: "left",
+      initialWidth: 300,
+      minWidth: 240,
+      maxWidth: 420,
+      content: (
+        <div className="flex h-full min-h-0 flex-col gap-4 bg-zinc-950 p-4">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded border border-white/10 bg-white/5 p-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">
+                Stories
+              </div>
+              <div className="mt-2 text-xl font-semibold text-cyan-100">
+                {storyCount}
+              </div>
+            </div>
+            <div className="rounded border border-white/10 bg-white/5 p-3">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">
+                Frames
+              </div>
+              <div className="mt-2 text-xl font-semibold text-cyan-100">
+                {frameCount}
+              </div>
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto rounded border border-white/10 bg-black/30 p-3 text-xs text-white/65">
+            <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-white/40">
+              Stories
+            </div>
+            <div className="space-y-3">
+              {(document?.stories ?? []).map((story) => (
+                <button
+                  className={`block w-full rounded border px-3 py-2 text-left ${
+                    selected?.kind === "story" && selected.storyId === story.id
+                      ? "border-cyan-300/50 bg-cyan-200/10 text-cyan-100"
+                      : "border-white/10 bg-white/5 text-white/70"
+                  }`}
+                  key={story.id}
+                  onClick={() => {
+                    setFocusedTransitionId(null)
+                    setSelected({ kind: "story", storyId: story.id })
+                  }}
+                  type="button"
+                >
+                  <div className="font-medium">{story.title}</div>
+                  <div className="mt-1 text-white/45">
+                    {story.frames.length} main frames, {(story.branches ?? []).length} branches
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ),
+    }),
+    [document?.stories, frameCount, selected, storyCount],
+  )
+
+  const inspectorPanel = useMemo<PanelLayoutPanel>(
+    () => ({
+      id: "frame-inspector",
+      title: "Inspector",
+      initialWidth: 380,
+      minWidth: 300,
+      maxWidth: 760,
+      content: (
+        <div className="flex h-full min-h-0 flex-col bg-zinc-950">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
+              Inspector
+            </div>
+            <div className="mt-2 text-sm text-white/55">
+              {selected?.kind === "story"
+                ? "Editing story metadata"
+                : selected?.kind === "frame"
+                  ? "Editing frame content"
+                  : "Select a story or frame"}
+            </div>
+          </div>
+
+          {selected?.kind === "story" && selectedStory ? (
+            <div className="space-y-4">
+              <label className="block">
+                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                  Story title
+                </div>
+                <input
+                  className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                  onChange={(event) => updateCurrentStoryTitle(event.currentTarget.value)}
+                  value={selectedStory.title}
+                />
+              </label>
+              <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+                {selectedStory.frames.length} main frames, {(selectedStory.branches ?? []).length} branch rows
+              </div>
+            </div>
+          ) : null}
+
+          {selected?.kind === "frame" && selectedFrame ? (
+            <div className="space-y-4">
+              <label className="block">
+                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                  Frame title
+                </div>
+                <textarea
+                  className="min-h-[96px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                  onChange={(event) =>
+                    updateCurrentFrame((frame) => ({
+                      ...frame,
+                      title: event.currentTarget.value,
+                    }))
+                  }
+                  value={selectedFrame.title}
+                />
+              </label>
+
+              <label className="block">
+                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                  Visual description
+                </div>
+                <textarea
+                  className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                  onChange={(event) =>
+                    updateCurrentFrame((frame) => ({
+                      ...frame,
+                      description: event.currentTarget.value || undefined,
+                    }))
+                  }
+                  value={selectedFrame.description ?? ""}
+                />
+              </label>
+
+              {selectedBranch ? (
+                <label className="block">
+                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                    Branch label
+                  </div>
+                  <input
+                    className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                    onChange={(event) => updateCurrentBranchLabel(event.currentTarget.value)}
+                    value={selectedBranch.label}
+                  />
+                </label>
+              ) : null}
+
+              <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
+                <div className="text-xs uppercase tracking-[0.14em] text-white/45">
+                  Transitions
+                </div>
+                {selectedFrameTransitions.length > 0 ? (
+                  selectedFrameTransitions.map((transition, index) => (
+                    <div
+                      className={`space-y-2 rounded border bg-black/20 p-3 ${
+                        focusedTransitionId === transition.id
+                          ? "border-cyan-300/50 shadow-[0_0_0_1px_rgba(103,232,249,0.35)]"
+                          : "border-white/10"
+                      }`}
+                      data-transition-editor={transition.id}
+                      key={transition.id}
+                      ref={(node) => {
+                        transitionRefs.current[transition.id] = node
+                      }}
+                    >
+                      <div className="text-[11px] uppercase tracking-[0.14em] text-white/35">
+                        {index === 0 ? "Primary transition" : `Side transition ${index}`}
+                      </div>
+                      <label className="block">
+                        <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                          Label
+                        </div>
+                        <input
+                          className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                          onChange={(event) =>
+                            updateCurrentTransition(transition.id, (current) => ({
+                              ...current,
+                              label: event.currentTarget.value,
+                            }))
+                          }
+                          value={transition.label}
+                        />
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                          <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                            Kind
+                          </div>
+                          <select
+                            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                            onChange={(event) =>
+                              updateCurrentTransition(transition.id, (current) => ({
+                                ...current,
+                                kind: event.currentTarget.value as StoryboardTransitionRecord["kind"],
+                              }))
+                            }
+                            value={transition.kind}
+                          >
+                            <option value="user">user</option>
+                            <option value="system">system</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                            Target frame
+                          </div>
+                          <select
+                            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                            onChange={(event) =>
+                              updateCurrentTransition(transition.id, (current) => ({
+                                ...current,
+                                targetFrameId: event.currentTarget.value,
+                              }))
+                            }
+                            value={transition.targetFrameId}
+                          >
+                            {storyFrameOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-white/45">No transitions yet for this frame.</div>
+                )}
+              </div>
+
+              <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+                <div>Story: {selectedStory?.title ?? "-"}</div>
+                <div>Frame id: {selectedFrame.id}</div>
+                {selectedBranch?.sourceFrameId ? (
+                  <div>Branch source: {selectedBranch.sourceFrameId}</div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {snapshotJob ? (
+            <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+              Snapshot job: {snapshotJob.status}
+            </div>
+          ) : null}
+          </div>
+        </div>
+      ),
+    }),
+    [selected, selectedBranch, selectedFrame, selectedFrameTransitions, selectedStory, snapshotJob, storyFrameOptions],
+  )
 
   function updateCurrentStoryTitle(value: string) {
     if (!document || !selected || selected.kind !== "story") {
@@ -333,7 +601,7 @@ function StoryboardEditorFixture({ fixtureName }: { fixtureName: string }) {
   }
 
   function updateCurrentFrame(
-    updater: (frame: StoryboardGridFrame) => StoryboardGridFrame,
+    updater: (frame: StoryboardFrameRecord) => StoryboardFrameRecord,
   ) {
     if (!document || !selected || selected.kind !== "frame") {
       return
@@ -365,6 +633,18 @@ function StoryboardEditorFixture({ fixtureName }: { fixtureName: string }) {
     )
   }
 
+  function updateCurrentTransition(
+    transitionId: string,
+    updater: (transition: StoryboardTransitionRecord) => StoryboardTransitionRecord,
+  ) {
+    updateCurrentFrame((frame) => ({
+      ...frame,
+      transitions: (frame.transitions ?? []).map((transition) =>
+        transition.id === transitionId ? updater(transition) : transition,
+      ),
+    }))
+  }
+
   function updateCurrentBranchLabel(value: string) {
     if (!document || !selected || selected.kind !== "frame" || !selected.branchId) {
       return
@@ -378,6 +658,61 @@ function StoryboardEditorFixture({ fixtureName }: { fixtureName: string }) {
       })),
     )
   }
+
+  function resolveTransitionSelection(sourceFrameId: string, label: string): TransitionSelection | null {
+    for (const story of document?.stories ?? []) {
+      const storyFrame = story.frames.find((frame) => frame.id === sourceFrameId)
+      if (storyFrame) {
+        const transitions = storyFrame.transitions ?? []
+        const transition =
+          transitions.find((entry) => entry.label === label) ?? transitions[0]
+        return transition
+          ? {
+              transitionId: transition.id,
+              selected: { kind: "frame", storyId: story.id, frameId: storyFrame.id },
+            }
+          : null
+      }
+
+      for (const branch of story.branches ?? []) {
+        const branchFrame = branch.frames.find((frame) => frame.id === sourceFrameId)
+        if (!branchFrame) {
+          continue
+        }
+        const transitions = branchFrame.transitions ?? []
+        const transition =
+          transitions.find((entry) => entry.label === label) ?? transitions[0]
+        return transition
+          ? {
+              transitionId: transition.id,
+              selected: {
+                kind: "frame",
+                storyId: story.id,
+                frameId: branchFrame.id,
+                branchId: branch.id,
+              },
+            }
+          : null
+      }
+    }
+
+    return null
+  }
+
+  useEffect(() => {
+    if (!focusedTransitionId) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      transitionRefs.current[focusedTransitionId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [focusedTransitionId, selectedFrameTransitions])
 
   return (
     <div
@@ -436,193 +771,69 @@ function StoryboardEditorFixture({ fixtureName }: { fixtureName: string }) {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[300px] flex-none flex-col gap-4 border-r border-white/10 bg-zinc-950 p-4">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded border border-white/10 bg-white/5 p-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">
-                Stories
-              </div>
-              <div className="mt-2 text-xl font-semibold text-cyan-100">
-                {storyCount}
-              </div>
-            </div>
-            <div className="rounded border border-white/10 bg-white/5 p-3">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/45">
-                Frames
-              </div>
-              <div className="mt-2 text-xl font-semibold text-cyan-100">
-                {frameCount}
-              </div>
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto rounded border border-white/10 bg-black/30 p-3 text-xs text-white/65">
-            <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-white/40">
-              Stories
-            </div>
-            <div className="space-y-3">
-              {(document?.stories ?? []).map((story) => (
-                <button
-                  className={`block w-full rounded border px-3 py-2 text-left ${
-                    selected?.kind === "story" && selected.storyId === story.id
-                      ? "border-cyan-300/50 bg-cyan-200/10 text-cyan-100"
-                      : "border-white/10 bg-white/5 text-white/70"
-                  }`}
-                  key={story.id}
-                  onClick={() => setSelected({ kind: "story", storyId: story.id })}
-                  type="button"
-                >
-                  <div className="font-medium">{story.title}</div>
-                  <div className="mt-1 text-white/45">
-                    {story.frames.length} main frames, {(story.branches ?? []).length} branches
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        <main className="flex min-h-0 flex-1 bg-zinc-950">
-          <div className="min-h-0 min-w-0 flex-1 p-4">
-            <PanZoomContainer
-              className="h-full"
-                            fitKey={`${fixtureName}:${path || "loading"}`}
-              ref={panZoomRef}
-            >
-              <div className="min-w-max bg-[#546072] p-8" style={{ width: estimateContentWidth(sequences), height: estimateContentHeight(sequences) }}>
-                <StoryboardGrid
-                  onSequenceTitleClick={(sequence) => {
-                    const story = (document?.stories ?? []).find((entry) => entry.id === sequence.id)
-                    if (story) {
-                      setSelected({ kind: "story", storyId: story.id })
+        <PanelLayout
+          className="h-full bg-zinc-950"
+          contentClassName="p-4"
+          panelClassName="bg-zinc-950"
+          panels={[navigatorPanel, inspectorPanel]}
+          storageKeyPrefix="storyboard.debug.editor"
+        >
+          <PanZoomContainer
+            className="h-full"
+            fitKey={`${fixtureName}:${path || "loading"}`}
+            ref={panZoomRef}
+          >
+            <div className="min-w-max bg-[#546072] p-8" style={{ width: estimateContentWidth(sequences), height: estimateContentHeight(sequences) }}>
+              <StoryboardGrid
+                onSequenceTitleClick={(sequence) => {
+                  const story = (document?.stories ?? []).find((entry) => entry.id === sequence.id)
+                  if (story) {
+                    setFocusedTransitionId(null)
+                    setSelected({ kind: "story", storyId: story.id })
+                  }
+                }}
+                onTransitionClick={(transition) => {
+                  const resolved = resolveTransitionSelection(
+                    transition.sourceFrameId,
+                    transition.label,
+                  )
+                  if (!resolved) {
+                    return
+                  }
+                  setSelected(resolved.selected)
+                  setFocusedTransitionId(resolved.transitionId)
+                }}
+                onFrameClick={(frame) => {
+                  for (const story of document?.stories ?? []) {
+                    if (story.frames.some((entry) => entry.id === frame.id)) {
+                      setFocusedTransitionId(null)
+                      setSelected({ kind: "frame", storyId: story.id, frameId: frame.id })
+                      return
                     }
-                  }}
-                  onFrameClick={(frame) => {
-                    for (const story of document?.stories ?? []) {
-                      if (story.frames.some((entry) => entry.id === frame.id)) {
-                        setSelected({ kind: "frame", storyId: story.id, frameId: frame.id })
+                    for (const branch of story.branches ?? []) {
+                      if (branch.frames.some((entry) => entry.id === frame.id)) {
+                        setFocusedTransitionId(null)
+                        setSelected({
+                          kind: "frame",
+                          storyId: story.id,
+                          frameId: frame.id,
+                          branchId: branch.id,
+                        })
                         return
                       }
-                      for (const branch of story.branches ?? []) {
-                        if (branch.frames.some((entry) => entry.id === frame.id)) {
-                          setSelected({
-                            kind: "frame",
-                            storyId: story.id,
-                            frameId: frame.id,
-                            branchId: branch.id,
-                          })
-                          return
-                        }
-                      }
                     }
-                  }}
-                  renderFrame={(frame) => (
-                    <TitleOnlyStoryboardFrame frame={frame} height={frameSize} width={frameSize} />
-                  )}
-                  selectedFrameId={selectedFrameId}
-                  selectedSequenceId={selected?.kind === "story" ? selected.storyId : selected?.storyId}
-                  sequences={sequences}
-                />
-              </div>
-            </PanZoomContainer>
-          </div>
-
-          <aside className="flex w-[340px] flex-none flex-col gap-4 border-l border-white/10 bg-zinc-950 p-4">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
-                Inspector
-              </div>
-              <div className="mt-2 text-sm text-white/55">
-                {selected?.kind === "story"
-                  ? "Editing story metadata"
-                  : selected?.kind === "frame"
-                    ? "Editing frame content"
-                    : "Select a story or frame"}
-              </div>
-            </div>
-
-            {selected?.kind === "story" && selectedStory ? (
-              <div className="space-y-4">
-                <label className="block">
-                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                    Story title
-                  </div>
-                  <input
-                    className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                    onChange={(event) => updateCurrentStoryTitle(event.currentTarget.value)}
-                    value={selectedStory.title}
-                  />
-                </label>
-                <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
-                  {selectedStory.frames.length} main frames, {(selectedStory.branches ?? []).length} branch rows
-                </div>
-              </div>
-            ) : null}
-
-            {selected?.kind === "frame" && selectedFrame ? (
-              <div className="space-y-4">
-                <label className="block">
-                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                    Frame title
-                  </div>
-                  <textarea
-                    className="min-h-[120px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                    onChange={(event) =>
-                      updateCurrentFrame((frame) => ({
-                        ...frame,
-                        title: event.currentTarget.value,
-                      }))
-                    }
-                    value={selectedFrame.title}
-                  />
-                </label>
-
-                {selectedBranch ? (
-                  <label className="block">
-                    <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                      Branch label
-                    </div>
-                    <input
-                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                      onChange={(event) => updateCurrentBranchLabel(event.currentTarget.value)}
-                      value={selectedBranch.label}
-                    />
-                  </label>
-                ) : (
-                  <label className="block">
-                    <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                      Next label
-                    </div>
-                    <input
-                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                      onChange={(event) =>
-                        updateCurrentFrame((frame) => ({
-                          ...frame,
-                          nextLabel: event.currentTarget.value || undefined,
-                        }))
-                      }
-                      value={selectedFrame.nextLabel ?? ""}
-                    />
-                  </label>
+                  }
+                }}
+                renderFrame={(frame) => (
+                  <TitleOnlyStoryboardFrame frame={frame} height={frameSize} width={frameSize} />
                 )}
-
-                <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
-                  <div>Story: {selectedStory?.title ?? "-"}</div>
-                  <div>Frame id: {selectedFrame.id}</div>
-                  {selectedBranch?.sourceFrameId ? (
-                    <div>Branch source: {selectedBranch.sourceFrameId}</div>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-
-            {snapshotJob ? (
-              <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
-                Snapshot job: {snapshotJob.status}
-              </div>
-            ) : null}
-          </aside>
-        </main>
+                selectedFrameId={selectedFrameId}
+                selectedSequenceId={selected?.kind === "story" ? selected.storyId : selected?.storyId}
+                sequences={sequences}
+              />
+            </div>
+          </PanZoomContainer>
+        </PanelLayout>
       </div>
     </div>
   )

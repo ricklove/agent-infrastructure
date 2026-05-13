@@ -85,7 +85,6 @@ const branchingDataset: StoryboardGridSequence[] = [
         id: "verify",
         title: "Enter verification code",
         nextLabel: "Continue",
-        branchLabels: ["Invalid code", "Account exists"],
       },
       { id: "created", title: "Account created" },
     ],
