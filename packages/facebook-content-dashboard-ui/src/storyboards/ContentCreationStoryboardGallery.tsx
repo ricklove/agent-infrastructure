@@ -1,5 +1,6 @@
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react"
-import { useState } from "react"
+import type { ReactNode } from "react"
+import { forwardRef, useEffect, useRef, useState } from "react"
+import { PanZoomViewport, type PanZoomViewportHandle } from "./PanZoomViewport"
 
 type StoryKey = "connect-destination-page" | "review-top-past-posts"
 type ViewportKey = "Wide desktop" | "Medium" | "Mobile"
@@ -16,98 +17,141 @@ type StoryboardSection = {
   frames: StoryboardFrame[]
 }
 
+const storyboardViewportBox = {
+  width: 360,
+  height: 250,
+} as const
+
+const canonicalViewportSize: Record<ViewportKey, { width: number; height: number }> = {
+  "Wide desktop": { width: 960, height: 620 },
+  Medium: { width: 760, height: 620 },
+  Mobile: { width: 320, height: 700 },
+}
+
 export function ContentCreationStoryboardGallery(props: { story: StoryKey }) {
   const spec = props.story === "connect-destination-page" ? connectDestinationSpec : reviewTopPastPostsSpec
-  const [scale, setScale] = useState(0.72)
-  const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const [dragState, setDragState] = useState<null | { x: number; y: number; startX: number; startY: number }>(null)
+  const viewportRef = useRef<PanZoomViewportHandle | null>(null)
+  const [containerMode, setContainerMode] = useState<"panzoom" | "scroll">("panzoom")
+  const [scale, setScale] = useState(1)
 
-  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    setDragState({
-      x: offset.x,
-      y: offset.y,
-      startX: event.clientX,
-      startY: event.clientY,
-    })
-  }
-
-  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!dragState) return
-    setOffset({
-      x: dragState.x + (event.clientX - dragState.startX),
-      y: dragState.y + (event.clientY - dragState.startY),
-    })
-  }
-
-  function onPointerUp() {
-    setDragState(null)
-  }
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow
+    const previousHtmlOverflow = document.documentElement.style.overflow
+    document.body.style.overflow = "hidden"
+    document.documentElement.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = previousBodyOverflow
+      document.documentElement.style.overflow = previousHtmlOverflow
+    }
+  }, [])
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="max-w-4xl space-y-2">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-300/80">Storyboard</div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-50">{spec.title}</h1>
-        <p className="max-w-3xl text-sm leading-6 text-zinc-400">{spec.summary}</p>
-      </div>
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/85 px-4 py-3">
-        <div className="text-xs text-zinc-500">Drag to pan. Review each viewport row left to right.</div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setScale((value) => Math.max(0.45, Number((value - 0.1).toFixed(2))))} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300">-</button>
-          <div className="min-w-[64px] text-center text-xs text-zinc-400">{Math.round(scale * 100)}%</div>
-          <button type="button" onClick={() => setScale((value) => Math.min(1.1, Number((value + 0.1).toFixed(2))))} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300">+</button>
-          <button type="button" onClick={() => { setScale(0.72); setOffset({ x: 0, y: 0 }) }} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300">Reset</button>
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-zinc-950">
+      <div className="flex h-8 items-center justify-between gap-1 border-b border-zinc-800 bg-zinc-950 px-1.5">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setContainerMode("panzoom")}
+            className={["rounded-md border px-2 py-1 text-[11px]", containerMode === "panzoom" ? "border-cyan-500/70 text-cyan-300" : "border-zinc-700 text-zinc-300"].join(" ")}
+          >
+            Pan
+          </button>
+          <button
+            type="button"
+            onClick={() => setContainerMode("scroll")}
+            className={["rounded-md border px-2 py-1 text-[11px]", containerMode === "scroll" ? "border-cyan-500/70 text-cyan-300" : "border-zinc-700 text-zinc-300"].join(" ")}
+          >
+            Scroll
+          </button>
+        </div>
+        <div className="flex items-center gap-1">
+          {containerMode === "panzoom" ? (
+            <>
+              <button type="button" onClick={() => viewportRef.current?.zoomOut()} className="rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300">-</button>
+              <div className="min-w-[52px] text-center text-[11px] text-zinc-400">{Math.round(scale * 100)}%</div>
+              <button type="button" onClick={() => viewportRef.current?.zoomIn()} className="rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300">+</button>
+            </>
+          ) : null}
         </div>
       </div>
-      <div
-        className="overflow-hidden rounded-3xl border border-zinc-800 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.08),_transparent_28%),linear-gradient(180deg,_rgba(9,9,11,1),_rgba(12,12,14,1))]"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
-      >
-        <div
-          className="w-max min-w-full origin-top-left p-8"
-          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, cursor: dragState ? "grabbing" : "grab" }}
+      {containerMode === "panzoom" ? (
+        <PanZoomViewport
+          ref={viewportRef}
+          fitKey={`storyboard:${props.story}`}
+          initialPadding={12}
+          onScaleChange={setScale}
         >
-          <div className="flex min-w-[1700px] flex-col gap-8">
-            {spec.sections.map((section) => (
-              <StoryboardRow key={section.viewport} section={section} />
-            ))}
-          </div>
+          <StoryboardBoard spec={spec} />
+        </PanZoomViewport>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-auto bg-zinc-950 p-1">
+          <StoryboardBoard spec={spec} />
         </div>
-      </div>
+      )}
     </div>
   )
 }
 
-function StoryboardRow(props: { section: StoryboardSection }) {
-  return (
-    <section className="grid grid-cols-[140px_minmax(0,1fr)] gap-5">
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-950/95 px-4 py-4">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">Viewport</div>
-        <div className="mt-3 text-lg font-semibold text-zinc-100">{props.section.viewport}</div>
-        <div className="mt-2 text-xs leading-5 text-zinc-500">{props.section.frames.length} frames in one horizontal flow.</div>
-      </div>
-      <div className="flex items-start gap-4">
-        {props.section.frames.map((frame, index) => (
-          <div key={`${props.section.viewport}-${frame.title}`} className="flex items-center gap-4">
-            <StoryboardFrameCard index={index + 1} title={frame.title} note={frame.note}>
-              {frame.canvas}
-            </StoryboardFrameCard>
-            {frame.actionToNext ? <StoryboardAction action={frame.actionToNext} /> : null}
-          </div>
+const StoryboardBoard = forwardRef<HTMLDivElement, { spec: { sections: StoryboardSection[] } }>(
+  function StoryboardBoard(props, ref) {
+    return (
+      <div ref={ref} className="flex min-w-[1790px] flex-col gap-1.5 p-1">
+        {props.spec.sections.map((section) => (
+          <StoryboardRow key={section.viewport} section={section} />
         ))}
       </div>
+    )
+  },
+)
+
+function StoryboardRow(props: { section: StoryboardSection }) {
+  const frameCount = props.section.frames.length
+  const gridTemplateColumns = ["76px"]
+  for (let index = 0; index < frameCount; index += 1) {
+    gridTemplateColumns.push("360px")
+    if (index < frameCount - 1) {
+      gridTemplateColumns.push("88px")
+    }
+  }
+
+  return (
+    <section
+      data-storyboard-row
+      data-viewport={props.section.viewport}
+      className="grid items-start gap-1"
+      style={{ gridTemplateColumns: gridTemplateColumns.join(" ") }}
+    >
+      <div className="px-0.5 pt-1">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-zinc-500">{props.section.viewport}</div>
+      </div>
+      {props.section.frames.map((frame, index) => (
+        <>
+          <StoryboardFrameCard
+            key={`${props.section.viewport}-${frame.title}`}
+            index={index + 1}
+            title={frame.title}
+            note={frame.note}
+            viewport={props.section.viewport}
+          >
+            {frame.canvas}
+          </StoryboardFrameCard>
+          {index < props.section.frames.length - 1 ? (
+            <StoryboardAction
+              key={`${props.section.viewport}-${frame.title}-action`}
+              action={frame.actionToNext ?? ""}
+            />
+          ) : null}
+        </>
+      ))}
     </section>
   )
 }
 
 function StoryboardAction(props: { action: string }) {
   return (
-    <div className="flex w-[160px] shrink-0 flex-col items-center gap-3 pt-24">
+    <div className="flex w-[88px] shrink-0 flex-col items-center gap-1 pt-[124px]">
       <div className="h-px w-full bg-zinc-700" />
-      <div className="rounded-full border border-zinc-700 bg-zinc-950/90 px-3 py-1.5 text-center text-[11px] font-medium uppercase tracking-[0.12em] text-cyan-300/85">
+      <div className="rounded border border-zinc-700 bg-zinc-950/90 px-2 py-0.5 text-center text-[10px] font-medium uppercase tracking-[0.12em] text-cyan-300/85">
         {props.action}
       </div>
       <div className="h-px w-full bg-zinc-700" />
@@ -119,18 +163,50 @@ function StoryboardFrameCard(props: {
   index: number
   title: string
   note: string
+  viewport: ViewportKey
   children: ReactNode
 }) {
   return (
-    <div className="w-[520px] shrink-0 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-      <div className="flex items-start justify-between gap-3 border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
-        <div className="space-y-1">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/80">Frame {props.index}</div>
-          <div className="text-sm font-semibold text-zinc-100">{props.title}</div>
-        </div>
-        <div className="max-w-[220px] text-right text-xs leading-5 text-zinc-500">{props.note}</div>
+    <div
+      data-storyboard-frame
+      data-frame-title={props.title}
+      className="flex w-[360px] shrink-0 flex-col border"
+      style={{ borderColor: "#3f3f46", backgroundColor: "#2a2f36" }}
+    >
+      <div className="px-1 pt-1">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300/80">{props.index}. {props.title}</div>
       </div>
-      <div className="bg-[#09090b] p-4">{props.children}</div>
+      <ScaledViewportFrame viewport={props.viewport}>{props.children}</ScaledViewportFrame>
+      <div className="px-1 pb-1 pt-1 text-[11px] leading-5 text-zinc-500">{props.note}</div>
+    </div>
+  )
+}
+
+function ScaledViewportFrame(props: { viewport: ViewportKey; children: ReactNode }) {
+  const size = canonicalViewportSize[props.viewport]
+  const scale = Math.min(
+    storyboardViewportBox.width / size.width,
+    storyboardViewportBox.height / size.height,
+  )
+  const scaledWidth = size.width * scale
+  const scaledHeight = size.height * scale
+
+  return (
+    <div
+      className="flex w-full items-center justify-center overflow-hidden"
+      style={{
+        height: storyboardViewportBox.height,
+        backgroundColor: "#111418",
+      }}
+    >
+      <div className="relative shrink-0" style={{ width: scaledWidth, height: scaledHeight }}>
+        <div
+          className="absolute left-0 top-0 origin-top-left"
+          style={{ width: size.width, height: size.height, transform: `scale(${scale})`, transformOrigin: "0 0" }}
+        >
+          {props.children}
+        </div>
+      </div>
     </div>
   )
 }
@@ -143,30 +219,48 @@ function AppShellMock(props: {
 }) {
   if (props.mobile) {
     return (
-      <div className="mx-auto w-[286px] overflow-hidden rounded-[28px] border border-zinc-700 bg-zinc-950 shadow-[0_18px_40px_rgba(0,0,0,0.45)]">
-        <div className="border-b border-zinc-800 px-4 py-2.5 text-center text-[11px] uppercase tracking-[0.2em] text-zinc-500">Content Creation</div>
-        <div className="space-y-3 p-3">{props.main}</div>
+      <div className="mx-auto flex h-full w-full max-w-[286px] overflow-hidden rounded-[28px] border border-zinc-700 bg-zinc-950 shadow-[0_18px_40px_rgba(0,0,0,0.45)]">
+        <div className="flex h-full w-full flex-col">{props.main}</div>
       </div>
     )
   }
 
+  const hasLeft = Boolean(props.left)
+  const hasRight = Boolean(props.right)
+  const columns = [hasLeft ? "220px" : null, "minmax(0,1fr)", hasRight ? "220px" : null]
+    .filter(Boolean)
+    .join(" ")
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-      <div className="border-b border-zinc-800 px-4 py-2.5 text-[11px] uppercase tracking-[0.2em] text-zinc-500">Content Creation</div>
-      <div className="grid min-h-[340px] grid-cols-[280px_minmax(0,1fr)_320px] gap-0">
-        <div className="border-r border-zinc-800 bg-zinc-900/55 p-4">{props.left}</div>
-        <div className="border-r border-zinc-800 bg-zinc-950 p-4">{props.main}</div>
-        <div className="bg-zinc-900/35 p-4">{props.right}</div>
+    <div className="flex h-full w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
+      <div className="grid h-full w-full min-h-[340px] gap-0" style={{ gridTemplateColumns: columns }}>
+        {hasLeft ? (
+          <div className="flex h-full border-r border-zinc-800 bg-zinc-900/55">
+            <div className="flex h-full w-full p-2">{props.left}</div>
+          </div>
+        ) : null}
+        <div className={["flex h-full bg-zinc-950", hasRight ? "border-r border-zinc-800" : ""].join(" ")}>
+          <div className="flex h-full w-full p-2">{props.main}</div>
+        </div>
+        {hasRight ? (
+          <div className="flex h-full bg-zinc-900/35">
+            <div className="flex h-full w-full p-2">{props.right}</div>
+          </div>
+        ) : null}
       </div>
     </div>
   )
 }
 
-function Surface(props: { title?: string; children: ReactNode; subtle?: boolean }) {
+function Surface(props: { title?: string; children: ReactNode; subtle?: boolean; fill?: boolean }) {
   return (
-    <div className={["rounded-xl border p-3", props.subtle ? "border-zinc-800 bg-zinc-900/55" : "border-zinc-700 bg-zinc-900/85"].join(" ")}>
-      {props.title ? <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">{props.title}</div> : null}
-      <div className="space-y-3">{props.children}</div>
+    <div className={[
+      "border p-2",
+      props.fill ? "flex h-full w-full flex-col" : "",
+      props.subtle ? "border-zinc-800 bg-zinc-900/55" : "border-zinc-700 bg-zinc-900/85",
+    ].join(" ")}>
+      {props.title ? <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">{props.title}</div> : null}
+      <div className={["space-y-3", props.fill ? "flex-1" : ""].join(" ")}>{props.children}</div>
     </div>
   )
 }
@@ -381,7 +475,6 @@ const reviewTopPastPostsSpec = {
 function MediumConnectFrame(props: { mode: "entry" | "selected" | "context" | "reopen" }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-      <div className="border-b border-zinc-800 px-4 py-2.5 text-[11px] uppercase tracking-[0.2em] text-zinc-500">Content Creation</div>
       <div className="space-y-4 p-4">
         <Surface title="Publish to">
           <PageChoice title="Support Law Enforcement" meta="10 top posts" active={props.mode !== "entry" && props.mode !== "reopen"} />
@@ -423,7 +516,6 @@ function MobileConnectFrame(props: { mode: "entry" | "selected" | "context" | "r
 function MediumWinnersFrame(props: { mode: "list" | "selected" | "generate" | "change" }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-[0_18px_40px_rgba(0,0,0,0.35)]">
-      <div className="border-b border-zinc-800 px-4 py-2.5 text-[11px] uppercase tracking-[0.2em] text-zinc-500">Content Creation</div>
       <div className="space-y-4 p-4">
         <Surface title="Selected page"><PageChoice title="Support Law Enforcement" meta="10 top posts · selected" active /></Surface>
         <Surface title={props.mode === "list" ? "Top past posts" : "Selected source"}>
