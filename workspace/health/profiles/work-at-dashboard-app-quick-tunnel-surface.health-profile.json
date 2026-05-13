@@ -3,9 +3,10 @@
   "title": "work-at Dashboard App Quick Tunnel Surface",
   "description": "Fast health profile for the worker-hosted dashboard-app quick-tunnel surface.",
   "params": {
-    "devPort": "5173",
-    "healthUrlSuffix": "/storyboard/debug/",
-    "sessionPath": "/storyboard/debug/"
+    "gatewayPort": "3300",
+    "frontendPort": "5173",
+    "dashboardRootPath": "/",
+    "pluginPath": "/storyboard/debug/panZoomContainer/simple-react-component/"
   },
   "checks": [
     {
@@ -47,13 +48,33 @@
       }
     },
     {
+      "id": "target_agent_browser_available",
+      "checkId": "work_at_command_available",
+      "title": "agent-browser is available on target",
+      "severity": "blocking",
+      "repairHint": "Install or expose `agent-browser` on the worker before relying on the dashboard quick-tunnel dev surface health gate.",
+      "params": {
+        "commandName": "agent-browser"
+      }
+    },
+    {
+      "id": "target_git_askpass_exists",
+      "checkId": "work_at_path_exists",
+      "title": "repo-aware Git askpass helper exists on target",
+      "severity": "blocking",
+      "repairHint": "Run `bash tools/github-app-token.sh install-askpass` and point `git config core.askpass` at `/home/ec2-user/.config/agent-github/git-askpass.sh` on the worker before relying on GitHub pushes.",
+      "params": {
+        "path": "/home/ec2-user/.config/agent-github/git-askpass.sh"
+      }
+    },
+    {
       "id": "target_package_json_exists",
       "checkId": "work_at_path_exists",
       "title": "dashboard-app package.json exists on target",
       "severity": "blocking",
       "repairHint": "Restore `package.json` in the dashboard-app surface before starting a quick tunnel workflow.",
       "params": {
-        "path": "{{targetPath}}/package.json"
+        "path": "{{targetPath}}/apps/dashboard-app/package.json"
       }
     },
     {
@@ -63,36 +84,55 @@
       "severity": "blocking",
       "repairHint": "Restore `vite.config.ts` in the dashboard-app surface before starting a worker quick tunnel workflow.",
       "params": {
-        "path": "{{targetPath}}/vite.config.ts"
+        "path": "{{targetPath}}/apps/dashboard-app/vite.config.ts"
+      }
+    },
+    {
+      "id": "target_gateway_reachable",
+      "checkId": "work_at_http_ok",
+      "title": "dashboard-app Bun gateway is reachable",
+      "severity": "blocking",
+      "repairHint": "Start the Bun dashboard gateway on the worker and verify it responds locally before attempting a quick tunnel.",
+      "params": {
+        "url": "http://127.0.0.1:3300/storyboard/debug/",
+        "timeoutSeconds": "2"
       }
     },
     {
       "id": "target_dev_frontend_reachable",
       "checkId": "work_at_http_ok",
-      "title": "dashboard-app local dev frontend is reachable",
+      "title": "dashboard-app Vite frontend is reachable behind the gateway",
       "severity": "blocking",
-      "repairHint": "Start the dashboard-app dev server on the worker and verify it responds locally before attempting a quick tunnel.",
+      "repairHint": "Start the dashboard-app Vite frontend on the worker and verify it responds locally before attempting a quick tunnel.",
       "params": {
-        "url": "http://127.0.0.1:5173/storyboard/debug/",
+        "url": "http://127.0.0.1:5173/",
         "timeoutSeconds": "2"
       }
     },
     {
       "id": "target_cloudflared_quick_tunnel_active",
       "checkId": "work_at_process_active",
-      "title": "cloudflared quick tunnel is active for the dev frontend",
+      "title": "cloudflared quick tunnel is active for the Bun gateway",
       "severity": "blocking",
-        "repairHint": "Run a worker-local `cloudflared tunnel --url http://127.0.0.1:5173 --no-autoupdate` for this surface. Do not use localhost.run for this workflow.",
-        "params": {
-        "processPattern": "cloudflared tunnel --url http://127.0.0.1:5173"
+      "repairHint": "Run a worker-local `cloudflared tunnel --url http://127.0.0.1:3300 --no-autoupdate` for this surface. Do not use localhost.run for this workflow.",
+      "params": {
+        "processPattern": "cloudflared tunnel --url http://127.0.0.1:3300"
       }
+    },
+    {
+      "id": "target_git_push_auth_ready",
+      "checkId": "dashboard_worker_git_push_auth_ready",
+      "title": "worker Git push auth is ready",
+      "severity": "blocking",
+      "repairHint": "Restore the repo-aware Git askpass setup and verify `git push --dry-run origin <branch>` succeeds on the worker before relying on GitHub pushes.",
+      "params": {}
     },
     {
       "id": "target_quick_tunnel_session_ready",
       "checkId": "dashboard_quick_tunnel_session_ready",
-      "title": "quick tunnel session generator returns a healthy dev URL",
+      "title": "quick tunnel serves the dashboard shell and storyboard plugin route",
       "severity": "blocking",
-      "repairHint": "Repair the worker dev backend or the quick-tunnel session generator so a fresh quick tunnel URL can be issued and its health endpoint succeeds before handing a URL to the user.",
+      "repairHint": "Repair the worker dashboard gateway, the 3300 quick tunnel, or the storyboard plugin route until the dashboard root and the storyboard debug route both render on the same quick tunnel host before handing a URL to the user.",
       "params": {}
     }
   ]
