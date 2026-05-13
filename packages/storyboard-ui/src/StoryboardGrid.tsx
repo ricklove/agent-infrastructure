@@ -4,12 +4,15 @@ export type StoryboardGridFrame = {
   id: string
   title: string
   nextLabel?: string
+  branchLabels?: string[]
 }
 
 export type StoryboardGridSequence = {
   id: string
   title?: string
   frames: StoryboardGridFrame[]
+  startColumn?: number
+  startLabel?: string
 }
 
 type StoryboardGridProps = {
@@ -45,7 +48,10 @@ export function StoryboardGrid({
   actionColumnWidth = ACTION_COLUMN_WIDTH,
   nextCellHeight = NEXT_CELL_HEIGHT,
 }: StoryboardGridProps) {
-  const maxFrames = Math.max(0, ...sequences.map((sequence) => sequence.frames.length))
+  const maxFrames = Math.max(
+    0,
+    ...sequences.map((sequence) => (sequence.startColumn ?? 0) + sequence.frames.length),
+  )
   const templateColumns = gridTemplateColumns(maxFrames, frameWidth, actionColumnWidth)
 
   return (
@@ -70,7 +76,11 @@ export function StoryboardGrid({
             }}
           >
             {Array.from({ length: maxFrames }, (_, index) => {
-              const frame = sequence.frames[index]
+              const frameIndex = index - (sequence.startColumn ?? 0)
+              const frame = frameIndex >= 0 ? sequence.frames[frameIndex] : undefined
+              const shouldRenderStartLabel =
+                !!sequence.startLabel &&
+                index === (sequence.startColumn ?? 0) - 1
 
               return (
                 <>
@@ -83,7 +93,9 @@ export function StoryboardGrid({
                   </div>
                   {index < maxFrames - 1 ? (
                     <div key={`${sequence.id}-next-${index}`}>
-                      {frame && index < sequence.frames.length - 1 ? (
+                      {shouldRenderStartLabel ? (
+                        <StoryboardStartCell actionColumnWidth={actionColumnWidth} label={sequence.startLabel!} nextCellHeight={nextCellHeight} />
+                      ) : frame && frameIndex < sequence.frames.length - 1 ? (
                         <StoryboardNextCell actionColumnWidth={actionColumnWidth} frame={frame} nextCellHeight={nextCellHeight} />
                       ) : null}
                     </div>
@@ -94,6 +106,25 @@ export function StoryboardGrid({
           </div>
         </section>
       ))}
+    </div>
+  )
+}
+
+function StoryboardStartCell({
+  label,
+  actionColumnWidth,
+  nextCellHeight,
+}: {
+  label: string
+  actionColumnWidth: number
+  nextCellHeight: number
+}) {
+  return (
+    <div
+      className="flex w-full items-center justify-center rounded border border-amber-300/20 bg-amber-200/10 text-[11px] uppercase tracking-[0.18em] text-amber-100/80"
+      style={{ width: actionColumnWidth, height: nextCellHeight }}
+    >
+      {label}
     </div>
   )
 }
@@ -133,9 +164,23 @@ export function TitleOnlyStoryboardFrame({
       data-storyboard-frame={frame.id}
       style={{ width: width ?? FRAME_CELL_SIZE, height: height ?? FRAME_CELL_HEIGHT }}
     >
+      <div className="flex h-full w-full flex-col items-center justify-between gap-3">
         <span className="block w-full max-w-full overflow-hidden break-words whitespace-normal">
-        {frame.title}
-      </span>
+          {frame.title}
+        </span>
+        {frame.branchLabels?.length ? (
+          <div className="flex w-full flex-col items-center gap-2 pt-2">
+            {frame.branchLabels.map((label) => (
+              <div
+                className="w-full border border-amber-300/30 bg-amber-200/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100/85"
+                key={label}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </article>
   )
 }

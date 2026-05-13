@@ -3,7 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { PanZoomContainer, type PanZoomContainerHandle } from "../PanZoomContainer"
 import { StoryboardGrid, type StoryboardGridSequence } from "../StoryboardGrid"
 import { ScreenshotFrameCell } from "../ScreenshotFrameCell"
-import { chatAppLargeGridSequences } from "./chatAppStoryboardDataset"
+import {
+  chatAppLargeGridSequences,
+  chatAppStoryboardDocuments,
+  type StoryOutline,
+  type StoryOutlineStep,
+} from "./chatAppStoryboardDataset"
 import type { StoryboardDebugComponentDefinition } from "./types"
 
 const singleSequenceDataset: StoryboardGridSequence[] = [
@@ -69,7 +74,200 @@ const mixedTitleDataset: StoryboardGridSequence[] = [
   },
 ]
 
+const branchingDataset: StoryboardGridSequence[] = [
+  {
+    id: "account-main",
+    title: "Main path",
+    frames: [
+      { id: "start", title: "Open app", nextLabel: "Enter phone" },
+      { id: "phone", title: "Enter phone number", nextLabel: "Verify code" },
+      {
+        id: "verify",
+        title: "Enter verification code",
+        nextLabel: "Continue",
+        branchLabels: ["Invalid code", "Account exists"],
+      },
+      { id: "created", title: "Account created" },
+    ],
+  },
+  {
+    id: "invalid-code",
+    title: "Branch: invalid code",
+    startColumn: 3,
+    startLabel: "Invalid code",
+    frames: [
+      { id: "invalid", title: "Show retry and resend options", nextLabel: "Retry" },
+      { id: "retry", title: "Return to code entry" },
+    ],
+  },
+  {
+    id: "account-exists",
+    title: "Branch: account exists",
+    startColumn: 3,
+    startLabel: "Account exists",
+    frames: [
+      { id: "exists", title: "Prompt sign in or recover", nextLabel: "Sign in" },
+      { id: "signin", title: "Restore existing inbox" },
+    ],
+  },
+]
+
 const chatAppLargeDataset: StoryboardGridSequence[] = chatAppLargeGridSequences()
+
+function normalizeBranchLabel(branchText: string) {
+  return branchText.split("->")[0]?.trim() ?? branchText.trim()
+}
+
+function normalizeBranchOutcome(branchText: string) {
+  return branchText.split("->").slice(1).join("->").trim() || branchText.trim()
+}
+
+function stepLabel(step: StoryOutlineStep) {
+  return step.kind === "verify" ? `Verify: ${step.text}` : step.text
+}
+
+function anchorScore(step: StoryOutlineStep, branchLabel: string) {
+  const label = branchLabel.toLowerCase()
+  const text = step.text.toLowerCase()
+  let score = 0
+  const contains = (value: string) => label.includes(value) || text.includes(value)
+
+  if ((contains("code") || contains("verification")) && text.includes("code")) score += 5
+  if ((contains("permission") || contains("contacts")) && (text.includes("permission") || text.includes("contacts"))) score += 5
+  if ((contains("search") || contains("results")) && text.includes("search")) score += 5
+  if ((contains("join") || contains("link") || contains("approval")) && (text.includes("join") || text.includes("link"))) score += 5
+  if ((contains("camera") || contains("gallery") || contains("file") || contains("upload")) && (text.includes("camera") || text.includes("photo") || text.includes("file") || text.includes("upload") || text.includes("attachment"))) score += 5
+  if ((contains("send") || contains("request") || contains("offline") || contains("network") || contains("delivery")) && (text.includes("send") || text.includes("message") || text.includes("request") || text.includes("deliver") || text.includes("network"))) score += 5
+  if ((contains("edit") || contains("delete") || contains("retry")) && (text.includes("edit") || text.includes("delete") || text.includes("send"))) score += 4
+  if (text.includes("system:")) score += 1
+  if (step.kind === "verify") score -= 2
+
+  return score
+}
+
+function buildBranchFollowups(branchLabel: string, branchOutcome: string): string[] {
+  const label = branchLabel.toLowerCase()
+  const outcome = branchOutcome || branchLabel
+
+  if (label.includes("invalid code")) {
+    return [outcome, "Choose retry or resend"]
+  }
+  if (label.includes("phone already in use") || label.includes("account exists")) {
+    return [outcome, "Choose sign in or recovery"]
+  }
+  if (label.includes("permission denied")) {
+    return [outcome, "Offer manual fallback"]
+  }
+  if (label.includes("no results")) {
+    return [outcome, "Offer invite/share option"]
+  }
+  if (label.includes("message request") || label.includes("follow gate")) {
+    return [outcome, "Choose send request or follow"]
+  }
+  if (label.includes("network") || label.includes("offline") || label.includes("retry state")) {
+    return [outcome, "Queue locally and retry on reconnect"]
+  }
+  if (label.includes("expired")) {
+    return [outcome, "Return to prior chooser"]
+  }
+  if (label.includes("upload fails") || label.includes("upload failed")) {
+    return [outcome, "Show retry on media tile"]
+  }
+  if (label.includes("camera permission denied")) {
+    return [outcome, "Route to settings or gallery fallback"]
+  }
+  if (label.includes("too large") || label.includes("prohibited file type") || label.includes("blocked type")) {
+    return [outcome, "Block send and explain why"]
+  }
+  if (label.includes("approval required")) {
+    return [outcome, "Show pending approval state"]
+  }
+  if (label.includes("join immediately") || label.includes("delivered normally") || label.includes("match found") || label.includes("sign in")) {
+    return [outcome]
+  }
+
+  return [outcome]
+}
+
+function storyToBranchingSequences(
+  entry: StoryOutline,
+  title: string,
+  sequencePrefix: string,
+): StoryboardGridSequence[] {
+  const flowSteps = entry.steps.filter((step) => step.kind !== "branch")
+  const branchSteps = entry.steps.filter((step) => step.kind === "branch")
+  const branchMap = new Map<number, StoryOutlineStep[]>()
+
+  for (const branch of branchSteps) {
+    const branchLabel = normalizeBranchLabel(branch.text)
+    let bestIndex = Math.max(flowSteps.length - 1, 0)
+    let bestScore = -Infinity
+    for (let index = 0; index < flowSteps.length; index += 1) {
+      const score = anchorScore(flowSteps[index]!, branchLabel)
+      if (score >= bestScore) {
+        bestScore = score
+        bestIndex = index
+      }
+    }
+    const bucket = branchMap.get(bestIndex) ?? []
+    bucket.push(branch)
+    branchMap.set(bestIndex, bucket)
+  }
+
+  const mainFrames: StoryboardGridSequence["frames"] = [
+    {
+      id: `${entry.id}-title`,
+      title: entry.title,
+      nextLabel: flowSteps.length > 0 ? "Start" : undefined,
+    },
+    ...flowSteps.map((step, stepIndex) => ({
+      id: `${entry.id}-step-${stepIndex}`,
+      title: stepLabel(step),
+      nextLabel: stepIndex < flowSteps.length - 1 ? "Next" : undefined,
+      branchLabels: (branchMap.get(stepIndex) ?? []).map((branch) => normalizeBranchLabel(branch.text)),
+    })),
+  ]
+
+  const branchSequences: StoryboardGridSequence[] = []
+  for (const [stepIndex, branches] of branchMap.entries()) {
+    for (const [branchIndex, branch] of branches.entries()) {
+      const branchLabel = normalizeBranchLabel(branch.text)
+      const branchOutcome = normalizeBranchOutcome(branch.text)
+      const followups = buildBranchFollowups(branchLabel, branchOutcome)
+      branchSequences.push({
+        id: `${sequencePrefix}-${entry.id}-branch-${stepIndex}-${branchIndex}`,
+        title: `Branch: ${branchLabel}`,
+        startColumn: stepIndex + 2,
+        startLabel: branchLabel,
+        frames: followups.map((stepTitle, followupIndex) => ({
+          id: `${entry.id}-branch-${stepIndex}-${branchIndex}-step-${followupIndex}`,
+          title: stepTitle,
+          nextLabel: followupIndex < followups.length - 1 ? "Next" : undefined,
+        })),
+      })
+    }
+  }
+
+  return [
+    {
+      id: `${sequencePrefix}-${entry.id}`,
+      title,
+      frames: mainFrames,
+    },
+    ...branchSequences,
+  ]
+}
+
+const chatAppLargeBranchingDataset: StoryboardGridSequence[] = chatAppStoryboardDocuments.flatMap(
+  (document, documentIndex) =>
+    document.stories.flatMap((entry, storyIndex) =>
+      storyToBranchingSequences(
+        entry,
+        `${documentIndex + 1}.${storyIndex + 1} ${document.title}`,
+        `doc-${documentIndex + 1}-story-${storyIndex + 1}`,
+      ),
+    ),
+)
 
 const SCREENSHOT_FRAME_WIDTH = 720
 const SCREENSHOT_FRAME_HEIGHT = 720
@@ -740,6 +938,20 @@ export const storyboardGridDebugDefinition: StoryboardDebugComponentDefinition =
         ),
       },
       {
+        slug: "branching-user-flow",
+        label: "branching-user-flow",
+        description: "Main row with two branch rows aligned under the branching frame.",
+        render: () => (
+          <StoryboardGridFixture
+            scenarioSlug="branching-user-flow"
+            sequences={branchingDataset}
+          />
+        ),
+        renderPreview: () => (
+          <StoryboardGridPreview sequences={branchingDataset} />
+        ),
+      },
+      {
         slug: "chat-app-large-grid",
         label: "chat-app-large-grid",
         render: () => (
@@ -750,6 +962,20 @@ export const storyboardGridDebugDefinition: StoryboardDebugComponentDefinition =
         ),
         renderPreview: () => (
           <StoryboardGridPreview sequences={chatAppLargeDataset.slice(0, 3)} />
+        ),
+      },
+      {
+        slug: "chat-app-large-grid-with-branching",
+        label: "chat-app-large-grid-with-branching",
+        description: "Full chat corpus with branch rows aligned under the branching step.",
+        render: () => (
+          <StoryboardGridFixture
+            scenarioSlug="chat-app-large-grid-with-branching"
+            sequences={chatAppLargeBranchingDataset}
+          />
+        ),
+        renderPreview: () => (
+          <StoryboardGridPreview sequences={chatAppLargeBranchingDataset.slice(0, 4)} />
         ),
       },
       {
