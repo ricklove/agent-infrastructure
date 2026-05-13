@@ -47,6 +47,9 @@ type PanZoomContainerProps = {
 
 const ZOOM_STEP = 1.12
 
+const PAN_BLOCK_SELECTOR = ".nopan,button,a,input,textarea,select,[role=button],[contenteditable=true]"
+const WHEEL_BLOCK_SELECTOR = ".nowheel,input,textarea,select,[contenteditable=true]"
+
 export function clampScale(value: number, minScale: number, maxScale: number) {
   return Math.min(maxScale, Math.max(minScale, Number(value.toFixed(4))))
 }
@@ -267,7 +270,14 @@ export const PanZoomContainer = forwardRef<
     return { x, y }
   }
 
+  function targetMatchesSelector(target: EventTarget | null, selector: string) {
+    return target instanceof Element ? target.closest(selector) : null
+  }
+
   function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    if (targetMatchesSelector(event.target, WHEEL_BLOCK_SELECTOR)) {
+      return
+    }
     const point = getViewportLocalPoint(event.clientX, event.clientY)
     if (!point) {
       return
@@ -286,6 +296,9 @@ export const PanZoomContainer = forwardRef<
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) {
+      return
+    }
+    if (targetMatchesSelector(event.target, PAN_BLOCK_SELECTOR)) {
       return
     }
     const viewport = viewportRef.current

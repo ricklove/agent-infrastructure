@@ -1,0 +1,105 @@
+{
+  "id": "test-storyboard",
+  "title": "Test Storyboard",
+  "stories": [
+    {
+      "id": "start-a-voice-call-from-chat",
+      "title": "Start a voice call from chat",
+      "frames": [
+        {
+          "id": "start-a-voice-call-from-chat-step-0",
+          "title": "Open chat",
+          "nextLabel": "Voice call"
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-1",
+          "title": "Tap voice call",
+          "nextLabel": "Ring"
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-2",
+          "title": "System: ring recipient and show call state",
+          "nextLabel": "Answered"
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-3",
+          "title": "Verify: active call UI appears when recipient answers",
+          "nextLabel": "test"
+        }
+      ],
+      "branches": [
+        {
+          "id": "start-a-voice-call-from-chat-branch-0",
+          "label": "Recipient unavailable",
+          "sourceFrameId": "start-a-voice-call-from-chat-step-2",
+          "frames": [
+            {
+              "id": "start-a-voice-call-from-chat-branch-0-step-0",
+              "title": "Show missed call outcome"
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-branch-1",
+          "label": "Recipient blocks calls",
+          "sourceFrameId": "start-a-voice-call-from-chat-step-2",
+          "frames": [
+            {
+              "id": "start-a-voice-call-from-chat-branch-1-step-0",
+              "title": "Action denied"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "escalate-voice-call-to-video-call",
+      "title": "Escalate voice call to video call",
+      "frames": [
+        {
+          "id": "escalate-voice-call-to-video-call-step-0",
+          "title": "In active voice call, choose video",
+          "nextLabel": "Upgrade"
+        },
+        {
+          "id": "escalate-voice-call-to-video-call-step-1",
+          "title": "System: request camera permission and send upgrade prompt",
+          "nextLabel": "Accepted"
+        },
+        {
+          "id": "escalate-voice-call-to-video-call-step-2",
+          "title": "Verify: Both participants transition to video layout when accepted"
+        }
+      ],
+      "branches": [
+        {
+          "id": "escalate-voice-call-to-video-call-branch-0",
+          "label": "Recipient declines video",
+          "sourceFrameId": "escalate-voice-call-to-video-call-step-1",
+          "frames": [
+            {
+              "id": "escalate-voice-call-to-video-call-branch-0-step-0",
+              "title": "Remain on voice call"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "humanNotes": [
+    {
+      "id": "note-1",
+      "targetType": "frame",
+      "targetId": "escalate-voice-call-to-video-call-step-1",
+      "markdown": "- Clarify camera permission fallback\n  - Keep the voice call intact if permission is denied"
+    }
+  ],
+  "snapshotRequests": [
+    {
+      "id": "snapshot-1",
+      "frameId": "start-a-voice-call-from-chat-step-0",
+      "componentSlug": "storyboardGrid",
+      "scenarioSlug": "branching-user-flow"
+    }
+  ]
+}
