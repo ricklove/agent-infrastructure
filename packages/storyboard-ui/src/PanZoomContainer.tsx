@@ -38,6 +38,11 @@ type PanZoomContainerProps = {
   className?: string
   contentClassName?: string
   onScaleChange?: (scale: number) => void
+  onViewChange?: (view: {
+    scale: number
+    offset: { x: number; y: number }
+    viewport: { width: number; height: number }
+  }) => void
 }
 
 const ZOOM_STEP = 1.12
@@ -62,6 +67,7 @@ export const PanZoomContainer = forwardRef<
     className,
     contentClassName,
     onScaleChange,
+    onViewChange,
   },
   ref,
 ) {
@@ -98,6 +104,24 @@ export const PanZoomContainer = forwardRef<
   useEffect(() => {
     onScaleChange?.(view.scale)
   }, [onScaleChange, view.scale])
+
+  useEffect(() => {
+    if (!onViewChange) {
+      return
+    }
+    const viewport = viewportRef.current
+    onViewChange({
+      scale: view.scale,
+      offset: {
+        x: view.offsetX,
+        y: view.offsetY,
+      },
+      viewport: {
+        width: viewport?.clientWidth ?? 0,
+        height: viewport?.clientHeight ?? 0,
+      },
+    })
+  }, [onViewChange, view])
 
   const getViewportSize = useCallback(() => {
     const viewport = viewportRef.current

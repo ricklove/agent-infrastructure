@@ -1,4 +1,5 @@
 import { panZoomContainerDebugDefinition } from "./panZoomScenarios"
+import { screenshotFrameCellDebugDefinition } from "./screenshotFrameCellScenarios"
 import { storyboardGridDebugDefinition } from "./storyboardGridScenarios"
 import type {
   StoryboardDebugComponentDefinition,
@@ -7,6 +8,7 @@ import type {
 
 export const storyboardDebugComponents: StoryboardDebugComponentDefinition[] = [
   panZoomContainerDebugDefinition,
+  screenshotFrameCellDebugDefinition,
   storyboardGridDebugDefinition,
 ]
 
