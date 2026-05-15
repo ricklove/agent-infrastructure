@@ -3,6 +3,7 @@ import { useRef, useState, type ReactNode } from "react"
 export type StoryboardGridFrame = {
   id: string
   title: string
+  description?: string
   nextLabel?: string
 }
 
@@ -80,7 +81,7 @@ function currentStoryboardId() {
   return parts[0]
 }
 
-async function copyTextToClipboard(text: string) {
+export async function copyTextToClipboard(text: string) {
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     try {
       await navigator.clipboard.writeText(text)
@@ -142,7 +143,7 @@ function LinkIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   )
 }
 
-function CheckIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+export function CheckIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
       <path
@@ -244,6 +245,7 @@ export function StoryboardGrid({
                     ? "text-cyan-100"
                     : "text-white/45 hover:text-cyan-100"
                 }`}
+                data-storyboard-sequence-title={sequence.id}
                 onClick={() => onSequenceTitleClick(sequence)}
                 type="button"
               >
@@ -349,6 +351,8 @@ function StoryboardGridFrameShell({
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   )
+  const [descriptionOpen, setDescriptionOpen] = useState(false)
+  const [descriptionPinned, setDescriptionPinned] = useState(false)
 
   async function handleCopyLink() {
     const link = storyboardFrameLink(frame.id)
@@ -395,39 +399,86 @@ function StoryboardGridFrameShell({
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
     >
-      <button
-        aria-label={`Copy link to ${frame.title}`}
-        className={`nopan nowheel absolute -top-3 right-0 z-10 flex h-7 w-7 items-center justify-center rounded bg-slate-900 shadow-sm transition group-hover:opacity-100 focus:opacity-100 ${
-          copyState === "failed"
-            ? "border border-rose-300/40 text-rose-100 opacity-100"
-            : copyState === "copied"
-              ? "border border-emerald-300/40 text-emerald-100 opacity-100"
-              : "border border-cyan-300/30 text-cyan-100 opacity-0"
-        }`}
-        data-storyboard-copy-link={frame.id}
-        onClick={(event) => {
-          event.stopPropagation()
-          void handleCopyLink()
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
-        title={
-          copyState === "copied"
-            ? "Copied link"
-            : copyState === "failed"
-              ? "Copy failed"
-              : "Copy frame link"
-        }
-        type="button"
-      >
-        {copyState === "copied" ? <CheckIcon /> : <LinkIcon />}
-      </button>
       <div
-        className={
+        className={`overflow-hidden border border-zinc-500/70 bg-zinc-800 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)] ${
           isSelected
-            ? "rounded shadow-[0_0_0_1px_rgba(125,211,252,0.8),0_0_0_6px_rgba(56,189,248,0.12)]"
+            ? "rounded ring-2 ring-cyan-300/80 ring-offset-2 ring-offset-[#546072] shadow-[0_0_0_1px_rgba(125,211,252,0.8),0_0_0_6px_rgba(56,189,248,0.12)]"
             : ""
-        }
+        }`}
       >
+        <div className="flex items-center gap-2 border-b border-white/10 bg-zinc-900 px-3 py-2 text-sm font-medium leading-tight text-white">
+          <div className="flex-1">{frame.title}</div>
+          {frame.description ? (
+            <button
+              aria-expanded={descriptionOpen}
+              aria-label={`Show frame description for ${frame.title}`}
+              className={`nopan nowheel inline-flex h-6 w-6 items-center justify-center rounded border text-[11px] font-semibold ${
+                descriptionOpen
+                  ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
+                  : "border-white/10 bg-black/30 text-white/60"
+              }`}
+              onClick={(event) => {
+                event.stopPropagation()
+                setDescriptionPinned((current) => {
+                  const next = !current
+                  setDescriptionOpen(next)
+                  return next
+                })
+              }}
+              onMouseEnter={() => setDescriptionOpen(true)}
+              onMouseLeave={() => {
+                if (!descriptionPinned) {
+                  setDescriptionOpen(false)
+                }
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              type="button"
+            >
+              i
+            </button>
+          ) : null}
+          <button
+            aria-label={`Copy link to ${frame.title}`}
+            className={`nopan nowheel inline-flex h-6 w-6 items-center justify-center rounded bg-slate-900/95 shadow-sm ${
+              copyState === "failed"
+                ? "border border-rose-300/40 text-rose-100"
+                : copyState === "copied"
+                  ? "border border-emerald-300/40 text-emerald-100"
+                  : "border border-cyan-300/30 text-cyan-100"
+            }`}
+            data-storyboard-copy-link={frame.id}
+            onClick={(event) => {
+              event.stopPropagation()
+              void handleCopyLink()
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            title={
+              copyState === "copied"
+                ? "Copied link"
+                : copyState === "failed"
+                  ? "Copy failed"
+                  : "Copy frame link"
+            }
+            type="button"
+          >
+            {copyState === "copied" ? <CheckIcon /> : <LinkIcon />}
+          </button>
+        </div>
+        {descriptionOpen && frame.description ? (
+          <div
+            className="pointer-events-none absolute inset-x-3 top-11 z-20"
+            onMouseEnter={() => setDescriptionOpen(true)}
+            onMouseLeave={() => {
+              if (!descriptionPinned) {
+                setDescriptionOpen(false)
+              }
+            }}
+          >
+            <div className="pointer-events-auto rounded border border-cyan-300/30 bg-zinc-950/98 px-3 py-2 text-xs leading-relaxed text-white/80 shadow-[0_12px_28px_rgba(0,0,0,0.38)]">
+              {frame.description}
+            </div>
+          </div>
+        ) : null}
         {children}
       </div>
     </div>
@@ -453,6 +504,7 @@ function StoryboardStartCell({
           ? "nopan nowheel cursor-pointer transition hover:border-amber-200/40 hover:bg-amber-200/15"
           : ""
       }`}
+      data-storyboard-transition={label}
       onClick={onClick}
       onPointerDown={onClick ? (event) => event.stopPropagation() : undefined}
       style={{ width: actionColumnWidth, height: nextCellHeight }}
@@ -504,15 +556,11 @@ export function TitleOnlyStoryboardFrame({
 }) {
   return (
     <article
-      className="flex items-start justify-center overflow-hidden border border-zinc-500/70 bg-zinc-800 px-4 py-3 text-center text-xs font-medium leading-snug text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]"
+      className="flex items-center justify-center overflow-hidden bg-zinc-800 px-4 py-3 text-center text-xs font-medium leading-snug text-white"
       data-storyboard-frame={frame.id}
       style={{ width: width ?? FRAME_CELL_SIZE, height: height ?? FRAME_CELL_HEIGHT }}
     >
-      <div className="flex h-full w-full items-center justify-center">
-        <span className="block w-full max-w-full overflow-hidden break-words whitespace-normal">
-          {frame.title}
-        </span>
-      </div>
+      <div className="h-full w-full rounded border border-white/10 bg-black/10" />
     </article>
   )
 }

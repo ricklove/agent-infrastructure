@@ -11,6 +11,7 @@ type ScreenshotPaneProps = {
 
 type ScreenshotFrameCellProps = {
   title?: string
+  description?: string
   desktop?: ReactNode
   mobile?: ReactNode
   square?: ReactNode
@@ -22,22 +23,34 @@ const MOBILE_WIDTH = 141
 const MOBILE_HEIGHT = 240
 const SQUARE_WIDTH = 240
 const SQUARE_HEIGHT = 240
+const PANE_GAP = 8
+const BODY_PADDING = 8
+const COMPOSITE_WIDTH = TOP_WIDTH
+const COMPOSITE_HEIGHT = TOP_HEIGHT + PANE_GAP + MOBILE_HEIGHT
+const COMPOSITE_SCALE = Math.min(
+  (720 - BODY_PADDING * 2) / COMPOSITE_WIDTH,
+  (720 - BODY_PADDING * 2) / COMPOSITE_HEIGHT,
+)
 
 export const ScreenshotFrameCell = memo(function ScreenshotFrameCell({
   title,
+  description,
   desktop,
   mobile,
   square,
 }: ScreenshotFrameCellProps) {
   return (
-    <article className="flex h-[720px] w-[720px] flex-col border border-zinc-500/70 bg-zinc-800 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]">
-      {title ? (
-        <div className="border-b border-white/10 px-4 py-3 text-sm font-medium leading-tight text-white">
-          {title}
-        </div>
-      ) : null}
-      <div className="flex flex-1 items-center justify-center px-8 py-8">
-        <div className="flex flex-col gap-6">
+    <article className="flex h-[720px] w-[720px] flex-col bg-zinc-800 text-white">
+      <div className="flex flex-1 items-center justify-center p-0.5">
+        <div
+          className="origin-center"
+          style={{
+            height: COMPOSITE_HEIGHT,
+            transform: `scale(${COMPOSITE_SCALE})`,
+            transformOrigin: "center center",
+            width: COMPOSITE_WIDTH,
+          }}
+        >
           <div className="flex justify-center">
             <ScreenshotPane
               height={TOP_HEIGHT}
@@ -49,7 +62,7 @@ export const ScreenshotFrameCell = memo(function ScreenshotFrameCell({
               {desktop}
             </ScreenshotPane>
           </div>
-          <div className="flex items-start justify-center gap-6">
+          <div className="mt-2 flex items-start justify-center gap-2">
             <ScreenshotPane
               height={MOBILE_HEIGHT}
               label="Mobile"
@@ -89,7 +102,7 @@ function ScreenshotPane({
       style={{ width, height }}
     >
       {children ? (
-        <div className="box-border h-full w-full px-4 pb-4 pt-11">{children}</div>
+        <div className="box-border h-full w-full px-1 pb-1 pt-7">{children}</div>
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-zinc-950 text-center">
           <div className="space-y-2 px-4 text-[11px] uppercase tracking-[0.18em] text-white/55">

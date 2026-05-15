@@ -387,7 +387,6 @@ function ScreenshotGridFrame({
       desktop={<MockScreenshotScreen accent={accent} heading="Desktop" lines={screenshotLines(frame.title, 3)} />}
       mobile={<MockScreenshotScreen accent={accent} heading="Mobile" lines={screenshotLines(frame.title, 2)} />}
       square={<MockScreenshotScreen accent={accent} heading="Square" lines={screenshotLines(frame.title, 2)} />}
-      title={frame.title}
     />
   )
 }
@@ -431,7 +430,6 @@ function renderScreenshotGridFrame(
         desktop={<FarPanePlaceholder />}
         mobile={<FarPanePlaceholder />}
         square={<FarPanePlaceholder />}
-        title={frame.title}
       />
     )
   }
@@ -441,7 +439,6 @@ function renderScreenshotGridFrame(
         desktop={<MidPanePlaceholder accent={accent} />}
         mobile={<MidPanePlaceholder accent={accent} />}
         square={<MidPanePlaceholder accent={accent} />}
-        title={frame.title}
       />
     )
   }

@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { dirname, resolve } from "node:path"
+import { dirname, extname, resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 import { formatStoryboardDocument, isStoryboardDocument, type StoryboardDocument } from "./storyboard-document.js"
 
@@ -9,6 +9,17 @@ const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
 const logPath = process.env.STORYBOARD_LOG_PATH?.trim() || `${stateDir}/logs/storyboard-server.log`
 const repoRoot = process.cwd()
 const testFixturePath = resolve(repoRoot, "packages/storyboard-ui/fixtures/test.storyboard.json")
+const defaultStoryboardDir = resolve(repoRoot, "packages/storyboard-ui/templates/default-storyboard")
+const testFixtureStoryboardDir = resolve(repoRoot, "packages/storyboard-ui/fixtures/test-storyboard")
+const defaultAccessPort = Number.parseInt(process.env.STORYBOARD_DEFAULT_ACCESS_PORT ?? "8798", 10)
+const testFixtureAccessPort = Number.parseInt(process.env.STORYBOARD_TEST_FIXTURE_ACCESS_PORT ?? "8799", 10)
+const defaultStoryboardUrl =
+  process.env.STORYBOARD_DEFAULT_URL?.trim() ||
+  process.env.STORYBOARD_DEFAULT_ACCESS_URL?.trim() ||
+  `http://127.0.0.1:${defaultAccessPort}/default-storyboard/storyboard.json`
+const testFixtureStoryboardUrl =
+  process.env.STORYBOARD_TEST_FIXTURE_URL?.trim() ||
+  `http://127.0.0.1:${testFixtureAccessPort}/test-storyboard/storyboard.json`
 
 type SnapshotJob = {
   id: string
@@ -26,9 +37,82 @@ const snapshotJobs = new Map<string, SnapshotJob>()
 
 mkdirSync(dirname(logPath), { recursive: true })
 
+function isHttpUrl(value: string) {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+  } catch {
+    return false
+  }
+}
+
+function normalizeStoryboardBaseUrl(value: string) {
+  return value.replace(/\/$/, "")
+}
+
+function storyboardDocumentUrl(storyboardUrl: string) {
+  const normalized = normalizeStoryboardBaseUrl(storyboardUrl)
+  return normalized.endsWith("/storyboard.json") ? normalized : `${normalized}/storyboard.json`
+}
+
+function fileContentType(pathValue: string) {
+  const ext = extname(pathValue).toLowerCase()
+  switch (ext) {
+    case ".png":
+      return "image/png"
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg"
+    case ".webp":
+      return "image/webp"
+    case ".gif":
+      return "image/gif"
+    case ".svg":
+      return "image/svg+xml"
+    case ".html":
+      return "text/html; charset=utf-8"
+    case ".md":
+      return "text/markdown; charset=utf-8"
+    case ".json":
+      return "application/json; charset=utf-8"
+    default:
+      return "application/octet-stream"
+  }
+}
+
 function log(message: string) {
   appendFileSync(logPath, `[${new Date().toISOString()}:storyboard-server] ${message}\n`)
 }
+
+function startBundledAccessServer(rootDir: string, accessPort: number) {
+  log(`starting bundled storyboard access server for ${rootDir} on ${accessPort}`)
+  const child = Bun.spawn(
+    ["bun", "scripts/storyboard-access-server.ts", "--root", rootDir, "--port", String(accessPort)],
+    {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: process.env,
+    },
+  )
+
+  void new Response(child.stdout).text().then((output) => {
+    if (output.trim()) {
+      log(`bundled access server stdout: ${output.trim()}`)
+    }
+  })
+  void new Response(child.stderr).text().then((output) => {
+    if (output.trim()) {
+      log(`bundled access server stderr: ${output.trim()}`)
+    }
+  })
+  void child.exited.then((exitCode) => {
+    log(`bundled access server exited with code ${exitCode}`)
+  })
+}
+
+startBundledAccessServer(defaultStoryboardDir, defaultAccessPort)
+startBundledAccessServer(testFixtureStoryboardDir, testFixtureAccessPort)
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -56,7 +140,14 @@ function ensureAllowedPath(pathValue: string) {
 }
 
 function resolveStoryboardPath(url: URL) {
+  const storyboardUrl = url.searchParams.get("storyboardUrl")?.trim()
+  if (storyboardUrl) {
+    throw new Error("storyboardUrl-backed documents must be resolved through the proxy flow")
+  }
   const fixture = url.searchParams.get("fixture")?.trim()
+  if (fixture === "default-storyboard") {
+    throw new Error("default-storyboard fixture is access-server-backed and must be resolved through the proxy flow")
+  }
   if (fixture === "test-storyboard") {
     return testFixturePath
   }
@@ -92,6 +183,52 @@ function writeStoryboardDocument(path: string, document: StoryboardDocument) {
     document,
     mtimeMs: stats.mtimeMs,
   }
+}
+
+function resolveStoryboardUrl(url: URL, requestUrl: string) {
+  const storyboardUrl = url.searchParams.get("storyboardUrl")?.trim()
+  if (!storyboardUrl) {
+    return null
+  }
+  const resolved = new URL(storyboardUrl, requestUrl).toString()
+  if (!isHttpUrl(resolved)) {
+    throw new Error("storyboardUrl must resolve to an absolute http(s) URL")
+  }
+  return normalizeStoryboardBaseUrl(resolved)
+}
+
+async function proxyStoryboardUrlDocument(storyboardUrl: string, init?: RequestInit) {
+  const response = await fetch(storyboardDocumentUrl(storyboardUrl), init)
+  if (!response.ok) {
+    throw new Error(await response.text())
+  }
+  const payload = (await response.json()) as unknown
+  if (!isStoryboardDocument(payload)) {
+    throw new Error("invalid storyboard document payload from storyboard URL")
+  }
+  return {
+    path: response.headers.get("X-Storyboard-Path") ?? storyboardUrl,
+    document: payload,
+    mtimeMs: Number.parseFloat(response.headers.get("X-Storyboard-MtimeMs") ?? "0") || null,
+  }
+}
+
+async function proxyStoryboardAsset(storyboardUrl: string, assetPath: string) {
+  const response = await fetch(new URL(assetPath, `${normalizeStoryboardBaseUrl(storyboardUrl)}/`))
+  if (!response.ok) {
+    throw new Error(await response.text())
+  }
+  return response
+}
+
+function resolveBundledAccessProxyTarget(pathname: string) {
+  if (pathname.startsWith("/api/storyboard/access/default-storyboard/")) {
+    return `http://127.0.0.1:${defaultAccessPort}${pathname.slice("/api/storyboard/access".length)}`
+  }
+  if (pathname.startsWith("/api/storyboard/access/test-storyboard/")) {
+    return `http://127.0.0.1:${testFixtureAccessPort}${pathname.slice("/api/storyboard/access".length)}`
+  }
+  return null
 }
 
 function startSnapshotJob(storyboardPath: string | null) {
@@ -133,18 +270,63 @@ function startSnapshotJob(storyboardPath: string | null) {
 
 console.log(JSON.stringify({ ok: true, event: "storyboard_server_started", port }))
 
+function rawStoryboardDocumentResponse(path: string) {
+  const { document, mtimeMs } = readStoryboardDocument(path)
+  return new Response(formatStoryboardDocument(document), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Storyboard-Path": path,
+      "X-Storyboard-MtimeMs": String(mtimeMs),
+    },
+  })
+}
+
+function writeRawStoryboardDocumentResponse(path: string, document: StoryboardDocument) {
+  const result = writeStoryboardDocument(path, document)
+  return new Response(formatStoryboardDocument(result.document), {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Storyboard-Path": path,
+      "X-Storyboard-MtimeMs": String(result.mtimeMs),
+    },
+  })
+}
+
 Bun.serve({
   port,
   async fetch(request: Request) {
     const url = new URL(request.url)
     const pathname = url.pathname
 
+    const bundledAccessProxyTarget = resolveBundledAccessProxyTarget(pathname)
+    if (bundledAccessProxyTarget) {
+      try {
+        const upstreamUrl = new URL(bundledAccessProxyTarget)
+        upstreamUrl.search = url.search
+        const upstreamResponse = await fetch(upstreamUrl, {
+          method: request.method,
+          headers: request.headers,
+          body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+        })
+        return new Response(upstreamResponse.body, {
+          status: upstreamResponse.status,
+          headers: upstreamResponse.headers,
+        })
+      } catch (error) {
+        return textError(error instanceof Error ? error.message : String(error), 502)
+      }
+    }
+
     if (pathname === "/api/storyboard/health") {
-      return jsonResponse({ ok: true })
+      return jsonResponse({ ok: true, defaultStoryboardUrl })
     }
 
     if (pathname === "/api/storyboard/document" && request.method === "GET") {
       try {
+        const storyboardUrl = resolveStoryboardUrl(url, request.url)
+        if (storyboardUrl) {
+          return jsonResponse({ ok: true, ...(await proxyStoryboardUrlDocument(storyboardUrl)) })
+        }
         return jsonResponse({ ok: true, ...readStoryboardDocument(resolveStoryboardPath(url)) })
       } catch (error) {
         return textError(error instanceof Error ? error.message : String(error), 404)
@@ -153,14 +335,50 @@ Bun.serve({
 
     if (pathname === "/api/storyboard/document" && request.method === "PUT") {
       try {
-        const path = resolveStoryboardPath(url)
         const body = (await request.json()) as unknown
         if (!isStoryboardDocument(body)) {
           return textError("invalid storyboard document payload", 400)
         }
+        const storyboardUrl = resolveStoryboardUrl(url, request.url)
+        if (storyboardUrl) {
+          return jsonResponse({
+            ok: true,
+            ...(await proxyStoryboardUrlDocument(storyboardUrl, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(body),
+            })),
+          })
+        }
+        const path = resolveStoryboardPath(url)
         return jsonResponse({ ok: true, ...writeStoryboardDocument(path, body) })
       } catch (error) {
         return textError(error instanceof Error ? error.message : String(error), 400)
+      }
+    }
+
+    if (pathname === "/api/storyboard/access-asset" && request.method === "GET") {
+      try {
+        const storyboardUrl = resolveStoryboardUrl(url, request.url)
+        if (!storyboardUrl) {
+          return textError("missing storyboardUrl", 400)
+        }
+        const assetPath = url.searchParams.get("path")?.trim()
+        if (!assetPath) {
+          return textError("missing asset path", 400)
+        }
+        const response = await proxyStoryboardAsset(storyboardUrl, assetPath)
+        return new Response(response.body, {
+          status: response.status,
+          headers: {
+            "Content-Type": response.headers.get("Content-Type") ?? "application/octet-stream",
+            "Cache-Control": "no-cache",
+          },
+        })
+      } catch (error) {
+        return textError(error instanceof Error ? error.message : String(error), 404)
       }
     }
 

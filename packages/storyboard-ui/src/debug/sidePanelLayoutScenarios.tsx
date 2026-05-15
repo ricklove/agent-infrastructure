@@ -96,15 +96,17 @@ function PanelLayoutScenario({
   storageKey,
   mobileMode,
   forceMobile,
+  captureRoot = true,
 }: {
   title: string
   panels: PanelLayoutPanel[]
   storageKey: string
   mobileMode?: "nav" | "stack"
   forceMobile?: boolean
+  captureRoot?: boolean
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-1" data-storyboard-debug-capture-root="true">
+    <div className="flex h-full min-h-0 flex-1" data-storyboard-debug-capture-root={captureRoot ? "true" : undefined}>
       <PanelLayout
         className="bg-zinc-950"
         contentClassName="p-4"
@@ -217,6 +219,7 @@ function MobilePanelNavigationScenario() {
         <div className="flex min-h-0 flex-1 items-center justify-center">
           <div className="flex h-[667px] w-[375px] overflow-hidden border border-white/10 bg-zinc-950">
             <PanelLayoutScenario
+              captureRoot={false}
               forceMobile
               mobileMode="nav"
               panels={panels}

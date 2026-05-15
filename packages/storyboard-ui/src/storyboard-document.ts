@@ -5,12 +5,32 @@ export type StoryboardTransitionRecord = {
   targetFrameId: string
 }
 
+export type StoryboardFrameScreenshots = {
+  desktop?: string
+  mobile?: string
+  square?: string
+}
+
 export type StoryboardFrameRecord = {
   id: string
   title: string
   description?: string
+  notes?: string
+  screenshots?: StoryboardFrameScreenshots
   transitions?: StoryboardTransitionRecord[]
   nextLabel?: string
+}
+
+function isFrameScreenshots(value: unknown): value is StoryboardFrameScreenshots {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+  const candidate = value as Partial<StoryboardFrameScreenshots>
+  return (
+    (candidate.desktop === undefined || typeof candidate.desktop === "string") &&
+    (candidate.mobile === undefined || typeof candidate.mobile === "string") &&
+    (candidate.square === undefined || typeof candidate.square === "string")
+  )
 }
 
 export type StoryboardBranchRecord = {
@@ -23,6 +43,7 @@ export type StoryboardBranchRecord = {
 export type StoryboardStoryRecord = {
   id: string
   title: string
+  notes?: string
   frames: StoryboardFrameRecord[]
   branches?: StoryboardBranchRecord[]
 }
@@ -71,6 +92,8 @@ function isFrameRecord(value: unknown): value is StoryboardFrameRecord {
     typeof candidate.id === "string" &&
     typeof candidate.title === "string" &&
     (candidate.description === undefined || typeof candidate.description === "string") &&
+    (candidate.notes === undefined || typeof candidate.notes === "string") &&
+    (candidate.screenshots === undefined || isFrameScreenshots(candidate.screenshots)) &&
     (candidate.nextLabel === undefined || typeof candidate.nextLabel === "string") &&
     (candidate.transitions === undefined ||
       (Array.isArray(candidate.transitions) && candidate.transitions.every(isTransitionRecord)))
@@ -99,6 +122,7 @@ function isStoryRecord(value: unknown): value is StoryboardStoryRecord {
   return (
     typeof candidate.id === "string" &&
     typeof candidate.title === "string" &&
+    (candidate.notes === undefined || typeof candidate.notes === "string") &&
     Array.isArray(candidate.frames) &&
     candidate.frames.every(isFrameRecord) &&
     (candidate.branches === undefined ||
