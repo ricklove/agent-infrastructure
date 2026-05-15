@@ -53,6 +53,7 @@ Endpoints:
   GET  /<storyboard-name>/storyboard.md
   PUT  /<storyboard-name>/storyboard.md
   GET  /<storyboard-name>/assets/<path>
+  PUT  /<storyboard-name>/assets/<path>
   GET  /api/storyboard-access/storyboard
   PUT  /api/storyboard-access/storyboard
   GET  /api/storyboard-access/markdown
@@ -240,6 +241,19 @@ function writeFileRecord(pathValue: string, contents: string) {
   return readFileRecord(pathValue)
 }
 
+function writeBinaryFile(pathValue: string, bytes: Uint8Array) {
+  mkdirSync(dirname(pathValue), { recursive: true })
+  writeFileSync(pathValue, bytes)
+  const stats = statSync(pathValue)
+  return {
+    path: pathValue,
+    relativePath: relative(config.rootDir, pathValue) || ".",
+    kind: fileKind(pathValue),
+    size: stats.size,
+    mtimeMs: stats.mtimeMs,
+  }
+}
+
 function listFiles(current: string, results: Array<{ path: string; relativePath: string; kind: string }>) {
   for (const entry of readdirSync(current, { withFileTypes: true })) {
     const fullPath = join(current, entry.name)
@@ -364,6 +378,20 @@ Bun.serve({
         if (!existsSync(pathValue)) {
           return textError("asset not found", 404)
         }
+        return rawFileResponse(pathValue)
+      }
+
+      if (pathname.startsWith(`${storyboardUrlBase}/assets/`) && request.method === "PUT") {
+        if (!config.allowWrite) {
+          return textError("server is read-only", 403)
+        }
+        const relativeAssetPath = pathname.slice(storyboardUrlBase.length + 1)
+        const pathValue = ensureRelativePath(relativeAssetPath)
+        if (!pathValue.startsWith(`${assetsDir}/`) && pathValue !== assetsDir) {
+          return textError("asset path must stay under assets/", 400)
+        }
+        const bytes = new Uint8Array(await request.arrayBuffer())
+        writeBinaryFile(pathValue, bytes)
         return rawFileResponse(pathValue)
       }
 

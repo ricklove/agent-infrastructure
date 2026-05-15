@@ -1,5 +1,5 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { dirname, extname, resolve } from "node:path"
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
+import { dirname, extname, join, relative, resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 import { formatStoryboardDocument, isStoryboardDocument, type StoryboardDocument } from "./storyboard-document.js"
 
@@ -10,6 +10,9 @@ const logPath = process.env.STORYBOARD_LOG_PATH?.trim() || `${stateDir}/logs/sto
 const repoRoot = process.cwd()
 const testFixturePath = resolve(repoRoot, "packages/storyboard-ui/fixtures/test.storyboard.json")
 const defaultStoryboardDir = resolve(repoRoot, "packages/storyboard-ui/templates/default-storyboard")
+const defaultStoryboardJsonPath = resolve(defaultStoryboardDir, "storyboard.json")
+const defaultStoryboardMarkdownPath = resolve(defaultStoryboardDir, "storyboard.md")
+const defaultStoryboardAssetsDir = resolve(defaultStoryboardDir, "assets")
 const testFixtureStoryboardDir = resolve(repoRoot, "packages/storyboard-ui/fixtures/test-storyboard")
 const defaultAccessPort = Number.parseInt(process.env.STORYBOARD_DEFAULT_ACCESS_PORT ?? "8798", 10)
 const testFixtureAccessPort = Number.parseInt(process.env.STORYBOARD_TEST_FIXTURE_ACCESS_PORT ?? "8799", 10)
@@ -221,6 +224,66 @@ async function proxyStoryboardAsset(storyboardUrl: string, assetPath: string) {
   return response
 }
 
+function listTemplateAssetFiles(currentDir: string, results: string[] = []) {
+  if (!existsSync(currentDir)) {
+    return results
+  }
+  for (const entry of readdirSync(currentDir, { withFileTypes: true })) {
+    const fullPath = join(currentDir, entry.name)
+    if (entry.isDirectory()) {
+      listTemplateAssetFiles(fullPath, results)
+      continue
+    }
+    results.push(relative(defaultStoryboardDir, fullPath))
+  }
+  return results.sort((left, right) => left.localeCompare(right))
+}
+
+async function putRemoteStoryboardFile(
+  storyboardUrl: string,
+  relativePath: string,
+  body: BodyInit,
+  contentType: string,
+) {
+  const response = await fetch(new URL(relativePath, `${normalizeStoryboardBaseUrl(storyboardUrl)}/`), {
+    method: "PUT",
+    headers: {
+      "Content-Type": contentType,
+    },
+    body,
+  })
+  if (!response.ok) {
+    throw new Error(`failed to write ${relativePath}: ${await response.text()}`)
+  }
+}
+
+async function initializeRemoteStoryboard(storyboardUrl: string) {
+  const templateDocument = readStoryboardDocument(defaultStoryboardJsonPath).document
+  const templateMarkdown = readFileSync(defaultStoryboardMarkdownPath, "utf8")
+  await putRemoteStoryboardFile(
+    storyboardUrl,
+    "storyboard.json",
+    formatStoryboardDocument(templateDocument),
+    "application/json; charset=utf-8",
+  )
+  await putRemoteStoryboardFile(
+    storyboardUrl,
+    "storyboard.md",
+    templateMarkdown,
+    "text/markdown; charset=utf-8",
+  )
+  for (const relativeTemplatePath of listTemplateAssetFiles(defaultStoryboardAssetsDir)) {
+    const fullPath = join(defaultStoryboardDir, relativeTemplatePath)
+    await putRemoteStoryboardFile(
+      storyboardUrl,
+      relativeTemplatePath,
+      readFileSync(fullPath),
+      fileContentType(fullPath),
+    )
+  }
+  return proxyStoryboardUrlDocument(storyboardUrl)
+}
+
 function resolveBundledAccessProxyTarget(pathname: string) {
   if (pathname.startsWith("/api/storyboard/access/default-storyboard/")) {
     return `http://127.0.0.1:${defaultAccessPort}${pathname.slice("/api/storyboard/access".length)}`
@@ -354,6 +417,23 @@ Bun.serve({
         }
         const path = resolveStoryboardPath(url)
         return jsonResponse({ ok: true, ...writeStoryboardDocument(path, body) })
+      } catch (error) {
+        return textError(error instanceof Error ? error.message : String(error), 400)
+      }
+    }
+
+    if (pathname === "/api/storyboard/initialize" && request.method === "POST") {
+      try {
+        const body = ((await request.json().catch(() => ({}))) ?? {}) as { storyboardUrl?: string }
+        const storyboardUrl = body.storyboardUrl?.trim()
+        if (!storyboardUrl) {
+          return textError("missing storyboardUrl", 400)
+        }
+        const resolvedUrl = new URL(storyboardUrl, request.url)
+        if (!isHttpUrl(resolvedUrl.toString())) {
+          return textError("storyboardUrl must resolve to an absolute http(s) URL", 400)
+        }
+        return jsonResponse({ ok: true, ...(await initializeRemoteStoryboard(normalizeStoryboardBaseUrl(resolvedUrl.toString()))) })
       } catch (error) {
         return textError(error instanceof Error ? error.message : String(error), 400)
       }

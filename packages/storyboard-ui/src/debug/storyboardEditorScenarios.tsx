@@ -113,6 +113,7 @@ function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
 const apiRoot = "/api/storyboard"
 const bundledDefaultStoryboardUrl = "http://127.0.0.1:8798/default-storyboard"
 const testFixtureStoryboardUrl = "http://127.0.0.1:8799/test-storyboard"
+const remoteStoryboardUrlStorageKey = "storyboard.debug.remoteStoryboardUrl"
 const frameSize = 220
 const screenshotFrameWidth = 720
 const screenshotFrameHeight = 720
@@ -279,11 +280,11 @@ function hasFrameScreenshots(frame: Partial<StoryboardFrameRecord>) {
   return !!(frame.screenshots?.desktop || frame.screenshots?.mobile || frame.screenshots?.square)
 }
 
-function proxiedAssetUrl(source: StoryboardEditorSource, assetPath: string | undefined) {
-  if (!assetPath) {
+function proxiedAssetUrl(storyboardUrl: string, assetPath: string | undefined) {
+  if (!storyboardUrl || !assetPath) {
     return undefined
   }
-  return `${apiRoot}/access-asset?storyboardUrl=${encodeURIComponent(source.storyboardUrl)}&path=${encodeURIComponent(assetPath)}`
+  return `${apiRoot}/access-asset?storyboardUrl=${encodeURIComponent(storyboardUrl)}&path=${encodeURIComponent(assetPath)}`
 }
 
 function AssetImage({ src, alt }: { src: string; alt: string }) {
@@ -302,12 +303,12 @@ function AssetPreview({ src, alt }: { src?: string; alt: string }) {
 
 function renderEditorFrame(
   frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>,
-  source: StoryboardEditorSource,
+  storyboardUrl: string,
 ) {
   if (hasFrameScreenshots(frame)) {
-    const desktop = proxiedAssetUrl(source, frame.screenshots?.desktop)
-    const mobile = proxiedAssetUrl(source, frame.screenshots?.mobile)
-    const square = proxiedAssetUrl(source, frame.screenshots?.square)
+    const desktop = proxiedAssetUrl(storyboardUrl, frame.screenshots?.desktop)
+    const mobile = proxiedAssetUrl(storyboardUrl, frame.screenshots?.mobile)
+    const square = proxiedAssetUrl(storyboardUrl, frame.screenshots?.square)
 
     return (
       <ScreenshotFrameCell
@@ -328,6 +329,86 @@ function storyboardRecordId(prefix: string) {
     return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
   }
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function storyboardNameFromUrl(storyboardUrl: string) {
+  try {
+    const parsed = new URL(storyboardUrl)
+    const parts = parsed.pathname.split("/").filter(Boolean)
+    return parts.at(-1) || "storyboard"
+  } catch {
+    return "storyboard"
+  }
+}
+
+function initialStoryboardUrlForSource(source: StoryboardEditorSource) {
+  if (source.storyboardUrl) {
+    return source.storyboardUrl
+  }
+  if (typeof window === "undefined") {
+    return ""
+  }
+  return window.localStorage.getItem(remoteStoryboardUrlStorageKey) ?? ""
+}
+
+function createFallbackStoryboardDocument(storyboardUrl: string): StoryboardDocument {
+  const storyboardName = storyboardNameFromUrl(storyboardUrl)
+  const storyId = "story-001"
+  const firstFrameId = "frame-001"
+  const secondFrameId = "frame-002"
+
+  return {
+    id: storyboardName,
+    title: "Untitled storyboard",
+    stories: [
+      {
+        id: storyId,
+        title: "Untitled story",
+        notes: "- Add the first real user story here.",
+        frames: [
+          {
+            id: firstFrameId,
+            title: "Starting frame",
+            description: "Describe what the user sees in this first step.",
+            transitions: [
+              {
+                id: "transition-001",
+                label: "Next",
+                kind: "user",
+                targetFrameId: secondFrameId,
+              },
+            ],
+          },
+          {
+            id: secondFrameId,
+            title: "Next frame",
+            description: "Describe the resulting state after the first transition.",
+            transitions: [],
+          },
+        ],
+        branches: [],
+      },
+    ],
+    humanNotes: [
+      {
+        id: "note-001",
+        targetType: "story",
+        targetId: storyId,
+        markdown:
+          "- Expand this story with real steps and transitions.\n- Add screenshots under assets/ when captures are available.",
+      },
+    ],
+  }
+}
+
+function cloneDefaultStoryboardTemplate(
+  templateDocument: StoryboardDocument,
+  storyboardUrl: string,
+): StoryboardDocument {
+  return {
+    ...templateDocument,
+    id: storyboardNameFromUrl(storyboardUrl),
+  }
 }
 
 function removeTransitionSubtree(
@@ -392,12 +473,13 @@ Then reply with only:
 Storyboard URL: http://<worker-host>:<port>/<storyboard-name>`
 
 function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource }) {
-  const initialStoryboardUrl = source.storyboardUrl
+  const initialStoryboardUrl = initialStoryboardUrlForSource(source)
   const [path, setPath] = useState("")
   const [document, setDocument] = useState<StoryboardDocument | null>(null)
   const [status, setStatus] = useState("Loading storyboard…")
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle")
   const [snapshotJob, setSnapshotJob] = useState<SnapshotJob | null>(null)
+  const [missingStoryboard, setMissingStoryboard] = useState(false)
   const [selected, setSelected] = useState<SelectedTarget | null>(null)
   const [storySearch, setStorySearch] = useState("")
   const [draftStoryboardUrl, setDraftStoryboardUrl] = useState(initialStoryboardUrl)
@@ -429,6 +511,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     if (!isConnected) {
       setPath("")
       setDocument(null)
+      setMissingStoryboard(false)
       setSelected(null)
       setSnapshotJob(null)
       setStatus("Enter a storyboard URL to connect")
@@ -438,10 +521,21 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     setStatus("Loading storyboard…")
     const response = await fetch(`${apiRoot}/document?${sourceQuery}`)
     if (!response.ok) {
-      setStatus(await response.text())
+      const message = await response.text()
+      if (message.includes("storyboard.json not found")) {
+        setMissingStoryboard(true)
+        setDocument(null)
+        setSelected(null)
+        setStatus("Storyboard not initialized")
+        setSaveState("idle")
+        return
+      }
+      setMissingStoryboard(false)
+      setStatus(message)
       return
     }
     const payload = (await response.json()) as DocumentResponse
+    setMissingStoryboard(false)
     skipAutosaveRef.current = true
     pendingSaveRef.current = null
     lastSavedRef.current = JSON.stringify(payload.document)
@@ -463,6 +557,21 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }
     void loadDocument()
   }, [isConnected, sourceQuery])
+
+  useEffect(() => {
+    if (source.storyboardUrl) {
+      return
+    }
+    if (typeof window === "undefined") {
+      return
+    }
+    const trimmedStoryboardUrl = connectedStoryboardUrl.trim()
+    if (!trimmedStoryboardUrl) {
+      window.localStorage.removeItem(remoteStoryboardUrlStorageKey)
+      return
+    }
+    window.localStorage.setItem(remoteStoryboardUrlStorageKey, trimmedStoryboardUrl)
+  }, [connectedStoryboardUrl, source.storyboardUrl])
 
   async function persistDocument(nextDocument: StoryboardDocument) {
     const serialized = JSON.stringify(nextDocument)
@@ -557,6 +666,33 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     setStatus(`Snapshot job ${payload.job.id} started`)
   }
 
+  async function initializeStoryboard() {
+    if (!isConnected) {
+      return
+    }
+    setStatus("Initializing storyboard…")
+    const response = await fetch(`${apiRoot}/initialize`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        storyboardUrl: connectedStoryboardUrl,
+      }),
+    })
+    if (!response.ok) {
+      setStatus(await response.text())
+      return
+    }
+    const payload = (await response.json()) as DocumentResponse
+    skipAutosaveRef.current = true
+    setMissingStoryboard(false)
+    setDocument(payload.document)
+    const firstStoryId = payload.document.stories[0]?.id ?? null
+    setSelected(firstStoryId ? { kind: "story", storyId: firstStoryId } : { kind: "storyboard" })
+    setStatus("")
+  }
+
   async function copyWorkerPrompt() {
     const copied = await copyTextToClipboard(remoteStoryboardWorkerPrompt)
     setWorkerPromptCopyState(copied ? "copied" : "failed")
@@ -600,6 +736,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       return total + story.frames.length + branchFrames
     }, 0) ?? 0
   const isRemoteScenario = source.storyboardUrl === ""
+  const isEmptyStoryboard = isConnected && (missingStoryboard || (!!document && document.stories.length === 0))
   const headerStatus =
     saveState === "error"
       ? "Save failed"
@@ -633,9 +770,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   )
   const selectedFrameTransitions = selectedFrame?.transitions ?? []
   const selectedFrameScreenshotUrls = {
-    desktop: proxiedAssetUrl(source, selectedFrame?.screenshots?.desktop),
-    mobile: proxiedAssetUrl(source, selectedFrame?.screenshots?.mobile),
-    square: proxiedAssetUrl(source, selectedFrame?.screenshots?.square),
+    desktop: proxiedAssetUrl(connectedStoryboardUrl, selectedFrame?.screenshots?.desktop),
+    mobile: proxiedAssetUrl(connectedStoryboardUrl, selectedFrame?.screenshots?.mobile),
+    square: proxiedAssetUrl(connectedStoryboardUrl, selectedFrame?.screenshots?.square),
   }
   const storyFrameOptions = selectedStory
     ? [
@@ -1902,82 +2039,104 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           panels={[navigatorPanel, inspectorPanel]}
           storageKeyPrefix="storyboard.debug.editor"
         >
-          <div
-            className="h-full w-full"
-            onClick={(event) => {
-              const target = event.target
-              const interactiveStoryboardElement =
-                target instanceof Element
-                  ? target.closest(
-                      "[data-storyboard-frame-shell],[data-storyboard-next],[data-storyboard-transition],[data-storyboard-sequence-title],button,input,textarea,select,[role=button]",
-                    )
-                  : null
-              if (!interactiveStoryboardElement) {
-                setFocusedTransitionId(null)
-                setSelected({ kind: "storyboard" })
-              }
-            }}
-          >
-            <PanZoomContainer
-              className="h-full"
-              fitKey={`${sourceQuery}:${path || "loading"}`}
-              ref={panZoomRef}
+          {isEmptyStoryboard ? (
+            <div className="flex h-full w-full items-center justify-center bg-zinc-950 p-8">
+              <div className="w-full max-w-2xl rounded border border-white/10 bg-black/30 p-6 text-center">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">Empty storyboard</div>
+                <div className="mt-3 text-lg text-cyan-100">This storyboard URL is connected but not initialized</div>
+                <p className="mt-3 text-sm leading-6 text-white/65">
+                  Create a starter storyboard document in this remote location so you can begin editing stories, frames, and transitions.
+                </p>
+                <div className="mt-6 flex justify-center">
+                  <button
+                    className="rounded border border-cyan-300/40 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/70 hover:bg-cyan-300/15"
+                    onClick={() => void initializeStoryboard()}
+                    type="button"
+                  >
+                    Initialize storyboard
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="h-full w-full"
+              onClick={(event) => {
+                const target = event.target
+                const interactiveStoryboardElement =
+                  target instanceof Element
+                    ? target.closest(
+                        "[data-storyboard-frame-shell],[data-storyboard-next],[data-storyboard-transition],[data-storyboard-sequence-title],button,input,textarea,select,[role=button]",
+                      )
+                    : null
+                if (!interactiveStoryboardElement) {
+                  setFocusedTransitionId(null)
+                  setSelected({ kind: "storyboard" })
+                }
+              }}
             >
-              <div className="min-w-max bg-[#546072] p-8" style={{ width: estimateGridWidth(sequences, editorFrameWidth, editorActionWidth), height: estimateGridHeight(sequences, editorFrameHeight, editorNextHeight) }}>
+              <PanZoomContainer
+                className="h-full"
+                fitKey={`${sourceQuery}:${path || "loading"}`}
+                ref={panZoomRef}
+              >
+                <div className="min-w-max bg-[#546072] p-8" style={{ width: estimateGridWidth(sequences, editorFrameWidth, editorActionWidth), height: estimateGridHeight(sequences, editorFrameHeight, editorNextHeight) }}>
                 <StoryboardGrid
                   actionColumnWidth={editorActionWidth}
                   onSequenceTitleClick={(sequence) => {
-                    const story = (document?.stories ?? []).find((entry) => entry.id === sequence.id)
-                    if (story) {
-                      setFocusedTransitionId(null)
-                      setSelected({ kind: "story", storyId: story.id })
-                    }
-                  }}
-                  onTransitionClick={(transition) => {
-                    const resolved = resolveTransitionSelection(
-                      transition.sourceFrameId,
-                      transition.label,
-                    )
-                    if (!resolved) {
-                      return
-                    }
-                    setSelected(resolved.selected)
-                    setFocusedTransitionId(resolved.transitionId)
-                  }}
-                  onFrameClick={(frame) => {
-                    for (const story of document?.stories ?? []) {
-                      if (story.frames.some((entry) => entry.id === frame.id)) {
+                      const story = (document?.stories ?? []).find((entry) => entry.id === sequence.id)
+                      if (story) {
                         setFocusedTransitionId(null)
-                        setSelected({ kind: "frame", storyId: story.id, frameId: frame.id })
+                        setSelected({ kind: "story", storyId: story.id })
+                      }
+                    }}
+                    onTransitionClick={(transition) => {
+                      const resolved = resolveTransitionSelection(
+                        transition.sourceFrameId,
+                        transition.label,
+                      )
+                      if (!resolved) {
                         return
                       }
-                      for (const branch of story.branches ?? []) {
-                        if (branch.frames.some((entry) => entry.id === frame.id)) {
+                      setSelected(resolved.selected)
+                      setFocusedTransitionId(resolved.transitionId)
+                    }}
+                    onFrameClick={(frame) => {
+                      for (const story of document?.stories ?? []) {
+                        if (story.frames.some((entry) => entry.id === frame.id)) {
                           setFocusedTransitionId(null)
-                          setSelected({
-                            kind: "frame",
-                            storyId: story.id,
-                            frameId: frame.id,
-                            branchId: branch.id,
-                          })
+                          setSelected({ kind: "frame", storyId: story.id, frameId: frame.id })
                           return
                         }
+                        for (const branch of story.branches ?? []) {
+                          if (branch.frames.some((entry) => entry.id === frame.id)) {
+                            setFocusedTransitionId(null)
+                            setSelected({
+                              kind: "frame",
+                              storyId: story.id,
+                              frameId: frame.id,
+                              branchId: branch.id,
+                            })
+                            return
+                          }
+                        }
                       }
-                    }
-                  }}
+                    }}
                   renderFrame={(frame) => (
-                    renderEditorFrame(frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>, source)
+                    renderEditorFrame(frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>, connectedStoryboardUrl)
                   )}
+                  storyboardUrl={connectedStoryboardUrl}
                   frameHeight={editorFrameHeight}
                   frameWidth={editorFrameWidth}
-                  nextCellHeight={editorNextHeight}
-                  selectedFrameId={selectedFrameId}
-                  selectedSequenceId={selected?.kind === "story" ? selected.storyId : selected?.kind === "frame" ? selected.storyId : undefined}
-                  sequences={sequences}
-                />
-              </div>
-            </PanZoomContainer>
-          </div>
+                    nextCellHeight={editorNextHeight}
+                    selectedFrameId={selectedFrameId}
+                    selectedSequenceId={selected?.kind === "story" ? selected.storyId : selected?.kind === "frame" ? selected.storyId : undefined}
+                    sequences={sequences}
+                  />
+                </div>
+              </PanZoomContainer>
+            </div>
+          )}
         </PanelLayout>
         )}
       </div>

@@ -38,13 +38,16 @@ function isEphemeralStoryboardOrigin(origin: string) {
   )
 }
 
-function storyboardFrameLink(frameId: string) {
+function storyboardFrameLink(frameId: string, storyboardUrl?: string) {
   const origin = preferredStoryboardOrigin()
   const url = new URL("/storyboard", origin || "http://127.0.0.1:3000")
-  const storyboardId = currentStoryboardId()
-
-  if (storyboardId) {
-    url.searchParams.set("storyboardId", storyboardId)
+  if (storyboardUrl) {
+    url.searchParams.set("storyboardUrl", storyboardUrl)
+  } else {
+    const storyboardId = currentStoryboardId()
+    if (storyboardId) {
+      url.searchParams.set("storyboardId", storyboardId)
+    }
   }
   url.searchParams.set("frameId", frameId)
 
@@ -168,6 +171,7 @@ export type StoryboardGridSequence = {
 
 type StoryboardGridProps = {
   sequences: StoryboardGridSequence[]
+  storyboardUrl?: string
   className?: string
   renderFrame?: (frame: StoryboardGridFrame) => ReactNode
   frameWidth?: number
@@ -205,6 +209,7 @@ function gridTemplateColumns(
 
 export function StoryboardGrid({
   sequences,
+  storyboardUrl,
   className,
   renderFrame,
   frameWidth = FRAME_CELL_SIZE,
@@ -279,6 +284,7 @@ export function StoryboardGrid({
                         frame={frame}
                         isSelected={selectedFrameId === frame.id}
                         onClick={onFrameClick}
+                        storyboardUrl={storyboardUrl}
                       >
                         {renderFrame ? (
                           renderFrame(frame)
@@ -339,11 +345,13 @@ export function StoryboardGrid({
 function StoryboardGridFrameShell({
   frame,
   isSelected = false,
+  storyboardUrl,
   onClick,
   children,
 }: {
   frame: StoryboardGridFrame
   isSelected?: boolean
+  storyboardUrl?: string
   onClick?: (frame: StoryboardGridFrame) => void
   children: ReactNode
 }) {
@@ -355,7 +363,7 @@ function StoryboardGridFrameShell({
   const [descriptionPinned, setDescriptionPinned] = useState(false)
 
   async function handleCopyLink() {
-    const link = storyboardFrameLink(frame.id)
+    const link = storyboardFrameLink(frame.id, storyboardUrl)
 
     try {
       const copied = await copyTextToClipboard(link)
