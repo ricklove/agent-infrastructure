@@ -13,6 +13,7 @@ import { facebookContentDashboardUiPlugin } from "@agent-infrastructure/facebook
 import { floatingWindowDebugDashboardUiPlugin } from "@agent-infrastructure/floating-window-debug-ui/ui-plugin"
 import { projectsDashboardUiPlugin } from "@agent-infrastructure/projects-ui/ui-plugin"
 import { stackAdminDashboardUiPlugin } from "@agent-infrastructure/stack-admin-ui/ui-plugin"
+import { storyboardDashboardUiPlugin } from "@agent-infrastructure/storyboard-ui/ui-plugin"
 import { uiDesignCanvasDashboardUiPlugin } from "@agent-infrastructure/ui-design-canvas-ui/ui-plugin"
 
 const composedWorkbenchDashboardUiPlugin: DashboardFeatureUiPlugin = {
@@ -34,6 +35,7 @@ const managerDashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
   agentChatDashboardUiPlugin,
   agentChatV2DashboardUiPlugin,
   facebookContentDashboardUiPlugin,
+  storyboardDashboardUiPlugin,
   agentSwarmDashboardUiPlugin,
   composedWorkbenchDashboardUiPlugin,
   uiDesignCanvasDashboardUiPlugin,

@@ -3,6 +3,7 @@ import type { AssetGenerationProvider } from "@agent-infrastructure/facebook-con
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { DraftGenerationControls } from "./DraftGenerationControls"
 import { DraftFieldEditor } from "./DraftFieldEditor"
+import { ActionButton, IconOnlyButton } from "./primitives"
 
 type DraftEditorSurfaceProps = {
   title: string
@@ -66,12 +67,12 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
   }
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 md:gap-3.5 md:p-3.5">
-      <div className="flex flex-wrap items-start justify-between gap-2.5 md:gap-3">
+      <div className="grid gap-2.5 md:flex md:flex-wrap md:items-start md:justify-between md:gap-3">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold leading-5 text-zinc-100">{props.title}</div>
           <div className="mt-1 text-[11px] leading-4 text-zinc-500">{props.subtitle}</div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 md:justify-end md:gap-2">
           {props.generationTag ? (
             <div className="rounded-full border border-zinc-800 bg-zinc-950/70 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
               set {props.generationTag}
@@ -88,27 +89,13 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
             {saveAcknowledged ? "saved" : "editing"}
           </div>
           {props.showSaveAction === false ? null : (
-            <button
-              type="button"
-              onClick={handleSave}
-              className={[
-                "inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] transition",
-                saveAcknowledged
-                  ? "border-cyan-500/30 bg-cyan-500/12 text-cyan-100"
-                  : "border-zinc-700 bg-zinc-950/80 text-zinc-100 hover:border-zinc-600",
-              ].join(" ")}
-            >
+            <ActionButton onClick={handleSave} tone={saveAcknowledged ? "accent" : "default"} compact fullWidthOnMobile>
               {saveAcknowledged ? <><CheckIcon /><span>Saved</span></> : <span>Save</span>}
-            </button>
+            </ActionButton>
           )}
-          <button
-            type="button"
-            onClick={props.onDeleteCurrentDraft}
-            title="Delete draft"
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-100 transition hover:border-rose-400/40"
-          >
+          <IconOnlyButton onClick={props.onDeleteCurrentDraft} title="Delete draft" tone="danger">
             <TrashIcon />
-          </button>
+          </IconOnlyButton>
         </div>
       </div>
 
@@ -151,6 +138,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
         feedback={props.imageFeedback}
         options={props.imageOptions}
         onSelectOption={props.onSelectImage}
+        optionsColumnsClassName="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5"
         input={
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
             <SquareImageFrame
@@ -240,7 +228,7 @@ export function DraftEditorSurface(props: DraftEditorSurfaceProps) {
 
 function CheckIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.8">
+    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0" stroke="currentColor" strokeWidth="1.8">
       <path d="m4.5 10.5 3.2 3.2 7.8-7.8" />
     </svg>
   )
@@ -248,7 +236,7 @@ function CheckIcon() {
 
 function TrashIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0" stroke="currentColor" strokeWidth="1.6">
       <path d="M3.5 5.5h13" />
       <path d="M8 3.5h4" />
       <path d="M6 5.5v10a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-10" />

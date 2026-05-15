@@ -1,4 +1,6 @@
 import { DraftPostPreviewFrame } from "./DraftPostPreviewFrame"
+import { OptionGrid } from "./OptionGrid"
+import { IconOnlyButton } from "./primitives"
 
 export type DraftAlternativeCard = {
   id: string
@@ -31,65 +33,62 @@ export function DraftAlternativesStrip(props: DraftAlternativesStripProps) {
               set {props.generationTag}
             </div>
           ) : null}
-          <button
-            type="button"
-            title="Regenerate set"
+          <IconOnlyButton
             onClick={props.onRegenerateSet}
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-300 transition hover:border-zinc-700"
+            title="Regenerate set"
+            compact
           >
             <RefreshIcon />
-          </button>
+          </IconOnlyButton>
         </div>
       </div>
-      <div className="flex gap-4 overflow-x-auto pb-2">
+      <OptionGrid
+        label="Alternative drafts"
+        columnsClassName="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3"
+      >
         {props.alternatives.map((draft) => (
-          <div
+          <button
             key={draft.id}
-            className="flex w-[356px] min-w-[356px] shrink-0 flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3"
+            type="button"
+            onClick={() => props.onSelectDraft(draft.id)}
+            className="relative flex h-[154px] w-[180px] flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40 p-2 text-left transition hover:border-zinc-700"
           >
-            <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => props.onSelectDraft(draft.id)}
-                className="inline-flex min-h-8 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-100 transition hover:border-zinc-600"
-              >
+            <div className="pointer-events-none absolute inset-x-2 top-2 z-10 flex items-center justify-between gap-2">
+              <div className="inline-flex min-h-7 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-100 shadow-[0_8px_18px_rgba(0,0,0,0.35)]">
                 Use
-              </button>
-              <button
-                type="button"
+              </div>
+              <IconOnlyButton
+                onClick={(event) => {
+                  event.stopPropagation()
+                  props.onDeleteDraft(draft.id)
+                }}
                 title="Delete draft"
-                onClick={() => props.onDeleteDraft(draft.id)}
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-400 transition hover:border-rose-400/40 hover:text-rose-200"
+                tone="danger"
+                compact
               >
                 <TrashIcon />
-              </button>
+              </IconOnlyButton>
             </div>
-            <button
-              type="button"
-              onClick={() => props.onSelectDraft(draft.id)}
-              className="block overflow-hidden rounded-lg text-left"
-            >
-              <div className="h-[252px] w-[340px] overflow-hidden">
-                <div className="origin-top-left scale-50">
-                  <DraftPostPreviewFrame
-                    pageName={props.pageName}
-                    previewImage={draft.previewImage}
-                    title={draft.title}
-                    caption={draft.caption}
-                  />
-                </div>
+            <div className="relative h-[126px] w-[170px] overflow-hidden rounded-lg">
+              <div className="absolute left-0 top-0 origin-top-left scale-50">
+                <DraftPostPreviewFrame
+                  pageName={props.pageName}
+                  previewImage={draft.previewImage}
+                  title={draft.title}
+                  caption={draft.caption}
+                />
               </div>
-            </button>
-          </div>
+            </div>
+          </button>
         ))}
-      </div>
+      </OptionGrid>
     </div>
   )
 }
 
 function RefreshIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0" stroke="currentColor" strokeWidth="1.6">
       <path d="M4 5.5h4v4" />
       <path d="M16 14.5h-4v-4" />
       <path d="M6.5 13.5A5 5 0 0 0 15 10" />
@@ -100,7 +99,7 @@ function RefreshIcon() {
 
 function TrashIcon() {
   return (
-    <svg viewBox="0 0 20 20" fill="none" className="size-4" stroke="currentColor" strokeWidth="1.6">
+    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4 shrink-0" stroke="currentColor" strokeWidth="1.6">
       <path d="M3.5 5.5h13" />
       <path d="M8 3.5h4" />
       <path d="M6 5.5v10a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-10" />

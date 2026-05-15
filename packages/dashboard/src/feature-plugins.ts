@@ -9,6 +9,7 @@ import { facebookContentDashboardPlugin } from "@agent-infrastructure/facebook-c
 import { floatingWindowDebugDashboardPlugin } from "@agent-infrastructure/floating-window-debug-ui/plugin"
 import { projectsDashboardPlugin } from "@agent-infrastructure/projects-server/plugin"
 import { stackAdminDashboardPlugin } from "@agent-infrastructure/stack-admin-server/plugin"
+import { storyboardDashboardPlugin } from "@agent-infrastructure/storyboard-ui/plugin"
 import { uiDesignCanvasDashboardPlugin } from "@agent-infrastructure/ui-design-canvas-ui/plugin"
 
 export type DashboardHostRole = "manager" | "admin"
@@ -16,6 +17,7 @@ export type DashboardHostRole = "manager" | "admin"
 const managerDashboardFeaturePlugins: DashboardFeaturePlugin[] = [
   agentChatDashboardPlugin,
   facebookContentDashboardPlugin,
+  storyboardDashboardPlugin,
   agentSwarmDashboardPlugin,
   agentWorkbenchDashboardPlugin,
   uiDesignCanvasDashboardPlugin,

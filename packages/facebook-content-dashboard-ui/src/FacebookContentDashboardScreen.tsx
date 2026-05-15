@@ -7,6 +7,8 @@ import { DraftFieldEditor } from "./components/DraftFieldEditor"
 import { DraftGenerationControls } from "./components/DraftGenerationControls"
 import { DraftPostPreviewFrame } from "./components/DraftPostPreviewFrame"
 import { CompactSelectedSourceCardSurface, SelectedSourceCardSurface, SourcePostOptionCardSurface } from "./components/SourcePostCards"
+import { ContentCreationStoryboardGallery } from "./storyboards/ContentCreationStoryboardGallery"
+import { PanZoomColorTargetSurface } from "./storyboards/PanZoomColorTargetSurface"
 import { SourcePostPreviewFrame } from "./components/SourcePostPreviewFrame"
 import { createFacebookContentDashboardStore } from "./content-dashboard-store"
 import { drafts } from "./content-dashboard-data"
@@ -144,7 +146,7 @@ const ContentCreationMainScreen = observer(function ContentCreationMainScreen(pr
     : undefined
 
   return (
-    <PageShell title="Content Creation" lockOuterScroll={isMediumDesktop} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
+    <PageShell title="Content Creation" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
       <div data-reactive-frame={reactiveFrame} className="contents">
         <StatusBanner message={state.workflow.statusMessage} />
       {!isMediumDesktop ? (
@@ -253,9 +255,11 @@ const ContentCreationDebugScreen = observer(function ContentCreationDebugScreen(
   const scenarios = debugScenarios(props.store)
   const active = scenarios.find((entry) => entry.slug === componentSlug)
   const activeScenario = active?.scenarios.find((entry) => entry.slug === scenarioSlug)
+  const isStoryboardScenario = active?.slug === "storyboards" && Boolean(activeScenario)
+  const isFullSurfaceScenario = Boolean(activeScenario) && (active?.slug === "storyboards" || active?.slug === "pan-zoom-viewport")
 
   return (
-    <PageShell title="Content Creation Debug">
+    <PageShell title="Content Creation Debug" immersive={isFullSurfaceScenario}>
       {!active ? (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {scenarios.map((entry) => (
@@ -282,6 +286,8 @@ const ContentCreationDebugScreen = observer(function ContentCreationDebugScreen(
             </a>
           ))}
         </div>
+      ) : isFullSurfaceScenario ? (
+        activeScenario.render()
       ) : (
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 text-[11px] text-zinc-600">
@@ -298,6 +304,38 @@ const ContentCreationDebugScreen = observer(function ContentCreationDebugScreen(
 
 function debugScenarios(store: Store) {
   return [
+    {
+      slug: "storyboards",
+      title: "Storyboards",
+      scenarios: [
+        {
+          slug: "connect-destination-page",
+          title: "Connect Destination Page",
+          render: () => <ContentCreationStoryboardGallery story="connect-destination-page" />,
+        },
+        {
+          slug: "review-top-past-posts",
+          title: "Review Top Past Posts",
+          render: () => <ContentCreationStoryboardGallery story="review-top-past-posts" />,
+        },
+      ],
+    },
+    {
+      slug: "pan-zoom-viewport",
+      title: "Pan Zoom Viewport",
+      scenarios: [
+        {
+          slug: "small-content",
+          title: "Small content",
+          render: () => <PanZoomColorTargetSurface scenario="small-content" />,
+        },
+        {
+          slug: "large-content",
+          title: "Large content",
+          render: () => <PanZoomColorTargetSurface scenario="large-content" />,
+        },
+      ],
+    },
     {
       slug: "destination-page-selector",
       title: "Destination page selector",
@@ -1170,19 +1208,39 @@ function StatusBanner(props: { message: string | null }) {
   )
 }
 
-function PageShell(props: { title: string; children: React.ReactNode; lockOuterScroll?: boolean; onScroll?: (event: React.UIEvent<HTMLDivElement>) => void }) {
+function PageShell(props: {
+  title: string
+  children: React.ReactNode
+  lockOuterScroll?: boolean
+  immersive?: boolean
+  onScroll?: (event: React.UIEvent<HTMLDivElement>) => void
+}) {
   return (
-    <div onScroll={props.onScroll} style={props.lockOuterScroll ? { overflowY: "hidden" } : undefined} className="flex h-full min-h-0 flex-col overflow-y-auto bg-zinc-950 text-zinc-100 md:overflow-hidden">
-      <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[1480px] items-center justify-between gap-4 px-4 py-3 sm:px-5">
-          <div className="min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
-              {props.title}
+    <div
+      onScroll={props.onScroll}
+      style={props.lockOuterScroll || props.immersive ? { overflowY: "hidden" } : undefined}
+      className={[
+        "flex h-full min-h-0 flex-col bg-zinc-950 text-zinc-100",
+        props.immersive ? "overflow-hidden" : "overflow-y-auto",
+      ].join(" " )}
+    >
+      {!props.immersive ? (
+        <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur">
+          <div className="mx-auto flex w-full max-w-[1480px] items-center justify-between gap-4 px-4 py-3 sm:px-5">
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                {props.title}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div className="mx-auto flex w-full max-w-[1980px] min-h-0 flex-1 flex-col gap-4 px-4 pb-4 pt-16 sm:px-5 md:px-6 md:pt-4 2xl:px-8">
+      ) : null}
+      <div
+        className={[
+          "mx-auto flex w-full max-w-[1980px] min-h-0 flex-1 flex-col",
+          props.immersive ? "overflow-hidden p-0" : "gap-4 px-4 pb-4 pt-16 sm:px-5 md:px-6 md:pt-4 2xl:px-8",
+        ].join(" " )}
+      >
         {props.children}
       </div>
     </div>
@@ -1397,8 +1455,8 @@ function DraftPanel(props: { store: Store; derived: ReturnType<typeof useDerived
   return (
     <div className="flex min-w-0 flex-col gap-4 items-start">
       <Section>
-        <div className="flex w-full max-w-[840px] flex-col gap-4">
-          <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
+        <div className="flex w-full max-w-full flex-col gap-3 md:max-w-[840px] md:gap-4">
+          <div className="grid gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2.5 md:gap-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 text-sm font-medium text-zinc-200">
                 {selectedSource.sourcePage} · {formatCompactFeedDate(selectedSource.publishDate)}
