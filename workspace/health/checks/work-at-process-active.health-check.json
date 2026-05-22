@@ -1,0 +1,15 @@
+{
+  "id": "work_at_process_active",
+  "title": "Required worker process is active",
+  "description": "Checks that a process matching a required pattern is currently running on the selected work-at target.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": [
+    "bash",
+    "-lc",
+    "pgrep -af -- \"{{processPattern}}\" >/dev/null 2>&1"
+  ],
+  "timeoutMs": 3000
+}

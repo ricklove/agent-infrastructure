@@ -1,0 +1,15 @@
+{
+  "id": "work_at_baseconnect_android_login_ready",
+  "title": "Baseconnect Expo Android can log in with the staging bot",
+  "description": "Runs the worker-local Android staging login script with the worker-local staging bot auth file, attaches the default agent-device session, and verifies the app is on a normal in-app surface instead of an error overlay.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": [
+    "bash",
+    "-lc",
+    "set -euo pipefail\nsource \"{{authEnvPath}}\"\nverify_ready_once() {\n  agent-device appstate --platform android --session default --json | grep -q 'com.baseconnect.baseconnect'\n  adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1\n  adb exec-out cat /sdcard/window.xml >/tmp/baseconnect-health-android-window.xml\n  ! grep -q 'Uncaught Error' /tmp/baseconnect-health-android-window.xml\n  NODE_COUNT=$(grep -o '<node ' /tmp/baseconnect-health-android-window.xml | wc -l | tr -d ' ')\n  [ \"${NODE_COUNT}\" -ge 20 ]\n  grep -q 'text=\"Feed\"' /tmp/baseconnect-health-android-window.xml\n  grep -q 'text=\"Search\"' /tmp/baseconnect-health-android-window.xml\n  ! grep -q 'text=\"Username\"' /tmp/baseconnect-health-android-window.xml\n  ! grep -q 'text=\"Log In\"' /tmp/baseconnect-health-android-window.xml\n  adb shell screencap -p /sdcard/baseconnect-health-android-screen.png >/dev/null 2>&1\n  adb pull /sdcard/baseconnect-health-android-screen.png /tmp/baseconnect-health-android-screen.png >/dev/null 2>&1\n  SCREEN_SIZE=$(wc -c </tmp/baseconnect-health-android-screen.png | tr -d ' ')\n  [ \"${SCREEN_SIZE}\" -ge 60000 ]\n}\nverify_ready() {\n  verify_ready_once\n  sleep 2\n  verify_ready_once\n}\nexport AGENT_DEVICE_SESSION_NAME=\"default\"\nif verify_ready; then\n  exit 0\nfi\ncd \"{{targetPath}}\"\nexport OUT_DIR=\"/tmp/baseconnect-health-android\"\n./scripts/start_logged_in_expo_android_staging.sh >/tmp/baseconnect-health-android.log 2>&1\nverify_ready\n"
+  ],
+  "timeoutMs": 300000
+}

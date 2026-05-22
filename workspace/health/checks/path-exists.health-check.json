@@ -1,0 +1,10 @@
+{
+  "id": "path_exists",
+  "title": "Required path exists",
+  "description": "Checks that one required file system path exists.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": ["bash", "-lc", "test -e {{path}}"],
+  "timeoutMs": 2000
+}

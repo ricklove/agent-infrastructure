@@ -1,0 +1,86 @@
+{
+  "id": "work_at_plugin_surface",
+  "title": "work-at Plugin Surface",
+  "description": "Fast task-surface health profile for nested plugin/package workspaces that are not standalone git repos.",
+  "params": {},
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "repairHint": "Restore worker connectivity or re-register the target before working in this plugin surface.",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered plugin path exists",
+      "severity": "blocking",
+      "repairHint": "Restore or re-register the plugin path so the expected plugin surface exists on the worker.",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_plugin_manifest_present",
+      "checkId": "work_at_path_exists",
+      "title": "Plugin manifest exists",
+      "severity": "blocking",
+      "repairHint": "Restore `.codex-plugin/plugin.json` so the plugin surface is structurally valid before editing it.",
+      "params": {
+        "path": "{{targetPath}}/.codex-plugin/plugin.json"
+      }
+    },
+    {
+      "id": "target_plugin_app_config_present",
+      "checkId": "work_at_path_exists",
+      "title": "Plugin app config exists",
+      "severity": "error",
+      "repairHint": "Restore `.app.json` if this plugin expects the app metadata file during local development or packaging.",
+      "params": {
+        "path": "{{targetPath}}/.app.json"
+      }
+    },
+    {
+      "id": "target_plugin_mcp_config_present",
+      "checkId": "work_at_path_exists",
+      "title": "Plugin MCP config exists",
+      "severity": "error",
+      "repairHint": "Restore `.mcp.json` if this plugin expects MCP wiring during local development or packaging.",
+      "params": {
+        "path": "{{targetPath}}/.mcp.json"
+      }
+    },
+    {
+      "id": "target_node_available",
+      "checkId": "work_at_command_available",
+      "title": "Node is available on target",
+      "severity": "error",
+      "repairHint": "Install Node on the worker before running plugin/package scripts.",
+      "params": {
+        "commandName": "node"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "error",
+      "repairHint": "Install Bun on the worker before running plugin/package scripts that depend on it.",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_rg_available",
+      "checkId": "work_at_command_available",
+      "title": "rg is available on target",
+      "severity": "error",
+      "repairHint": "Install ripgrep on the worker so agents can search plugin/package surfaces quickly.",
+      "params": {
+        "commandName": "rg"
+      }
+    }
+  ]
+}

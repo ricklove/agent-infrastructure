@@ -1,0 +1,11 @@
+{
+  "id": "work_at_git_remote_ref_present",
+  "title": "Worker cached remote ref exists",
+  "description": "Checks that the selected worker checkout has the expected cached remote ref.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["git", "-C", "{{repoPath}}", "show-ref", "--verify", "--quiet", "refs/remotes/{{remoteRef}}"],
+  "timeoutMs": 3000
+}

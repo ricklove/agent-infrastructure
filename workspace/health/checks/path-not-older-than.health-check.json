@@ -1,0 +1,14 @@
+{
+  "id": "path_not_older_than",
+  "title": "Required path is at least as fresh as its reference file",
+  "description": "Checks that a maintained local file is not older than a reference implementation file.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": [
+    "bash",
+    "-lc",
+    "test -e {{path}} && test -e {{referencePath}} && test \"$(stat -c %Y {{path}})\" -ge \"$(stat -c %Y {{referencePath}})\""
+  ],
+  "timeoutMs": 2000
+}

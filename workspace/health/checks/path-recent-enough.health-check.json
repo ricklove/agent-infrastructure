@@ -1,0 +1,14 @@
+{
+  "id": "path_recent_enough",
+  "title": "Required path was maintained recently",
+  "description": "Checks that a required local file was modified within the allowed age window.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": [
+    "bash",
+    "-lc",
+    "test -e {{path}} && age=$(( $(date +%s) - $(stat -c %Y {{path}}) )); test \"$age\" -le {{maxAgeSeconds}}"
+  ],
+  "timeoutMs": 2000
+}

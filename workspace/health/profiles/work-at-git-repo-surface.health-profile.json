@@ -1,0 +1,104 @@
+{
+  "id": "work_at_git_repo_surface",
+  "title": "work-at Git Repo Surface",
+  "description": "Fast task-surface health profile for nested git and node/bun repo workspaces.",
+  "params": {},
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered repo path exists",
+      "severity": "blocking",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_root_present",
+      "checkId": "work_at_git_root_present",
+      "title": "Registered repo path is a git checkout",
+      "severity": "blocking",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_origin_present",
+      "checkId": "work_at_git_origin_remote_present",
+      "title": "Registered repo has an origin remote",
+      "severity": "blocking",
+      "repairHint": "Restore the repo origin remote before using this worker surface for fetch, pull, or push work.",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_origin_readable",
+      "checkId": "work_at_git_origin_readable",
+      "title": "Registered repo can read from origin",
+      "severity": "blocking",
+      "repairHint": "Repair GitHub remote auth on this worker so `git fetch` and `git ls-remote origin` succeed before continuing. Do not fall back to manual patch transfer when this check is red.",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_available",
+      "checkId": "work_at_command_available",
+      "title": "Git is available on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "git"
+      }
+    },
+    {
+      "id": "target_node_available",
+      "checkId": "work_at_command_available",
+      "title": "Node is available on target",
+      "severity": "error",
+      "params": {
+        "commandName": "node"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "error",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_apply_patch_available",
+      "checkId": "work_at_command_available",
+      "title": "apply_patch is available on target",
+      "severity": "error",
+      "repairHint": "Expose apply_patch on this worker so repo edits can use a structured patch tool instead of brittle inline shell rewrites.",
+      "repairCommand": [
+        "bash",
+        "-lc",
+        "wrapper_dir=/home/ec2-user/.local/bin; real_apply_patch=$(find /home/ec2-user/.nvm/versions/node -path '*/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-*/vendor/*/codex/codex' 2>/dev/null | sort | tail -n 1); test -n \"$real_apply_patch\" && test -x \"$real_apply_patch\" && mkdir -p \"$wrapper_dir\" && ln -sfn \"$real_apply_patch\" \"$wrapper_dir/apply_patch\""
+      ],
+      "params": {
+        "commandName": "apply_patch"
+      }
+    },
+    {
+      "id": "target_package_json_present",
+      "checkId": "work_at_path_exists",
+      "title": "Registered repo package.json exists",
+      "severity": "error",
+      "params": {
+        "path": "{{targetPath}}/package.json"
+      }
+    }
+  ]
+}

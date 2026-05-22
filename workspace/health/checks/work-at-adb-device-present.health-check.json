@@ -1,0 +1,15 @@
+{
+  "id": "work_at_adb_device_present",
+  "title": "ADB device is connected on target",
+  "description": "Checks that at least one Android device or emulator is visible to adb on the selected work-at target.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": [
+    "bash",
+    "-lc",
+    "adb devices | tail -n +2 | awk 'NF { count++ } END { exit(count > 0 ? 0 : 1) }'"
+  ],
+  "timeoutMs": 4000
+}

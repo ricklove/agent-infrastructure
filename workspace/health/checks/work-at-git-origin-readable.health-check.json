@@ -1,0 +1,11 @@
+{
+  "id": "work_at_git_origin_readable",
+  "title": "Worker git origin is readable",
+  "description": "Checks that the selected worker checkout can read from its origin remote with the current git auth setup.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["bash", "-lc", "git -C {{repoPath}} ls-remote --exit-code origin HEAD >/dev/null 2>&1"],
+  "timeoutMs": 5000
+}

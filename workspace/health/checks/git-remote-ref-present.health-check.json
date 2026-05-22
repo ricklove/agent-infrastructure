@@ -1,0 +1,10 @@
+{
+  "id": "git_remote_ref_present",
+  "title": "Cached remote base ref exists",
+  "description": "Checks that the target checkout has the expected cached remote ref.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": ["git", "-C", "{{repoPath}}", "show-ref", "--verify", "--quiet", "refs/remotes/{{remoteRef}}"],
+  "timeoutMs": 3000
+}

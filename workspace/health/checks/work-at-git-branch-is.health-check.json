@@ -1,0 +1,11 @@
+{
+  "id": "work_at_git_branch_is",
+  "title": "Worker branch matches expected branch",
+  "description": "Checks that the selected worker checkout is currently on the expected branch.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["bash", "-lc", "test \"$(git -C {{repoPath}} branch --show-current)\" = \"{{branchName}}\""],
+  "timeoutMs": 3000
+}

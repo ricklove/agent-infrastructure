@@ -1,0 +1,66 @@
+{
+  "id": "work_at_dashboard_quick_tunnel_surface",
+  "title": "work-at Dashboard Quick Tunnel Surface",
+  "description": "Fast task-surface health profile for worker-hosted dashboard quick-tunnel workflows.",
+  "params": {},
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "repairHint": "Restore worker connectivity or re-register the target before attempting a worker quick tunnel.",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered dashboard repo path exists",
+      "severity": "blocking",
+      "repairHint": "Restore or re-register the dashboard repo path on the worker before attempting a quick tunnel.",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "blocking",
+      "repairHint": "Install Bun on the worker before running the dashboard dev app.",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_cloudflared_available",
+      "checkId": "work_at_command_available",
+      "title": "cloudflared is available on target",
+      "severity": "blocking",
+      "repairHint": "Install or expose `cloudflared` on the worker before attempting a quick tunnel. Do not fall back to localhost.run for this workflow.",
+      "params": {
+        "commandName": "cloudflared"
+      }
+    },
+    {
+      "id": "target_dashboard_app_exists",
+      "checkId": "work_at_path_exists",
+      "title": "apps/dashboard-app exists on target",
+      "severity": "blocking",
+      "repairHint": "Use the correct worker repo surface containing `apps/dashboard-app` before starting a quick tunnel workflow.",
+      "params": {
+        "path": "{{targetPath}}/apps/dashboard-app"
+      }
+    },
+    {
+      "id": "target_dashboard_app_package_json_exists",
+      "checkId": "work_at_path_exists",
+      "title": "apps/dashboard-app/package.json exists on target",
+      "severity": "blocking",
+      "repairHint": "Restore the dashboard-app package or switch to the correct repo surface before starting the worker dev server.",
+      "params": {
+        "path": "{{targetPath}}/apps/dashboard-app/package.json"
+      }
+    }
+  ]
+}

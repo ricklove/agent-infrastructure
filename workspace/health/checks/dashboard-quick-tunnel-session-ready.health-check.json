@@ -1,0 +1,14 @@
+{
+  "id": "dashboard_quick_tunnel_session_ready",
+  "title": "Dashboard quick tunnel serves the dashboard shell and storyboard plugin",
+  "description": "Verifies the worker quick tunnel is rooted at the dashboard app and that the storyboard plugin route renders inside the dashboard shell.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": [
+    "/bin/bash",
+    "-lc",
+    "set -euo pipefail\nWORK_TARGET='{{workTarget}}'\nGATEWAY_PORT='{{gatewayPort}}'\nDASHBOARD_ROOT_PATH='{{dashboardRootPath}}'\nPLUGIN_PATH='{{pluginPath}}'\nURL=\"$(work-at \"$WORK_TARGET\" bash -lc \"for f in /home/ec2-user/state/dashboard/cloudflared-dashboard-${GATEWAY_PORT}.log /home/ec2-user/state/dashboard/cloudflared-vite.dashboard-${GATEWAY_PORT}.log; do [ -f \\\"\\$f\\\" ] || continue; grep -Eo 'https://[-a-z0-9]+\\\\.trycloudflare\\\\.com' \\\"\\$f\\\"; done | tail -n 1\")\"\nif [ -z \"$URL\" ]; then\n  echo \"missing quick tunnel URL for gateway port ${GATEWAY_PORT}\" >&2\n  exit 1\nfi\nROOT_SNAPSHOT=\"$(work-at \"$WORK_TARGET\" bash -lc \"agent-browser open '${URL}${DASHBOARD_ROOT_PATH}' >/dev/null && agent-browser wait 1000 >/dev/null && agent-browser snapshot -c\")\"\ncase \"$ROOT_SNAPSHOT\" in\n  *'button \"Storyboard\"'* ) ;;\n  * )\n    echo \"dashboard root is not rendering the dashboard shell on ${URL}${DASHBOARD_ROOT_PATH}\" >&2\n    exit 1\n    ;;\nesac\nPLUGIN_SNAPSHOT=\"$(work-at \"$WORK_TARGET\" bash -lc \"agent-browser open '${URL}${PLUGIN_PATH}' >/dev/null && agent-browser wait 1000 >/dev/null && agent-browser snapshot -c\")\"\ncase \"$PLUGIN_SNAPSHOT\" in\n  *'button \"Storyboard\"'* ) ;;\n  * )\n    echo \"plugin route is not rendering inside the dashboard shell on ${URL}${PLUGIN_PATH}\" >&2\n    exit 1\n    ;;\nesac\necho \"${URL}${PLUGIN_PATH}\""
+  ],
+  "timeoutMs": 60000
+}

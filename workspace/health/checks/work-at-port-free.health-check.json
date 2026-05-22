@@ -1,0 +1,11 @@
+{
+  "id": "work_at_port_free",
+  "title": "Worker port is free",
+  "description": "Checks that one TCP port is not currently occupied on the selected worker.",
+  "execution": {
+    "kind": "work-at",
+    "workTargetParam": "workTarget"
+  },
+  "command": ["bash", "-lc", "if command -v lsof >/dev/null 2>&1; then ! lsof -iTCP:{{port}} -sTCP:LISTEN >/dev/null 2>&1; else ! ss -ltn \"( sport = :{{port}} )\" | tail -n +2 | grep -q .; fi"],
+  "timeoutMs": 3000
+}
