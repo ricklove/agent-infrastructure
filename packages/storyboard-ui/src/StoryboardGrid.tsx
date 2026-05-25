@@ -174,6 +174,7 @@ type StoryboardGridProps = {
   storyboardUrl?: string
   className?: string
   renderFrame?: (frame: StoryboardGridFrame) => ReactNode
+  renderFrameHeaderControls?: (frame: StoryboardGridFrame) => ReactNode
   frameWidth?: number
   frameHeight?: number
   actionColumnWidth?: number
@@ -212,6 +213,7 @@ export function StoryboardGrid({
   storyboardUrl,
   className,
   renderFrame,
+  renderFrameHeaderControls,
   frameWidth = FRAME_CELL_SIZE,
   frameHeight = FRAME_CELL_HEIGHT,
   actionColumnWidth = ACTION_COLUMN_WIDTH,
@@ -282,6 +284,7 @@ export function StoryboardGrid({
                     {frame ? (
                       <StoryboardGridFrameShell
                         frame={frame}
+                        headerControls={renderFrameHeaderControls?.(frame)}
                         isSelected={selectedFrameId === frame.id}
                         onClick={onFrameClick}
                         storyboardUrl={storyboardUrl}
@@ -344,12 +347,14 @@ export function StoryboardGrid({
 
 function StoryboardGridFrameShell({
   frame,
+  headerControls,
   isSelected = false,
   storyboardUrl,
   onClick,
   children,
 }: {
   frame: StoryboardGridFrame
+  headerControls?: ReactNode
   isSelected?: boolean
   storyboardUrl?: string
   onClick?: (frame: StoryboardGridFrame) => void
@@ -416,6 +421,15 @@ function StoryboardGridFrameShell({
       >
         <div className="flex items-center gap-2 border-b border-white/10 bg-zinc-900 px-3 py-2 text-sm font-medium leading-tight text-white">
           <div className="flex-1">{frame.title}</div>
+          {headerControls ? (
+            <div
+              className="flex items-center gap-2"
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              {headerControls}
+            </div>
+          ) : null}
           {frame.description ? (
             <button
               aria-expanded={descriptionOpen}

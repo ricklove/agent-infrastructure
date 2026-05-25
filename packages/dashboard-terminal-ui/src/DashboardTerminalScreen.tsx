@@ -634,7 +634,7 @@ export function DashboardTerminalScreen({
         role="application"
         onClick={() => terminal.focus()}
         onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
+          if (event.key === "Enter") {
             event.preventDefault()
             terminal.focus()
           }

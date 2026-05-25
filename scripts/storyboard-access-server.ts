@@ -480,6 +480,14 @@ Bun.serve({
         return jsonResponse({
           ok: true,
           rootDir: config.rootDir,
+          storyboards: [
+            {
+              name: storyboardName,
+              root: config.rootDir,
+              hasStoryboardJson: existsSync(storyboardJsonPath),
+              hasStoryboardMarkdown: existsSync(storyboardMarkdownPath),
+            },
+          ],
           files: listStoryboardDirectory(),
         })
       }

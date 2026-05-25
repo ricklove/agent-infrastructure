@@ -17,6 +17,9 @@ import {
   type StoryboardStoryRecord,
   type StoryboardTransitionRecord,
   type StoryboardFrameRecord,
+  frameCaptureSet,
+  frameCaptureSetIds,
+  normalizeStoryboardDocument,
 } from "../storyboard-document"
 import type { StoryboardDebugComponentDefinition } from "./types"
 
@@ -25,6 +28,22 @@ type DocumentResponse = {
   path: string
   document: StoryboardDocument
   mtimeMs: number
+}
+
+
+type StoryboardListEntry = {
+  name: string
+  root?: string
+  hasStoryboardJson?: boolean
+  hasStoryboardMarkdown?: boolean
+  storyboardUrl: string
+}
+
+type StoryboardListResponse = {
+  ok: true
+  accessServerUrl: string
+  rootDir: string | null
+  storyboards: StoryboardListEntry[]
 }
 
 type SnapshotJob = {
@@ -276,8 +295,55 @@ function storyboardUrlToDocumentQuery(storyboardUrl: string) {
   return `storyboardUrl=${encodeURIComponent(storyboardUrl)}`
 }
 
+function storyboardAccessServerUrl(storyboardUrl: string) {
+  try {
+    return new URL(storyboardUrl).origin
+  } catch {
+    return ""
+  }
+}
+
+function isAccessServerRootUrl(storyboardUrl: string) {
+  try {
+    const url = new URL(storyboardUrl)
+    const pathname = url.pathname.replace(/\/+$/u, "")
+    return pathname === ""
+  } catch {
+    return false
+  }
+}
+
 function hasFrameScreenshots(frame: Partial<StoryboardFrameRecord>) {
+  if (frame.captureSets) {
+    return Object.values(frame.captureSets).some(
+      (captureSet) =>
+        !!(
+          captureSet.screenshots?.desktop ||
+          captureSet.screenshots?.mobile ||
+          captureSet.screenshots?.square
+        ),
+    )
+  }
   return !!(frame.screenshots?.desktop || frame.screenshots?.mobile || frame.screenshots?.square)
+}
+
+function frameScreenshots(
+  frame: Partial<StoryboardFrameRecord> | undefined,
+  captureSetId: string,
+) {
+  return frame ? frameCaptureSet(frame, captureSetId).screenshots : undefined
+}
+
+function nextCaptureSetId(frame: Partial<StoryboardFrameRecord>) {
+  const existingIds = new Set(frameCaptureSetIds(frame))
+  if (!existingIds.has("default")) {
+    return "default"
+  }
+  let index = 1
+  while (existingIds.has("set-" + index)) {
+    index += 1
+  }
+  return "set-" + index
 }
 
 function proxiedAssetUrl(storyboardUrl: string, assetPath: string | undefined) {
@@ -304,11 +370,13 @@ function AssetPreview({ src, alt }: { src?: string; alt: string }) {
 function renderEditorFrame(
   frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>,
   storyboardUrl: string,
+  captureSetId: string,
 ) {
   if (hasFrameScreenshots(frame)) {
-    const desktop = proxiedAssetUrl(storyboardUrl, frame.screenshots?.desktop)
-    const mobile = proxiedAssetUrl(storyboardUrl, frame.screenshots?.mobile)
-    const square = proxiedAssetUrl(storyboardUrl, frame.screenshots?.square)
+    const screenshots = frameScreenshots(frame, captureSetId)
+    const desktop = proxiedAssetUrl(storyboardUrl, screenshots?.desktop)
+    const mobile = proxiedAssetUrl(storyboardUrl, screenshots?.mobile)
+    const square = proxiedAssetUrl(storyboardUrl, screenshots?.square)
 
     return (
       <ScreenshotFrameCell
@@ -494,6 +562,11 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   }>(null)
   const [focusedTransitionId, setFocusedTransitionId] = useState<string | null>(null)
   const [workerPromptCopyState, setWorkerPromptCopyState] = useState<"idle" | "copied" | "failed">("idle")
+  const [markdownImportError, setMarkdownImportError] = useState<string | null>(null)
+  const [markdownImportCopyState, setMarkdownImportCopyState] = useState<"idle" | "copied" | "failed">("idle")
+  const [storyboardList, setStoryboardList] = useState<StoryboardListEntry[]>([])
+  const [storyboardListRootDir, setStoryboardListRootDir] = useState<string | null>(null)
+  const [storyboardListError, setStoryboardListError] = useState<string | null>(null)
   const panZoomRef = useRef<PanZoomContainerHandle>(null)
   const saveTimeoutRef = useRef<number | undefined>(undefined)
   const skipAutosaveRef = useRef(true)
@@ -501,7 +574,12 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   const pendingSaveRef = useRef<StoryboardDocument | null>(null)
   const lastSavedRef = useRef("")
   const transitionRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [activeCaptureSetId, setActiveCaptureSetId] = useState("default")
   const isConnected = connectedStoryboardUrl.trim().length > 0
+  const isAccessServerRootMode = useMemo(
+    () => isConnected && isAccessServerRootUrl(connectedStoryboardUrl),
+    [connectedStoryboardUrl, isConnected],
+  )
   const sourceQuery = useMemo(
     () => (isConnected ? storyboardUrlToDocumentQuery(connectedStoryboardUrl) : ""),
     [connectedStoryboardUrl, isConnected],
@@ -514,10 +592,37 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       setMissingStoryboard(false)
       setSelected(null)
       setSnapshotJob(null)
+      setMarkdownImportError(null)
+      setStoryboardList([])
+      setStoryboardListRootDir(null)
+      setStoryboardListError(null)
       setStatus("Enter a storyboard URL to connect")
       setSaveState("idle")
       return
     }
+
+    if (isAccessServerRootMode) {
+      setStatus("Loading storyboards…")
+      setDocument(null)
+      setMissingStoryboard(false)
+      setSelected(null)
+      const response = await fetch(`${apiRoot}/list?${sourceQuery}`)
+      if (!response.ok) {
+        setStoryboardList([])
+        setStoryboardListRootDir(null)
+        setStoryboardListError(await response.text())
+        setStatus("Storyboard list failed")
+        return
+      }
+      const payload = (await response.json()) as StoryboardListResponse
+      setStoryboardList(payload.storyboards)
+      setStoryboardListRootDir(payload.rootDir)
+      setStoryboardListError(null)
+      setStatus("Loaded storyboard list")
+      setSaveState("idle")
+      return
+    }
+
     setStatus("Loading storyboard…")
     const response = await fetch(`${apiRoot}/document?${sourceQuery}`)
     if (!response.ok) {
@@ -536,11 +641,15 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }
     const payload = (await response.json()) as DocumentResponse
     setMissingStoryboard(false)
+    setMarkdownImportError(null)
+    setStoryboardList([])
+    setStoryboardListRootDir(null)
+    setStoryboardListError(null)
     skipAutosaveRef.current = true
     pendingSaveRef.current = null
     lastSavedRef.current = JSON.stringify(payload.document)
     setPath(payload.path)
-    setDocument(payload.document)
+    setDocument(normalizeStoryboardDocument(payload.document))
     setSelected(
       payload.document.stories[0]
         ? { kind: "story", storyId: payload.document.stories[0].id }
@@ -604,7 +713,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     saveInFlightRef.current = false
     skipAutosaveRef.current = true
     lastSavedRef.current = JSON.stringify(payload.document)
-    setDocument(payload.document)
+    setDocument(normalizeStoryboardDocument(payload.document))
     setPath(payload.path)
     setSaveState("saved")
     setStatus("Saved")
@@ -693,6 +802,61 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     setStatus("")
   }
 
+  async function importMarkdown() {
+    if (!isConnected) {
+      return
+    }
+    setMarkdownImportError(null)
+    setStatus("Importing markdown…")
+    const response = await fetch(`${apiRoot}/import-markdown`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        storyboardUrl: connectedStoryboardUrl,
+      }),
+    })
+    const contentType = response.headers.get("content-type") ?? ""
+    if (!response.ok) {
+      if (contentType.includes("application/json")) {
+        const payload = (await response.json()) as { message?: string }
+        const message = payload.message ?? "Import failed"
+        setMarkdownImportError(message)
+        setStatus("Import failed")
+        return
+      }
+      const message = await response.text()
+      setMarkdownImportError(message)
+      setStatus("Import failed")
+      return
+    }
+    const payload = (await response.json()) as DocumentResponse
+    skipAutosaveRef.current = true
+    pendingSaveRef.current = null
+    lastSavedRef.current = JSON.stringify(payload.document)
+    setPath(payload.path)
+    setDocument(normalizeStoryboardDocument(payload.document))
+    setSelected(
+      payload.document.stories[0]
+        ? { kind: "story", storyId: payload.document.stories[0].id }
+        : { kind: "storyboard" },
+    )
+    setStatus("Imported markdown")
+    setSaveState("saved")
+  }
+
+  async function copyMarkdownImportError() {
+    if (!markdownImportError) {
+      return
+    }
+    const copied = await copyTextToClipboard(markdownImportError)
+    setMarkdownImportCopyState(copied ? "copied" : "failed")
+    window.setTimeout(() => {
+      setMarkdownImportCopyState("idle")
+    }, 1800)
+  }
+
   async function copyWorkerPrompt() {
     const copied = await copyTextToClipboard(remoteStoryboardWorkerPrompt)
     setWorkerPromptCopyState(copied ? "copied" : "failed")
@@ -749,6 +913,31 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     () => (document ? documentToSequences(document) : []),
     [document],
   )
+  const availableCaptureSetIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const story of document?.stories ?? []) {
+      for (const frame of story.frames) {
+        for (const id of frameCaptureSetIds(frame)) ids.add(id)
+      }
+      for (const branch of story.branches ?? []) {
+        for (const frame of branch.frames) {
+          for (const id of frameCaptureSetIds(frame)) ids.add(id)
+        }
+      }
+    }
+    return [...ids]
+  }, [document])
+  useEffect(() => {
+    if (availableCaptureSetIds.length === 0) {
+      if (activeCaptureSetId !== "default") setActiveCaptureSetId("default")
+      return
+    }
+    if (!availableCaptureSetIds.includes(activeCaptureSetId)) {
+      setActiveCaptureSetId(
+        availableCaptureSetIds.includes("default") ? "default" : availableCaptureSetIds[0],
+      )
+    }
+  }, [activeCaptureSetId, availableCaptureSetIds])
   const usesScreenshotFrames = useMemo(
     () => sequences.some((sequence) => sequence.frames.some((frame) => hasFrameScreenshots(frame as Partial<StoryboardFrameRecord>))),
     [sequences],
@@ -769,10 +958,12 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     selected,
   )
   const selectedFrameTransitions = selectedFrame?.transitions ?? []
+  const selectedFrameCaptureSetIds = frameCaptureSetIds(selectedFrame ?? {})
+  const selectedFrameCapture = frameCaptureSet(selectedFrame ?? {}, activeCaptureSetId)
   const selectedFrameScreenshotUrls = {
-    desktop: proxiedAssetUrl(connectedStoryboardUrl, selectedFrame?.screenshots?.desktop),
-    mobile: proxiedAssetUrl(connectedStoryboardUrl, selectedFrame?.screenshots?.mobile),
-    square: proxiedAssetUrl(connectedStoryboardUrl, selectedFrame?.screenshots?.square),
+    desktop: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.desktop),
+    mobile: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.mobile),
+    square: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.square),
   }
   const storyFrameOptions = selectedStory
     ? [
@@ -1142,8 +1333,60 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
               </label>
 
               <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
-                <div className="text-xs uppercase tracking-[0.14em] text-white/45">
-                  Screenshots
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    Capture sets
+                  </div>
+                  <button
+                    aria-label="Add capture set"
+                    className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                    onClick={addCaptureSet}
+                    title="Add capture set"
+                    type="button"
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedFrameCaptureSetIds.map((captureSetId) => (
+                    <button
+                      className={
+                        captureSetId === activeCaptureSetId
+                          ? "rounded border border-cyan-300/40 bg-cyan-300/10 px-2 py-1 text-xs uppercase tracking-[0.14em] text-cyan-100"
+                          : "rounded border border-white/10 bg-black/30 px-2 py-1 text-xs uppercase tracking-[0.14em] text-white/55 transition hover:border-cyan-300/30 hover:text-cyan-100"
+                      }
+                      key={captureSetId}
+                      onClick={() => setActiveCaptureSetId(captureSetId)}
+                      type="button"
+                    >
+                      {captureSetId}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-end gap-3">
+                  <label className="block min-w-0 flex-1">
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                      Capture set name
+                    </div>
+                    <input
+                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                      onChange={(event) => renameActiveCaptureSet(event.currentTarget.value)}
+                      value={activeCaptureSetId}
+                    />
+                  </label>
+                  {selectedFrameCaptureSetIds.length > 1 ? (
+                    <button
+                      aria-label="Remove capture set"
+                      className="flex h-9 w-9 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100"
+                      onClick={removeActiveCaptureSet}
+                      title="Remove capture set"
+                      type="button"
+                    >
+                      <TrashIcon />
+                    </button>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3 xl:grid-cols-3">
@@ -1156,17 +1399,24 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                       onChange={(event) =>
                         updateCurrentFrame((frame) => ({
                           ...frame,
-                          screenshots: {
-                            ...frame.screenshots,
-                            desktop: event.currentTarget.value || undefined,
+                          captureSets: {
+                            ...(frame.captureSets ?? {}),
+                            [activeCaptureSetId]: {
+                              ...(frame.captureSets?.[activeCaptureSetId] ?? {}),
+                              screenshots: {
+                                ...(frame.captureSets?.[activeCaptureSetId]?.screenshots ?? {}),
+                                desktop: event.currentTarget.value || undefined,
+                              },
+                            },
                           },
+                          screenshots: undefined,
                         }))
                       }
                       placeholder="./assets/frame-001.desktop.png"
-                      value={selectedFrame.screenshots?.desktop ?? ""}
+                      value={selectedFrameCapture.screenshots?.desktop ?? ""}
                     />
                     <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
-                      <AssetPreview alt={`${selectedFrame.title} desktop preview`} src={selectedFrameScreenshotUrls.desktop} />
+                      <AssetPreview alt={selectedFrame.title + " desktop preview"} src={selectedFrameScreenshotUrls.desktop} />
                     </div>
                   </label>
 
@@ -1179,17 +1429,24 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                       onChange={(event) =>
                         updateCurrentFrame((frame) => ({
                           ...frame,
-                          screenshots: {
-                            ...frame.screenshots,
-                            mobile: event.currentTarget.value || undefined,
+                          captureSets: {
+                            ...(frame.captureSets ?? {}),
+                            [activeCaptureSetId]: {
+                              ...(frame.captureSets?.[activeCaptureSetId] ?? {}),
+                              screenshots: {
+                                ...(frame.captureSets?.[activeCaptureSetId]?.screenshots ?? {}),
+                                mobile: event.currentTarget.value || undefined,
+                              },
+                            },
                           },
+                          screenshots: undefined,
                         }))
                       }
                       placeholder="./assets/frame-001.mobile.png"
-                      value={selectedFrame.screenshots?.mobile ?? ""}
+                      value={selectedFrameCapture.screenshots?.mobile ?? ""}
                     />
                     <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
-                      <AssetPreview alt={`${selectedFrame.title} mobile preview`} src={selectedFrameScreenshotUrls.mobile} />
+                      <AssetPreview alt={selectedFrame.title + " mobile preview"} src={selectedFrameScreenshotUrls.mobile} />
                     </div>
                   </label>
 
@@ -1202,22 +1459,28 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                       onChange={(event) =>
                         updateCurrentFrame((frame) => ({
                           ...frame,
-                          screenshots: {
-                            ...frame.screenshots,
-                            square: event.currentTarget.value || undefined,
+                          captureSets: {
+                            ...(frame.captureSets ?? {}),
+                            [activeCaptureSetId]: {
+                              ...(frame.captureSets?.[activeCaptureSetId] ?? {}),
+                              screenshots: {
+                                ...(frame.captureSets?.[activeCaptureSetId]?.screenshots ?? {}),
+                                square: event.currentTarget.value || undefined,
+                              },
+                            },
                           },
+                          screenshots: undefined,
                         }))
                       }
                       placeholder="./assets/frame-001.square.png"
-                      value={selectedFrame.screenshots?.square ?? ""}
+                      value={selectedFrameCapture.screenshots?.square ?? ""}
                     />
                     <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
-                      <AssetPreview alt={`${selectedFrame.title} square preview`} src={selectedFrameScreenshotUrls.square} />
+                      <AssetPreview alt={selectedFrame.title + " square preview"} src={selectedFrameScreenshotUrls.square} />
                     </div>
                   </label>
                 </div>
               </div>
-
               {selectedBranch ? (
                 <label className="block">
                   <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
@@ -1618,6 +1881,69 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }))
   }
 
+  function addCaptureSet() {
+    if (!selectedFrame) {
+      return
+    }
+    const nextId = nextCaptureSetId(selectedFrame)
+    updateCurrentFrame((frame) => ({
+      ...frame,
+      captureSets: {
+        ...(frame.captureSets ?? {}),
+        [nextId]: {
+          screenshots: {},
+        },
+      },
+      screenshots: undefined,
+    }))
+    setActiveCaptureSetId(nextId)
+  }
+
+  function renameActiveCaptureSet(nextIdRaw: string) {
+    if (!selectedFrame) {
+      return
+    }
+    const nextId = nextIdRaw.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "")
+    if (!nextId || nextId === activeCaptureSetId) {
+      return
+    }
+    if (selectedFrameCaptureSetIds.includes(nextId)) {
+      return
+    }
+    updateCurrentFrame((frame) => {
+      const captureSets = { ...(frame.captureSets ?? {}) }
+      const current = captureSets[activeCaptureSetId]
+      if (!current) {
+        return frame
+      }
+      delete captureSets[activeCaptureSetId]
+      const reordered = Object.fromEntries([...Object.entries(captureSets), [nextId, current]])
+      return {
+        ...frame,
+        captureSets: reordered,
+        screenshots: undefined,
+      }
+    })
+    setActiveCaptureSetId(nextId)
+  }
+
+  function removeActiveCaptureSet() {
+    if (!selectedFrame || selectedFrameCaptureSetIds.length <= 1) {
+      return
+    }
+    const remainingIds = selectedFrameCaptureSetIds.filter((id) => id !== activeCaptureSetId)
+    updateCurrentFrame((frame) => {
+      const captureSets = { ...(frame.captureSets ?? {}) }
+      delete captureSets[activeCaptureSetId]
+      return {
+        ...frame,
+        captureSets,
+        screenshots: undefined,
+      }
+    })
+    setActiveCaptureSetId(remainingIds.includes("default") ? "default" : remainingIds[0] ?? "default")
+  }
+
   function updateCurrentBranchLabel(value: string) {
     if (!document || !selected || selected.kind !== "frame" || !selected.branchId) {
       return
@@ -1943,13 +2269,31 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                 Storyboard editor
               </div>
               <div className="text-[11px] text-white/50">
-                {storyCount} stories · {frameCount} frames
+                {isAccessServerRootMode
+                  ? `${storyboardList.length} storyboards`
+                  : `${storyCount} stories · ${frameCount} frames`}
               </div>
               {headerStatus ? (
                 <div className="text-[11px] text-amber-200/80">{headerStatus}</div>
               ) : null}
             </div>
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              {!isAccessServerRootMode ? (
+                <button
+                  className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100"
+                  onClick={() => {
+                    const accessServerUrl = storyboardAccessServerUrl(connectedStoryboardUrl)
+                    if (!accessServerUrl) {
+                      return
+                    }
+                    setDraftStoryboardUrl(accessServerUrl)
+                    setConnectedStoryboardUrl(accessServerUrl)
+                  }}
+                  type="button"
+                >
+                  Storyboards
+                </button>
+              ) : null}
               <button
                 className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
                 disabled={!isConnected}
@@ -1958,30 +2302,66 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
               >
                 Reload
               </button>
-              <button
-                className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
-                disabled={!document || !isConnected}
-                onClick={() => (document ? void persistDocument(document) : undefined)}
-                type="button"
-              >
-                {saveState === "saving"
-                  ? "Saving…"
-                  : saveState === "saved"
-                    ? "Saved"
-                    : "Save now"}
-              </button>
-              <button
-                className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
-                disabled={!isConnected}
-                onClick={() => void requestSnapshotRun()}
-                type="button"
-              >
-                Run snapshots
-              </button>
+              {!isAccessServerRootMode ? (
+                <>
+                  <button
+                    className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
+                    disabled={!isConnected}
+                    onClick={() => void importMarkdown()}
+                    type="button"
+                  >
+                    Import markdown
+                  </button>
+                  <button
+                    className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
+                    disabled={!document || !isConnected}
+                    onClick={() => (document ? void persistDocument(document) : undefined)}
+                    type="button"
+                  >
+                    {saveState === "saving"
+                      ? "Saving…"
+                      : saveState === "saved"
+                        ? "Saved"
+                        : "Save now"}
+                  </button>
+                  <button
+                    className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
+                    disabled={!isConnected}
+                    onClick={() => void requestSnapshotRun()}
+                    type="button"
+                  >
+                    Run snapshots
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
         ) : null}
       </header>
+
+      {markdownImportError ? (
+        <div className="flex items-start justify-between gap-3 border-b border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-100">
+          <div className="min-w-0 whitespace-pre-wrap">{markdownImportError}</div>
+          <button
+            aria-label="Copy markdown import error"
+            className={
+              markdownImportCopyState === "copied"
+                ? "shrink-0 rounded border border-emerald-300/40 px-2 py-1 text-xs text-emerald-100"
+                : markdownImportCopyState === "failed"
+                  ? "shrink-0 rounded border border-rose-200/50 px-2 py-1 text-xs text-rose-100"
+                  : "shrink-0 rounded border border-white/15 px-2 py-1 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100"
+            }
+            onClick={() => void copyMarkdownImportError()}
+            type="button"
+          >
+            {markdownImportCopyState === "copied"
+              ? "Copied"
+              : markdownImportCopyState === "failed"
+                ? "Copy failed"
+                : "Copy error"}
+          </button>
+        </div>
+      ) : null}
 
       <div className="flex min-h-0 flex-1">
         {!isConnected ? (
@@ -2029,6 +2409,52 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                 <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Expected reply</div>
                 <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">Storyboard URL: http://&lt;worker-host&gt;:8798/&lt;storyboard-name&gt;</pre>
               </div>
+            </div>
+          </div>
+        ) : isAccessServerRootMode ? (
+          <div className="h-full w-full overflow-auto bg-zinc-950 p-6">
+            <div className="mx-auto w-full max-w-5xl space-y-4 text-sm text-white/80">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">Storyboard access server</div>
+                  <div className="mt-1 text-lg text-cyan-100">Available storyboards</div>
+                </div>
+                {storyboardListRootDir ? (
+                  <div className="max-w-[32rem] text-right text-xs leading-5 text-white/45">{storyboardListRootDir}</div>
+                ) : null}
+              </div>
+              {storyboardListError ? (
+                <div className="rounded border border-rose-300/30 bg-rose-300/10 p-4 text-sm text-rose-100">
+                  {storyboardListError}
+                </div>
+              ) : null}
+              {storyboardList.length === 0 ? (
+                <div className="rounded border border-white/10 bg-black/30 p-6 text-sm text-white/60">
+                  No storyboards were listed by this access server.
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {storyboardList.map((storyboard) => (
+                    <button
+                      key={storyboard.storyboardUrl}
+                      className="flex min-h-[9rem] flex-col rounded border border-white/10 bg-black/30 p-4 text-left transition hover:border-cyan-300/40 hover:bg-black/40"
+                      onClick={() => {
+                        setDraftStoryboardUrl(storyboard.storyboardUrl)
+                        setConnectedStoryboardUrl(storyboard.storyboardUrl)
+                      }}
+                      type="button"
+                    >
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Storyboard</div>
+                      <div className="mt-2 text-base text-cyan-100">{storyboard.name}</div>
+                      <div className="mt-3 text-xs leading-5 text-white/45">{storyboard.storyboardUrl}</div>
+                      <div className="mt-auto flex flex-wrap gap-2 pt-4 text-[11px] uppercase tracking-[0.14em] text-white/45">
+                        <span className={storyboard.hasStoryboardJson ? "text-emerald-200/80" : "text-white/30"}>json</span>
+                        <span className={storyboard.hasStoryboardMarkdown ? "text-emerald-200/80" : "text-white/30"}>md</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -2123,8 +2549,28 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                       }
                     }}
                   renderFrame={(frame) => (
-                    renderEditorFrame(frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>, connectedStoryboardUrl)
+                    renderEditorFrame(
+                      frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>,
+                      connectedStoryboardUrl,
+                      activeCaptureSetId,
+                    )
                   )}
+                  renderFrameHeaderControls={() =>
+                    availableCaptureSetIds.length > 1 ? (
+                      <select
+                        aria-label="Capture set"
+                        className="nopan nowheel rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-white/75 outline-none focus:border-cyan-400"
+                        onChange={(event) => setActiveCaptureSetId(event.currentTarget.value)}
+                        value={activeCaptureSetId}
+                      >
+                        {availableCaptureSetIds.map((captureSetId) => (
+                          <option key={captureSetId} value={captureSetId}>
+                            {captureSetId}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null
+                  }
                   storyboardUrl={connectedStoryboardUrl}
                   frameHeight={editorFrameHeight}
                   frameWidth={editorFrameWidth}
