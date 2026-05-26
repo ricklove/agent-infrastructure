@@ -9,9 +9,11 @@ import { agentWorkbenchDashboardUiPlugin } from "@agent-infrastructure/agent-wor
 import type { DashboardFeatureUiPlugin } from "@agent-infrastructure/dashboard-plugin"
 import { dashboardSettingsDashboardUiPlugin } from "@agent-infrastructure/dashboard-settings-ui/ui-plugin"
 import { dashboardTerminalUiPlugin } from "@agent-infrastructure/dashboard-terminal-ui/ui-plugin"
+import { facebookContentDashboardUiPlugin } from "@agent-infrastructure/facebook-content-dashboard-ui/ui-plugin"
 import { floatingWindowDebugDashboardUiPlugin } from "@agent-infrastructure/floating-window-debug-ui/ui-plugin"
 import { projectsDashboardUiPlugin } from "@agent-infrastructure/projects-ui/ui-plugin"
 import { stackAdminDashboardUiPlugin } from "@agent-infrastructure/stack-admin-ui/ui-plugin"
+import { storyboardDashboardUiPlugin } from "@agent-infrastructure/storyboard-ui/ui-plugin"
 import { uiDesignCanvasDashboardUiPlugin } from "@agent-infrastructure/ui-design-canvas-ui/ui-plugin"
 
 const composedWorkbenchDashboardUiPlugin: DashboardFeatureUiPlugin = {
@@ -32,6 +34,8 @@ export type DashboardHostRole = "manager" | "admin"
 const managerDashboardFeaturePlugins: DashboardFeatureUiPlugin[] = [
   agentChatDashboardUiPlugin,
   agentChatV2DashboardUiPlugin,
+  facebookContentDashboardUiPlugin,
+  storyboardDashboardUiPlugin,
   agentSwarmDashboardUiPlugin,
   composedWorkbenchDashboardUiPlugin,
   uiDesignCanvasDashboardUiPlugin,

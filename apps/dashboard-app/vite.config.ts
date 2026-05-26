@@ -13,7 +13,7 @@ import { defineConfig, type HmrContext, type Plugin } from "vite"
 const versionModuleId = "virtual:dashboard-app-version"
 const resolvedVersionModuleId = `\0${versionModuleId}`
 const dashboardDevServerPort = Number.parseInt(
-  process.env.DASHBOARD_DEV_SERVER_PORT ?? "3300",
+  process.env.DASHBOARD_DEV_SERVER_PORT ?? "3000",
   10,
 )
 const frontendRoots = [
@@ -118,6 +118,12 @@ function versionPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [versionPlugin(), react(), tailwindcss()],
+  optimizeDeps: {
+    exclude: [
+      "@agent-infrastructure/facebook-content-dashboard-ui",
+      "@agent-infrastructure/facebook-content-dashboard-ui/ui-plugin",
+    ],
+  },
   server: {
     allowedHosts: true,
     port: 5173,

@@ -560,7 +560,9 @@ export function runWorkspaceHealthProfile(
   })
 
   const failureCount = findings.filter(
-    (finding) => finding.status === "unhealthy",
+    (finding) =>
+      finding.status === "unhealthy" &&
+      (finding.severity === "blocking" || finding.severity === "error"),
   ).length
 
   return {

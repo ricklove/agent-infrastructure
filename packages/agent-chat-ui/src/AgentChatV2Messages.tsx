@@ -76,7 +76,10 @@ function parseMarkdownImageLine(line: string): ImageReference | null {
 }
 
 function parseStandaloneMarkdownLinkLine(line: string): ImageReference | null {
-  const match = /^\s*\[([^\]]+)\]\(([^)]+)\)\s*$/u.exec(line)
+  const match =
+    /^\s*(?:[-*+]\s+|\d+\.\s+)?(?:[^[]*?:\s+)?\[([^\]]+)\]\(([^)]+)\)\s*$/u.exec(
+      line,
+    )
   if (!match) {
     return null
   }

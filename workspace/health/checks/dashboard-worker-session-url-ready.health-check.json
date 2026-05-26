@@ -1,0 +1,14 @@
+{
+  "id": "dashboard_worker_session_url_ready",
+  "title": "fresh manager-issued session key composes with the worker quick tunnel",
+  "description": "Issues a manager-backed dashboard session key, verifies it works when attached to the worker quick-tunnel host, and prints a fresh unused dev-worker storyboard URL.",
+  "execution": {
+    "kind": "local"
+  },
+  "command": [
+    "/bin/bash",
+    "-lc",
+    "set -euo pipefail\ncd '{{targetPath}}'\nbash scripts/issue-worker-dashboard-session-url.sh --work-target '{{workTarget}}' --path '{{pluginPath}}'"
+  ],
+  "timeoutMs": 90000
+}

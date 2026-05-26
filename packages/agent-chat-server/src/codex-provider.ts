@@ -78,6 +78,13 @@ type CodexRunResult = {
   completionIssueText: string | null
 }
 
+type CodexEventScope = {
+  currentThreadId: string | null
+  currentTurnId: string
+  params: Record<string, unknown>
+  fallbackTurnId?: string | null
+}
+
 const codexWsUrl =
   process.env.AGENT_CHAT_CODEX_WS_URL?.trim() || "ws://127.0.0.1:8799"
 const codexReadyzUrl =
@@ -180,6 +187,78 @@ function parseCodexModel(modelRef: string) {
 function parseTimeoutMs(rawValue: string | undefined, fallbackMs: number) {
   const parsed = Number.parseInt(rawValue?.trim() ?? "", 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackMs
+}
+
+function nonEmptyString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null
+}
+
+function eventMatchesCurrentThreadAndTurn({
+  currentThreadId,
+  currentTurnId,
+  params,
+  fallbackTurnId = null,
+}: CodexEventScope) {
+  const eventThreadId = nonEmptyString(params.threadId)
+  if (currentThreadId && eventThreadId && eventThreadId !== currentThreadId) {
+    return false
+  }
+
+  const eventTurnId =
+    nonEmptyString(params.turnId) ?? nonEmptyString(fallbackTurnId)
+  if (currentTurnId && eventTurnId && eventTurnId !== currentTurnId) {
+    return false
+  }
+
+  return true
+}
+
+export function shouldProcessCodexNotification(
+  currentThreadId: string | null,
+  currentTurnId: string,
+  message: JsonRpcResponse,
+) {
+  const params = message.params ?? {}
+  switch (message.method) {
+    case "thread/status/changed":
+    case "thread/tokenUsage/updated":
+    case "item/started":
+    case "item/agentMessage/delta":
+      return eventMatchesCurrentThreadAndTurn({
+        currentThreadId,
+        currentTurnId,
+        params,
+      })
+    case "item/completed": {
+      const item = params.item as Record<string, unknown> | undefined
+      return eventMatchesCurrentThreadAndTurn({
+        currentThreadId,
+        currentTurnId,
+        params,
+        fallbackTurnId: nonEmptyString(item?.turnId),
+      })
+    }
+    case "turn/started": {
+      const turn = params.turn as Record<string, unknown> | undefined
+      return eventMatchesCurrentThreadAndTurn({
+        currentThreadId,
+        currentTurnId,
+        params,
+        fallbackTurnId: nonEmptyString(turn?.id),
+      })
+    }
+    case "turn/completed": {
+      const turn = params.turn as Record<string, unknown> | undefined
+      return eventMatchesCurrentThreadAndTurn({
+        currentThreadId,
+        currentTurnId,
+        params,
+        fallbackTurnId: nonEmptyString(turn?.id),
+      })
+    }
+    default:
+      return true
+  }
 }
 
 function numberFromUnknown(value: unknown) {
@@ -379,6 +458,15 @@ export async function runCodexTurn(
       }
 
       if (message.method === "turn/started") {
+        if (
+          !shouldProcessCodexNotification(
+            currentThreadId,
+            currentTurnId,
+            message,
+          )
+        ) {
+          return
+        }
         const params = message.params ?? {}
         const turn = params.turn as Record<string, unknown> | undefined
         const threadId = String(params.threadId ?? currentThreadId ?? "")
@@ -391,6 +479,15 @@ export async function runCodexTurn(
       }
 
       if (message.method === "thread/status/changed") {
+        if (
+          !shouldProcessCodexNotification(
+            currentThreadId,
+            currentTurnId,
+            message,
+          )
+        ) {
+          return
+        }
         const params = message.params ?? {}
         const status = params.status as
           | { type?: string; activeFlags?: unknown[] }
@@ -413,6 +510,15 @@ export async function runCodexTurn(
       }
 
       if (message.method === "thread/tokenUsage/updated") {
+        if (
+          !shouldProcessCodexNotification(
+            currentThreadId,
+            currentTurnId,
+            message,
+          )
+        ) {
+          return
+        }
         const params = message.params ?? {}
         latestTokenUsage =
           (params.tokenUsage as CodexTokenUsagePayload | undefined) ?? null
@@ -425,6 +531,15 @@ export async function runCodexTurn(
       }
 
       if (message.method === "item/started") {
+        if (
+          !shouldProcessCodexNotification(
+            currentThreadId,
+            currentTurnId,
+            message,
+          )
+        ) {
+          return
+        }
         const params = message.params ?? {}
         const item = params.item as Record<string, unknown> | undefined
         if (item?.type === "commandExecution") {
@@ -447,6 +562,15 @@ export async function runCodexTurn(
       }
 
       if (message.method === "item/agentMessage/delta") {
+        if (
+          !shouldProcessCodexNotification(
+            currentThreadId,
+            currentTurnId,
+            message,
+          )
+        ) {
+          return
+        }
         const params = message.params ?? {}
         const delta = String(params.delta ?? "")
         assistantText += delta
@@ -460,6 +584,15 @@ export async function runCodexTurn(
       }
 
       if (message.method === "item/completed") {
+        if (
+          !shouldProcessCodexNotification(
+            currentThreadId,
+            currentTurnId,
+            message,
+          )
+        ) {
+          return
+        }
         const params = message.params ?? {}
         const item = params.item as Record<string, unknown> | undefined
         if (item?.type === "agentMessage") {
@@ -493,6 +626,15 @@ export async function runCodexTurn(
       }
 
       if (message.method === "turn/completed") {
+        if (
+          !shouldProcessCodexNotification(
+            currentThreadId,
+            currentTurnId,
+            message,
+          )
+        ) {
+          return
+        }
         const params = message.params ?? {}
         const turn = params.turn as Record<string, unknown> | undefined
         const rawError = turn?.error

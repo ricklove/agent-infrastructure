@@ -201,6 +201,27 @@ function ProjectsIcon(props: { className?: string }) {
   )
 }
 
+function ContentIcon(props: { className?: string }) {
+  useRenderCounter("ContentIcon")
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={props.className}
+      aria-hidden="true"
+    >
+      <rect x="4" y="5" width="16" height="14" rx="2" />
+      <path d="M8 9h8" />
+      <path d="M8 13h5" />
+      <path d="m14.5 13 1.75 1.75L19 12" />
+    </svg>
+  )
+}
+
 function DesignIcon(props: { className?: string }) {
   return (
     <svg
@@ -320,7 +341,9 @@ function featureIdFromPath(
   plugins: DashboardFeatureUiPlugin[],
 ): FeatureId {
   return (
-    plugins.find((plugin) => plugin.route === pathname)?.id ??
+    plugins.find((plugin) =>
+      pathname === plugin.route || pathname.startsWith(`${plugin.route}/`),
+    )?.id ??
     plugins[0]?.id ??
     "chat"
   )
@@ -336,6 +359,7 @@ const featureIconMap: Record<
   debug: DebugIcon,
   projects: ProjectsIcon,
   chat: ChatIcon,
+  content: ContentIcon,
   graph: GraphIcon,
   terminal: TerminalIcon,
   settings: SettingsIcon,
@@ -453,7 +477,9 @@ export function DashboardShell({
 
     const currentPath = window.location.pathname
     const matchedFeature = visibleFeatureDefinitions.find(
-      (feature) => feature.route === currentPath,
+      (feature) =>
+        currentPath === feature.route ||
+        currentPath.startsWith(`${feature.route}/`),
     )
 
     if (!matchedFeature || currentPath === "/") {
@@ -787,7 +813,11 @@ export function DashboardShell({
       return
     }
 
-    if (window.location.pathname !== nextFeature.route) {
+    const alreadyInsideFeature =
+      window.location.pathname === nextFeature.route ||
+      window.location.pathname.startsWith(`${nextFeature.route}/`)
+
+    if (!alreadyInsideFeature) {
       if (replace) {
         window.history.replaceState({}, "", nextFeature.route)
       } else {

@@ -1,0 +1,117 @@
+{
+  "id": "connect_common_baseconnect_frontend_surface",
+  "title": "Connect Common Baseconnect Frontend Surface",
+  "description": "Consolidated Baseconnect frontend worker health profile for Expo web preview startup plus real staging bot login verification.",
+  "params": {
+    "authEnvPath": "/home/ec2-user/.baseconnect-staging-bot.env",
+    "previewPort": "19006",
+    "sessionName": "baseconnect-health-web"
+  },
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "Registered frontend repo path exists",
+      "severity": "blocking",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_root_present",
+      "checkId": "work_at_git_root_present",
+      "title": "Registered frontend repo path is a git checkout",
+      "severity": "blocking",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_git_origin_readable",
+      "checkId": "work_at_git_origin_readable",
+      "title": "Registered frontend repo can read from origin",
+      "severity": "blocking",
+      "params": {
+        "repoPath": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_package_json_present",
+      "checkId": "work_at_path_exists",
+      "title": "Registered frontend repo package.json exists",
+      "severity": "blocking",
+      "params": {
+        "path": "{{targetPath}}/package.json"
+      }
+    },
+    {
+      "id": "target_expo_app_exists",
+      "checkId": "work_at_path_exists",
+      "title": "apps/expo-app exists on target",
+      "severity": "blocking",
+      "params": {
+        "path": "{{targetPath}}/apps/expo-app"
+      }
+    },
+    {
+      "id": "target_node_modules_present",
+      "checkId": "work_at_path_exists",
+      "title": "Frontend repo node_modules exists",
+      "severity": "error",
+      "params": {
+        "path": "{{targetPath}}/node_modules"
+      }
+    },
+    {
+      "id": "target_node_available",
+      "checkId": "work_at_command_available",
+      "title": "Node is available on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "node"
+      }
+    },
+    {
+      "id": "target_npx_available",
+      "checkId": "work_at_command_available",
+      "title": "npx is available on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "npx"
+      }
+    },
+    {
+      "id": "target_agent_browser_available",
+      "checkId": "work_at_command_available",
+      "title": "agent-browser is available on target",
+      "severity": "blocking",
+      "params": {
+        "commandName": "agent-browser"
+      }
+    },
+    {
+      "id": "target_bot_auth_file_present",
+      "checkId": "work_at_path_exists",
+      "title": "Worker-local Baseconnect staging bot auth file exists",
+      "severity": "blocking",
+      "repairHint": "Create /home/ec2-user/.baseconnect-staging-bot.env on the worker with BASECONNECT_EMAIL, BASECONNECT_PASSWORD, BC_TEST_BOT_EMAIL, BC_TEST_BOT_PASSWORD, and BC_TEST_BOT_NAME before using the Baseconnect frontend health profile.",
+      "params": {
+        "path": "{{authEnvPath}}"
+      }
+    },
+    {
+      "id": "target_baseconnect_web_login_ready",
+      "checkId": "work_at_baseconnect_web_login_ready",
+      "title": "Frontend worker can open Expo web and log in to Baseconnect staging",
+      "severity": "blocking",
+      "params": {}
+    }
+  ]
+}

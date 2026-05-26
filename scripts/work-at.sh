@@ -12,7 +12,7 @@ usage() {
 Usage:
   work-at --help
   work-at --list [--json]
-  work-at --register <name> -- --host <host> --path <path> [--shell <shell>] [--health-profile <profile-id>]
+  work-at --register <name> -- --host <host> --path <path> [--shell <shell>] [--health-profile <profile-id>] [--health-param <key=value> ...]
   work-at --unregister <name>
   work-at --check <name>
   work-at --describe <name> [--json]
@@ -48,7 +48,7 @@ Agent Skill:
   - Use `work-at <name> <command...>` for single commands.
   - Use `work-at <name> <<'EOF' ... EOF` for multiline shell work.
   - Use `work-at <name>` only when an interactive shell is needed.
-  - Register targets with `work-at --register <name> -- --host <host> --path <path> [--health-profile <profile-id>]`.
+  - Register targets with `work-at --register <name> -- --host <host> --path <path> [--health-profile <profile-id>] [--health-param <key=value> ...]`.
   - Treat all `--...` options as work-at control commands; bare names are targets.
 EOF
 }
@@ -111,6 +111,7 @@ register_target() {
   local path=""
   local shell="/bin/bash"
   local health_profile=""
+  local health_params_json='{}'
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --host)
@@ -133,6 +134,22 @@ register_target() {
         [[ -n "$health_profile" ]] || die "--health-profile requires a value"
         shift 2
         ;;
+      --health-param)
+        local raw_pair="${2:-}"
+        [[ -n "$raw_pair" ]] || die "--health-param requires a key=value pair"
+        [[ "$raw_pair" == *=* ]] || die "--health-param requires a key=value pair"
+        local key="${raw_pair%%=*}"
+        local value="${raw_pair#*=}"
+        [[ -n "$key" ]] || die "--health-param requires a non-empty key"
+        health_params_json="$(
+          jq \
+            --argjson current "$health_params_json" \
+            --arg key "$key" \
+            --arg value "$value" \
+            -n '$current + {($key): $value}'
+        )"
+        shift 2
+        ;;
       *)
         die "unknown registration option: $1"
         ;;
@@ -150,12 +167,14 @@ register_target() {
     --arg path "$path" \
     --arg shell "$shell" \
     --arg healthProfileId "$health_profile" \
+    --argjson healthParams "$health_params_json" \
     --arg registeredAt "$registered_at" \
     '.targets[$name] = {
       host: $host,
       path: $path,
       shell: $shell,
       healthProfileId: ($healthProfileId | select(length > 0)),
+      healthParams: ($healthParams | select(length > 0)),
       registeredAt: $registeredAt
     }' "$REGISTRY_PATH" | write_registry
 
@@ -221,17 +240,21 @@ describe_target() {
     return
   fi
 
-  local host path shell health_profile
+  local host path shell health_profile health_params
   host="$(target_field "$name" host || true)"
   path="$(target_field "$name" path)"
   shell="$(target_field "$name" shell || true)"
   health_profile="$(target_field "$name" healthProfileId || true)"
+  health_params="$(jq -c -r --arg name "$name" '.targets[$name].healthParams // empty' "$REGISTRY_PATH")"
   printf 'name=%s\n' "$name"
   printf 'host=%s\n' "${host}"
   printf 'path=%s\n' "${path}"
   printf 'shell=%s\n' "${shell}"
   if [[ -n "$health_profile" ]]; then
     printf 'health_profile=%s\n' "${health_profile}"
+  fi
+  if [[ -n "$health_params" ]]; then
+    printf 'health_params=%s\n' "${health_params}"
   fi
 }
 
@@ -251,10 +274,17 @@ health_target() {
   command -v "$HEALTH_BUN_BIN" >/dev/null 2>&1 || die "bun is required for --health"
   [[ -f "$HEALTH_RUNNER_PATH" ]] || die "health runner does not exist: ${HEALTH_RUNNER_PATH}"
 
+  local -a health_param_args=()
+  while IFS=$'\t' read -r key value; do
+    [[ -n "$key" ]] || continue
+    health_param_args+=(--param "${key}=${value}")
+  done < <(jq -r --arg name "$name" '.targets[$name].healthParams // {} | to_entries[] | [.key, .value] | @tsv' "$REGISTRY_PATH")
+
   "$HEALTH_BUN_BIN" "$HEALTH_RUNNER_PATH" \
     --profile "$health_profile" \
     --param "workTarget=${name}" \
     --param "targetPath=${path}" \
+    "${health_param_args[@]}" \
     "$@"
 }
 

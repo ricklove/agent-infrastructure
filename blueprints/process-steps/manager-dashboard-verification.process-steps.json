@@ -8,7 +8,7 @@
     },
     {
       "id": "perform_real_browser_verification",
-      "title": "Open the issued manager-dashboard session URL in `agent-browser` and verify the public dashboard loads correctly"
+      "title": "Open the issued manager-dashboard session URL from a worker browser surface via `work-at`; never run `agent-browser` on the manager host"
     },
     {
       "id": "navigate_to_modified_screen",

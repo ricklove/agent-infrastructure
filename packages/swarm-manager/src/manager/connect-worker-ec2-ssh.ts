@@ -91,6 +91,7 @@ type ParsedArgs = {
   launchInstanceType: string
   launchSubnetId: string
   launchImageId?: string
+  launchRootVolumeSize?: number
   launchName: string
   launchTags: string[]
 }
@@ -269,6 +270,7 @@ Options:
   --instance-type TYPE
   --subnet-id SUBNET
   --image-id AMI
+  --root-volume-size GIB
   --name NAME
   --tag KEY=VALUE
   --no-launch
@@ -369,6 +371,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     launchInstanceType,
     launchSubnetId,
     launchImageId: optionalOne(argv, "image-id"),
+    launchRootVolumeSize: optionalOne(argv, "root-volume-size")
+      ? parseNumber(optionalOne(argv, "root-volume-size"), Number.NaN)
+      : undefined,
     launchName,
     launchTags: collectRepeated(argv, "tag"),
   }
@@ -550,7 +555,10 @@ function resolveWorkerImage(config: ParsedArgs): {
     return {
       imageId: image.ImageId,
       rootDeviceName: image.RootDeviceName,
-      rootVolumeSize: Math.max(30, Number(image.RootDeviceVolumeSize ?? 0)),
+      rootVolumeSize: Math.max(
+        Number(config.launchRootVolumeSize ?? 30),
+        Number(image.RootDeviceVolumeSize ?? 0),
+      ),
     }
   }
 
@@ -577,7 +585,10 @@ function resolveWorkerImage(config: ParsedArgs): {
   return {
     imageId: image.ImageId,
     rootDeviceName: image.RootDeviceName,
-    rootVolumeSize: Math.max(30, Number(image.RootDeviceVolumeSize ?? 0)),
+    rootVolumeSize: Math.max(
+      Number(config.launchRootVolumeSize ?? 30),
+      Number(image.RootDeviceVolumeSize ?? 0),
+    ),
   }
 }
 
