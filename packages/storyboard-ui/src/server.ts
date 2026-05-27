@@ -3,7 +3,7 @@ import { dirname, extname, join, relative, resolve } from "node:path"
 import { randomUUID } from "node:crypto"
 import { formatStoryboardDocument, frameCaptureSet, normalizeStoryboardDocument, isStoryboardDocument, type StoryboardDocument, type StoryboardFrameRecord, type StoryboardStoryRecord, type StoryboardTransitionRecord } from "./storyboard-document.js"
 
-const port = Number.parseInt(process.env.STORYBOARD_PORT ?? "8797", 10)
+const port = Number.parseInt(process.env.STORYBOARD_PORT ?? "8897", 10)
 const workspaceRoot = process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace"
 const stateDir = process.env.AGENT_STATE_DIR?.trim() || "/home/ec2-user/state"
 const logPath = process.env.STORYBOARD_LOG_PATH?.trim() || `${stateDir}/logs/storyboard-server.log`

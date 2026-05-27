@@ -9,7 +9,7 @@ export const storyboardDashboardPlugin: DashboardFeaturePlugin = {
   backend: {
     id: "storyboard",
     apiBasePath: "/api/storyboard",
-    defaultBaseUrl: "http://127.0.0.1:8797",
+    defaultBaseUrl: "http://127.0.0.1:8897",
     healthPath: "/api/storyboard/health",
     startupPolicy: "always",
     startup: {
