@@ -130,8 +130,8 @@ function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
 }
 
 const apiRoot = "/api/storyboard"
-const bundledDefaultStoryboardUrl = "http://127.0.0.1:8798/default-storyboard"
-const testFixtureStoryboardUrl = "http://127.0.0.1:8799/test-storyboard"
+const bundledDefaultStoryboardUrl = "http://127.0.0.1:8898/default-storyboard"
+const testFixtureStoryboardUrl = "http://127.0.0.1:8899/test-storyboard"
 const remoteStoryboardUrlStorageKey = "storyboard.debug.remoteStoryboardUrl"
 const frameSize = 220
 const screenshotFrameWidth = 720
@@ -530,12 +530,12 @@ Requirements:
 - Use Bun.
 - Use the single-file script at scripts/storyboard-access-server.ts from the agent-infrastructure repo.
 - Serve a storyboard directory root, not an individual file path.
-- Pick an available port if 8798 is busy.
+- Pick an available port if 8898 is busy.
 - Return the final storyboard URL in this form:
   http://<worker-host>:<port>/<storyboard-name>
 
 Command shape:
-bun scripts/storyboard-access-server.ts --root /absolute/path/to/<storyboard-name> --port 8798
+bun scripts/storyboard-access-server.ts --root /absolute/path/to/<storyboard-name> --port 8898
 
 Then reply with only:
 Storyboard URL: http://<worker-host>:<port>/<storyboard-name>`
@@ -2403,11 +2403,11 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
               </div>
               <div className="rounded border border-white/10 bg-black/30 p-4">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Server command</div>
-                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">bun scripts/storyboard-access-server.ts --root /absolute/path/to/&lt;storyboard-name&gt; --port 8798</pre>
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">bun scripts/storyboard-access-server.ts --root /absolute/path/to/&lt;storyboard-name&gt; --port 8898</pre>
               </div>
               <div className="rounded border border-white/10 bg-black/30 p-4">
                 <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Expected reply</div>
-                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">Storyboard URL: http://&lt;worker-host&gt;:8798/&lt;storyboard-name&gt;</pre>
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">Storyboard URL: http://&lt;worker-host&gt;:8898/&lt;storyboard-name&gt;</pre>
               </div>
             </div>
           </div>

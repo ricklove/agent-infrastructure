@@ -36,7 +36,7 @@ Examples:
 
 Options:
   --root <path>      Storyboard directory root. Required unless STORYBOARD_ACCESS_ROOT is set.
-  --port <port>      Server port. Default: 8798
+  --port <port>      Server port. Default: 8898
   --read-only        Disable writes.
   --help             Show this help.
 
@@ -114,7 +114,7 @@ function parseArgs(argv: string[]) {
     rootDir: resolve(resolvedRootDir),
     port:
       port ??
-      Number.parseInt(process.env.STORYBOARD_ACCESS_PORT?.trim() || "8798", 10),
+      Number.parseInt(process.env.STORYBOARD_ACCESS_PORT?.trim() || "8898", 10),
     readOnly: readOnly || process.env.STORYBOARD_ACCESS_READ_ONLY === "1",
   }
 }

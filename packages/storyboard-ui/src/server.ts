@@ -14,8 +14,12 @@ const defaultStoryboardJsonPath = resolve(defaultStoryboardDir, "storyboard.json
 const defaultStoryboardMarkdownPath = resolve(defaultStoryboardDir, "storyboard.md")
 const defaultStoryboardAssetsDir = resolve(defaultStoryboardDir, "assets")
 const testFixtureStoryboardDir = resolve(repoRoot, "packages/storyboard-ui/fixtures/test-storyboard")
-const defaultAccessPort = Number.parseInt(process.env.STORYBOARD_DEFAULT_ACCESS_PORT ?? "8798", 10)
-const testFixtureAccessPort = Number.parseInt(process.env.STORYBOARD_TEST_FIXTURE_ACCESS_PORT ?? "8799", 10)
+const defaultAccessPort = Number.parseInt(process.env.STORYBOARD_DEFAULT_ACCESS_PORT ?? "8898", 10)
+const testFixtureAccessPort = Number.parseInt(process.env.STORYBOARD_TEST_FIXTURE_ACCESS_PORT ?? "8899", 10)
+const bundledAccessServersEnabled =
+  process.env.STORYBOARD_ENABLE_BUNDLED_ACCESS_SERVERS?.trim() === "1" ||
+  process.env.STORYBOARD_ENABLE_BUNDLED_ACCESS_SERVERS?.trim().toLowerCase() ===
+    "true"
 const defaultStoryboardUrl =
   process.env.STORYBOARD_DEFAULT_URL?.trim() ||
   process.env.STORYBOARD_DEFAULT_ACCESS_URL?.trim() ||
@@ -204,8 +208,12 @@ function startBundledAccessServer(rootDir: string, accessPort: number) {
   })
 }
 
-startBundledAccessServer(defaultStoryboardDir, defaultAccessPort)
-startBundledAccessServer(testFixtureStoryboardDir, testFixtureAccessPort)
+if (bundledAccessServersEnabled) {
+  startBundledAccessServer(defaultStoryboardDir, defaultAccessPort)
+  startBundledAccessServer(testFixtureStoryboardDir, testFixtureAccessPort)
+} else {
+  log("bundled storyboard access servers disabled")
+}
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
