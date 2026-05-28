@@ -1,0 +1,2644 @@
+import { useEffect, useMemo, useRef, useState } from "react"
+
+import { PanZoomContainer, type PanZoomContainerHandle } from "../PanZoomContainer"
+import { PanelLayout, type PanelLayoutPanel } from "../PanelLayout"
+import { ScreenshotFrameCell } from "../ScreenshotFrameCell"
+import {
+  StoryboardGrid,
+  TitleOnlyStoryboardFrame,
+  CheckIcon,
+  copyTextToClipboard,
+  type StoryboardGridFrame,
+  type StoryboardGridSequence,
+} from "../StoryboardGrid"
+import {
+  type StoryboardBranchRecord,
+  type StoryboardDocument,
+  type StoryboardStoryRecord,
+  type StoryboardTransitionRecord,
+  type StoryboardFrameRecord,
+  frameCaptureSet,
+  frameCaptureSetIds,
+  normalizeStoryboardDocument,
+} from "../storyboard-document"
+import type { StoryboardDebugComponentDefinition } from "./types"
+
+type DocumentResponse = {
+  ok: true
+  path: string
+  document: StoryboardDocument
+  mtimeMs: number
+}
+
+
+type StoryboardListEntry = {
+  name: string
+  root?: string
+  hasStoryboardJson?: boolean
+  hasStoryboardMarkdown?: boolean
+  storyboardUrl: string
+}
+
+type StoryboardListResponse = {
+  ok: true
+  accessServerUrl: string
+  rootDir: string | null
+  storyboards: StoryboardListEntry[]
+}
+
+type SnapshotJob = {
+  id: string
+  status: "queued" | "running" | "succeeded" | "failed"
+  startedAt: string
+  finishedAt?: string
+  exitCode?: number
+  stdout?: string
+  stderr?: string
+}
+
+type SelectedTarget =
+  | { kind: "storyboard" }
+  | { kind: "story"; storyId: string }
+  | { kind: "frame"; storyId: string; frameId: string; branchId?: string }
+
+type TransitionSelection = {
+  transitionId: string
+  selected: SelectedTarget
+}
+
+function PlusIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  )
+}
+
+function TrashIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M4 7h16M9.5 11.5v5M14.5 11.5v5M7.5 7l1 11.5a1 1 0 001 .9h5a1 1 0 001-.9L16.5 7M9 7l.7-1.6a1 1 0 01.9-.6h2.8a1 1 0 01.9.6L15 7"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+    </svg>
+  )
+}
+
+function ArrowRightIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M5 12h13m0 0-5-5m5 5-5 5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  )
+}
+
+function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M9 9.75A2.25 2.25 0 0111.25 7.5h6a2.25 2.25 0 012.25 2.25v8.5a2.25 2.25 0 01-2.25 2.25h-6A2.25 2.25 0 019 18.25v-8.5z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M15 7.5V6.25A2.25 2.25 0 0012.75 4h-6A2.25 2.25 0 004.5 6.25v8.5A2.25 2.25 0 006.75 17H9"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  )
+}
+
+const apiRoot = "/api/storyboard"
+const bundledDefaultStoryboardUrl = "http://127.0.0.1:8898/default-storyboard"
+const testFixtureStoryboardUrl = "http://127.0.0.1:8899/test-storyboard"
+const remoteStoryboardUrlStorageKey = "storyboard.debug.remoteStoryboardUrl"
+const frameSize = 220
+const screenshotFrameWidth = 720
+const screenshotFrameHeight = 720
+const screenshotActionWidth = 96
+const screenshotNextHeight = 120
+const frameStride = 220 + 72 + 16
+const rowStride = 220 + 96 + 24
+
+function findStory(document: StoryboardDocument | null, storyId: string) {
+  return document?.stories.find((story) => story.id === storyId) ?? null
+}
+
+function findBranch(story: StoryboardStoryRecord | null, branchId?: string) {
+  if (!story || !branchId) {
+    return null
+  }
+  return story.branches?.find((branch) => branch.id === branchId) ?? null
+}
+
+function findFrameRecord(document: StoryboardDocument | null, selected: SelectedTarget | null) {
+  if (!document || !selected || selected.kind !== "frame") {
+    return { story: null, branch: null, frame: null }
+  }
+  const story = findStory(document, selected.storyId)
+  const branch = findBranch(story, selected.branchId)
+  const frames = branch ? branch.frames : story?.frames ?? []
+  const frame = frames.find((entry) => entry.id === selected.frameId) ?? null
+  return { story, branch, frame }
+}
+
+function updateStory(
+  document: StoryboardDocument,
+  storyId: string,
+  updater: (story: StoryboardStoryRecord) => StoryboardStoryRecord,
+) {
+  return {
+    ...document,
+    stories: document.stories.map((story) =>
+      story.id === storyId ? updater(story) : story,
+    ),
+  }
+}
+
+function frameNextLabel(frame: StoryboardGridFrame & { transitions?: StoryboardTransitionRecord[] }) {
+  return frame.transitions?.[0]?.label ?? frame.nextLabel
+}
+
+function buildBranchRows(
+  branches: StoryboardBranchRecord[],
+  parentFrames: StoryboardFrameRecord[],
+  parentStartColumn: number,
+  consumed: Set<string>,
+): StoryboardGridSequence[] {
+  const rows: StoryboardGridSequence[] = []
+
+  for (let frameIndex = parentFrames.length - 1; frameIndex >= 0; frameIndex -= 1) {
+    const frame = parentFrames[frameIndex]
+    const childBranches = branches.filter(
+      (branch) => branch.sourceFrameId === frame.id && !consumed.has(branch.id),
+    )
+
+    childBranches.forEach((branch) => {
+      consumed.add(branch.id)
+      const branchStartColumn = parentStartColumn + frameIndex + 1
+      rows.push({
+        id: branch.id,
+        title: `Branch: ${branch.label}`,
+        sourceFrameId: branch.sourceFrameId,
+        startColumn: branchStartColumn,
+        startLabel: branch.label,
+        frames: branch.frames.map((entry) => ({
+          ...entry,
+          nextLabel: frameNextLabel(entry),
+        })),
+      })
+      rows.push(
+        ...buildBranchRows(
+          branches,
+          branch.frames,
+          branchStartColumn,
+          consumed,
+        ),
+      )
+    })
+  }
+
+  return rows
+}
+
+function documentToSequences(document: StoryboardDocument): StoryboardGridSequence[] {
+  return document.stories.flatMap((story) => {
+    const mainRow: StoryboardGridSequence = {
+      id: story.id,
+      title: story.title,
+      frames: story.frames.map((frame) => ({
+        ...frame,
+        nextLabel: frameNextLabel(frame),
+      })),
+    }
+
+    const consumedBranches = new Set<string>()
+    const branchRows = buildBranchRows(
+      story.branches ?? [],
+      story.frames,
+      0,
+      consumedBranches,
+    )
+
+    const orphanRows = (story.branches ?? [])
+      .filter((branch) => !consumedBranches.has(branch.id))
+      .map((branch) => ({
+        id: branch.id,
+        title: `Branch: ${branch.label}`,
+        sourceFrameId: branch.sourceFrameId,
+        startColumn: Math.max(story.frames.length - 1, 0),
+        startLabel: branch.label,
+        frames: branch.frames.map((entry) => ({
+          ...entry,
+          nextLabel: frameNextLabel(entry),
+        })),
+      }))
+
+    return [mainRow, ...branchRows, ...orphanRows]
+  })
+}
+
+function estimateContentWidth(sequences: StoryboardGridSequence[]) {
+  const maxColumns = Math.max(
+    1,
+    ...sequences.map(
+      (sequence) => (sequence.startColumn ?? 0) + sequence.frames.length,
+    ),
+  )
+  return maxColumns * frameStride + 240
+}
+
+function estimateContentHeight(sequences: StoryboardGridSequence[]) {
+  return Math.max(520, sequences.length * rowStride + 160)
+}
+
+function estimateGridWidth(
+  sequences: StoryboardGridSequence[],
+  frameWidth: number,
+  actionColumnWidth: number,
+) {
+  const maxColumns = Math.max(
+    1,
+    ...sequences.map(
+      (sequence) => (sequence.startColumn ?? 0) + sequence.frames.length,
+    ),
+  )
+  return maxColumns * frameWidth + Math.max(maxColumns - 1, 0) * (actionColumnWidth + 16) + 240
+}
+
+function estimateGridHeight(sequences: StoryboardGridSequence[], frameHeight: number, nextCellHeight: number) {
+  return Math.max(520, sequences.length * (frameHeight + nextCellHeight + 24) + 160)
+}
+
+function storyboardUrlToDocumentQuery(storyboardUrl: string) {
+  return `storyboardUrl=${encodeURIComponent(storyboardUrl)}`
+}
+
+function storyboardAccessServerUrl(storyboardUrl: string) {
+  try {
+    return new URL(storyboardUrl).origin
+  } catch {
+    return ""
+  }
+}
+
+function isAccessServerRootUrl(storyboardUrl: string) {
+  try {
+    const url = new URL(storyboardUrl)
+    const pathname = url.pathname.replace(/\/+$/u, "")
+    return pathname === ""
+  } catch {
+    return false
+  }
+}
+
+function hasFrameScreenshots(frame: Partial<StoryboardFrameRecord>) {
+  if (frame.captureSets) {
+    return Object.values(frame.captureSets).some(
+      (captureSet) =>
+        !!(
+          captureSet.screenshots?.desktop ||
+          captureSet.screenshots?.mobile ||
+          captureSet.screenshots?.square
+        ),
+    )
+  }
+  return !!(frame.screenshots?.desktop || frame.screenshots?.mobile || frame.screenshots?.square)
+}
+
+function frameScreenshots(
+  frame: Partial<StoryboardFrameRecord> | undefined,
+  captureSetId: string,
+) {
+  return frame ? frameCaptureSet(frame, captureSetId).screenshots : undefined
+}
+
+function nextCaptureSetId(frame: Partial<StoryboardFrameRecord>) {
+  const existingIds = new Set(frameCaptureSetIds(frame))
+  if (!existingIds.has("default")) {
+    return "default"
+  }
+  let index = 1
+  while (existingIds.has("set-" + index)) {
+    index += 1
+  }
+  return "set-" + index
+}
+
+function proxiedAssetUrl(storyboardUrl: string, assetPath: string | undefined) {
+  if (!storyboardUrl || !assetPath) {
+    return undefined
+  }
+  return `${apiRoot}/access-asset?storyboardUrl=${encodeURIComponent(storyboardUrl)}&path=${encodeURIComponent(assetPath)}`
+}
+
+function AssetImage({ src, alt }: { src: string; alt: string }) {
+  return <img alt={alt} className="h-full w-full object-contain bg-zinc-950" src={src} />
+}
+
+function AssetPreview({ src, alt }: { src?: string; alt: string }) {
+  return src ? (
+    <img alt={alt} className="h-full w-full object-contain bg-zinc-950" src={src} />
+  ) : (
+    <div className="flex h-full w-full items-center justify-center bg-zinc-950 text-[11px] uppercase tracking-[0.14em] text-white/35">
+      No image
+    </div>
+  )
+}
+
+function renderEditorFrame(
+  frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>,
+  storyboardUrl: string,
+  captureSetId: string,
+) {
+  if (hasFrameScreenshots(frame)) {
+    const screenshots = frameScreenshots(frame, captureSetId)
+    const desktop = proxiedAssetUrl(storyboardUrl, screenshots?.desktop)
+    const mobile = proxiedAssetUrl(storyboardUrl, screenshots?.mobile)
+    const square = proxiedAssetUrl(storyboardUrl, screenshots?.square)
+
+    return (
+      <ScreenshotFrameCell
+        description={frame.description}
+        desktop={desktop ? <AssetImage alt={`${frame.title} desktop`} src={desktop} /> : undefined}
+        mobile={mobile ? <AssetImage alt={`${frame.title} mobile`} src={mobile} /> : undefined}
+        square={square ? <AssetImage alt={`${frame.title} square`} src={square} /> : undefined}
+        title={frame.title}
+      />
+    )
+  }
+
+  return <TitleOnlyStoryboardFrame frame={frame} height={frameSize} width={frameSize} />
+}
+
+function storyboardRecordId(prefix: string) {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
+  }
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function storyboardNameFromUrl(storyboardUrl: string) {
+  try {
+    const parsed = new URL(storyboardUrl)
+    const parts = parsed.pathname.split("/").filter(Boolean)
+    return parts.at(-1) || "storyboard"
+  } catch {
+    return "storyboard"
+  }
+}
+
+function initialStoryboardUrlForSource(source: StoryboardEditorSource) {
+  if (source.storyboardUrl) {
+    return source.storyboardUrl
+  }
+  if (typeof window === "undefined") {
+    return ""
+  }
+  return window.localStorage.getItem(remoteStoryboardUrlStorageKey) ?? ""
+}
+
+function createFallbackStoryboardDocument(storyboardUrl: string): StoryboardDocument {
+  const storyboardName = storyboardNameFromUrl(storyboardUrl)
+  const storyId = "story-001"
+  const firstFrameId = "frame-001"
+  const secondFrameId = "frame-002"
+
+  return {
+    id: storyboardName,
+    title: "Untitled storyboard",
+    stories: [
+      {
+        id: storyId,
+        title: "Untitled story",
+        notes: "- Add the first real user story here.",
+        frames: [
+          {
+            id: firstFrameId,
+            title: "Starting frame",
+            description: "Describe what the user sees in this first step.",
+            transitions: [
+              {
+                id: "transition-001",
+                label: "Next",
+                kind: "user",
+                targetFrameId: secondFrameId,
+              },
+            ],
+          },
+          {
+            id: secondFrameId,
+            title: "Next frame",
+            description: "Describe the resulting state after the first transition.",
+            transitions: [],
+          },
+        ],
+        branches: [],
+      },
+    ],
+    humanNotes: [
+      {
+        id: "note-001",
+        targetType: "story",
+        targetId: storyId,
+        markdown:
+          "- Expand this story with real steps and transitions.\n- Add screenshots under assets/ when captures are available.",
+      },
+    ],
+  }
+}
+
+function cloneDefaultStoryboardTemplate(
+  templateDocument: StoryboardDocument,
+  storyboardUrl: string,
+): StoryboardDocument {
+  return {
+    ...templateDocument,
+    id: storyboardNameFromUrl(storyboardUrl),
+  }
+}
+
+function removeTransitionSubtree(
+  story: StoryboardStoryRecord,
+  targetFrameId: string,
+) {
+  const frameMap = new Map<string, StoryboardFrameRecord>()
+  story.frames.forEach((frame) => frameMap.set(frame.id, frame))
+  ;(story.branches ?? []).forEach((branch) =>
+    branch.frames.forEach((frame) => frameMap.set(frame.id, frame)),
+  )
+
+  const removedFrameIds = new Set<string>()
+
+  function visit(frameId: string) {
+    if (removedFrameIds.has(frameId)) {
+      return
+    }
+    removedFrameIds.add(frameId)
+    const frame = frameMap.get(frameId)
+    frame?.transitions?.forEach((transition) => {
+      if (frameMap.has(transition.targetFrameId)) {
+        visit(transition.targetFrameId)
+      }
+    })
+  }
+
+  visit(targetFrameId)
+
+  return {
+    ...story,
+    frames: story.frames.filter((frame) => !removedFrameIds.has(frame.id)),
+    branches: (story.branches ?? []).filter(
+      (branch) =>
+        !removedFrameIds.has(branch.sourceFrameId ?? "") &&
+        branch.frames.every((frame) => !removedFrameIds.has(frame.id)),
+    ).map((branch) => ({
+      ...branch,
+      frames: branch.frames.filter((frame) => !removedFrameIds.has(frame.id)),
+    })),
+  }
+}
+
+type StoryboardEditorSource = {
+  storyboardUrl: string
+}
+
+const remoteStoryboardWorkerPrompt = `Start the storyboard access server for the storyboard directory on this worker and give me the storyboard URL.
+
+Requirements:
+- Use Bun.
+- Use the single-file script at scripts/storyboard-access-server.ts from the agent-infrastructure repo.
+- Serve a storyboard directory root, not an individual file path.
+- Pick an available port if 8898 is busy.
+- Return the final storyboard URL in this form:
+  http://<worker-host>:<port>/<storyboard-name>
+
+Command shape:
+bun scripts/storyboard-access-server.ts --root /absolute/path/to/<storyboard-name> --port 8898
+
+Then reply with only:
+Storyboard URL: http://<worker-host>:<port>/<storyboard-name>`
+
+function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource }) {
+  const initialStoryboardUrl = initialStoryboardUrlForSource(source)
+  const [path, setPath] = useState("")
+  const [document, setDocument] = useState<StoryboardDocument | null>(null)
+  const [status, setStatus] = useState("Loading storyboard…")
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle")
+  const [snapshotJob, setSnapshotJob] = useState<SnapshotJob | null>(null)
+  const [missingStoryboard, setMissingStoryboard] = useState(false)
+  const [selected, setSelected] = useState<SelectedTarget | null>(null)
+  const [storySearch, setStorySearch] = useState("")
+  const [draftStoryboardUrl, setDraftStoryboardUrl] = useState(initialStoryboardUrl)
+  const [connectedStoryboardUrl, setConnectedStoryboardUrl] = useState(initialStoryboardUrl)
+  const [pendingDeleteStory, setPendingDeleteStory] = useState<null | {
+    storyId: string
+    anchorKey: string
+  }>(null)
+  const [pendingDeleteTransition, setPendingDeleteTransition] = useState<null | {
+    transitionId: string
+    anchorKey: string
+  }>(null)
+  const [focusedTransitionId, setFocusedTransitionId] = useState<string | null>(null)
+  const [workerPromptCopyState, setWorkerPromptCopyState] = useState<"idle" | "copied" | "failed">("idle")
+  const [markdownImportError, setMarkdownImportError] = useState<string | null>(null)
+  const [markdownImportCopyState, setMarkdownImportCopyState] = useState<"idle" | "copied" | "failed">("idle")
+  const [storyboardList, setStoryboardList] = useState<StoryboardListEntry[]>([])
+  const [storyboardListRootDir, setStoryboardListRootDir] = useState<string | null>(null)
+  const [storyboardListError, setStoryboardListError] = useState<string | null>(null)
+  const panZoomRef = useRef<PanZoomContainerHandle>(null)
+  const saveTimeoutRef = useRef<number | undefined>(undefined)
+  const skipAutosaveRef = useRef(true)
+  const saveInFlightRef = useRef(false)
+  const pendingSaveRef = useRef<StoryboardDocument | null>(null)
+  const lastSavedRef = useRef("")
+  const transitionRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const [activeCaptureSetId, setActiveCaptureSetId] = useState("default")
+  const isConnected = connectedStoryboardUrl.trim().length > 0
+  const isAccessServerRootMode = useMemo(
+    () => isConnected && isAccessServerRootUrl(connectedStoryboardUrl),
+    [connectedStoryboardUrl, isConnected],
+  )
+  const sourceQuery = useMemo(
+    () => (isConnected ? storyboardUrlToDocumentQuery(connectedStoryboardUrl) : ""),
+    [connectedStoryboardUrl, isConnected],
+  )
+
+  async function loadDocument() {
+    if (!isConnected) {
+      setPath("")
+      setDocument(null)
+      setMissingStoryboard(false)
+      setSelected(null)
+      setSnapshotJob(null)
+      setMarkdownImportError(null)
+      setStoryboardList([])
+      setStoryboardListRootDir(null)
+      setStoryboardListError(null)
+      setStatus("Enter a storyboard URL to connect")
+      setSaveState("idle")
+      return
+    }
+
+    if (isAccessServerRootMode) {
+      setStatus("Loading storyboards…")
+      setDocument(null)
+      setMissingStoryboard(false)
+      setSelected(null)
+      const response = await fetch(`${apiRoot}/list?${sourceQuery}`)
+      if (!response.ok) {
+        setStoryboardList([])
+        setStoryboardListRootDir(null)
+        setStoryboardListError(await response.text())
+        setStatus("Storyboard list failed")
+        return
+      }
+      const payload = (await response.json()) as StoryboardListResponse
+      setStoryboardList(payload.storyboards)
+      setStoryboardListRootDir(payload.rootDir)
+      setStoryboardListError(null)
+      setStatus("Loaded storyboard list")
+      setSaveState("idle")
+      return
+    }
+
+    setStatus("Loading storyboard…")
+    const response = await fetch(`${apiRoot}/document?${sourceQuery}`)
+    if (!response.ok) {
+      const message = await response.text()
+      if (message.includes("storyboard.json not found")) {
+        setMissingStoryboard(true)
+        setDocument(null)
+        setSelected(null)
+        setStatus("Storyboard not initialized")
+        setSaveState("idle")
+        return
+      }
+      setMissingStoryboard(false)
+      setStatus(message)
+      return
+    }
+    const payload = (await response.json()) as DocumentResponse
+    setMissingStoryboard(false)
+    setMarkdownImportError(null)
+    setStoryboardList([])
+    setStoryboardListRootDir(null)
+    setStoryboardListError(null)
+    skipAutosaveRef.current = true
+    pendingSaveRef.current = null
+    lastSavedRef.current = JSON.stringify(payload.document)
+    setPath(payload.path)
+    setDocument(normalizeStoryboardDocument(payload.document))
+    setSelected(
+      payload.document.stories[0]
+        ? { kind: "story", storyId: payload.document.stories[0].id }
+        : null,
+    )
+    setStatus("Loaded")
+    setSaveState("idle")
+  }
+
+  useEffect(() => {
+    if (!isConnected) {
+      void loadDocument()
+      return
+    }
+    void loadDocument()
+  }, [isConnected, sourceQuery])
+
+  useEffect(() => {
+    if (source.storyboardUrl) {
+      return
+    }
+    if (typeof window === "undefined") {
+      return
+    }
+    const trimmedStoryboardUrl = connectedStoryboardUrl.trim()
+    if (!trimmedStoryboardUrl) {
+      window.localStorage.removeItem(remoteStoryboardUrlStorageKey)
+      return
+    }
+    window.localStorage.setItem(remoteStoryboardUrlStorageKey, trimmedStoryboardUrl)
+  }, [connectedStoryboardUrl, source.storyboardUrl])
+
+  async function persistDocument(nextDocument: StoryboardDocument) {
+    const serialized = JSON.stringify(nextDocument)
+    if (saveInFlightRef.current) {
+      pendingSaveRef.current = nextDocument
+      return
+    }
+    if (serialized === lastSavedRef.current) {
+      setSaveState("saved")
+      setStatus("Saved")
+      return
+    }
+
+    saveInFlightRef.current = true
+    setSaveState("saving")
+    const response = await fetch(`${apiRoot}/document?${sourceQuery}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: serialized,
+      })
+    if (!response.ok) {
+      saveInFlightRef.current = false
+      setSaveState("error")
+      setStatus(await response.text())
+      return
+    }
+    const payload = (await response.json()) as DocumentResponse
+    saveInFlightRef.current = false
+    skipAutosaveRef.current = true
+    lastSavedRef.current = JSON.stringify(payload.document)
+    setDocument(normalizeStoryboardDocument(payload.document))
+    setPath(payload.path)
+    setSaveState("saved")
+    setStatus("Saved")
+
+    const pendingDocument = pendingSaveRef.current
+    pendingSaveRef.current = null
+    if (
+      pendingDocument &&
+      JSON.stringify(pendingDocument) !== lastSavedRef.current
+    ) {
+      void persistDocument(pendingDocument)
+    }
+  }
+
+  useEffect(() => {
+    if (!document) {
+      return
+    }
+    if (skipAutosaveRef.current) {
+      skipAutosaveRef.current = false
+      return
+    }
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current)
+    }
+    setSaveState("idle")
+    setStatus("Editing")
+    saveTimeoutRef.current = window.setTimeout(() => {
+      void persistDocument(document)
+    }, 900)
+    return () => {
+      if (saveTimeoutRef.current) {
+        window.clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [document, sourceQuery])
+
+  async function requestSnapshotRun() {
+    if (!isConnected) {
+      setStatus("Connect a storyboard URL first")
+      return
+    }
+    setStatus("Requesting snapshot run…")
+    const response = await fetch(`${apiRoot}/snapshot-jobs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        storyboardPath: path || null,
+      }),
+    })
+    if (!response.ok) {
+      setStatus(await response.text())
+      return
+    }
+    const payload = (await response.json()) as { ok: true; job: SnapshotJob }
+    setSnapshotJob(payload.job)
+    setStatus(`Snapshot job ${payload.job.id} started`)
+  }
+
+  async function initializeStoryboard() {
+    if (!isConnected) {
+      return
+    }
+    setStatus("Initializing storyboard…")
+    const response = await fetch(`${apiRoot}/initialize`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        storyboardUrl: connectedStoryboardUrl,
+      }),
+    })
+    if (!response.ok) {
+      setStatus(await response.text())
+      return
+    }
+    const payload = (await response.json()) as DocumentResponse
+    skipAutosaveRef.current = true
+    setMissingStoryboard(false)
+    setDocument(payload.document)
+    const firstStoryId = payload.document.stories[0]?.id ?? null
+    setSelected(firstStoryId ? { kind: "story", storyId: firstStoryId } : { kind: "storyboard" })
+    setStatus("")
+  }
+
+  async function importMarkdown() {
+    if (!isConnected) {
+      return
+    }
+    setMarkdownImportError(null)
+    setStatus("Importing markdown…")
+    const response = await fetch(`${apiRoot}/import-markdown`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        storyboardUrl: connectedStoryboardUrl,
+      }),
+    })
+    const contentType = response.headers.get("content-type") ?? ""
+    if (!response.ok) {
+      if (contentType.includes("application/json")) {
+        const payload = (await response.json()) as { message?: string }
+        const message = payload.message ?? "Import failed"
+        setMarkdownImportError(message)
+        setStatus("Import failed")
+        return
+      }
+      const message = await response.text()
+      setMarkdownImportError(message)
+      setStatus("Import failed")
+      return
+    }
+    const payload = (await response.json()) as DocumentResponse
+    skipAutosaveRef.current = true
+    pendingSaveRef.current = null
+    lastSavedRef.current = JSON.stringify(payload.document)
+    setPath(payload.path)
+    setDocument(normalizeStoryboardDocument(payload.document))
+    setSelected(
+      payload.document.stories[0]
+        ? { kind: "story", storyId: payload.document.stories[0].id }
+        : { kind: "storyboard" },
+    )
+    setStatus("Imported markdown")
+    setSaveState("saved")
+  }
+
+  async function copyMarkdownImportError() {
+    if (!markdownImportError) {
+      return
+    }
+    const copied = await copyTextToClipboard(markdownImportError)
+    setMarkdownImportCopyState(copied ? "copied" : "failed")
+    window.setTimeout(() => {
+      setMarkdownImportCopyState("idle")
+    }, 1800)
+  }
+
+  async function copyWorkerPrompt() {
+    const copied = await copyTextToClipboard(remoteStoryboardWorkerPrompt)
+    setWorkerPromptCopyState(copied ? "copied" : "failed")
+    window.setTimeout(() => {
+      setWorkerPromptCopyState("idle")
+    }, 1800)
+  }
+
+  useEffect(() => {
+    if (
+      !snapshotJob ||
+      snapshotJob.status === "succeeded" ||
+      snapshotJob.status === "failed"
+    ) {
+      return
+    }
+    const timer = window.setInterval(async () => {
+      const response = await fetch(`${apiRoot}/snapshot-jobs/${snapshotJob.id}`)
+      if (!response.ok) {
+        return
+      }
+      const payload = (await response.json()) as { ok: true; job: SnapshotJob }
+      setSnapshotJob(payload.job)
+      if (payload.job.status === "succeeded") {
+        setStatus(`Snapshot job ${payload.job.id} finished`)
+      }
+      if (payload.job.status === "failed") {
+        setStatus(`Snapshot job ${payload.job.id} failed`)
+      }
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [snapshotJob])
+
+  const storyCount = document?.stories.length ?? 0
+  const frameCount =
+    document?.stories.reduce((total, story) => {
+      const branchFrames = (story.branches ?? []).reduce(
+        (branchTotal, branch) => branchTotal + branch.frames.length,
+        0,
+      )
+      return total + story.frames.length + branchFrames
+    }, 0) ?? 0
+  const isRemoteScenario = source.storyboardUrl === ""
+  const isEmptyStoryboard = isConnected && (missingStoryboard || (!!document && document.stories.length === 0))
+  const headerStatus =
+    saveState === "error"
+      ? "Save failed"
+      : snapshotJob?.status === "running"
+        ? "Running snapshots…"
+        : snapshotJob?.status === "failed"
+          ? "Snapshot run failed"
+          : null
+  const sequences = useMemo(
+    () => (document ? documentToSequences(document) : []),
+    [document],
+  )
+  const availableCaptureSetIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const story of document?.stories ?? []) {
+      for (const frame of story.frames) {
+        for (const id of frameCaptureSetIds(frame)) ids.add(id)
+      }
+      for (const branch of story.branches ?? []) {
+        for (const frame of branch.frames) {
+          for (const id of frameCaptureSetIds(frame)) ids.add(id)
+        }
+      }
+    }
+    return [...ids]
+  }, [document])
+  useEffect(() => {
+    if (availableCaptureSetIds.length === 0) {
+      if (activeCaptureSetId !== "default") setActiveCaptureSetId("default")
+      return
+    }
+    if (!availableCaptureSetIds.includes(activeCaptureSetId)) {
+      setActiveCaptureSetId(
+        availableCaptureSetIds.includes("default") ? "default" : availableCaptureSetIds[0],
+      )
+    }
+  }, [activeCaptureSetId, availableCaptureSetIds])
+  const usesScreenshotFrames = useMemo(
+    () => sequences.some((sequence) => sequence.frames.some((frame) => hasFrameScreenshots(frame as Partial<StoryboardFrameRecord>))),
+    [sequences],
+  )
+  const editorFrameWidth = usesScreenshotFrames ? screenshotFrameWidth : frameSize
+  const editorFrameHeight = usesScreenshotFrames ? screenshotFrameHeight : frameSize
+  const editorActionWidth = usesScreenshotFrames ? screenshotActionWidth : 72
+  const editorNextHeight = usesScreenshotFrames ? screenshotNextHeight : 96
+  const selectedFrameId = selected?.kind === "frame" ? selected.frameId : undefined
+  const selectedStory =
+    selected?.kind === "story"
+      ? findStory(document, selected.storyId)
+      : selected?.kind === "frame"
+        ? findStory(document, selected.storyId)
+        : null
+  const { branch: selectedBranch, frame: selectedFrame } = findFrameRecord(
+    document,
+    selected,
+  )
+  const selectedFrameTransitions = selectedFrame?.transitions ?? []
+  const selectedFrameCaptureSetIds = frameCaptureSetIds(selectedFrame ?? {})
+  const selectedFrameCapture = frameCaptureSet(selectedFrame ?? {}, activeCaptureSetId)
+  const selectedFrameScreenshotUrls = {
+    desktop: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.desktop),
+    mobile: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.mobile),
+    square: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.square),
+  }
+  const storyFrameOptions = selectedStory
+    ? [
+        ...selectedStory.frames.map((frame) => ({ id: frame.id, title: frame.title })),
+        ...(selectedStory.branches ?? []).flatMap((branch) =>
+          branch.frames.map((frame) => ({ id: frame.id, title: frame.title })),
+        ),
+      ]
+    : []
+  const filteredStories = useMemo(() => {
+    const query = storySearch.trim().toLowerCase()
+    if (!query) {
+      return document?.stories ?? []
+    }
+    return (document?.stories ?? []).filter((story) => story.title.toLowerCase().includes(query))
+  }, [document?.stories, storySearch])
+
+  const navigatorPanel = useMemo<PanelLayoutPanel>(
+    () => ({
+      id: "story-navigator",
+      title: "Stories",
+      side: "left",
+      initialWidth: 300,
+      minWidth: 240,
+      maxWidth: 420,
+      content: (
+        <div className="flex h-full min-h-0 flex-col gap-4 bg-zinc-950 p-4">
+          <div className="min-h-0 flex-1 overflow-auto rounded border border-white/10 bg-black/30 p-3 text-xs text-white/65">
+            <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-white/40">
+              Stories
+            </div>
+            <div className="mb-3 flex items-center gap-2">
+              <input
+                className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-cyan-400"
+                onChange={(event) => setStorySearch(event.currentTarget.value)}
+                placeholder="Search stories"
+                value={storySearch}
+              />
+              <button
+                aria-label="Add story"
+                className="flex h-8 w-8 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                onClick={addStory}
+                title="Add story"
+                type="button"
+              >
+                <PlusIcon />
+              </button>
+            </div>
+            <div className="space-y-3">
+              {filteredStories.map((story) => (
+                <div
+                  className={`rounded border px-3 py-2 ${
+                    selected?.kind === "story" && selected.storyId === story.id
+                      ? "border-cyan-300/50 bg-cyan-200/10 text-cyan-100"
+                      : "border-white/10 bg-white/5 text-white/70"
+                  }`}
+                  key={story.id}
+                >
+                  <div className="flex items-start gap-2">
+                    <button
+                      className="min-w-0 flex-1 text-left"
+                      onClick={() => {
+                        setFocusedTransitionId(null)
+                        setSelected({ kind: "story", storyId: story.id })
+                      }}
+                      type="button"
+                    >
+                      <div className="font-medium">{story.title}</div>
+                      <div className="mt-1 text-white/45">
+                        {story.frames.length} main frames, {(story.branches ?? []).length} branches
+                      </div>
+                    </button>
+                    {renderStoryDeleteButton(story.id, story.title, `navigator:${story.id}`)}
+                  </div>
+                </div>
+              ))}
+              {filteredStories.length === 0 ? (
+                <div className="rounded border border-dashed border-white/10 px-3 py-4 text-sm text-white/40">
+                  No matching stories.
+                </div>
+              ) : null}
+              <div className="flex justify-end pt-1">
+                <button
+                  aria-label="Add story"
+                  className="flex h-8 w-8 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                  onClick={addStory}
+                  title="Add story"
+                  type="button"
+                >
+                  <PlusIcon />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    }),
+    [filteredStories, pendingDeleteStory, selected, storySearch],
+  )
+
+  const inspectorPanel = useMemo<PanelLayoutPanel>(
+    () => ({
+      id: "frame-inspector",
+      title: "Inspector",
+      initialWidth: 380,
+      minWidth: 300,
+      maxWidth: 760,
+      content: (
+        <div className="flex h-full min-h-0 flex-col bg-zinc-950">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
+              Inspector
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
+              <button
+                className={`rounded border px-2 py-1 transition ${
+                  selected?.kind === "storyboard"
+                    ? "border-cyan-300/40 bg-cyan-200/10 text-cyan-100"
+                    : "border-white/10 bg-black/30 hover:border-cyan-300/40 hover:text-cyan-100"
+                }`}
+                onClick={() => {
+                  setFocusedTransitionId(null)
+                  setSelected({ kind: "storyboard" })
+                }}
+                type="button"
+              >
+                Storyboard
+              </button>
+              {selectedStory ? (
+                <>
+                  <span className="text-white/30">&gt;</span>
+                  <button
+                    className={`rounded border px-2 py-1 transition ${
+                      selected?.kind === "story"
+                        ? "border-cyan-300/40 bg-cyan-200/10 text-cyan-100"
+                        : "border-white/10 bg-black/30 hover:border-cyan-300/40 hover:text-cyan-100"
+                    }`}
+                    onClick={() => {
+                      setFocusedTransitionId(null)
+                      setSelected({ kind: "story", storyId: selectedStory.id })
+                    }}
+                    type="button"
+                  >
+                    {selectedStory.title}
+                  </button>
+                </>
+              ) : null}
+              {selected?.kind === "frame" && selectedFrame ? (
+                <>
+                  <span className="text-white/30">&gt;</span>
+                  <button
+                    className="rounded border border-cyan-300/40 bg-cyan-200/10 px-2 py-1 text-cyan-100 transition"
+                    onClick={() => {
+                      setFocusedTransitionId(null)
+                      setSelected({
+                        kind: "frame",
+                        storyId: selected.storyId,
+                        frameId: selected.frameId,
+                        branchId: selected.branchId,
+                      })
+                    }}
+                    type="button"
+                  >
+                    {selectedFrame.title}
+                  </button>
+                </>
+              ) : null}
+            </div>
+            <div className="mt-2 text-sm text-white/55">
+              {selected?.kind === "story"
+                ? "Editing story metadata"
+                : selected?.kind === "storyboard"
+                  ? "Editing storyboard metadata"
+                : selected?.kind === "frame"
+                  ? "Editing frame content"
+                  : "Select a story or frame"}
+            </div>
+          </div>
+
+          {selected?.kind === "storyboard" && document ? (
+            <div className="space-y-4">
+              <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+                <div>{document.stories.length} stories</div>
+                <div>{frameCount} frames total</div>
+              </div>
+              <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    User stories
+                  </div>
+                  <button
+                    aria-label="Add story"
+                    className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                    onClick={addStory}
+                    title="Add story"
+                    type="button"
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
+                <input
+                  className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                  onChange={(event) => setStorySearch(event.currentTarget.value)}
+                  placeholder="Search stories"
+                  value={storySearch}
+                />
+                <div className="space-y-2">
+                  {filteredStories.map((story) => (
+                    <div className="flex items-start gap-2 rounded border border-white/10 bg-black/20 p-3" key={story.id}>
+                      <button
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => {
+                          setFocusedTransitionId(null)
+                          setSelected({ kind: "story", storyId: story.id })
+                        }}
+                        type="button"
+                      >
+                        <div className="text-sm font-medium text-white">{story.title}</div>
+                        <div className="mt-1 text-xs text-white/45">
+                          {story.frames.length} main frames, {(story.branches ?? []).length} branches
+                        </div>
+                      </button>
+                      {renderStoryDeleteButton(story.id, story.title, `storyboard-inspector:${story.id}`)}
+                    </div>
+                  ))}
+                  {filteredStories.length === 0 ? (
+                    <div className="rounded border border-dashed border-white/10 px-3 py-4 text-sm text-white/40">
+                      No matching stories.
+                    </div>
+                  ) : null}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      aria-label="Add story"
+                      className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                      onClick={addStory}
+                      title="Add story"
+                      type="button"
+                    >
+                      <PlusIcon />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {selected?.kind === "story" && selectedStory ? (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                {renderStoryDeleteButton(
+                  selectedStory.id,
+                  selectedStory.title,
+                  `story-inspector:${selectedStory.id}`,
+                  "flex h-8 w-8 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100",
+                )}
+              </div>
+              <label className="block">
+                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                  Story title
+                </div>
+                <input
+                  className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                  onChange={(event) => updateCurrentStoryTitle(event.currentTarget.value)}
+                  value={selectedStory.title}
+                />
+              </label>
+              <label className="block">
+                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                  Notes
+                </div>
+                <textarea
+                  className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                  onChange={(event) =>
+                    updateCurrentStory((story) => ({
+                      ...story,
+                      notes: event.currentTarget.value || undefined,
+                    }))
+                  }
+                  value={selectedStory.notes ?? ""}
+                />
+              </label>
+              <div className="rounded border border-white/10 bg-white/5 p-3">
+                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                  First frame
+                </div>
+                {selectedStory.frames[0] ? (
+                  <button
+                    className="block w-full rounded border border-white/10 bg-black/30 px-3 py-3 text-left transition hover:border-cyan-300/40 hover:bg-cyan-200/5"
+                    onClick={() => {
+                      setFocusedTransitionId(null)
+                      setSelected({
+                        kind: "frame",
+                        storyId: selectedStory.id,
+                        frameId: selectedStory.frames[0].id,
+                      })
+                    }}
+                    type="button"
+                  >
+                    <div className="text-sm font-medium text-white">
+                      {selectedStory.frames[0].title}
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Open the first frame in the frame inspector.
+                    </div>
+                  </button>
+                ) : (
+                  <div className="rounded border border-white/10 bg-black/30 px-3 py-3 text-sm text-white/45">
+                    No first frame yet.
+                  </div>
+                )}
+              </div>
+              <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+                {selectedStory.frames.length} main frames, {(selectedStory.branches ?? []).length} branch rows
+              </div>
+            </div>
+          ) : null}
+
+          {selected?.kind === "frame" && selectedFrame ? (
+            <div className="space-y-4">
+              <label className="block">
+                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                  Frame title
+                </div>
+                <textarea
+                  className="min-h-[96px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                  onChange={(event) =>
+                    updateCurrentFrame((frame) => ({
+                      ...frame,
+                      title: event.currentTarget.value,
+                    }))
+                  }
+                  value={selectedFrame.title}
+                />
+              </label>
+
+              <label className="block">
+                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                  Visual description
+                </div>
+                <textarea
+                  className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                  onChange={(event) =>
+                    updateCurrentFrame((frame) => ({
+                      ...frame,
+                      description: event.currentTarget.value || undefined,
+                    }))
+                  }
+                  value={selectedFrame.description ?? ""}
+                />
+              </label>
+
+              <label className="block">
+                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                  Notes
+                </div>
+                <textarea
+                  className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                  onChange={(event) =>
+                    updateCurrentFrame((frame) => ({
+                      ...frame,
+                      notes: event.currentTarget.value || undefined,
+                    }))
+                  }
+                  value={selectedFrame.notes ?? ""}
+                />
+              </label>
+
+              <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    Capture sets
+                  </div>
+                  <button
+                    aria-label="Add capture set"
+                    className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                    onClick={addCaptureSet}
+                    title="Add capture set"
+                    type="button"
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {selectedFrameCaptureSetIds.map((captureSetId) => (
+                    <button
+                      className={
+                        captureSetId === activeCaptureSetId
+                          ? "rounded border border-cyan-300/40 bg-cyan-300/10 px-2 py-1 text-xs uppercase tracking-[0.14em] text-cyan-100"
+                          : "rounded border border-white/10 bg-black/30 px-2 py-1 text-xs uppercase tracking-[0.14em] text-white/55 transition hover:border-cyan-300/30 hover:text-cyan-100"
+                      }
+                      key={captureSetId}
+                      onClick={() => setActiveCaptureSetId(captureSetId)}
+                      type="button"
+                    >
+                      {captureSetId}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-end gap-3">
+                  <label className="block min-w-0 flex-1">
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                      Capture set name
+                    </div>
+                    <input
+                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                      onChange={(event) => renameActiveCaptureSet(event.currentTarget.value)}
+                      value={activeCaptureSetId}
+                    />
+                  </label>
+                  {selectedFrameCaptureSetIds.length > 1 ? (
+                    <button
+                      aria-label="Remove capture set"
+                      className="flex h-9 w-9 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100"
+                      onClick={removeActiveCaptureSet}
+                      title="Remove capture set"
+                      type="button"
+                    >
+                      <TrashIcon />
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-3 xl:grid-cols-3">
+                  <label className="block">
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                      Desktop
+                    </div>
+                    <input
+                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                      onChange={(event) =>
+                        updateCurrentFrame((frame) => ({
+                          ...frame,
+                          captureSets: {
+                            ...(frame.captureSets ?? {}),
+                            [activeCaptureSetId]: {
+                              ...(frame.captureSets?.[activeCaptureSetId] ?? {}),
+                              screenshots: {
+                                ...(frame.captureSets?.[activeCaptureSetId]?.screenshots ?? {}),
+                                desktop: event.currentTarget.value || undefined,
+                              },
+                            },
+                          },
+                          screenshots: undefined,
+                        }))
+                      }
+                      placeholder="./assets/frame-001.desktop.png"
+                      value={selectedFrameCapture.screenshots?.desktop ?? ""}
+                    />
+                    <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
+                      <AssetPreview alt={selectedFrame.title + " desktop preview"} src={selectedFrameScreenshotUrls.desktop} />
+                    </div>
+                  </label>
+
+                  <label className="block">
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                      Mobile
+                    </div>
+                    <input
+                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                      onChange={(event) =>
+                        updateCurrentFrame((frame) => ({
+                          ...frame,
+                          captureSets: {
+                            ...(frame.captureSets ?? {}),
+                            [activeCaptureSetId]: {
+                              ...(frame.captureSets?.[activeCaptureSetId] ?? {}),
+                              screenshots: {
+                                ...(frame.captureSets?.[activeCaptureSetId]?.screenshots ?? {}),
+                                mobile: event.currentTarget.value || undefined,
+                              },
+                            },
+                          },
+                          screenshots: undefined,
+                        }))
+                      }
+                      placeholder="./assets/frame-001.mobile.png"
+                      value={selectedFrameCapture.screenshots?.mobile ?? ""}
+                    />
+                    <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
+                      <AssetPreview alt={selectedFrame.title + " mobile preview"} src={selectedFrameScreenshotUrls.mobile} />
+                    </div>
+                  </label>
+
+                  <label className="block">
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                      Square
+                    </div>
+                    <input
+                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                      onChange={(event) =>
+                        updateCurrentFrame((frame) => ({
+                          ...frame,
+                          captureSets: {
+                            ...(frame.captureSets ?? {}),
+                            [activeCaptureSetId]: {
+                              ...(frame.captureSets?.[activeCaptureSetId] ?? {}),
+                              screenshots: {
+                                ...(frame.captureSets?.[activeCaptureSetId]?.screenshots ?? {}),
+                                square: event.currentTarget.value || undefined,
+                              },
+                            },
+                          },
+                          screenshots: undefined,
+                        }))
+                      }
+                      placeholder="./assets/frame-001.square.png"
+                      value={selectedFrameCapture.screenshots?.square ?? ""}
+                    />
+                    <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
+                      <AssetPreview alt={selectedFrame.title + " square preview"} src={selectedFrameScreenshotUrls.square} />
+                    </div>
+                  </label>
+                </div>
+              </div>
+              {selectedBranch ? (
+                <label className="block">
+                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                    Branch label
+                  </div>
+                  <input
+                    className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                    onChange={(event) => updateCurrentBranchLabel(event.currentTarget.value)}
+                    value={selectedBranch.label}
+                  />
+                </label>
+              ) : null}
+
+              <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs uppercase tracking-[0.14em] text-white/45">
+                    Transitions
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      aria-label="Add transition"
+                      className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                      onClick={addTransition}
+                      title={selectedFrameTransitions.length === 0 ? "Add next transition" : "Add transition"}
+                      type="button"
+                    >
+                      <PlusIcon />
+                    </button>
+                  </div>
+                </div>
+                {selectedFrameTransitions.length > 0 ? (
+                  selectedFrameTransitions.map((transition, index) => (
+                    <div
+                      className={`space-y-2 rounded border bg-black/20 p-3 ${
+                        focusedTransitionId === transition.id
+                          ? "border-cyan-300/50 shadow-[0_0_0_1px_rgba(103,232,249,0.35)]"
+                          : "border-white/10"
+                      }`}
+                      data-transition-editor={transition.id}
+                      key={transition.id}
+                      ref={(node) => {
+                        transitionRefs.current[transition.id] = node
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-white/35">
+                          {index === 0 ? "Primary transition" : `Side transition ${index}`}
+                        </div>
+                        {renderTransitionDeleteButton(
+                          transition.id,
+                          `transition:${selectedFrame.id}:${transition.id}`,
+                          index === 0 && selectedFrameTransitions.length > 1,
+                          "Delete side transitions first so the main path stays coherent",
+                        )}
+                      </div>
+                      <label className="block">
+                        <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                          Label
+                        </div>
+                        <input
+                          className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                          onChange={(event) =>
+                            updateCurrentTransition(transition.id, (current) => ({
+                              ...current,
+                              label: event.currentTarget.value,
+                            }))
+                          }
+                          value={transition.label}
+                        />
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                          <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                            Kind
+                          </div>
+                          <select
+                            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                            onChange={(event) =>
+                              updateCurrentTransition(transition.id, (current) => ({
+                                ...current,
+                                kind: event.currentTarget.value as StoryboardTransitionRecord["kind"],
+                              }))
+                            }
+                            value={transition.kind}
+                          >
+                            <option value="user">user</option>
+                            <option value="system">system</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                            Target frame
+                          </div>
+                          <select
+                            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                            onChange={(event) =>
+                              updateCurrentTransition(transition.id, (current) => ({
+                                ...current,
+                                targetFrameId: event.currentTarget.value,
+                              }))
+                            }
+                            value={transition.targetFrameId}
+                          >
+                            {storyFrameOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-sm text-white/45">No transitions yet for this frame.</div>
+                )}
+                <div className="flex justify-end gap-2 border-t border-white/10 pt-3">
+                  <button
+                    aria-label="Add transition"
+                    className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                    onClick={addTransition}
+                    title={selectedFrameTransitions.length === 0 ? "Add next transition" : "Add transition"}
+                    type="button"
+                  >
+                    <PlusIcon />
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+                <div>Story: {selectedStory?.title ?? "-"}</div>
+                <div>Frame id: {selectedFrame.id}</div>
+                {selectedBranch?.sourceFrameId ? (
+                  <div>Branch source: {selectedBranch.sourceFrameId}</div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {snapshotJob ? (
+            <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+              Snapshot job: {snapshotJob.status}
+            </div>
+          ) : null}
+          </div>
+        </div>
+      ),
+    }),
+    [
+      pendingDeleteStory,
+      pendingDeleteTransition,
+      selected,
+      selectedBranch,
+      selectedFrame,
+      selectedFrameTransitions,
+      selectedStory,
+      snapshotJob,
+      storyFrameOptions,
+      storySearch,
+    ],
+  )
+
+  function updateCurrentStory(
+    updater: (story: StoryboardStoryRecord) => StoryboardStoryRecord,
+  ) {
+    if (!document || !selected || selected.kind !== "story") {
+      return
+    }
+    setDocument(
+      updateStory(document, selected.storyId, updater),
+    )
+  }
+
+  function updateCurrentStoryTitle(value: string) {
+    updateCurrentStory((story) => ({
+      ...story,
+      title: value,
+    }))
+  }
+
+  function addStory() {
+    const storyId = storyboardRecordId("story")
+    const firstFrameId = storyboardRecordId(`${storyId}-frame`)
+    const nextStory: StoryboardStoryRecord = {
+      id: storyId,
+      title: "Untitled story",
+      notes: "",
+      frames: [
+        {
+          id: firstFrameId,
+          title: "Starting frame",
+          description: "Describe the first visible state for this story.",
+          notes: "",
+          transitions: [],
+        },
+      ],
+      branches: [],
+    }
+    setDocument((current) =>
+      current
+        ? {
+            ...current,
+            stories: [...current.stories, nextStory],
+          }
+        : current,
+    )
+    setFocusedTransitionId(null)
+    setPendingDeleteStory(null)
+    setSelected({ kind: "story", storyId })
+    setStorySearch("")
+  }
+
+  function requestDeleteStory(storyId: string, anchorKey: string) {
+    setPendingDeleteStory((current) =>
+      current && current.storyId === storyId && current.anchorKey === anchorKey
+        ? null
+        : { storyId, anchorKey },
+    )
+  }
+
+  function confirmDeleteStory(storyId: string) {
+    setPendingDeleteStory(null)
+    deleteStory(storyId)
+  }
+
+  function deleteStory(storyId: string) {
+    setDocument((current) => {
+      if (!current) {
+        return current
+      }
+      const nextStories = current.stories.filter((story) => story.id !== storyId)
+      if (nextStories.length === current.stories.length) {
+        return current
+      }
+      return {
+        ...current,
+        stories: nextStories,
+      }
+    })
+    setFocusedTransitionId(null)
+    setPendingDeleteStory(null)
+    setPendingDeleteTransition(null)
+    setSelected((current) => {
+      if (!current) {
+        return { kind: "storyboard" }
+      }
+      if (current.kind === "storyboard") {
+        return current
+      }
+      if (current.storyId === storyId) {
+        return { kind: "storyboard" }
+      }
+      return current
+    })
+  }
+
+  function renderStoryDeleteButton(storyId: string, storyTitle: string, anchorKey: string, buttonClassName = "flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100") {
+    const confirming = pendingDeleteStory?.storyId === storyId && pendingDeleteStory.anchorKey === anchorKey
+
+    return (
+      <div className="relative flex-none">
+        <button
+          aria-label={`Delete ${storyTitle}`}
+          className={buttonClassName}
+          onClick={() => requestDeleteStory(storyId, anchorKey)}
+          title="Delete story"
+          type="button"
+        >
+          <TrashIcon />
+        </button>
+        {confirming ? (
+          <div className="absolute right-0 top-full z-30 mt-2 w-44 rounded border border-rose-300/30 bg-zinc-950/98 p-2 shadow-[0_12px_28px_rgba(0,0,0,0.42)]">
+            <div className="text-xs text-white/75">Delete this story?</div>
+            <div className="mt-2 flex justify-end gap-2">
+              <button
+                className="rounded border border-white/10 px-2 py-1 text-[11px] text-white/70 transition hover:border-white/20 hover:text-white"
+                onClick={() => setPendingDeleteStory(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded border border-rose-300/30 bg-rose-300/10 px-2 py-1 text-[11px] text-rose-100 transition hover:border-rose-200/50 hover:bg-rose-300/15"
+                onClick={() => confirmDeleteStory(storyId)}
+                type="button"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  function requestDeleteTransition(transitionId: string, anchorKey: string) {
+    setPendingDeleteTransition((current) =>
+      current && current.transitionId === transitionId && current.anchorKey === anchorKey
+        ? null
+        : { transitionId, anchorKey },
+    )
+  }
+
+  function confirmDeleteTransition(transitionId: string) {
+    setPendingDeleteTransition(null)
+    deleteTransition(transitionId)
+  }
+
+  function renderTransitionDeleteButton(
+    transitionId: string,
+    anchorKey: string,
+    disabled: boolean,
+    disabledTitle: string,
+  ) {
+    const confirming =
+      pendingDeleteTransition?.transitionId === transitionId &&
+      pendingDeleteTransition.anchorKey === anchorKey
+
+    return (
+      <div className="relative flex-none">
+        <button
+          aria-label="Delete transition"
+          className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={disabled}
+          onClick={() => requestDeleteTransition(transitionId, anchorKey)}
+          title={disabled ? disabledTitle : "Delete transition"}
+          type="button"
+        >
+          <TrashIcon />
+        </button>
+        {confirming ? (
+          <div className="absolute right-0 top-full z-30 mt-2 w-44 rounded border border-rose-300/30 bg-zinc-950/98 p-2 shadow-[0_12px_28px_rgba(0,0,0,0.42)]">
+            <div className="text-xs text-white/75">Delete this transition?</div>
+            <div className="mt-2 flex justify-end gap-2">
+              <button
+                className="rounded border border-white/10 px-2 py-1 text-[11px] text-white/70 transition hover:border-white/20 hover:text-white"
+                onClick={() => setPendingDeleteTransition(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded border border-rose-300/30 bg-rose-300/10 px-2 py-1 text-[11px] text-rose-100 transition hover:border-rose-200/50 hover:bg-rose-300/15"
+                onClick={() => confirmDeleteTransition(transitionId)}
+                type="button"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  function updateCurrentFrame(
+    updater: (frame: StoryboardFrameRecord) => StoryboardFrameRecord,
+  ) {
+    if (!document || !selected || selected.kind !== "frame") {
+      return
+    }
+    setDocument(
+      updateStory(document, selected.storyId, (story) => {
+        if (selected.branchId) {
+          return {
+            ...story,
+            branches: (story.branches ?? []).map((branch) =>
+              branch.id === selected.branchId
+                ? {
+                    ...branch,
+                    frames: branch.frames.map((frame) =>
+                      frame.id === selected.frameId ? updater(frame) : frame,
+                    ),
+                  }
+                : branch,
+            ),
+          }
+        }
+        return {
+          ...story,
+          frames: story.frames.map((frame) =>
+            frame.id === selected.frameId ? updater(frame) : frame,
+          ),
+        }
+      }),
+    )
+  }
+
+  function updateCurrentTransition(
+    transitionId: string,
+    updater: (transition: StoryboardTransitionRecord) => StoryboardTransitionRecord,
+  ) {
+    updateCurrentFrame((frame) => ({
+      ...frame,
+      transitions: (frame.transitions ?? []).map((transition) =>
+        transition.id === transitionId ? updater(transition) : transition,
+      ),
+    }))
+  }
+
+  function addCaptureSet() {
+    if (!selectedFrame) {
+      return
+    }
+    const nextId = nextCaptureSetId(selectedFrame)
+    updateCurrentFrame((frame) => ({
+      ...frame,
+      captureSets: {
+        ...(frame.captureSets ?? {}),
+        [nextId]: {
+          screenshots: {},
+        },
+      },
+      screenshots: undefined,
+    }))
+    setActiveCaptureSetId(nextId)
+  }
+
+  function renameActiveCaptureSet(nextIdRaw: string) {
+    if (!selectedFrame) {
+      return
+    }
+    const nextId = nextIdRaw.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "")
+    if (!nextId || nextId === activeCaptureSetId) {
+      return
+    }
+    if (selectedFrameCaptureSetIds.includes(nextId)) {
+      return
+    }
+    updateCurrentFrame((frame) => {
+      const captureSets = { ...(frame.captureSets ?? {}) }
+      const current = captureSets[activeCaptureSetId]
+      if (!current) {
+        return frame
+      }
+      delete captureSets[activeCaptureSetId]
+      const reordered = Object.fromEntries([...Object.entries(captureSets), [nextId, current]])
+      return {
+        ...frame,
+        captureSets: reordered,
+        screenshots: undefined,
+      }
+    })
+    setActiveCaptureSetId(nextId)
+  }
+
+  function removeActiveCaptureSet() {
+    if (!selectedFrame || selectedFrameCaptureSetIds.length <= 1) {
+      return
+    }
+    const remainingIds = selectedFrameCaptureSetIds.filter((id) => id !== activeCaptureSetId)
+    updateCurrentFrame((frame) => {
+      const captureSets = { ...(frame.captureSets ?? {}) }
+      delete captureSets[activeCaptureSetId]
+      return {
+        ...frame,
+        captureSets,
+        screenshots: undefined,
+      }
+    })
+    setActiveCaptureSetId(remainingIds.includes("default") ? "default" : remainingIds[0] ?? "default")
+  }
+
+  function updateCurrentBranchLabel(value: string) {
+    if (!document || !selected || selected.kind !== "frame" || !selected.branchId) {
+      return
+    }
+    setDocument(
+      updateStory(document, selected.storyId, (story) => ({
+        ...story,
+        branches: (story.branches ?? []).map((branch) =>
+          branch.id === selected.branchId ? { ...branch, label: value } : branch,
+        ),
+      })),
+    )
+  }
+
+  function addTransition() {
+    if (!document || !selected || selected.kind !== "frame" || !selectedFrame) {
+      return
+    }
+
+    const currentRowFrames = selectedBranch?.frames ?? selectedStory?.frames ?? []
+    const sourceIndex = currentRowFrames.findIndex(
+      (frame) => frame.id === selected.frameId,
+    )
+    const inlineNextFrameId =
+      sourceIndex >= 0 ? currentRowFrames[sourceIndex + 1]?.id : undefined
+    const primaryTargetFrameId = selectedFrameTransitions[0]?.targetFrameId
+    const hasInlineNext = !!inlineNextFrameId && primaryTargetFrameId === inlineNextFrameId
+
+    if (!hasInlineNext) {
+      const targetFrameId = storyboardRecordId(`${selectedFrame.id}-next-frame`)
+      const transitionId = storyboardRecordId(`${selectedFrame.id}-transition`)
+      setDocument(
+        updateStory(document, selected.storyId, (story) => {
+          if (selected.branchId) {
+            return {
+              ...story,
+              branches: (story.branches ?? []).map((branch) => {
+                if (branch.id !== selected.branchId) {
+                  return branch
+                }
+
+                const sourceIndex = branch.frames.findIndex(
+                  (frame) => frame.id === selected.frameId,
+                )
+                const nextFrames = [...branch.frames]
+                nextFrames.splice(sourceIndex + 1, 0, {
+                  id: targetFrameId,
+                  title: "New next frame",
+                  description: "Describe the resulting state for this transition.",
+                  transitions: [],
+                })
+
+                return {
+                  ...branch,
+                  frames: nextFrames.map((frame) =>
+                    frame.id === selected.frameId
+                      ? {
+                          ...frame,
+                          transitions: [
+                            {
+                              id: transitionId,
+                              label: "Next",
+                              kind: "user",
+                              targetFrameId,
+                            },
+                            ...(frame.transitions ?? []),
+                          ],
+                        }
+                      : frame,
+                  ),
+                }
+              }),
+            }
+          }
+
+          const sourceIndex = story.frames.findIndex(
+            (frame) => frame.id === selected.frameId,
+          )
+          const nextFrames = [...story.frames]
+          nextFrames.splice(sourceIndex + 1, 0, {
+            id: targetFrameId,
+            title: "New next frame",
+            description: "Describe the resulting state for this transition.",
+            transitions: [],
+          })
+
+          return {
+            ...story,
+            frames: nextFrames.map((frame) =>
+              frame.id === selected.frameId
+                ? {
+                    ...frame,
+                    transitions: [
+                      {
+                        id: transitionId,
+                        label: "Next",
+                        kind: "user",
+                        targetFrameId,
+                      },
+                      ...(frame.transitions ?? []),
+                    ],
+                  }
+                : frame,
+            ),
+          }
+        }),
+      )
+      return
+    }
+
+    const branchLabel = `Branch ${selectedFrameTransitions.length}`
+    const targetFrameId = storyboardRecordId(`${selectedFrame.id}-branch-frame`)
+    const branchId = storyboardRecordId(`${selectedFrame.id}-branch`)
+    const transitionId = storyboardRecordId(`${selectedFrame.id}-transition`)
+
+    setDocument(
+      updateStory(document, selected.storyId, (story) => {
+        const nextTransitions = [
+          ...(selectedFrame.transitions ?? []),
+          {
+            id: transitionId,
+            label: branchLabel,
+            kind: "user" as const,
+            targetFrameId,
+          },
+        ]
+
+        const nextStory = selected.branchId
+          ? {
+              ...story,
+              branches: (story.branches ?? []).map((branch) =>
+                branch.id === selected.branchId
+                  ? {
+                      ...branch,
+                      frames: branch.frames.map((frame) =>
+                        frame.id === selected.frameId
+                          ? { ...frame, transitions: nextTransitions }
+                          : frame,
+                      ),
+                    }
+                  : branch,
+              ),
+            }
+          : {
+              ...story,
+              frames: story.frames.map((frame) =>
+                frame.id === selected.frameId
+                  ? { ...frame, transitions: nextTransitions }
+                  : frame,
+              ),
+            }
+
+        return {
+          ...nextStory,
+          branches: [
+            ...(nextStory.branches ?? []),
+            {
+              id: branchId,
+              label: branchLabel,
+              sourceFrameId: selected.frameId,
+              frames: [
+                {
+                  id: targetFrameId,
+                  title: "New branch frame",
+                  description: "Describe the resulting state for this branch.",
+                  transitions: [],
+                },
+              ],
+            },
+          ],
+        }
+      }),
+    )
+  }
+
+  function deleteTransition(transitionId: string) {
+    if (!document || !selected || selected.kind !== "frame" || !selectedFrame) {
+      return
+    }
+
+    const transitionIndex = selectedFrameTransitions.findIndex(
+      (entry) => entry.id === transitionId,
+    )
+    const transition = selectedFrameTransitions[transitionIndex]
+    if (!transition) {
+      return
+    }
+    if (transitionIndex === 0 && selectedFrameTransitions.length > 1) {
+      return
+    }
+
+    setDocument(
+      updateStory(document, selected.storyId, (story) => {
+        const nextStory = selected.branchId
+          ? {
+              ...story,
+              branches: (story.branches ?? []).map((branch) =>
+                branch.id === selected.branchId
+                  ? {
+                      ...branch,
+                      frames: branch.frames.map((frame) =>
+                        frame.id === selected.frameId
+                          ? {
+                              ...frame,
+                              transitions: (frame.transitions ?? []).filter(
+                                (entry) => entry.id !== transitionId,
+                              ),
+                            }
+                          : frame,
+                      ),
+                    }
+                  : branch,
+              ),
+            }
+          : {
+              ...story,
+              frames: story.frames.map((frame) =>
+                frame.id === selected.frameId
+                  ? {
+                      ...frame,
+                      transitions: (frame.transitions ?? []).filter(
+                        (entry) => entry.id !== transitionId,
+                      ),
+                    }
+                  : frame,
+                ),
+            }
+
+        return removeTransitionSubtree(nextStory, transition.targetFrameId)
+      }),
+    )
+
+    if (focusedTransitionId === transitionId) {
+      setFocusedTransitionId(null)
+    }
+  }
+
+  function resolveTransitionSelection(sourceFrameId: string, label: string): TransitionSelection | null {
+    for (const story of document?.stories ?? []) {
+      const storyFrame = story.frames.find((frame) => frame.id === sourceFrameId)
+      if (storyFrame) {
+        const transitions = storyFrame.transitions ?? []
+        const transition =
+          transitions.find((entry) => entry.label === label) ?? transitions[0]
+        return transition
+          ? {
+              transitionId: transition.id,
+              selected: { kind: "frame", storyId: story.id, frameId: storyFrame.id },
+            }
+          : null
+      }
+
+      for (const branch of story.branches ?? []) {
+        const branchFrame = branch.frames.find((frame) => frame.id === sourceFrameId)
+        if (!branchFrame) {
+          continue
+        }
+        const transitions = branchFrame.transitions ?? []
+        const transition =
+          transitions.find((entry) => entry.label === label) ?? transitions[0]
+        return transition
+          ? {
+              transitionId: transition.id,
+              selected: {
+                kind: "frame",
+                storyId: story.id,
+                frameId: branchFrame.id,
+                branchId: branch.id,
+              },
+            }
+          : null
+      }
+    }
+
+    return null
+  }
+
+  useEffect(() => {
+    if (!focusedTransitionId) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      transitionRefs.current[focusedTransitionId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [focusedTransitionId, selectedFrameTransitions])
+
+  return (
+    <div
+      className="flex h-full min-h-0 flex-col bg-black text-white"
+      data-storyboard-debug-capture-root="true"
+    >
+      <header className="flex flex-none flex-col gap-2 border-b border-white/10 bg-zinc-950 px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="shrink-0 text-[10px] uppercase tracking-[0.18em] text-white/40">
+            Storyboard URL
+          </div>
+          <input
+            className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-cyan-100 outline-none focus:border-cyan-400"
+            onChange={(event) => setDraftStoryboardUrl(event.currentTarget.value)}
+            placeholder="Storyboard URL"
+            value={draftStoryboardUrl}
+          />
+          <button
+            aria-label="Connect storyboard URL"
+            className="flex h-8 w-8 items-center justify-center rounded border border-white/15 text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100"
+            onClick={() => setConnectedStoryboardUrl(draftStoryboardUrl.trim() || source.storyboardUrl)}
+            title="Connect storyboard URL"
+            type="button"
+          >
+            <ArrowRightIcon />
+          </button>
+        </div>
+        {isConnected ? (
+          <div className="flex min-w-0 flex-wrap items-start gap-x-4 gap-y-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
+              <div className="shrink-0 text-[10px] uppercase tracking-[0.18em] text-white/40">
+                Storyboard editor
+              </div>
+              <div className="text-[11px] text-white/50">
+                {isAccessServerRootMode
+                  ? `${storyboardList.length} storyboards`
+                  : `${storyCount} stories · ${frameCount} frames`}
+              </div>
+              {headerStatus ? (
+                <div className="text-[11px] text-amber-200/80">{headerStatus}</div>
+              ) : null}
+            </div>
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              {!isAccessServerRootMode ? (
+                <button
+                  className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100"
+                  onClick={() => {
+                    const accessServerUrl = storyboardAccessServerUrl(connectedStoryboardUrl)
+                    if (!accessServerUrl) {
+                      return
+                    }
+                    setDraftStoryboardUrl(accessServerUrl)
+                    setConnectedStoryboardUrl(accessServerUrl)
+                  }}
+                  type="button"
+                >
+                  Storyboards
+                </button>
+              ) : null}
+              <button
+                className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
+                disabled={!isConnected}
+                onClick={() => void loadDocument()}
+                type="button"
+              >
+                Reload
+              </button>
+              {!isAccessServerRootMode ? (
+                <>
+                  <button
+                    className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
+                    disabled={!isConnected}
+                    onClick={() => void importMarkdown()}
+                    type="button"
+                  >
+                    Import markdown
+                  </button>
+                  <button
+                    className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
+                    disabled={!document || !isConnected}
+                    onClick={() => (document ? void persistDocument(document) : undefined)}
+                    type="button"
+                  >
+                    {saveState === "saving"
+                      ? "Saving…"
+                      : saveState === "saved"
+                        ? "Saved"
+                        : "Save now"}
+                  </button>
+                  <button
+                    className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
+                    disabled={!isConnected}
+                    onClick={() => void requestSnapshotRun()}
+                    type="button"
+                  >
+                    Run snapshots
+                  </button>
+                </>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </header>
+
+      {markdownImportError ? (
+        <div className="flex items-start justify-between gap-3 border-b border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-100">
+          <div className="min-w-0 whitespace-pre-wrap">{markdownImportError}</div>
+          <button
+            aria-label="Copy markdown import error"
+            className={
+              markdownImportCopyState === "copied"
+                ? "shrink-0 rounded border border-emerald-300/40 px-2 py-1 text-xs text-emerald-100"
+                : markdownImportCopyState === "failed"
+                  ? "shrink-0 rounded border border-rose-200/50 px-2 py-1 text-xs text-rose-100"
+                  : "shrink-0 rounded border border-white/15 px-2 py-1 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100"
+            }
+            onClick={() => void copyMarkdownImportError()}
+            type="button"
+          >
+            {markdownImportCopyState === "copied"
+              ? "Copied"
+              : markdownImportCopyState === "failed"
+                ? "Copy failed"
+                : "Copy error"}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="flex min-h-0 flex-1">
+        {!isConnected ? (
+          <div className="h-full w-full overflow-auto bg-zinc-950 p-6">
+            <div className="mx-auto w-full max-w-5xl space-y-4 text-sm text-white/80">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
+                {isRemoteScenario ? "Remote storyboard" : "Storyboard connection"}
+              </div>
+              <div className="text-lg text-cyan-100">Connect a storyboard access server</div>
+              <p className="leading-6 text-white/65">
+                Start the Bun storyboard access server on a worker machine, then paste the returned storyboard URL above and click <span className="text-white">Connect</span>.
+              </p>
+              <div className="rounded border border-white/10 bg-black/30 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Paste into worker agent chat</div>
+                  <button
+                    aria-label="Copy worker agent prompt"
+                    className={`flex h-8 w-8 items-center justify-center rounded border transition ${
+                      workerPromptCopyState === "copied"
+                        ? "border-emerald-300/40 text-emerald-100"
+                        : workerPromptCopyState === "failed"
+                          ? "border-rose-300/40 text-rose-100"
+                          : "border-white/15 text-white/75 hover:border-cyan-300/70 hover:text-cyan-100"
+                    }`}
+                    onClick={() => void copyWorkerPrompt()}
+                    title={
+                      workerPromptCopyState === "copied"
+                        ? "Copied prompt"
+                        : workerPromptCopyState === "failed"
+                          ? "Copy failed"
+                          : "Copy worker prompt"
+                    }
+                    type="button"
+                  >
+                    {workerPromptCopyState === "copied" ? <CheckIcon /> : <CopyIcon />}
+                  </button>
+                </div>
+                <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-cyan-100">{remoteStoryboardWorkerPrompt}</pre>
+              </div>
+              <div className="rounded border border-white/10 bg-black/30 p-4">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Server command</div>
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">bun scripts/storyboard-access-server.ts --root /absolute/path/to/&lt;storyboard-name&gt; --port 8898</pre>
+              </div>
+              <div className="rounded border border-white/10 bg-black/30 p-4">
+                <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Expected reply</div>
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">Storyboard URL: http://&lt;worker-host&gt;:8898/&lt;storyboard-name&gt;</pre>
+              </div>
+            </div>
+          </div>
+        ) : isAccessServerRootMode ? (
+          <div className="h-full w-full overflow-auto bg-zinc-950 p-6">
+            <div className="mx-auto w-full max-w-5xl space-y-4 text-sm text-white/80">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">Storyboard access server</div>
+                  <div className="mt-1 text-lg text-cyan-100">Available storyboards</div>
+                </div>
+                {storyboardListRootDir ? (
+                  <div className="max-w-[32rem] text-right text-xs leading-5 text-white/45">{storyboardListRootDir}</div>
+                ) : null}
+              </div>
+              {storyboardListError ? (
+                <div className="rounded border border-rose-300/30 bg-rose-300/10 p-4 text-sm text-rose-100">
+                  {storyboardListError}
+                </div>
+              ) : null}
+              {storyboardList.length === 0 ? (
+                <div className="rounded border border-white/10 bg-black/30 p-6 text-sm text-white/60">
+                  No storyboards were listed by this access server.
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {storyboardList.map((storyboard) => (
+                    <button
+                      key={storyboard.storyboardUrl}
+                      className="flex min-h-[9rem] flex-col rounded border border-white/10 bg-black/30 p-4 text-left transition hover:border-cyan-300/40 hover:bg-black/40"
+                      onClick={() => {
+                        setDraftStoryboardUrl(storyboard.storyboardUrl)
+                        setConnectedStoryboardUrl(storyboard.storyboardUrl)
+                      }}
+                      type="button"
+                    >
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Storyboard</div>
+                      <div className="mt-2 text-base text-cyan-100">{storyboard.name}</div>
+                      <div className="mt-3 text-xs leading-5 text-white/45">{storyboard.storyboardUrl}</div>
+                      <div className="mt-auto flex flex-wrap gap-2 pt-4 text-[11px] uppercase tracking-[0.14em] text-white/45">
+                        <span className={storyboard.hasStoryboardJson ? "text-emerald-200/80" : "text-white/30"}>json</span>
+                        <span className={storyboard.hasStoryboardMarkdown ? "text-emerald-200/80" : "text-white/30"}>md</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+        <PanelLayout
+          className="h-full bg-zinc-950"
+          contentClassName="p-4"
+          panelClassName="bg-zinc-950"
+          panels={[navigatorPanel, inspectorPanel]}
+          storageKeyPrefix="storyboard.debug.editor"
+        >
+          {isEmptyStoryboard ? (
+            <div className="flex h-full w-full items-center justify-center bg-zinc-950 p-8">
+              <div className="w-full max-w-2xl rounded border border-white/10 bg-black/30 p-6 text-center">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">Empty storyboard</div>
+                <div className="mt-3 text-lg text-cyan-100">This storyboard URL is connected but not initialized</div>
+                <p className="mt-3 text-sm leading-6 text-white/65">
+                  Create a starter storyboard document in this remote location so you can begin editing stories, frames, and transitions.
+                </p>
+                <div className="mt-6 flex justify-center">
+                  <button
+                    className="rounded border border-cyan-300/40 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/70 hover:bg-cyan-300/15"
+                    onClick={() => void initializeStoryboard()}
+                    type="button"
+                  >
+                    Initialize storyboard
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="h-full w-full"
+              onClick={(event) => {
+                const target = event.target
+                const interactiveStoryboardElement =
+                  target instanceof Element
+                    ? target.closest(
+                        "[data-storyboard-frame-shell],[data-storyboard-next],[data-storyboard-transition],[data-storyboard-sequence-title],button,input,textarea,select,[role=button]",
+                      )
+                    : null
+                if (!interactiveStoryboardElement) {
+                  setFocusedTransitionId(null)
+                  setSelected({ kind: "storyboard" })
+                }
+              }}
+            >
+              <PanZoomContainer
+                className="h-full"
+                fitKey={`${sourceQuery}:${path || "loading"}`}
+                ref={panZoomRef}
+              >
+                <div className="min-w-max bg-[#546072] p-8" style={{ width: estimateGridWidth(sequences, editorFrameWidth, editorActionWidth), height: estimateGridHeight(sequences, editorFrameHeight, editorNextHeight) }}>
+                <StoryboardGrid
+                  actionColumnWidth={editorActionWidth}
+                  onSequenceTitleClick={(sequence) => {
+                      const story = (document?.stories ?? []).find((entry) => entry.id === sequence.id)
+                      if (story) {
+                        setFocusedTransitionId(null)
+                        setSelected({ kind: "story", storyId: story.id })
+                      }
+                    }}
+                    onTransitionClick={(transition) => {
+                      const resolved = resolveTransitionSelection(
+                        transition.sourceFrameId,
+                        transition.label,
+                      )
+                      if (!resolved) {
+                        return
+                      }
+                      setSelected(resolved.selected)
+                      setFocusedTransitionId(resolved.transitionId)
+                    }}
+                    onFrameClick={(frame) => {
+                      for (const story of document?.stories ?? []) {
+                        if (story.frames.some((entry) => entry.id === frame.id)) {
+                          setFocusedTransitionId(null)
+                          setSelected({ kind: "frame", storyId: story.id, frameId: frame.id })
+                          return
+                        }
+                        for (const branch of story.branches ?? []) {
+                          if (branch.frames.some((entry) => entry.id === frame.id)) {
+                            setFocusedTransitionId(null)
+                            setSelected({
+                              kind: "frame",
+                              storyId: story.id,
+                              frameId: frame.id,
+                              branchId: branch.id,
+                            })
+                            return
+                          }
+                        }
+                      }
+                    }}
+                  renderFrame={(frame) => (
+                    renderEditorFrame(
+                      frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>,
+                      connectedStoryboardUrl,
+                      activeCaptureSetId,
+                    )
+                  )}
+                  renderFrameHeaderControls={() =>
+                    availableCaptureSetIds.length > 1 ? (
+                      <select
+                        aria-label="Capture set"
+                        className="nopan nowheel rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-white/75 outline-none focus:border-cyan-400"
+                        onChange={(event) => setActiveCaptureSetId(event.currentTarget.value)}
+                        value={activeCaptureSetId}
+                      >
+                        {availableCaptureSetIds.map((captureSetId) => (
+                          <option key={captureSetId} value={captureSetId}>
+                            {captureSetId}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null
+                  }
+                  storyboardUrl={connectedStoryboardUrl}
+                  frameHeight={editorFrameHeight}
+                  frameWidth={editorFrameWidth}
+                    nextCellHeight={editorNextHeight}
+                    selectedFrameId={selectedFrameId}
+                    selectedSequenceId={selected?.kind === "story" ? selected.storyId : selected?.kind === "frame" ? selected.storyId : undefined}
+                    sequences={sequences}
+                  />
+                </div>
+              </PanZoomContainer>
+            </div>
+          )}
+        </PanelLayout>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StoryboardEditorPreview() {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-neutral-950 text-white">
+      <div className="w-[85%] rounded border border-white/10 bg-zinc-900 p-4">
+        <div className="mb-3 text-sm font-semibold">Storyboard editor</div>
+        <div className="space-y-2 text-xs text-white/55">
+          <div>Load canonical `*.storyboard.json`</div>
+          <div>Edit the storyboard through the grid inspector</div>
+          <div>Persist changes through the storyboard server</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export const storyboardEditorDebugDefinition: StoryboardDebugComponentDefinition = {
+  slug: "storyboardEditor",
+  label: "storyboardEditor",
+  description: "Grid-backed storyboard editor backed by the canonical storyboard server.",
+  defaultScenarioSlug: "default-storyboard",
+  scenarios: [
+    {
+      slug: "default-storyboard",
+      label: "default-storyboard",
+      description: "Edit the bundled default storyboard template through the storyboard access server.",
+      render: () => (
+        <StoryboardEditorFixture
+          source={{ storyboardUrl: bundledDefaultStoryboardUrl }}
+        />
+      ),
+      renderPreview: () => <StoryboardEditorPreview />,
+    },
+    {
+      slug: "test-storyboard-json",
+      label: "test-storyboard-json",
+      description: "Edit the canonical test.storyboard.json fixture through the storyboard server.",
+      render: () => (
+        <StoryboardEditorFixture
+          source={{ storyboardUrl: testFixtureStoryboardUrl }}
+        />
+      ),
+      renderPreview: () => <StoryboardEditorPreview />,
+    },
+    {
+      slug: "remote-storyboard",
+      label: "remote-storyboard",
+      description: "Connect the editor to a storyboard access server running on a remote worker.",
+      render: () => <StoryboardEditorFixture source={{ storyboardUrl: "" }} />,
+      renderPreview: () => <StoryboardEditorPreview />,
+    },
+  ],
+}

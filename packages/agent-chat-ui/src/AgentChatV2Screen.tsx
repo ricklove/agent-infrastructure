@@ -172,6 +172,16 @@ function readRequestedMessageHashFromLocation() {
     return ""
   }
   const hash = window.location.hash
+  return hash.startsWith(chatMessageHashPrefix)
+    ? hash.slice(chatMessageHashPrefix.length)
+    : ""
+}
+
+function readRequestedMessageElementIdFromLocation() {
+  if (typeof window === "undefined") {
+    return ""
+  }
+  const hash = window.location.hash
   return hash.startsWith(chatMessageHashPrefix) ? hash.slice(1) : ""
 }
 
@@ -929,7 +939,7 @@ export const AgentChatV2Screen = observer(function AgentChatV2Screen(
 
   useEffect(() => {
     void transcriptMessages.length
-    const targetId = readRequestedMessageHashFromLocation()
+    const targetId = readRequestedMessageElementIdFromLocation()
     if (!targetId) {
       return
     }

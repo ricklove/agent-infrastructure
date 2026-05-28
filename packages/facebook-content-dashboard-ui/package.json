@@ -1,0 +1,27 @@
+{
+  "name": "@agent-infrastructure/facebook-content-dashboard-ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin": "./src/dashboard-plugin.ts",
+    "./ui-plugin": "./src/dashboard-ui-plugin.ts"
+  },
+  "scripts": {
+    "build": "bun x tsgo --project tsconfig.json --noEmit",
+    "check": "bun x tsgo --project tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@legendapp/state": "^3.0.0-beta.31",
+    "@agent-infrastructure/facebook-content-dashboard-core": "workspace:*",
+    "@agent-infrastructure/dashboard-plugin": "workspace:*",
+    "@agent-infrastructure/facebook-content-dashboard-server": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,356 @@
+{
+  "id": "test-storyboard",
+  "title": "Test Storyboard",
+  "stories": [
+    {
+      "id": "start-a-voice-call-from-chat",
+      "title": "Start a voice call from chat",
+      "frames": [
+        {
+          "id": "start-a-voice-call-from-chat-step-0",
+          "title": "Open chat",
+          "description": "The user is inside a direct message thread with the header, recent messages, and the call controls visible.",
+          "transitions": [
+            {
+              "id": "start-a-voice-call-from-chat-step-0-transition-0",
+              "label": "Voice call",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-1"
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-1",
+          "title": "Tap voice call",
+          "description": "The call button press is in progress and the thread context is still visible behind the control state.",
+          "transitions": [
+            {
+              "id": "start-a-voice-call-from-chat-step-1-transition-0",
+              "label": "Ring",
+              "kind": "system",
+              "targetFrameId": "start-a-voice-call-from-chat-step-2"
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-2",
+          "title": "System: ring recipient and show call state",
+          "description": "The call UI shows an active ringing state with cancel affordance, recipient avatar, and connection status.",
+          "transitions": [
+            {
+              "id": "start-a-voice-call-from-chat-step-2-transition-0",
+              "label": "Answered",
+              "kind": "system",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-2-transition-1",
+              "label": "Recipient unavailable",
+              "kind": "system",
+              "targetFrameId": "start-a-voice-call-from-chat-branch-0-step-0"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-2-transition-2",
+              "label": "Recipient blocks calls",
+              "kind": "system",
+              "targetFrameId": "start-a-voice-call-from-chat-branch-1-step-0"
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-3",
+          "title": "Verify: active call UI appears when recipient answers",
+          "description": "Both participants are connected and the in-call controls, timer, and audio state are visible.",
+          "transitions": [
+            {
+              "id": "start-a-voice-call-from-chat-step-3-transition-66bf4b72",
+              "label": "Next",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-3-transition-e7d72566",
+              "label": "Branch 1",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3-branch-frame-96cf1bec"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-3-transition-081a3278",
+              "label": "Branch 2",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3-branch-frame-821b7eac"
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce",
+          "title": "New next frame",
+          "description": "Describe the resulting state for this transition.",
+          "transitions": [
+            {
+              "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-transition-b240b365",
+              "label": "Next",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-next-frame-310969d8"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-transition-ad313fb1",
+              "label": "Branch 1",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-frame-abe0a10e"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-transition-e95dee5e",
+              "label": "Branch 2",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-frame-34b918d7"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-transition-d7d16916",
+              "label": "Branch 3",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-frame-9cf71d17"
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-transition-b225d35e",
+              "label": "Branch 4",
+              "kind": "user",
+              "targetFrameId": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-frame-eadaaac0"
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-next-frame-310969d8",
+          "title": "New next frame",
+          "description": "Describe the resulting state for this transition.",
+          "transitions": []
+        }
+      ],
+      "branches": [
+        {
+          "id": "start-a-voice-call-from-chat-branch-0",
+          "label": "Recipient unavailable",
+          "sourceFrameId": "start-a-voice-call-from-chat-step-2",
+          "frames": [
+            {
+              "id": "start-a-voice-call-from-chat-branch-0-step-0",
+              "title": "Show missed call outcome",
+              "description": "The call attempt resolves to a missed-call state with options to dismiss or retry later.",
+              "transitions": []
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-branch-1",
+          "label": "Recipient blocks calls",
+          "sourceFrameId": "start-a-voice-call-from-chat-step-2",
+          "frames": [
+            {
+              "id": "start-a-voice-call-from-chat-branch-1-step-0",
+              "title": "Action denied",
+              "description": "The thread shows a lightweight blocked-state explanation and disables the outgoing call action.",
+              "transitions": []
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-3-branch-706a54e5",
+          "label": "Branch 1",
+          "sourceFrameId": "start-a-voice-call-from-chat-step-3",
+          "frames": [
+            {
+              "id": "start-a-voice-call-from-chat-step-3-branch-frame-96cf1bec",
+              "title": "New branch frame",
+              "description": "Describe the resulting state for this branch.",
+              "transitions": []
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-3-branch-3987d72f",
+          "label": "Branch 2",
+          "sourceFrameId": "start-a-voice-call-from-chat-step-3",
+          "frames": [
+            {
+              "id": "start-a-voice-call-from-chat-step-3-branch-frame-821b7eac",
+              "title": "New branch frame",
+              "description": "Describe the resulting state for this branch.",
+              "transitions": [
+                {
+                  "id": "start-a-voice-call-from-chat-step-3-branch-frame-821b7eac-transition-c3f48e6d",
+                  "label": "Next",
+                  "kind": "user",
+                  "targetFrameId": "start-a-voice-call-from-chat-step-3-branch-frame-821b7eac-next-frame-76c8dd0c"
+                },
+                {
+                  "id": "start-a-voice-call-from-chat-step-3-branch-frame-821b7eac-transition-cdadc1f1",
+                  "label": "Branch 1",
+                  "kind": "user",
+                  "targetFrameId": "start-a-voice-call-from-chat-step-3-branch-frame-821b7eac-branch-frame-5f3b25ca"
+                }
+              ]
+            },
+            {
+              "id": "start-a-voice-call-from-chat-step-3-branch-frame-821b7eac-next-frame-76c8dd0c",
+              "title": "New next frame",
+              "description": "Describe the resulting state for this transition.",
+              "transitions": []
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-9b71a832",
+          "label": "Branch 2",
+          "sourceFrameId": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce",
+          "frames": [
+            {
+              "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-frame-34b918d7",
+              "title": "New branch frame",
+              "description": "Describe the resulting state for this branch.",
+              "transitions": []
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-8ca154b4",
+          "label": "Branch 3",
+          "sourceFrameId": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce",
+          "frames": [
+            {
+              "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-frame-9cf71d17",
+              "title": "New branch frame",
+              "description": "Describe the resulting state for this branch.",
+              "transitions": []
+            }
+          ]
+        },
+        {
+          "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-b3cb87fa",
+          "label": "Branch 4",
+          "sourceFrameId": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce",
+          "frames": [
+            {
+              "id": "start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-frame-eadaaac0",
+              "title": "New branch frame",
+              "description": "Describe the resulting state for this branch.",
+              "transitions": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "escalate-voice-call-to-video-call",
+      "title": "Escalate voice call to video call",
+      "frames": [
+        {
+          "id": "escalate-voice-call-to-video-call-step-0",
+          "title": "In active voice call, choose video",
+          "description": "The connected voice call is active and the upgrade-to-video control is visible in the call toolbar.",
+          "transitions": [
+            {
+              "id": "escalate-voice-call-to-video-call-step-0-transition-0",
+              "label": "Upgrade",
+              "kind": "user",
+              "targetFrameId": "escalate-voice-call-to-video-call-step-1"
+            },
+            {
+              "id": "escalate-voice-call-to-video-call-step-0-transition-5f85a1bf",
+              "label": "Branch 1",
+              "kind": "user",
+              "targetFrameId": "escalate-voice-call-to-video-call-step-0-branch-frame-869fda74"
+            }
+          ]
+        },
+        {
+          "id": "escalate-voice-call-to-video-call-step-1",
+          "title": "System: request camera permission and send upgrade prompt",
+          "description": "The voice call remains intact while the app requests camera access and shows the remote participant an upgrade prompt.",
+          "transitions": [
+            {
+              "id": "escalate-voice-call-to-video-call-step-1-transition-0",
+              "label": "Accepted",
+              "kind": "system",
+              "targetFrameId": "escalate-voice-call-to-video-call-step-2"
+            },
+            {
+              "id": "escalate-voice-call-to-video-call-step-1-transition-1",
+              "label": "Recipient declines video",
+              "kind": "system",
+              "targetFrameId": "escalate-voice-call-to-video-call-branch-0-step-0"
+            },
+            {
+              "id": "escalate-voice-call-to-video-call-step-1-transition-ebfe16b4",
+              "label": "Branch 2",
+              "kind": "user",
+              "targetFrameId": "escalate-voice-call-to-video-call-step-1-branch-frame-60a65e03"
+            }
+          ]
+        },
+        {
+          "id": "escalate-voice-call-to-video-call-step-2",
+          "title": "Verify: Both participants transition to video layout when accepted",
+          "description": "The call layout switches to video with self preview, remote video, and the upgraded in-call controls visible.",
+          "transitions": []
+        }
+      ],
+      "branches": [
+        {
+          "id": "escalate-voice-call-to-video-call-branch-0",
+          "label": "Recipient declines video",
+          "sourceFrameId": "escalate-voice-call-to-video-call-step-1",
+          "frames": [
+            {
+              "id": "escalate-voice-call-to-video-call-branch-0-step-0",
+              "title": "Remain on voice call",
+              "description": "The request is declined and the UI returns focus to the existing voice-only call state.",
+              "transitions": []
+            }
+          ]
+        },
+        {
+          "id": "escalate-voice-call-to-video-call-step-1-branch-8b20147b",
+          "label": "Branch 2",
+          "sourceFrameId": "escalate-voice-call-to-video-call-step-1",
+          "frames": [
+            {
+              "id": "escalate-voice-call-to-video-call-step-1-branch-frame-60a65e03",
+              "title": "New branch frame",
+              "description": "Describe the resulting state for this branch.",
+              "transitions": []
+            }
+          ]
+        },
+        {
+          "id": "escalate-voice-call-to-video-call-step-0-branch-68c8631b",
+          "label": "Branch 1",
+          "sourceFrameId": "escalate-voice-call-to-video-call-step-0",
+          "frames": [
+            {
+              "id": "escalate-voice-call-to-video-call-step-0-branch-frame-869fda74",
+              "title": "New branch frame",
+              "description": "Describe the resulting state for this branch.",
+              "transitions": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "humanNotes": [
+    {
+      "id": "note-1",
+      "targetType": "frame",
+      "targetId": "escalate-voice-call-to-video-call-step-1",
+      "markdown": "- Clarify camera permission fallback\n  - Keep the voice call intact if permission is denied"
+    }
+  ],
+  "snapshotRequests": [
+    {
+      "id": "snapshot-1",
+      "frameId": "start-a-voice-call-from-chat-step-0",
+      "componentSlug": "storyboardGrid",
+      "scenarioSlug": "branching-user-flow"
+    }
+  ]
+}

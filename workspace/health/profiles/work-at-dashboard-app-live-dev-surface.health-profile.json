@@ -1,0 +1,86 @@
+{
+  "id": "work_at_dashboard_app_live_dev_surface",
+  "title": "work-at Dashboard App Live Dev Surface",
+  "description": "Readonly health profile for a dashboard app surface where the live dev URL is the primary gate. The target must provide liveDevUrl, and may override appPath, localDevUrl, and liveDevMustContain through work-at health params.",
+  "params": {
+    "appPath": "{{targetPath}}",
+    "localDevUrl": "http://127.0.0.1:5173/storyboard/debug/",
+    "liveDevMustContain": "@vite/client"
+  },
+  "checks": [
+    {
+      "id": "target_reachable",
+      "checkId": "work_at_target_reachable",
+      "title": "work-at target is reachable",
+      "severity": "blocking",
+      "repairHint": "Restore worker connectivity or re-register the live dev target before continuing.",
+      "params": {}
+    },
+    {
+      "id": "target_path_exists",
+      "checkId": "work_at_path_exists",
+      "title": "target path exists",
+      "severity": "blocking",
+      "repairHint": "Restore or re-register the target path on the worker before continuing.",
+      "params": {
+        "path": "{{targetPath}}"
+      }
+    },
+    {
+      "id": "target_bun_available",
+      "checkId": "work_at_command_available",
+      "title": "Bun is available on target",
+      "severity": "blocking",
+      "repairHint": "Install Bun on the worker before running the dashboard app dev server.",
+      "params": {
+        "commandName": "bun"
+      }
+    },
+    {
+      "id": "target_package_json_exists",
+      "checkId": "work_at_path_exists",
+      "title": "dashboard app package.json exists",
+      "severity": "blocking",
+      "repairHint": "Restore package.json in the dashboard app surface before continuing.",
+      "params": {
+        "path": "{{appPath}}/package.json"
+      }
+    },
+    {
+      "id": "target_vite_config_exists",
+      "checkId": "work_at_path_exists",
+      "title": "dashboard app vite config exists",
+      "severity": "blocking",
+      "repairHint": "Restore vite.config.ts in the dashboard app surface before continuing.",
+      "params": {
+        "path": "{{appPath}}/vite.config.ts"
+      }
+    },
+    {
+      "id": "target_local_dev_frontend_reachable",
+      "checkId": "work_at_http_ok",
+      "title": "dashboard app local dev frontend is reachable",
+      "severity": "warn",
+      "repairHint": "If local worker dev access is expected for this surface, restore the local dev frontend. The live dev URL remains the primary gate.",
+      "params": {
+        "url": "{{localDevUrl}}",
+        "timeoutSeconds": "2"
+      }
+    },
+    {
+      "id": "target_live_dev_surface_ok",
+      "checkId": "work_at_http_status_prefix_contains",
+      "title": "live dev surface responds with the expected dev marker",
+      "severity": "blocking",
+      "repairHint": "The live dev URL is the primary gate for this surface. Repair the worker-served live URL until it responds successfully and contains the expected dev marker before treating any code change as real.",
+      "params": {
+        "url": "{{liveDevUrl}}",
+        "timeoutSeconds": "5",
+        "method": "GET",
+        "curlArgs": "",
+        "expectedStatusPrefix": "2",
+        "mustContain": "{{liveDevMustContain}}"
+      }
+    }
+  ]
+}

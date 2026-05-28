@@ -1,0 +1,50 @@
+{
+  "id": "default-storyboard",
+  "title": "Untitled storyboard",
+  "stories": [
+    {
+      "id": "story-001",
+      "title": "Untitled story",
+      "frames": [
+        {
+          "id": "frame-001",
+          "title": "Starting frame",
+          "description": "Describe what the user sees in this first step.",
+          "screenshots": {
+            "desktop": "assets/frame-001.desktop.png",
+            "mobile": "assets/frame-001.mobile.png",
+            "square": "assets/frame-001.square.png"
+          },
+          "transitions": [
+            {
+              "id": "transition-001",
+              "label": "Next",
+              "kind": "user",
+              "targetFrameId": "frame-002"
+            }
+          ]
+        },
+        {
+          "id": "frame-002",
+          "title": "Next frame",
+          "description": "Describe the resulting state after the first transition.",
+          "screenshots": {
+            "desktop": "assets/frame-002.desktop.png",
+            "mobile": "assets/frame-002.mobile.png",
+            "square": "assets/frame-002.square.png"
+          },
+          "transitions": []
+        }
+      ],
+      "branches": []
+    }
+  ],
+  "humanNotes": [
+    {
+      "id": "note-001",
+      "targetType": "story",
+      "targetId": "story-001",
+      "markdown": "- Expand this story with additional frames and branch transitions.\n- Add screenshots under `assets/` and link them from `storyboard.md`.\n"
+    }
+  ]
+}
