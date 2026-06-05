@@ -2,6 +2,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { basename, dirname, extname, join, relative, resolve } from "node:path"
+import { StoryboardRunManifestError, capabilitiesFromManifest, loadStoryboardRunManifest } from "../packages/storyboard-ui/src/run-system.js"
 
 type Config = {
   port: number
@@ -62,6 +63,7 @@ Endpoints:
   GET  /api/storyboard-access/files?path=assets/foo.png
   PUT  /api/storyboard-access/files?path=assets/foo.txt
   GET  /api/storyboard-access/list
+  GET  /api/storyboard-access/capabilities
 `
 
 function fail(message: string): never {
@@ -133,6 +135,17 @@ const storyboardUrlBase = `/${storyboardName}`
 const storyboardJsonPath = join(config.rootDir, "storyboard.json")
 const storyboardMarkdownPath = join(config.rootDir, "storyboard.md")
 const assetsDir = join(config.rootDir, "assets")
+
+function loadRunManifestForResponse() {
+  try {
+    return loadStoryboardRunManifest(config.rootDir)
+  } catch (error) {
+    if (error instanceof StoryboardRunManifestError) {
+      throw new Error(`${error.code}: ${error.message}`)
+    }
+    throw error
+  }
+}
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload, null, 2), {
@@ -474,6 +487,10 @@ Bun.serve({
         const pathValue = ensureRelativePath(url.searchParams.get("path"))
         const contents = await readPayload(request)
         return jsonResponse({ ok: true, ...writeFileRecord(pathValue, contents) })
+      }
+
+      if (pathname === "/api/storyboard-access/capabilities" && request.method === "GET") {
+        return jsonResponse(capabilitiesFromManifest(loadRunManifestForResponse()))
       }
 
       if (pathname === "/api/storyboard-access/list" && request.method === "GET") {

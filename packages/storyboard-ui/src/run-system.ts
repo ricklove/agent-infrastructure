@@ -1,0 +1,1182 @@
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs"
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path"
+
+export const storyboardRunScopes = ["frame", "story", "storyboard"] as const
+export type RunScope = (typeof storyboardRunScopes)[number]
+
+export const storyboardRunModes = [
+  "run-to-state",
+  "capture",
+  "run-and-capture",
+] as const
+export type RunMode = (typeof storyboardRunModes)[number]
+
+export const storyboardRunLifecycleStates = [
+  "queued",
+  "pending",
+  "running",
+  "capturing",
+  "succeeded",
+  "failed",
+  "skipped",
+  "cancelled",
+  "expired",
+  "recovered",
+] as const
+export type RunLifecycleStatus = (typeof storyboardRunLifecycleStates)[number]
+export type FrameRunStatus = "not-runnable" | "unchanged" | "stale"
+export type Freshness = FrameRunStatus
+
+export const terminalRunLifecycleStates: readonly RunLifecycleStatus[] = [
+  "succeeded",
+  "failed",
+  "skipped",
+  "cancelled",
+  "expired",
+  "recovered",
+]
+
+export type RunnerKind = "dry-run" | "browser" | "device" | "app" | "custom"
+export type ParamPrimitiveType = "string" | "number" | "boolean" | "integer"
+export type ParamValue = string | number | boolean | null
+export type ParamValues = Record<string, ParamValue>
+
+export type StoryboardRunTarget = {
+  storyboardId?: string
+  storyId?: string
+  frameKey?: string
+}
+
+export type RunError = {
+  code: string
+  message: string
+  details?: Record<string, unknown>
+}
+
+export type LiveSessionHandle = {
+  type: "browser" | "device" | "simulator" | "app" | "custom"
+  id: string
+  url?: string
+  ttlSeconds: number
+  owner: "runner" | "agent" | "user" | "system" | string
+  capabilities: Array<
+    "attach" | "observe" | "interact" | "capture" | "revoke" | string
+  >
+  cleanup: "auto-expire" | "revoke-required" | "runner-managed"
+}
+
+export type RunProgress = {
+  currentFrameKey?: string
+  completedFrames?: number
+  totalFrames?: number
+}
+
+export type Run = {
+  jobId: string
+  scope: RunScope
+  mode: RunMode
+  status: RunLifecycleStatus
+  target: StoryboardRunTarget
+  manifestEntryId: string
+  captureSetId?: string
+  createdAt: string
+  updatedAt: string
+  startedAt?: string
+  completedAt?: string
+  params: ParamValues
+  provenanceWrites: string[]
+  liveSessionHandle?: LiveSessionHandle
+  progress?: RunProgress
+  error?: RunError
+}
+
+export type ParamDefinition = {
+  type: ParamPrimitiveType
+  label?: string
+  description?: string
+  required?: boolean
+  default?: ParamValue
+  enum?: ParamValue[]
+  min?: number
+  max?: number
+}
+
+export type CaptureSet = {
+  id: string
+  label?: string
+  viewport?: {
+    width: number
+    height: number
+    deviceScaleFactor?: number
+    isMobile?: boolean
+  }
+  device?: string
+  profile?: string
+  outputPathTemplate: string
+  imageFormat: "png" | "jpg" | "jpeg" | "webp"
+  comparisonPolicy?: "none" | "pixel" | "hash" | "manual"
+  options?: Record<string, ParamValue>
+}
+
+export type Runner = {
+  id: string
+  label?: string
+  kind: RunnerKind
+  enabled: boolean
+  capabilities: RunMode[]
+  command?: never
+  shell?: never
+  args?: never
+}
+
+export type ManifestTargetSelector = {
+  storyboardId?: string
+  storyId?: string
+  frameKey?: string
+  storyPattern?: string
+  framePattern?: string
+}
+
+export type ManifestEntry = {
+  id: string
+  label: string
+  scope: RunScope
+  runnerId: string
+  modes: RunMode[]
+  targets: ManifestTargetSelector[]
+  paramsSchema: Record<string, ParamDefinition>
+  captureSets: string[]
+  enabled: boolean
+}
+
+export type StoryboardRunManifest = {
+  version: 1
+  enabled: boolean
+  runners: Runner[]
+  entries: ManifestEntry[]
+  captureSets: CaptureSet[]
+}
+
+export type Provenance = {
+  storyboardId: string
+  frameKey: string
+  manifestHash: string
+  manifestEntryId: string
+  runnerId: string
+  runnerHash?: string
+  appBuildId?: string
+  captureSetId: string
+  storyboardSpecHash: string
+  frameSpecHash: string
+  outputAsset: string
+  outputAssetHash?: string
+  completedAt: string
+  key?: string
+  path?: string
+  summary?: string
+}
+
+export type StoryboardRunCapabilitiesDto = {
+  runApi: boolean
+  manifestLoaded: boolean
+  queue?: { type: "fifo"; maxActive: number; cancel: boolean }
+  modes?: RunMode[]
+  lifecycleStates?: RunLifecycleStatus[]
+  freshnessStates?: FrameRunStatus[]
+  manifestEntries: Array<
+    Pick<ManifestEntry, "id" | "label" | "scope" | "modes" | "captureSets">
+  >
+}
+
+export type FrameRunStateDto = {
+  storyboardId: string
+  storyId: string
+  frameKey: string
+  freshness: Freshness
+  runnable: boolean
+  disabledReason: string | null
+  manifestEntryIds: string[]
+  currentJob?: {
+    jobId: string
+    status: RunLifecycleStatus
+    queuePosition?: number
+  }
+  latestJob?: {
+    jobId: string
+    status: RunLifecycleStatus
+    completedAt?: string
+  }
+  provenance?: Provenance
+}
+
+export type StoryboardRunStateDto = {
+  storyboardId: string
+  generatedAt: string
+  runApi: boolean
+  queue: { maxActive: number; active: number; queued: number }
+  frames: FrameRunStateDto[]
+}
+
+export type CreateRunRequestDto = {
+  scope: RunScope
+  mode: RunMode
+  target: StoryboardRunTarget
+  manifestEntryId: string
+  captureSetId?: string
+  params?: ParamValues
+}
+
+export type CreateRunResponseDto = {
+  jobId: string
+  status: "queued"
+  queuePosition: number
+  links: {
+    job: string
+    logs: string
+    cancel: string
+  }
+}
+
+export type RunLogRecordDto = {
+  ts: string
+  level: "debug" | "info" | "warn" | "error"
+  event: string
+  context?: Record<string, unknown>
+}
+
+export type CancelRunRequestDto = {
+  reason?: string
+}
+
+export type CancelRunResponseDto = {
+  jobId: string
+  status: "cancelled"
+  cancelledAt: string
+}
+
+export class StoryboardRunManifestError extends Error {
+  readonly code: string
+  readonly details?: Record<string, unknown>
+
+  constructor(
+    code: string,
+    message: string,
+    details?: Record<string, unknown>,
+  ) {
+    super(message)
+    this.name = "StoryboardRunManifestError"
+    this.code = code
+    this.details = details
+  }
+}
+
+export type LoadStoryboardRunManifestResult =
+  | { loaded: true; path: string; manifest: StoryboardRunManifest }
+  | {
+      loaded: false
+      path: string | null
+      manifest: null
+      reason: "missing" | "disabled"
+    }
+
+const scalarIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/u
+const safePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.:/@*-]{0,255}$/u
+const allowedTopLevelKeys = new Set([
+  "version",
+  "enabled",
+  "runners",
+  "entries",
+  "captureSets",
+])
+const allowedRunnerKeys = new Set([
+  "id",
+  "label",
+  "kind",
+  "enabled",
+  "capabilities",
+])
+const rejectedRunnerKeys = new Set([
+  "command",
+  "commands",
+  "cmd",
+  "shell",
+  "script",
+  "scripts",
+  "args",
+  "argv",
+  "exec",
+  "env",
+  "cwd",
+])
+const allowedEntryKeys = new Set([
+  "id",
+  "label",
+  "scope",
+  "runnerId",
+  "modes",
+  "targets",
+  "paramsSchema",
+  "captureSets",
+  "enabled",
+])
+const allowedTargetKeys = new Set([
+  "storyboardId",
+  "storyId",
+  "frameKey",
+  "storyPattern",
+  "framePattern",
+])
+const allowedParamKeys = new Set([
+  "type",
+  "label",
+  "description",
+  "required",
+  "default",
+  "enum",
+  "min",
+  "max",
+])
+const allowedCaptureSetKeys = new Set([
+  "id",
+  "label",
+  "viewport",
+  "device",
+  "profile",
+  "outputPathTemplate",
+  "imageFormat",
+  "comparisonPolicy",
+  "options",
+])
+const allowedViewportKeys = new Set([
+  "width",
+  "height",
+  "deviceScaleFactor",
+  "isMobile",
+])
+
+function manifestError(path: string, code: string, message: string): never {
+  throw new StoryboardRunManifestError(code, `${path}: ${message}`)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function assertNoUnknownKeys(
+  value: Record<string, unknown>,
+  allowed: Set<string>,
+  path: string,
+) {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      manifestError(path, "unknown_field", `unknown field ${key}`)
+    }
+  }
+}
+
+function assertNoRejectedKeys(
+  value: Record<string, unknown>,
+  rejected: Set<string>,
+  path: string,
+) {
+  for (const key of Object.keys(value)) {
+    if (rejected.has(key)) {
+      manifestError(path, "unsafe_field", `unsafe field ${key} is not allowed`)
+    }
+  }
+}
+
+function requireRecord(value: unknown, path: string) {
+  if (!isRecord(value)) {
+    manifestError(path, "invalid_type", "expected object")
+  }
+  return value
+}
+
+function requireString(value: unknown, path: string) {
+  if (typeof value !== "string" || value.trim() === "") {
+    manifestError(path, "invalid_type", "expected non-empty string")
+  }
+  return value.trim()
+}
+
+function optionalString(value: unknown, path: string) {
+  if (value === undefined) return undefined
+  return requireString(value, path)
+}
+
+function requireBoolean(value: unknown, path: string) {
+  if (typeof value !== "boolean") {
+    manifestError(path, "invalid_type", "expected boolean")
+  }
+  return value
+}
+
+function requireNumber(value: unknown, path: string) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    manifestError(path, "invalid_type", "expected finite number")
+  }
+  return value
+}
+
+function requireInteger(value: unknown, path: string) {
+  const numberValue = requireNumber(value, path)
+  if (!Number.isInteger(numberValue)) {
+    manifestError(path, "invalid_type", "expected integer")
+  }
+  return numberValue
+}
+
+function requireId(value: unknown, path: string) {
+  const id = requireString(value, path)
+  if (!scalarIdPattern.test(id)) {
+    manifestError(path, "invalid_id", "expected safe identifier")
+  }
+  return id
+}
+
+function requireSafeSelector(value: unknown, path: string) {
+  const selector = requireString(value, path)
+  if (
+    selector.includes("..") ||
+    selector.startsWith("/") ||
+    selector.includes("\\") ||
+    !safePattern.test(selector)
+  ) {
+    manifestError(path, "unsafe_selector", "expected safe relative selector")
+  }
+  return selector
+}
+
+function requireSafePattern(value: unknown, path: string) {
+  const pattern = requireString(value, path)
+  if (
+    pattern.includes("..") ||
+    pattern.startsWith("/") ||
+    pattern.includes("\\") ||
+    !/^[a-zA-Z0-9*@][a-zA-Z0-9_.:/@*-]{0,255}$/u.test(pattern)
+  ) {
+    manifestError(
+      path,
+      "unsafe_selector",
+      "expected safe relative selector pattern",
+    )
+  }
+  return pattern
+}
+
+export function isSafeRelativeStoryboardRunPath(pathValue: string) {
+  if (
+    !pathValue ||
+    isAbsolute(pathValue) ||
+    pathValue.includes("\\") ||
+    pathValue.includes("\0")
+  ) {
+    return false
+  }
+  const parts = pathValue.split("/")
+  if (parts.some((part) => part === "" || part === "." || part === "..")) {
+    return false
+  }
+  if (
+    parts.some((part) => part.startsWith(".") && part !== ".storyboard-runs")
+  ) {
+    return false
+  }
+  return true
+}
+
+function requireSafeRelativePath(value: unknown, path: string) {
+  const pathValue = requireString(value, path)
+  if (!isSafeRelativeStoryboardRunPath(pathValue)) {
+    manifestError(path, "unsafe_path", "expected safe relative path")
+  }
+  return pathValue
+}
+
+function requireEnum<T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+  path: string,
+): T[number] {
+  const stringValue = requireString(value, path)
+  if (!allowed.includes(stringValue)) {
+    manifestError(path, "invalid_enum", `expected one of ${allowed.join(", ")}`)
+  }
+  return stringValue
+}
+
+function requireStringArray<T extends string>(
+  value: unknown,
+  path: string,
+  item: (value: unknown, path: string) => T,
+) {
+  if (!Array.isArray(value) || value.length === 0) {
+    manifestError(path, "invalid_type", "expected non-empty array")
+  }
+  return value.map((entry, index) => item(entry, `${path}[${index}]`))
+}
+
+function normalizeParamValue(
+  value: unknown,
+  definition: ParamDefinition,
+  path: string,
+): ParamValue {
+  if (value === null) return null
+  if (definition.type === "string") return requireString(value, path)
+  if (definition.type === "boolean") {
+    if (typeof value !== "boolean")
+      manifestError(path, "invalid_type", "expected boolean")
+    return value
+  }
+  if (definition.type === "number") return requireNumber(value, path)
+  if (definition.type === "integer") return requireInteger(value, path)
+  manifestError(path, "invalid_enum", "unsupported param type")
+}
+
+function parseParamDefinition(value: unknown, path: string): ParamDefinition {
+  const record = requireRecord(value, path)
+  assertNoUnknownKeys(record, allowedParamKeys, path)
+  const type = requireEnum(
+    record.type,
+    ["string", "number", "boolean", "integer"] as const,
+    `${path}.type`,
+  )
+  const definition: ParamDefinition = {
+    type,
+    label: optionalString(record.label, `${path}.label`),
+    description: optionalString(record.description, `${path}.description`),
+    required:
+      record.required === undefined
+        ? undefined
+        : requireBoolean(record.required, `${path}.required`),
+    min:
+      record.min === undefined
+        ? undefined
+        : requireNumber(record.min, `${path}.min`),
+    max:
+      record.max === undefined
+        ? undefined
+        : requireNumber(record.max, `${path}.max`),
+  }
+  if (record.default !== undefined) {
+    definition.default = normalizeParamValue(
+      record.default,
+      definition,
+      `${path}.default`,
+    )
+  }
+  if (record.enum !== undefined) {
+    if (!Array.isArray(record.enum) || record.enum.length === 0) {
+      manifestError(`${path}.enum`, "invalid_type", "expected non-empty array")
+    }
+    definition.enum = record.enum.map((item, index) =>
+      normalizeParamValue(item, definition, `${path}.enum[${index}]`),
+    )
+    if (
+      definition.default !== undefined &&
+      !definition.enum.includes(definition.default)
+    ) {
+      manifestError(
+        `${path}.default`,
+        "invalid_default",
+        "default must be in enum",
+      )
+    }
+  }
+  return definition
+}
+
+function parseParamsSchema(value: unknown, path: string) {
+  const record = value === undefined ? {} : requireRecord(value, path)
+  const result: Record<string, ParamDefinition> = {}
+  for (const [key, definition] of Object.entries(record)) {
+    if (!scalarIdPattern.test(key)) {
+      manifestError(`${path}.${key}`, "invalid_id", "expected safe param name")
+    }
+    result[key] = parseParamDefinition(definition, `${path}.${key}`)
+  }
+  return result
+}
+
+function parseTargets(value: unknown, scope: RunScope, path: string) {
+  if (!Array.isArray(value) || value.length === 0) {
+    manifestError(
+      path,
+      "invalid_type",
+      "expected non-empty target selector array",
+    )
+  }
+  return value.map((entry, index) => {
+    const targetPath = `${path}[${index}]`
+    const record = requireRecord(entry, targetPath)
+    assertNoUnknownKeys(record, allowedTargetKeys, targetPath)
+    const parsed: ManifestTargetSelector = {
+      storyboardId: optionalString(
+        record.storyboardId,
+        `${targetPath}.storyboardId`,
+      ),
+      storyId: optionalString(record.storyId, `${targetPath}.storyId`),
+      frameKey: optionalString(record.frameKey, `${targetPath}.frameKey`),
+      storyPattern: optionalString(
+        record.storyPattern,
+        `${targetPath}.storyPattern`,
+      ),
+      framePattern: optionalString(
+        record.framePattern,
+        `${targetPath}.framePattern`,
+      ),
+    }
+    for (const [key, item] of Object.entries(parsed)) {
+      if (item !== undefined) {
+        parsed[key as keyof ManifestTargetSelector] = key.endsWith("Pattern")
+          ? requireSafePattern(item, `${targetPath}.${key}`)
+          : requireSafeSelector(item, `${targetPath}.${key}`)
+      }
+    }
+    if (scope === "frame" && !parsed.frameKey && !parsed.framePattern) {
+      manifestError(
+        targetPath,
+        "missing_target_identity",
+        "frame scope target requires frameKey or framePattern",
+      )
+    }
+    if (
+      (scope === "frame" || scope === "story") &&
+      !parsed.storyId &&
+      !parsed.storyPattern
+    ) {
+      manifestError(
+        targetPath,
+        "missing_target_identity",
+        `${scope} scope target requires storyId or storyPattern`,
+      )
+    }
+    if (
+      !parsed.storyboardId &&
+      !parsed.storyId &&
+      !parsed.frameKey &&
+      !parsed.storyPattern &&
+      !parsed.framePattern
+    ) {
+      manifestError(
+        targetPath,
+        "missing_target_identity",
+        "target selector cannot be empty",
+      )
+    }
+    return parsed
+  })
+}
+
+function parseRunner(value: unknown, path: string): Runner {
+  const record = requireRecord(value, path)
+  assertNoRejectedKeys(record, rejectedRunnerKeys, path)
+  assertNoUnknownKeys(record, allowedRunnerKeys, path)
+  const runner: Runner = {
+    id: requireId(record.id, `${path}.id`),
+    label: optionalString(record.label, `${path}.label`),
+    kind: requireEnum(
+      record.kind,
+      ["dry-run", "browser", "device", "app", "custom"] as const,
+      `${path}.kind`,
+    ),
+    enabled: requireBoolean(record.enabled, `${path}.enabled`),
+    capabilities: requireStringArray(
+      record.capabilities,
+      `${path}.capabilities`,
+      (item, itemPath) => requireEnum(item, storyboardRunModes, itemPath),
+    ),
+  }
+  if (!runner.enabled) {
+    manifestError(
+      `${path}.enabled`,
+      "disabled_runner",
+      "runner entries must be explicitly enabled or removed",
+    )
+  }
+  return runner
+}
+
+function parseCaptureSet(value: unknown, path: string): CaptureSet {
+  const record = requireRecord(value, path)
+  assertNoUnknownKeys(record, allowedCaptureSetKeys, path)
+  const viewport =
+    record.viewport === undefined
+      ? undefined
+      : requireRecord(record.viewport, `${path}.viewport`)
+  if (viewport)
+    assertNoUnknownKeys(viewport, allowedViewportKeys, `${path}.viewport`)
+  return {
+    id: requireId(record.id, `${path}.id`),
+    label: optionalString(record.label, `${path}.label`),
+    viewport: viewport
+      ? {
+          width: requireInteger(viewport.width, `${path}.viewport.width`),
+          height: requireInteger(viewport.height, `${path}.viewport.height`),
+          deviceScaleFactor:
+            viewport.deviceScaleFactor === undefined
+              ? undefined
+              : requireNumber(
+                  viewport.deviceScaleFactor,
+                  `${path}.viewport.deviceScaleFactor`,
+                ),
+          isMobile:
+            viewport.isMobile === undefined
+              ? undefined
+              : requireBoolean(viewport.isMobile, `${path}.viewport.isMobile`),
+        }
+      : undefined,
+    device: optionalString(record.device, `${path}.device`),
+    profile: optionalString(record.profile, `${path}.profile`),
+    outputPathTemplate: requireSafeRelativePath(
+      record.outputPathTemplate,
+      `${path}.outputPathTemplate`,
+    ),
+    imageFormat: requireEnum(
+      record.imageFormat,
+      ["png", "jpg", "jpeg", "webp"] as const,
+      `${path}.imageFormat`,
+    ),
+    comparisonPolicy:
+      record.comparisonPolicy === undefined
+        ? undefined
+        : requireEnum(
+            record.comparisonPolicy,
+            ["none", "pixel", "hash", "manual"] as const,
+            `${path}.comparisonPolicy`,
+          ),
+    options:
+      record.options === undefined
+        ? undefined
+        : parseParamValues(record.options, {}, `${path}.options`, true),
+  }
+}
+
+function parseEntry(value: unknown, path: string): ManifestEntry {
+  const record = requireRecord(value, path)
+  assertNoUnknownKeys(record, allowedEntryKeys, path)
+  const scope = requireEnum(record.scope, storyboardRunScopes, `${path}.scope`)
+  const enabled = requireBoolean(record.enabled, `${path}.enabled`)
+  if (!enabled) {
+    manifestError(
+      `${path}.enabled`,
+      "disabled_manifest_entry",
+      "manifest entries must be explicitly enabled or removed",
+    )
+  }
+  return {
+    id: requireId(record.id, `${path}.id`),
+    label: requireString(record.label, `${path}.label`),
+    scope,
+    runnerId: requireId(record.runnerId, `${path}.runnerId`),
+    modes: requireStringArray(record.modes, `${path}.modes`, (item, itemPath) =>
+      requireEnum(item, storyboardRunModes, itemPath),
+    ),
+    targets: parseTargets(record.targets, scope, `${path}.targets`),
+    paramsSchema: parseParamsSchema(
+      record.paramsSchema,
+      `${path}.paramsSchema`,
+    ),
+    captureSets:
+      record.captureSets === undefined
+        ? []
+        : requireStringArray(
+            record.captureSets,
+            `${path}.captureSets`,
+            (item, itemPath) => requireId(item, itemPath),
+          ),
+    enabled,
+  }
+}
+
+export function parseParamValues(
+  value: unknown,
+  schema: Record<string, ParamDefinition>,
+  path = "params",
+  allowUnknown = false,
+): ParamValues {
+  const record = value === undefined ? {} : requireRecord(value, path)
+  const result: ParamValues = {}
+  for (const [key, item] of Object.entries(record)) {
+    if (!allowUnknown && schema[key] === undefined) {
+      manifestError(`${path}.${key}`, "unknown_param", "unknown parameter")
+    }
+    const definition = schema[key]
+    if (definition) {
+      const parsed = normalizeParamValue(item, definition, `${path}.${key}`)
+      if (definition.enum && !definition.enum.includes(parsed)) {
+        manifestError(
+          `${path}.${key}`,
+          "invalid_enum",
+          "param value is not in enum",
+        )
+      }
+      result[key] = parsed
+    } else if (
+      typeof item === "string" ||
+      typeof item === "number" ||
+      typeof item === "boolean" ||
+      item === null
+    ) {
+      result[key] = item
+    } else {
+      manifestError(
+        `${path}.${key}`,
+        "invalid_type",
+        "expected primitive option value",
+      )
+    }
+  }
+  for (const [key, definition] of Object.entries(schema)) {
+    if (result[key] === undefined && definition.default !== undefined) {
+      result[key] = definition.default
+    } else if (result[key] === undefined && definition.required) {
+      manifestError(
+        `${path}.${key}`,
+        "missing_required_param",
+        "missing required parameter",
+      )
+    }
+  }
+  return result
+}
+
+function hasDuplicates(values: string[]) {
+  return new Set(values).size !== values.length
+}
+
+export function validateStoryboardRunManifestPayload(
+  payload: unknown,
+): StoryboardRunManifest {
+  const record = requireRecord(payload, "manifest")
+  assertNoUnknownKeys(record, allowedTopLevelKeys, "manifest")
+  const version = requireInteger(record.version, "manifest.version")
+  if (version !== 1) {
+    manifestError(
+      "manifest.version",
+      "unsupported_version",
+      "expected version 1",
+    )
+  }
+  const enabled = requireBoolean(record.enabled, "manifest.enabled")
+  if (!enabled) {
+    return {
+      version: 1,
+      enabled: false,
+      runners: [],
+      entries: [],
+      captureSets: [],
+    }
+  }
+  if (!Array.isArray(record.runners) || record.runners.length === 0) {
+    manifestError(
+      "manifest.runners",
+      "invalid_type",
+      "expected non-empty runner array",
+    )
+  }
+  if (!Array.isArray(record.entries) || record.entries.length === 0) {
+    manifestError(
+      "manifest.entries",
+      "invalid_type",
+      "expected non-empty entry array",
+    )
+  }
+  const runners = record.runners.map((runner, index) =>
+    parseRunner(runner, `manifest.runners[${index}]`),
+  )
+  const entries = record.entries.map((entry, index) =>
+    parseEntry(entry, `manifest.entries[${index}]`),
+  )
+  const captureSets = (
+    Array.isArray(record.captureSets) ? record.captureSets : []
+  ).map((captureSet, index) =>
+    parseCaptureSet(captureSet, `manifest.captureSets[${index}]`),
+  )
+  if (record.captureSets !== undefined && !Array.isArray(record.captureSets)) {
+    manifestError("manifest.captureSets", "invalid_type", "expected array")
+  }
+  const runnerIds = runners.map((runner) => runner.id)
+  const entryIds = entries.map((entry) => entry.id)
+  const captureSetIds = captureSets.map((captureSet) => captureSet.id)
+  if (hasDuplicates(runnerIds))
+    manifestError("manifest.runners", "duplicate_id", "duplicate runner id")
+  if (hasDuplicates(entryIds))
+    manifestError(
+      "manifest.entries",
+      "duplicate_id",
+      "duplicate manifest entry id",
+    )
+  if (hasDuplicates(captureSetIds))
+    manifestError(
+      "manifest.captureSets",
+      "duplicate_id",
+      "duplicate capture set id",
+    )
+  const runnerIdSet = new Set(runnerIds)
+  const captureSetIdSet = new Set(captureSetIds)
+  for (const entry of entries) {
+    if (!runnerIdSet.has(entry.runnerId)) {
+      manifestError(
+        `manifest.entries.${entry.id}.runnerId`,
+        "unknown_runner",
+        "manifest entry references unknown runner",
+      )
+    }
+    const runner = runners.find((candidate) => candidate.id === entry.runnerId)
+    for (const mode of entry.modes) {
+      if (!runner?.capabilities.includes(mode)) {
+        manifestError(
+          `manifest.entries.${entry.id}.modes`,
+          "unsupported_mode",
+          "manifest entry mode is not supported by runner",
+        )
+      }
+    }
+    const captureMode = entry.modes.some(
+      (mode) => mode === "capture" || mode === "run-and-capture",
+    )
+    if (captureMode && entry.captureSets.length === 0) {
+      manifestError(
+        `manifest.entries.${entry.id}.captureSets`,
+        "missing_capture_set",
+        "capture-capable entries require captureSets",
+      )
+    }
+    for (const captureSetId of entry.captureSets) {
+      if (!captureSetIdSet.has(captureSetId)) {
+        manifestError(
+          `manifest.entries.${entry.id}.captureSets`,
+          "unknown_capture_set",
+          "manifest entry references unknown capture set",
+        )
+      }
+    }
+  }
+  return { version: 1, enabled, runners, entries, captureSets }
+}
+
+export function validateCreateRunRequest(
+  payload: unknown,
+  manifest: StoryboardRunManifest,
+  hasCurrentStoryboardContext = false,
+): CreateRunRequestDto {
+  if (!manifest.enabled) {
+    manifestError("request", "run_api_disabled", "run API is disabled")
+  }
+  const record = requireRecord(payload, "request")
+  assertNoUnknownKeys(
+    record,
+    new Set([
+      "scope",
+      "mode",
+      "target",
+      "manifestEntryId",
+      "captureSetId",
+      "params",
+    ]),
+    "request",
+  )
+  const scope = requireEnum(record.scope, storyboardRunScopes, "request.scope")
+  const mode = requireEnum(record.mode, storyboardRunModes, "request.mode")
+  const manifestEntryId = requireId(
+    record.manifestEntryId,
+    "request.manifestEntryId",
+  )
+  const manifestEntry = manifest.entries.find(
+    (entry) => entry.id === manifestEntryId && entry.enabled,
+  )
+  if (!manifestEntry) {
+    manifestError(
+      "request.manifestEntryId",
+      "manifest_entry_not_found",
+      "Manifest entry is not enabled for this target.",
+    )
+  }
+  if (manifestEntry.scope !== scope) {
+    manifestError(
+      "request.scope",
+      "scope_mismatch",
+      "request scope must match manifest entry scope",
+    )
+  }
+  if (!manifestEntry.modes.includes(mode)) {
+    manifestError(
+      "request.mode",
+      "mode_not_enabled",
+      "request mode is not enabled for manifest entry",
+    )
+  }
+  const target = requireRecord(record.target, "request.target")
+  assertNoUnknownKeys(
+    target,
+    new Set(["storyboardId", "storyId", "frameKey"]),
+    "request.target",
+  )
+  const requestTarget: StoryboardRunTarget = {
+    storyboardId: optionalString(
+      target.storyboardId,
+      "request.target.storyboardId",
+    ),
+    storyId: optionalString(target.storyId, "request.target.storyId"),
+    frameKey: optionalString(target.frameKey, "request.target.frameKey"),
+  }
+  for (const [key, item] of Object.entries(requestTarget)) {
+    if (item !== undefined) {
+      requestTarget[key as keyof StoryboardRunTarget] = requireSafeSelector(
+        item,
+        `request.target.${key}`,
+      )
+    }
+  }
+  if (!requestTarget.storyboardId && !hasCurrentStoryboardContext) {
+    manifestError(
+      "request.target.storyboardId",
+      "missing_target_identity",
+      "storyboardId is required without an explicit current storyboard context",
+    )
+  }
+  if ((scope === "frame" || scope === "story") && !requestTarget.storyId) {
+    manifestError(
+      "request.target.storyId",
+      "missing_target_identity",
+      `${scope} scope requires storyId`,
+    )
+  }
+  if (scope === "frame" && !requestTarget.frameKey) {
+    manifestError(
+      "request.target.frameKey",
+      "missing_target_identity",
+      "frame scope requires frameKey",
+    )
+  }
+  const params = parseParamValues(
+    record.params,
+    manifestEntry.paramsSchema,
+    "request.params",
+  )
+  const captureSetId =
+    record.captureSetId === undefined
+      ? undefined
+      : requireId(record.captureSetId, "request.captureSetId")
+  if ((mode === "capture" || mode === "run-and-capture") && !captureSetId) {
+    manifestError(
+      "request.captureSetId",
+      "missing_capture_set",
+      "capture mode requires captureSetId",
+    )
+  }
+  if (captureSetId && !manifestEntry.captureSets.includes(captureSetId)) {
+    manifestError(
+      "request.captureSetId",
+      "capture_set_not_enabled",
+      "captureSetId is not enabled for manifest entry",
+    )
+  }
+  return {
+    scope,
+    mode,
+    target: requestTarget,
+    manifestEntryId,
+    captureSetId,
+    params,
+  }
+}
+
+function assertManifestPathSafe(storyboardRoot: string, manifestPath: string) {
+  const rootReal = realpathSync(storyboardRoot)
+  const parentReal = realpathSync(dirname(manifestPath))
+  const name = relative(parentReal, manifestPath)
+  if (name !== "storyboard.run.json") {
+    manifestError(
+      "manifestPath",
+      "unsafe_path",
+      "manifest path must be storyboard.run.json",
+    )
+  }
+  const relativeParent = relative(rootReal, parentReal)
+  if (
+    relativeParent !== "" &&
+    (relativeParent.startsWith("..") ||
+      relativeParent.includes(`..${sep}`) ||
+      isAbsolute(relativeParent))
+  ) {
+    manifestError(
+      "manifestPath",
+      "unsafe_path",
+      "manifest path must stay under storyboard root",
+    )
+  }
+  if (lstatSync(manifestPath).isSymbolicLink()) {
+    manifestError(
+      "manifestPath",
+      "unsafe_path",
+      "manifest file must not be a symlink",
+    )
+  }
+}
+
+export function loadStoryboardRunManifest(
+  storyboardRoot: string,
+): LoadStoryboardRunManifestResult {
+  const root = resolve(storyboardRoot)
+  const manifestPath = resolve(root, "storyboard.run.json")
+  if (!existsSync(manifestPath)) {
+    return {
+      loaded: false,
+      path: manifestPath,
+      manifest: null,
+      reason: "missing",
+    }
+  }
+  if (!statSync(root).isDirectory()) {
+    manifestError(
+      "storyboardRoot",
+      "invalid_type",
+      "storyboard root must be a directory",
+    )
+  }
+  assertManifestPathSafe(root, manifestPath)
+  const manifest = validateStoryboardRunManifestPayload(
+    JSON.parse(readFileSync(manifestPath, "utf8")),
+  )
+  if (!manifest.enabled) {
+    return {
+      loaded: false,
+      path: manifestPath,
+      manifest: null,
+      reason: "disabled",
+    }
+  }
+  return { loaded: true, path: manifestPath, manifest }
+}
+
+export function capabilitiesFromManifest(
+  result: LoadStoryboardRunManifestResult,
+): StoryboardRunCapabilitiesDto {
+  if (!result.loaded) {
+    return { runApi: false, manifestLoaded: false, manifestEntries: [] }
+  }
+  return {
+    runApi: true,
+    manifestLoaded: true,
+    queue: { type: "fifo", maxActive: 1, cancel: true },
+    modes: [...storyboardRunModes],
+    lifecycleStates: [...storyboardRunLifecycleStates],
+    freshnessStates: ["not-runnable", "unchanged", "stale"],
+    manifestEntries: result.manifest.entries.map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      scope: entry.scope,
+      modes: entry.modes,
+      captureSets: entry.captureSets,
+    })),
+  }
+}
