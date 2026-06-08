@@ -71,7 +71,21 @@ try {
   mkdirSync(join(root, "assets"), { recursive: true });
   writeFileSync(join(root, "storyboard.json"), `${JSON.stringify(storyboard, null, 2)}\n`);
   writeFileSync(join(root, "storyboard.md"), markdown);
-  for (const { frame } of frames.slice(0, 4)) {
+  const preferredFrameIds = [
+    "story-a-empty-subgroup-confirm-delete",
+    "story-c-manager-empty-subgroup-confirm-delete",
+    "story-b-non-empty-subgroup-blocked-error-remains",
+  ];
+  const targetFrames = preferredFrameIds
+    .map((frameId) => frames.find(({ frame }: any) => frame.id === frameId))
+    .filter(Boolean);
+  const smokeFrames = targetFrames.length >= 2 ? targetFrames : frames.slice(0, 2);
+
+  const framesToMirror = new Map<string, any>();
+  for (const item of [...frames.slice(0, 4), ...smokeFrames]) {
+    if (item?.frame?.id) framesToMirror.set(item.frame.id, item.frame);
+  }
+  for (const frame of framesToMirror.values()) {
     const asset = assetFor(frame);
     if (!asset || typeof asset !== "string") continue;
     const response = await fetch(`${source.replace(/\/$/, "")}/${asset.replace(/^\/+/, "")}`);
@@ -94,7 +108,12 @@ try {
     cwd: process.cwd(),
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, STORYBOARD_RUN_ALLOW_ASSET_FALLBACK: "1", STORYBOARD_AGENT_BROWSER_SESSION_NAME: `storyboard-smoke-${Date.now()}` },
+    env: {
+      ...process.env,
+      STORYBOARD_RUN_ALLOW_ASSET_FALLBACK: "1",
+      STORYBOARD_RUN_SOURCE_URL: source,
+      STORYBOARD_AGENT_BROWSER_SESSION_NAME: `storyboard-smoke-${Date.now()}`,
+    },
   });
   const baseUrl = `http://127.0.0.1:${port}`;
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -103,7 +122,7 @@ try {
 
   const capabilities: any = await fetchJson(`${baseUrl}/api/storyboard-access/capabilities`);
   const jobs = [] as any[];
-  for (const { story, frame } of frames.slice(0, 2)) {
+  for (const { story, frame } of smokeFrames) {
     const response = await fetch(`${baseUrl}/api/storyboard-access/runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -121,12 +140,21 @@ try {
     const terminal = await waitJob(baseUrl, payload.jobId);
     const logs: any = await fetchJson(`${baseUrl}/api/storyboard-access/runs/${payload.jobId}/logs`);
     const captureLog = logs.logs?.find((entry: any) => entry.event === "agent_browser_capture");
+    const snapshotLog = logs.logs?.find((entry: any) => entry.event === "agent_browser_snapshot");
+    const actionLogs = logs.logs?.filter((entry: any) => entry.event === "agent_browser_action") ?? [];
     const captureAsset = captureLog?.context?.outputAsset ? join(root, captureLog.context.outputAsset) : null;
     const captureStats = captureAsset && existsSync(captureAsset) ? statSync(captureAsset) : null;
+    const snapshotText = String(snapshotLog?.context?.stdout ?? "");
+    const expectedConfirmPromptVisible = /confirm-delete/iu.test(frame.id)
+      ? /Are you sure you want to delete this group\?/iu.test(snapshotText)
+      : undefined;
     jobs.push({
       jobId: payload.jobId,
       frameKey: frame.id,
+      storyId: story.id,
       status: terminal.status,
+      expectedConfirmPromptVisible,
+      rewrittenActions: actionLogs.map((entry: any) => entry.context?.rewrittenAction).filter(Boolean),
       provenanceWrites: terminal.provenanceWrites,
       logs: logs.logs?.map((entry: any) => entry.event),
       capturedAsset: captureStats ? { path: captureAsset, bytes: captureStats.size, mtimeMs: captureStats.mtimeMs } : null,
@@ -134,7 +162,13 @@ try {
   }
   const state: any = await fetchJson(`${baseUrl}/api/storyboard-access/state?captureSetId=default&outputVariantId=desktop`);
   server.kill();
-  finish(jobs.every((job) => job.status === "succeeded"), {
+  const parityChecks = jobs.filter((job) => /confirm-delete/iu.test(job.frameKey));
+  const sourceHost = new URL(source).hostname;
+  const ok = jobs.every((job) => job.status === "succeeded")
+    && parityChecks.length >= 2
+    && parityChecks.every((job) => job.expectedConfirmPromptVisible === true)
+    && jobs.some((job) => String(job.rewrittenActions?.join("\n") ?? "").includes(`http://${sourceHost}:19041/`));
+  finish(ok, {
     sourceReachable: true,
     routeCount: storyboard.stories?.length ?? 0,
     frameCount: frames.length,

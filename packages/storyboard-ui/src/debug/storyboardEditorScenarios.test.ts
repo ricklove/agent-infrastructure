@@ -5,6 +5,10 @@ import {
   findSelectionForFrameId,
   readStoryboardEditorQuery,
 } from "./storyboardEditorScenarios"
+import {
+  rewriteLoopbackUrlForStoryboardSource,
+  rewriteLoopbackUrlsInActionForStoryboardSource,
+} from "../storyboard-action-url"
 import type { StoryboardDocument } from "../storyboard-document"
 
 const bcn814Storyboard: StoryboardDocument = {
@@ -43,6 +47,26 @@ const bcn814Storyboard: StoryboardDocument = {
               screenshots: {
                 desktop:
                   "assets/agent-browser-user-stories/story-b-02-non-empty-subgroup-blocked-error-remains.desktop.png",
+              },
+            },
+          },
+          transitions: [],
+        },
+      ],
+      branches: [],
+    },
+    {
+      id: "story-c-manager-successful-empty-subgroup-delete",
+      title: "Group admin manager deletes an empty subgroup",
+      frames: [
+        {
+          id: "story-c-manager-empty-subgroup-confirm-delete",
+          title: "Manager confirms the normal delete prompt",
+          captureSets: {
+            default: {
+              screenshots: {
+                desktop:
+                  "assets/agent-browser-user-stories/story-c-02-manager-empty-subgroup-confirm-delete.desktop.png",
               },
             },
           },
@@ -104,5 +128,45 @@ describe("remote storyboard deep links", () => {
         completedAt: "2026-06-08T21:20:00.000Z",
       }),
     ).toBe("2026-06-08T21:20:00.000Z")
+  })
+
+  test("rewrites loopback run-script URLs to the remote storyboard host for bcn-814 story-a/story-c parity", () => {
+    expect(
+      rewriteLoopbackUrlForStoryboardSource(
+        "http://127.0.0.1:19041/groups/manage/group/729520f0-a002-4897-ad14-f7b5b557db41",
+        "http://10.0.0.239:8898/bcn-814-group-delete-real-app",
+      ),
+    ).toBe("http://10.0.0.239:19041/groups/manage/group/729520f0-a002-4897-ad14-f7b5b557db41")
+
+    expect(
+      rewriteLoopbackUrlsInActionForStoryboardSource(
+        "open http://127.0.0.1:19041/groups/manage/group/c30d5ebe-d9af-40e2-8de8-8bc61b60f748 while logged in",
+        "http://10.0.0.239:8898/bcn-814-group-delete-real-app",
+      ),
+    ).toContain("http://10.0.0.239:19041/groups/manage/group/c30d5ebe-d9af-40e2-8de8-8bc61b60f748")
+  })
+
+  test("maps the bcn-814 story-a and story-c confirmation frames to distinct confirm-delete controls", () => {
+    expect(
+      findSelectionForFrameId(
+        bcn814Storyboard,
+        "story-a-empty-subgroup-confirm-delete",
+      ),
+    ).toEqual({
+      kind: "frame",
+      storyId: "story-a-successful-empty-subgroup-delete",
+      frameId: "story-a-empty-subgroup-confirm-delete",
+    })
+
+    expect(
+      findSelectionForFrameId(
+        bcn814Storyboard,
+        "story-c-manager-empty-subgroup-confirm-delete",
+      ),
+    ).toEqual({
+      kind: "frame",
+      storyId: "story-c-manager-successful-empty-subgroup-delete",
+      frameId: "story-c-manager-empty-subgroup-confirm-delete",
+    })
   })
 })

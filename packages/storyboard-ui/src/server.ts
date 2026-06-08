@@ -414,7 +414,12 @@ async function ensureRunMirror(storyboardUrl: string) {
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, STORYBOARD_RUN_ALLOW_ASSET_FALLBACK: "1", STORYBOARD_AGENT_BROWSER_SESSION_NAME: `storyboard-ui-${key}` },
+    env: {
+      ...process.env,
+      STORYBOARD_RUN_ALLOW_ASSET_FALLBACK: "1",
+      STORYBOARD_RUN_SOURCE_URL: storyboardUrl,
+      STORYBOARD_AGENT_BROWSER_SESSION_NAME: `storyboard-ui-${key}`,
+    },
   })
   const mirror = { root, port, baseUrl: `http://127.0.0.1:${port}`, process: proc }
   runMirrors.set(key, mirror)

@@ -36,6 +36,7 @@ import {
   type RunLifecycleStatus,
   type StoryboardRunManifest,
 } from "../packages/storyboard-ui/src/run-system.js";
+import { rewriteLoopbackUrlsInActionForStoryboardSource } from "../packages/storyboard-ui/src/storyboard-action-url.js";
 
 type Config = {
   port: number;
@@ -563,15 +564,25 @@ async function runAgentBrowser(args: string[], timeoutMs = 15_000) {
 }
 
 async function applyAgentBrowserAction(action: string) {
-  const openUrl = extractOpenUrl(action);
-  if (openUrl) return runAgentBrowser(["open", openUrl], 20_000);
-  if (/confirmation\s+Delete button|confirm(?:ation)?\s+Delete/iu.test(action)) {
-    return runAgentBrowser(["find", "text", "Delete", "click"], 15_000);
+  const rewrittenAction = rewriteLoopbackUrlsInActionForStoryboardSource(
+    action,
+    process.env.STORYBOARD_RUN_SOURCE_URL,
+  );
+  const openUrl = extractOpenUrl(rewrittenAction);
+  if (openUrl) {
+    const result = await runAgentBrowser(["open", openUrl], 20_000);
+    return { ...result, rewrittenAction };
   }
-  if (/click\s+Delete/iu.test(action)) {
-    return runAgentBrowser(["find", "text", "Delete", "click"], 15_000);
+  if (/confirmation\s+Delete button|confirm(?:ation)?\s+Delete/iu.test(rewrittenAction)) {
+    const result = await runAgentBrowser(["find", "text", "Delete", "click"], 15_000);
+    return { ...result, rewrittenAction };
   }
-  return runAgentBrowser(["snapshot", "--compact", "--depth", "2"], 10_000);
+  if (/click\s+Delete/iu.test(rewrittenAction)) {
+    const result = await runAgentBrowser(["find", "text", "Delete", "click"], 15_000);
+    return { ...result, rewrittenAction };
+  }
+  const result = await runAgentBrowser(["snapshot", "--compact", "--depth", "2"], 10_000);
+  return { ...result, rewrittenAction };
 }
 
 function runnerForEntry(manifest: StoryboardRunManifest, entryId: string) {
