@@ -471,6 +471,40 @@ function findStoryIdForFrame(document: StoryboardDocument | null, frameId: strin
   return undefined
 }
 
+export function findSelectionForFrameId(
+  document: StoryboardDocument | null,
+  frameId: string | null | undefined,
+): SelectedTarget | null {
+  const targetFrameId = frameId?.trim()
+  if (!targetFrameId) return null
+
+  for (const story of document?.stories ?? []) {
+    if (story.frames.some((frame) => frame.id === targetFrameId)) {
+      return { kind: "frame", storyId: story.id, frameId: targetFrameId }
+    }
+    for (const branch of story.branches ?? []) {
+      if (branch.frames.some((frame) => frame.id === targetFrameId)) {
+        return {
+          kind: "frame",
+          storyId: story.id,
+          frameId: targetFrameId,
+          branchId: branch.id,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+export function readStoryboardEditorQuery(search: string) {
+  const params = new URLSearchParams(search)
+  return {
+    storyboardUrl: params.get("storyboardUrl")?.trim() || "",
+    frameId: params.get("frameId")?.trim() || "",
+  }
+}
+
 function AssetImage({ src, alt }: { src: string; alt: string }) {
   return <img alt={alt} className="h-full w-full object-contain bg-zinc-950" src={src} />
 }
@@ -538,6 +572,10 @@ function initialStoryboardUrlForSource(source: StoryboardEditorSource) {
   }
   if (typeof window === "undefined") {
     return ""
+  }
+  const queryStoryboardUrl = readStoryboardEditorQuery(window.location.search).storyboardUrl
+  if (queryStoryboardUrl) {
+    return queryStoryboardUrl
   }
   return window.localStorage.getItem(remoteStoryboardUrlStorageKey) ?? ""
 }
@@ -775,12 +813,18 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     skipAutosaveRef.current = true
     pendingSaveRef.current = null
     lastSavedRef.current = JSON.stringify(payload.document)
+    const nextDocument = normalizeStoryboardDocument(payload.document)
+    const requestedFrameId =
+      typeof window === "undefined"
+        ? ""
+        : readStoryboardEditorQuery(window.location.search).frameId
     setPath(payload.path)
-    setDocument(normalizeStoryboardDocument(payload.document))
+    setDocument(nextDocument)
     setSelected(
-      payload.document.stories[0]
-        ? { kind: "story", storyId: payload.document.stories[0].id }
-        : null,
+      findSelectionForFrameId(nextDocument, requestedFrameId) ??
+        (nextDocument.stories[0]
+          ? { kind: "story", storyId: nextDocument.stories[0].id }
+          : null),
     )
     setStatus("Loaded")
     setSaveState("idle")
@@ -1371,6 +1415,37 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     [variantRunStates, document?.id],
   )
   const activeVariantRunStates = visibleVariantRunStates.filter((state) => !isTerminalRunStatus(state.status))
+
+  useEffect(() => {
+    if (!selectedFrameId || sequences.length === 0) {
+      return
+    }
+    const animationFrame = window.requestAnimationFrame(() => {
+      const element = window.document.querySelector(
+        `[data-storyboard-frame-shell="${CSS.escape(selectedFrameId)}"]`,
+      )
+      if (!(element instanceof HTMLElement)) {
+        return
+      }
+
+      let left = element.offsetLeft
+      let top = element.offsetTop
+      let parent = element.offsetParent
+      while (parent instanceof HTMLElement && !parent.hasAttribute("data-panzoom-content")) {
+        left += parent.offsetLeft
+        top += parent.offsetTop
+        parent = parent.offsetParent
+      }
+
+      panZoomRef.current?.centerRect({
+        left,
+        top,
+        width: element.offsetWidth,
+        height: element.offsetHeight,
+      })
+    })
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [selectedFrameId, sequences])
 
   const navigatorPanel = useMemo<PanelLayoutPanel>(
     () => ({
@@ -2993,6 +3068,10 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       </div>
     </div>
   )
+}
+
+export function RemoteStoryboardEditorScreen() {
+  return <StoryboardEditorFixture source={{ storyboardUrl: "" }} />
 }
 
 function StoryboardEditorPreview() {
