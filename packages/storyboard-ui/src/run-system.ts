@@ -1,21 +1,35 @@
 import {
+  appendFileSync,
   existsSync,
   lstatSync,
+  mkdirSync,
   readFileSync,
+  readdirSync,
   realpathSync,
+  renameSync,
   statSync,
-} from "node:fs"
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path"
+  writeFileSync,
+} from "node:fs";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
+import { createHash, randomBytes } from "node:crypto";
 
-export const storyboardRunScopes = ["frame", "story", "storyboard"] as const
-export type RunScope = (typeof storyboardRunScopes)[number]
+export const storyboardRunScopes = ["frame", "story", "storyboard"] as const;
+export type RunScope = (typeof storyboardRunScopes)[number];
 
 export const storyboardRunModes = [
   "run-to-state",
   "capture",
   "run-and-capture",
-] as const
-export type RunMode = (typeof storyboardRunModes)[number]
+] as const;
+export type RunMode = (typeof storyboardRunModes)[number];
 
 export const storyboardRunLifecycleStates = [
   "queued",
@@ -28,10 +42,10 @@ export const storyboardRunLifecycleStates = [
   "cancelled",
   "expired",
   "recovered",
-] as const
-export type RunLifecycleStatus = (typeof storyboardRunLifecycleStates)[number]
-export type FrameRunStatus = "not-runnable" | "unchanged" | "stale"
-export type Freshness = FrameRunStatus
+] as const;
+export type RunLifecycleStatus = (typeof storyboardRunLifecycleStates)[number];
+export type FrameRunStatus = "not-runnable" | "unchanged" | "stale";
+export type Freshness = FrameRunStatus;
 
 export const terminalRunLifecycleStates: readonly RunLifecycleStatus[] = [
   "succeeded",
@@ -40,267 +54,276 @@ export const terminalRunLifecycleStates: readonly RunLifecycleStatus[] = [
   "cancelled",
   "expired",
   "recovered",
-]
+];
 
-export type RunnerKind = "dry-run" | "browser" | "device" | "app" | "custom"
-export type ParamPrimitiveType = "string" | "number" | "boolean" | "integer"
-export type ParamValue = string | number | boolean | null
-export type ParamValues = Record<string, ParamValue>
+export type RunnerKind = "dry-run" | "browser" | "device" | "app" | "custom";
+export type ParamPrimitiveType = "string" | "number" | "boolean" | "integer";
+export type ParamValue = string | number | boolean | null;
+export type ParamValues = Record<string, ParamValue>;
 
 export type StoryboardRunTarget = {
-  storyboardId?: string
-  storyId?: string
-  frameKey?: string
-}
+  storyboardId?: string;
+  storyId?: string;
+  frameKey?: string;
+  outputVariantId?: string;
+  screenSizeId?: string;
+};
 
 export type RunError = {
-  code: string
-  message: string
-  details?: Record<string, unknown>
-}
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+};
 
 export type LiveSessionHandle = {
-  type: "browser" | "device" | "simulator" | "app" | "custom"
-  id: string
-  url?: string
-  ttlSeconds: number
-  owner: "runner" | "agent" | "user" | "system" | string
+  type: "browser" | "device" | "simulator" | "app" | "custom";
+  id: string;
+  url?: string;
+  ttlSeconds: number;
+  owner: "runner" | "agent" | "user" | "system" | string;
   capabilities: Array<
     "attach" | "observe" | "interact" | "capture" | "revoke" | string
-  >
-  cleanup: "auto-expire" | "revoke-required" | "runner-managed"
-}
+  >;
+  cleanup: "auto-expire" | "revoke-required" | "runner-managed";
+};
 
 export type RunProgress = {
-  currentFrameKey?: string
-  completedFrames?: number
-  totalFrames?: number
-}
+  currentFrameKey?: string;
+  completedFrames?: number;
+  totalFrames?: number;
+};
 
 export type Run = {
-  jobId: string
-  scope: RunScope
-  mode: RunMode
-  status: RunLifecycleStatus
-  target: StoryboardRunTarget
-  manifestEntryId: string
-  captureSetId?: string
-  createdAt: string
-  updatedAt: string
-  startedAt?: string
-  completedAt?: string
-  params: ParamValues
-  provenanceWrites: string[]
-  liveSessionHandle?: LiveSessionHandle
-  progress?: RunProgress
-  error?: RunError
-}
+  jobId: string;
+  scope: RunScope;
+  mode: RunMode;
+  status: RunLifecycleStatus;
+  target: StoryboardRunTarget;
+  manifestEntryId: string;
+  captureSetId?: string;
+  outputVariantId?: string;
+  screenSizeId?: string;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  params: ParamValues;
+  provenanceWrites: string[];
+  liveSessionHandle?: LiveSessionHandle;
+  progress?: RunProgress;
+  error?: RunError;
+};
 
 export type ParamDefinition = {
-  type: ParamPrimitiveType
-  label?: string
-  description?: string
-  required?: boolean
-  default?: ParamValue
-  enum?: ParamValue[]
-  min?: number
-  max?: number
-}
+  type: ParamPrimitiveType;
+  label?: string;
+  description?: string;
+  required?: boolean;
+  default?: ParamValue;
+  enum?: ParamValue[];
+  min?: number;
+  max?: number;
+};
 
 export type CaptureSet = {
-  id: string
-  label?: string
+  id: string;
+  label?: string;
   viewport?: {
-    width: number
-    height: number
-    deviceScaleFactor?: number
-    isMobile?: boolean
-  }
-  device?: string
-  profile?: string
-  outputPathTemplate: string
-  imageFormat: "png" | "jpg" | "jpeg" | "webp"
-  comparisonPolicy?: "none" | "pixel" | "hash" | "manual"
-  options?: Record<string, ParamValue>
-}
+    width: number;
+    height: number;
+    deviceScaleFactor?: number;
+    isMobile?: boolean;
+  };
+  device?: string;
+  profile?: string;
+  outputPathTemplate: string;
+  imageFormat: "png" | "jpg" | "jpeg" | "webp";
+  comparisonPolicy?: "none" | "pixel" | "hash" | "manual";
+  options?: Record<string, ParamValue>;
+};
 
 export type Runner = {
-  id: string
-  label?: string
-  kind: RunnerKind
-  enabled: boolean
-  capabilities: RunMode[]
-  command?: never
-  shell?: never
-  args?: never
-}
+  id: string;
+  label?: string;
+  kind: RunnerKind;
+  enabled: boolean;
+  capabilities: RunMode[];
+  command?: never;
+  shell?: never;
+  args?: never;
+};
 
 export type ManifestTargetSelector = {
-  storyboardId?: string
-  storyId?: string
-  frameKey?: string
-  storyPattern?: string
-  framePattern?: string
-}
+  storyboardId?: string;
+  storyId?: string;
+  frameKey?: string;
+  storyPattern?: string;
+  framePattern?: string;
+};
 
 export type ManifestEntry = {
-  id: string
-  label: string
-  scope: RunScope
-  runnerId: string
-  modes: RunMode[]
-  targets: ManifestTargetSelector[]
-  paramsSchema: Record<string, ParamDefinition>
-  captureSets: string[]
-  enabled: boolean
-}
+  id: string;
+  label: string;
+  scope: RunScope;
+  runnerId: string;
+  modes: RunMode[];
+  targets: ManifestTargetSelector[];
+  paramsSchema: Record<string, ParamDefinition>;
+  captureSets: string[];
+  enabled: boolean;
+};
 
 export type StoryboardRunManifest = {
-  version: 1
-  enabled: boolean
-  runners: Runner[]
-  entries: ManifestEntry[]
-  captureSets: CaptureSet[]
-}
+  version: 1;
+  enabled: boolean;
+  runners: Runner[];
+  entries: ManifestEntry[];
+  captureSets: CaptureSet[];
+};
 
 export type Provenance = {
-  storyboardId: string
-  frameKey: string
-  manifestHash: string
-  manifestEntryId: string
-  runnerId: string
-  runnerHash?: string
-  appBuildId?: string
-  captureSetId: string
-  storyboardSpecHash: string
-  frameSpecHash: string
-  outputAsset: string
-  outputAssetHash?: string
-  completedAt: string
-  key?: string
-  path?: string
-  summary?: string
-}
+  storyboardId: string;
+  frameKey: string;
+  manifestHash: string;
+  manifestEntryId: string;
+  runnerId: string;
+  runnerHash?: string;
+  appBuildId?: string;
+  captureSetId: string;
+  storyboardSpecHash: string;
+  frameSpecHash: string;
+  captureSetHash?: string;
+  outputVariantId?: string;
+  screenSizeId?: string;
+  outputAsset: string;
+  outputAssetHash?: string;
+  completedAt: string;
+  key?: string;
+  path?: string;
+  summary?: string;
+};
 
 export type StoryboardRunCapabilitiesDto = {
-  runApi: boolean
-  manifestLoaded: boolean
-  queue?: { type: "fifo"; maxActive: number; cancel: boolean }
-  modes?: RunMode[]
-  lifecycleStates?: RunLifecycleStatus[]
-  freshnessStates?: FrameRunStatus[]
+  runApi: boolean;
+  manifestLoaded: boolean;
+  queue?: { type: "fifo"; maxActive: number; cancel: boolean };
+  modes?: RunMode[];
+  lifecycleStates?: RunLifecycleStatus[];
+  freshnessStates?: FrameRunStatus[];
   manifestEntries: Array<
     Pick<ManifestEntry, "id" | "label" | "scope" | "modes" | "captureSets">
-  >
-}
+  >;
+};
 
 export type FrameRunStateDto = {
-  storyboardId: string
-  storyId: string
-  frameKey: string
-  freshness: Freshness
-  runnable: boolean
-  disabledReason: string | null
-  manifestEntryIds: string[]
+  storyboardId: string;
+  storyId: string;
+  frameKey: string;
+  freshness: Freshness;
+  runnable: boolean;
+  disabledReason: string | null;
+  manifestEntryIds: string[];
   currentJob?: {
-    jobId: string
-    status: RunLifecycleStatus
-    queuePosition?: number
-  }
+    jobId: string;
+    status: RunLifecycleStatus;
+    queuePosition?: number;
+  };
   latestJob?: {
-    jobId: string
-    status: RunLifecycleStatus
-    completedAt?: string
-  }
-  provenance?: Provenance
-}
+    jobId: string;
+    status: RunLifecycleStatus;
+    completedAt?: string;
+  };
+  provenance?: Provenance;
+};
 
 export type StoryboardRunStateDto = {
-  storyboardId: string
-  generatedAt: string
-  runApi: boolean
-  queue: { maxActive: number; active: number; queued: number }
-  frames: FrameRunStateDto[]
-}
+  storyboardId: string;
+  generatedAt: string;
+  runApi: boolean;
+  queue: { maxActive: number; active: number; queued: number };
+  frames: FrameRunStateDto[];
+};
 
 export type CreateRunRequestDto = {
-  scope: RunScope
-  mode: RunMode
-  target: StoryboardRunTarget
-  manifestEntryId: string
-  captureSetId?: string
-  params?: ParamValues
-}
+  scope: RunScope;
+  mode: RunMode;
+  target: StoryboardRunTarget;
+  manifestEntryId: string;
+  captureSetId?: string;
+  outputVariantId?: string;
+  screenSizeId?: string;
+  params?: ParamValues;
+};
 
 export type CreateRunResponseDto = {
-  jobId: string
-  status: "queued"
-  queuePosition: number
+  jobId: string;
+  status: "queued";
+  queuePosition: number;
   links: {
-    job: string
-    logs: string
-    cancel: string
-  }
-}
+    job: string;
+    logs: string;
+    cancel: string;
+  };
+};
 
 export type RunLogRecordDto = {
-  ts: string
-  level: "debug" | "info" | "warn" | "error"
-  event: string
-  context?: Record<string, unknown>
-}
+  ts: string;
+  level: "debug" | "info" | "warn" | "error";
+  event: string;
+  context?: Record<string, unknown>;
+};
 
 export type CancelRunRequestDto = {
-  reason?: string
-}
+  reason?: string;
+};
 
 export type CancelRunResponseDto = {
-  jobId: string
-  status: "cancelled"
-  cancelledAt: string
-}
+  jobId: string;
+  status: "cancelled";
+  cancelledAt: string;
+};
 
 export class StoryboardRunManifestError extends Error {
-  readonly code: string
-  readonly details?: Record<string, unknown>
+  readonly code: string;
+  readonly details?: Record<string, unknown>;
 
   constructor(
     code: string,
     message: string,
     details?: Record<string, unknown>,
   ) {
-    super(message)
-    this.name = "StoryboardRunManifestError"
-    this.code = code
-    this.details = details
+    super(message);
+    this.name = "StoryboardRunManifestError";
+    this.code = code;
+    this.details = details;
   }
 }
 
 export type LoadStoryboardRunManifestResult =
   | { loaded: true; path: string; manifest: StoryboardRunManifest }
   | {
-      loaded: false
-      path: string | null
-      manifest: null
-      reason: "missing" | "disabled"
-    }
+      loaded: false;
+      path: string | null;
+      manifest: null;
+      reason: "missing" | "disabled";
+    };
 
-const scalarIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/u
-const safePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.:/@*-]{0,255}$/u
+const scalarIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/u;
+const safePattern = /^[a-zA-Z0-9][a-zA-Z0-9_.:/@*-]{0,255}$/u;
 const allowedTopLevelKeys = new Set([
   "version",
   "enabled",
   "runners",
   "entries",
   "captureSets",
-])
+]);
 const allowedRunnerKeys = new Set([
   "id",
   "label",
   "kind",
   "enabled",
   "capabilities",
-])
+]);
 const rejectedRunnerKeys = new Set([
   "command",
   "commands",
@@ -313,7 +336,7 @@ const rejectedRunnerKeys = new Set([
   "exec",
   "env",
   "cwd",
-])
+]);
 const allowedEntryKeys = new Set([
   "id",
   "label",
@@ -324,14 +347,14 @@ const allowedEntryKeys = new Set([
   "paramsSchema",
   "captureSets",
   "enabled",
-])
+]);
 const allowedTargetKeys = new Set([
   "storyboardId",
   "storyId",
   "frameKey",
   "storyPattern",
   "framePattern",
-])
+]);
 const allowedParamKeys = new Set([
   "type",
   "label",
@@ -341,7 +364,7 @@ const allowedParamKeys = new Set([
   "enum",
   "min",
   "max",
-])
+]);
 const allowedCaptureSetKeys = new Set([
   "id",
   "label",
@@ -352,20 +375,20 @@ const allowedCaptureSetKeys = new Set([
   "imageFormat",
   "comparisonPolicy",
   "options",
-])
+]);
 const allowedViewportKeys = new Set([
   "width",
   "height",
   "deviceScaleFactor",
   "isMobile",
-])
+]);
 
 function manifestError(path: string, code: string, message: string): never {
-  throw new StoryboardRunManifestError(code, `${path}: ${message}`)
+  throw new StoryboardRunManifestError(code, `${path}: ${message}`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function assertNoUnknownKeys(
@@ -375,7 +398,7 @@ function assertNoUnknownKeys(
 ) {
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) {
-      manifestError(path, "unknown_field", `unknown field ${key}`)
+      manifestError(path, "unknown_field", `unknown field ${key}`);
     }
   }
 }
@@ -387,75 +410,75 @@ function assertNoRejectedKeys(
 ) {
   for (const key of Object.keys(value)) {
     if (rejected.has(key)) {
-      manifestError(path, "unsafe_field", `unsafe field ${key} is not allowed`)
+      manifestError(path, "unsafe_field", `unsafe field ${key} is not allowed`);
     }
   }
 }
 
 function requireRecord(value: unknown, path: string) {
   if (!isRecord(value)) {
-    manifestError(path, "invalid_type", "expected object")
+    manifestError(path, "invalid_type", "expected object");
   }
-  return value
+  return value;
 }
 
 function requireString(value: unknown, path: string) {
   if (typeof value !== "string" || value.trim() === "") {
-    manifestError(path, "invalid_type", "expected non-empty string")
+    manifestError(path, "invalid_type", "expected non-empty string");
   }
-  return value.trim()
+  return value.trim();
 }
 
 function optionalString(value: unknown, path: string) {
-  if (value === undefined) return undefined
-  return requireString(value, path)
+  if (value === undefined) return undefined;
+  return requireString(value, path);
 }
 
 function requireBoolean(value: unknown, path: string) {
   if (typeof value !== "boolean") {
-    manifestError(path, "invalid_type", "expected boolean")
+    manifestError(path, "invalid_type", "expected boolean");
   }
-  return value
+  return value;
 }
 
 function requireNumber(value: unknown, path: string) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    manifestError(path, "invalid_type", "expected finite number")
+    manifestError(path, "invalid_type", "expected finite number");
   }
-  return value
+  return value;
 }
 
 function requireInteger(value: unknown, path: string) {
-  const numberValue = requireNumber(value, path)
+  const numberValue = requireNumber(value, path);
   if (!Number.isInteger(numberValue)) {
-    manifestError(path, "invalid_type", "expected integer")
+    manifestError(path, "invalid_type", "expected integer");
   }
-  return numberValue
+  return numberValue;
 }
 
 function requireId(value: unknown, path: string) {
-  const id = requireString(value, path)
+  const id = requireString(value, path);
   if (!scalarIdPattern.test(id)) {
-    manifestError(path, "invalid_id", "expected safe identifier")
+    manifestError(path, "invalid_id", "expected safe identifier");
   }
-  return id
+  return id;
 }
 
 function requireSafeSelector(value: unknown, path: string) {
-  const selector = requireString(value, path)
+  const selector = requireString(value, path);
   if (
     selector.includes("..") ||
     selector.startsWith("/") ||
     selector.includes("\\") ||
     !safePattern.test(selector)
   ) {
-    manifestError(path, "unsafe_selector", "expected safe relative selector")
+    manifestError(path, "unsafe_selector", "expected safe relative selector");
   }
-  return selector
+  return selector;
 }
 
 function requireSafePattern(value: unknown, path: string) {
-  const pattern = requireString(value, path)
+  const pattern = requireString(value, path);
   if (
     pattern.includes("..") ||
     pattern.startsWith("/") ||
@@ -466,9 +489,9 @@ function requireSafePattern(value: unknown, path: string) {
       path,
       "unsafe_selector",
       "expected safe relative selector pattern",
-    )
+    );
   }
-  return pattern
+  return pattern;
 }
 
 export function isSafeRelativeStoryboardRunPath(pathValue: string) {
@@ -478,26 +501,26 @@ export function isSafeRelativeStoryboardRunPath(pathValue: string) {
     pathValue.includes("\\") ||
     pathValue.includes("\0")
   ) {
-    return false
+    return false;
   }
-  const parts = pathValue.split("/")
+  const parts = pathValue.split("/");
   if (parts.some((part) => part === "" || part === "." || part === "..")) {
-    return false
+    return false;
   }
   if (
     parts.some((part) => part.startsWith(".") && part !== ".storyboard-runs")
   ) {
-    return false
+    return false;
   }
-  return true
+  return true;
 }
 
 function requireSafeRelativePath(value: unknown, path: string) {
-  const pathValue = requireString(value, path)
+  const pathValue = requireString(value, path);
   if (!isSafeRelativeStoryboardRunPath(pathValue)) {
-    manifestError(path, "unsafe_path", "expected safe relative path")
+    manifestError(path, "unsafe_path", "expected safe relative path");
   }
-  return pathValue
+  return pathValue;
 }
 
 function requireEnum<T extends readonly string[]>(
@@ -505,11 +528,15 @@ function requireEnum<T extends readonly string[]>(
   allowed: T,
   path: string,
 ): T[number] {
-  const stringValue = requireString(value, path)
+  const stringValue = requireString(value, path);
   if (!allowed.includes(stringValue)) {
-    manifestError(path, "invalid_enum", `expected one of ${allowed.join(", ")}`)
+    manifestError(
+      path,
+      "invalid_enum",
+      `expected one of ${allowed.join(", ")}`,
+    );
   }
-  return stringValue
+  return stringValue;
 }
 
 function requireStringArray<T extends string>(
@@ -518,9 +545,9 @@ function requireStringArray<T extends string>(
   item: (value: unknown, path: string) => T,
 ) {
   if (!Array.isArray(value) || value.length === 0) {
-    manifestError(path, "invalid_type", "expected non-empty array")
+    manifestError(path, "invalid_type", "expected non-empty array");
   }
-  return value.map((entry, index) => item(entry, `${path}[${index}]`))
+  return value.map((entry, index) => item(entry, `${path}[${index}]`));
 }
 
 function normalizeParamValue(
@@ -528,26 +555,26 @@ function normalizeParamValue(
   definition: ParamDefinition,
   path: string,
 ): ParamValue {
-  if (value === null) return null
-  if (definition.type === "string") return requireString(value, path)
+  if (value === null) return null;
+  if (definition.type === "string") return requireString(value, path);
   if (definition.type === "boolean") {
     if (typeof value !== "boolean")
-      manifestError(path, "invalid_type", "expected boolean")
-    return value
+      manifestError(path, "invalid_type", "expected boolean");
+    return value;
   }
-  if (definition.type === "number") return requireNumber(value, path)
-  if (definition.type === "integer") return requireInteger(value, path)
-  manifestError(path, "invalid_enum", "unsupported param type")
+  if (definition.type === "number") return requireNumber(value, path);
+  if (definition.type === "integer") return requireInteger(value, path);
+  manifestError(path, "invalid_enum", "unsupported param type");
 }
 
 function parseParamDefinition(value: unknown, path: string): ParamDefinition {
-  const record = requireRecord(value, path)
-  assertNoUnknownKeys(record, allowedParamKeys, path)
+  const record = requireRecord(value, path);
+  assertNoUnknownKeys(record, allowedParamKeys, path);
   const type = requireEnum(
     record.type,
     ["string", "number", "boolean", "integer"] as const,
     `${path}.type`,
-  )
+  );
   const definition: ParamDefinition = {
     type,
     label: optionalString(record.label, `${path}.label`),
@@ -564,21 +591,21 @@ function parseParamDefinition(value: unknown, path: string): ParamDefinition {
       record.max === undefined
         ? undefined
         : requireNumber(record.max, `${path}.max`),
-  }
+  };
   if (record.default !== undefined) {
     definition.default = normalizeParamValue(
       record.default,
       definition,
       `${path}.default`,
-    )
+    );
   }
   if (record.enum !== undefined) {
     if (!Array.isArray(record.enum) || record.enum.length === 0) {
-      manifestError(`${path}.enum`, "invalid_type", "expected non-empty array")
+      manifestError(`${path}.enum`, "invalid_type", "expected non-empty array");
     }
     definition.enum = record.enum.map((item, index) =>
       normalizeParamValue(item, definition, `${path}.enum[${index}]`),
-    )
+    );
     if (
       definition.default !== undefined &&
       !definition.enum.includes(definition.default)
@@ -587,22 +614,22 @@ function parseParamDefinition(value: unknown, path: string): ParamDefinition {
         `${path}.default`,
         "invalid_default",
         "default must be in enum",
-      )
+      );
     }
   }
-  return definition
+  return definition;
 }
 
 function parseParamsSchema(value: unknown, path: string) {
-  const record = value === undefined ? {} : requireRecord(value, path)
-  const result: Record<string, ParamDefinition> = {}
+  const record = value === undefined ? {} : requireRecord(value, path);
+  const result: Record<string, ParamDefinition> = {};
   for (const [key, definition] of Object.entries(record)) {
     if (!scalarIdPattern.test(key)) {
-      manifestError(`${path}.${key}`, "invalid_id", "expected safe param name")
+      manifestError(`${path}.${key}`, "invalid_id", "expected safe param name");
     }
-    result[key] = parseParamDefinition(definition, `${path}.${key}`)
+    result[key] = parseParamDefinition(definition, `${path}.${key}`);
   }
-  return result
+  return result;
 }
 
 function parseTargets(value: unknown, scope: RunScope, path: string) {
@@ -611,12 +638,12 @@ function parseTargets(value: unknown, scope: RunScope, path: string) {
       path,
       "invalid_type",
       "expected non-empty target selector array",
-    )
+    );
   }
   return value.map((entry, index) => {
-    const targetPath = `${path}[${index}]`
-    const record = requireRecord(entry, targetPath)
-    assertNoUnknownKeys(record, allowedTargetKeys, targetPath)
+    const targetPath = `${path}[${index}]`;
+    const record = requireRecord(entry, targetPath);
+    assertNoUnknownKeys(record, allowedTargetKeys, targetPath);
     const parsed: ManifestTargetSelector = {
       storyboardId: optionalString(
         record.storyboardId,
@@ -632,12 +659,12 @@ function parseTargets(value: unknown, scope: RunScope, path: string) {
         record.framePattern,
         `${targetPath}.framePattern`,
       ),
-    }
+    };
     for (const [key, item] of Object.entries(parsed)) {
       if (item !== undefined) {
         parsed[key as keyof ManifestTargetSelector] = key.endsWith("Pattern")
           ? requireSafePattern(item, `${targetPath}.${key}`)
-          : requireSafeSelector(item, `${targetPath}.${key}`)
+          : requireSafeSelector(item, `${targetPath}.${key}`);
       }
     }
     if (scope === "frame" && !parsed.frameKey && !parsed.framePattern) {
@@ -645,7 +672,7 @@ function parseTargets(value: unknown, scope: RunScope, path: string) {
         targetPath,
         "missing_target_identity",
         "frame scope target requires frameKey or framePattern",
-      )
+      );
     }
     if (
       (scope === "frame" || scope === "story") &&
@@ -656,7 +683,7 @@ function parseTargets(value: unknown, scope: RunScope, path: string) {
         targetPath,
         "missing_target_identity",
         `${scope} scope target requires storyId or storyPattern`,
-      )
+      );
     }
     if (
       !parsed.storyboardId &&
@@ -669,16 +696,16 @@ function parseTargets(value: unknown, scope: RunScope, path: string) {
         targetPath,
         "missing_target_identity",
         "target selector cannot be empty",
-      )
+      );
     }
-    return parsed
-  })
+    return parsed;
+  });
 }
 
 function parseRunner(value: unknown, path: string): Runner {
-  const record = requireRecord(value, path)
-  assertNoRejectedKeys(record, rejectedRunnerKeys, path)
-  assertNoUnknownKeys(record, allowedRunnerKeys, path)
+  const record = requireRecord(value, path);
+  assertNoRejectedKeys(record, rejectedRunnerKeys, path);
+  assertNoUnknownKeys(record, allowedRunnerKeys, path);
   const runner: Runner = {
     id: requireId(record.id, `${path}.id`),
     label: optionalString(record.label, `${path}.label`),
@@ -693,26 +720,26 @@ function parseRunner(value: unknown, path: string): Runner {
       `${path}.capabilities`,
       (item, itemPath) => requireEnum(item, storyboardRunModes, itemPath),
     ),
-  }
+  };
   if (!runner.enabled) {
     manifestError(
       `${path}.enabled`,
       "disabled_runner",
       "runner entries must be explicitly enabled or removed",
-    )
+    );
   }
-  return runner
+  return runner;
 }
 
 function parseCaptureSet(value: unknown, path: string): CaptureSet {
-  const record = requireRecord(value, path)
-  assertNoUnknownKeys(record, allowedCaptureSetKeys, path)
+  const record = requireRecord(value, path);
+  assertNoUnknownKeys(record, allowedCaptureSetKeys, path);
   const viewport =
     record.viewport === undefined
       ? undefined
-      : requireRecord(record.viewport, `${path}.viewport`)
+      : requireRecord(record.viewport, `${path}.viewport`);
   if (viewport)
-    assertNoUnknownKeys(viewport, allowedViewportKeys, `${path}.viewport`)
+    assertNoUnknownKeys(viewport, allowedViewportKeys, `${path}.viewport`);
   return {
     id: requireId(record.id, `${path}.id`),
     label: optionalString(record.label, `${path}.label`),
@@ -756,20 +783,20 @@ function parseCaptureSet(value: unknown, path: string): CaptureSet {
       record.options === undefined
         ? undefined
         : parseParamValues(record.options, {}, `${path}.options`, true),
-  }
+  };
 }
 
 function parseEntry(value: unknown, path: string): ManifestEntry {
-  const record = requireRecord(value, path)
-  assertNoUnknownKeys(record, allowedEntryKeys, path)
-  const scope = requireEnum(record.scope, storyboardRunScopes, `${path}.scope`)
-  const enabled = requireBoolean(record.enabled, `${path}.enabled`)
+  const record = requireRecord(value, path);
+  assertNoUnknownKeys(record, allowedEntryKeys, path);
+  const scope = requireEnum(record.scope, storyboardRunScopes, `${path}.scope`);
+  const enabled = requireBoolean(record.enabled, `${path}.enabled`);
   if (!enabled) {
     manifestError(
       `${path}.enabled`,
       "disabled_manifest_entry",
       "manifest entries must be explicitly enabled or removed",
-    )
+    );
   }
   return {
     id: requireId(record.id, `${path}.id`),
@@ -793,7 +820,7 @@ function parseEntry(value: unknown, path: string): ManifestEntry {
             (item, itemPath) => requireId(item, itemPath),
           ),
     enabled,
-  }
+  };
 }
 
 export function parseParamValues(
@@ -802,70 +829,70 @@ export function parseParamValues(
   path = "params",
   allowUnknown = false,
 ): ParamValues {
-  const record = value === undefined ? {} : requireRecord(value, path)
-  const result: ParamValues = {}
+  const record = value === undefined ? {} : requireRecord(value, path);
+  const result: ParamValues = {};
   for (const [key, item] of Object.entries(record)) {
     if (!allowUnknown && schema[key] === undefined) {
-      manifestError(`${path}.${key}`, "unknown_param", "unknown parameter")
+      manifestError(`${path}.${key}`, "unknown_param", "unknown parameter");
     }
-    const definition = schema[key]
+    const definition = schema[key];
     if (definition) {
-      const parsed = normalizeParamValue(item, definition, `${path}.${key}`)
+      const parsed = normalizeParamValue(item, definition, `${path}.${key}`);
       if (definition.enum && !definition.enum.includes(parsed)) {
         manifestError(
           `${path}.${key}`,
           "invalid_enum",
           "param value is not in enum",
-        )
+        );
       }
-      result[key] = parsed
+      result[key] = parsed;
     } else if (
       typeof item === "string" ||
       typeof item === "number" ||
       typeof item === "boolean" ||
       item === null
     ) {
-      result[key] = item
+      result[key] = item;
     } else {
       manifestError(
         `${path}.${key}`,
         "invalid_type",
         "expected primitive option value",
-      )
+      );
     }
   }
   for (const [key, definition] of Object.entries(schema)) {
     if (result[key] === undefined && definition.default !== undefined) {
-      result[key] = definition.default
+      result[key] = definition.default;
     } else if (result[key] === undefined && definition.required) {
       manifestError(
         `${path}.${key}`,
         "missing_required_param",
         "missing required parameter",
-      )
+      );
     }
   }
-  return result
+  return result;
 }
 
 function hasDuplicates(values: string[]) {
-  return new Set(values).size !== values.length
+  return new Set(values).size !== values.length;
 }
 
 export function validateStoryboardRunManifestPayload(
   payload: unknown,
 ): StoryboardRunManifest {
-  const record = requireRecord(payload, "manifest")
-  assertNoUnknownKeys(record, allowedTopLevelKeys, "manifest")
-  const version = requireInteger(record.version, "manifest.version")
+  const record = requireRecord(payload, "manifest");
+  assertNoUnknownKeys(record, allowedTopLevelKeys, "manifest");
+  const version = requireInteger(record.version, "manifest.version");
   if (version !== 1) {
     manifestError(
       "manifest.version",
       "unsupported_version",
       "expected version 1",
-    )
+    );
   }
-  const enabled = requireBoolean(record.enabled, "manifest.enabled")
+  const enabled = requireBoolean(record.enabled, "manifest.enabled");
   if (!enabled) {
     return {
       version: 1,
@@ -873,82 +900,82 @@ export function validateStoryboardRunManifestPayload(
       runners: [],
       entries: [],
       captureSets: [],
-    }
+    };
   }
   if (!Array.isArray(record.runners) || record.runners.length === 0) {
     manifestError(
       "manifest.runners",
       "invalid_type",
       "expected non-empty runner array",
-    )
+    );
   }
   if (!Array.isArray(record.entries) || record.entries.length === 0) {
     manifestError(
       "manifest.entries",
       "invalid_type",
       "expected non-empty entry array",
-    )
+    );
   }
   const runners = record.runners.map((runner, index) =>
     parseRunner(runner, `manifest.runners[${index}]`),
-  )
+  );
   const entries = record.entries.map((entry, index) =>
     parseEntry(entry, `manifest.entries[${index}]`),
-  )
+  );
   const captureSets = (
     Array.isArray(record.captureSets) ? record.captureSets : []
   ).map((captureSet, index) =>
     parseCaptureSet(captureSet, `manifest.captureSets[${index}]`),
-  )
+  );
   if (record.captureSets !== undefined && !Array.isArray(record.captureSets)) {
-    manifestError("manifest.captureSets", "invalid_type", "expected array")
+    manifestError("manifest.captureSets", "invalid_type", "expected array");
   }
-  const runnerIds = runners.map((runner) => runner.id)
-  const entryIds = entries.map((entry) => entry.id)
-  const captureSetIds = captureSets.map((captureSet) => captureSet.id)
+  const runnerIds = runners.map((runner) => runner.id);
+  const entryIds = entries.map((entry) => entry.id);
+  const captureSetIds = captureSets.map((captureSet) => captureSet.id);
   if (hasDuplicates(runnerIds))
-    manifestError("manifest.runners", "duplicate_id", "duplicate runner id")
+    manifestError("manifest.runners", "duplicate_id", "duplicate runner id");
   if (hasDuplicates(entryIds))
     manifestError(
       "manifest.entries",
       "duplicate_id",
       "duplicate manifest entry id",
-    )
+    );
   if (hasDuplicates(captureSetIds))
     manifestError(
       "manifest.captureSets",
       "duplicate_id",
       "duplicate capture set id",
-    )
-  const runnerIdSet = new Set(runnerIds)
-  const captureSetIdSet = new Set(captureSetIds)
+    );
+  const runnerIdSet = new Set(runnerIds);
+  const captureSetIdSet = new Set(captureSetIds);
   for (const entry of entries) {
     if (!runnerIdSet.has(entry.runnerId)) {
       manifestError(
         `manifest.entries.${entry.id}.runnerId`,
         "unknown_runner",
         "manifest entry references unknown runner",
-      )
+      );
     }
-    const runner = runners.find((candidate) => candidate.id === entry.runnerId)
+    const runner = runners.find((candidate) => candidate.id === entry.runnerId);
     for (const mode of entry.modes) {
       if (!runner?.capabilities.includes(mode)) {
         manifestError(
           `manifest.entries.${entry.id}.modes`,
           "unsupported_mode",
           "manifest entry mode is not supported by runner",
-        )
+        );
       }
     }
     const captureMode = entry.modes.some(
       (mode) => mode === "capture" || mode === "run-and-capture",
-    )
+    );
     if (captureMode && entry.captureSets.length === 0) {
       manifestError(
         `manifest.entries.${entry.id}.captureSets`,
         "missing_capture_set",
         "capture-capable entries require captureSets",
-      )
+      );
     }
     for (const captureSetId of entry.captureSets) {
       if (!captureSetIdSet.has(captureSetId)) {
@@ -956,11 +983,11 @@ export function validateStoryboardRunManifestPayload(
           `manifest.entries.${entry.id}.captureSets`,
           "unknown_capture_set",
           "manifest entry references unknown capture set",
-        )
+        );
       }
     }
   }
-  return { version: 1, enabled, runners, entries, captureSets }
+  return { version: 1, enabled, runners, entries, captureSets };
 }
 
 export function validateCreateRunRequest(
@@ -969,9 +996,9 @@ export function validateCreateRunRequest(
   hasCurrentStoryboardContext = false,
 ): CreateRunRequestDto {
   if (!manifest.enabled) {
-    manifestError("request", "run_api_disabled", "run API is disabled")
+    manifestError("request", "run_api_disabled", "run API is disabled");
   }
-  const record = requireRecord(payload, "request")
+  const record = requireRecord(payload, "request");
   assertNoUnknownKeys(
     record,
     new Set([
@@ -980,46 +1007,54 @@ export function validateCreateRunRequest(
       "target",
       "manifestEntryId",
       "captureSetId",
+      "outputVariantId",
+      "screenSizeId",
       "params",
     ]),
     "request",
-  )
-  const scope = requireEnum(record.scope, storyboardRunScopes, "request.scope")
-  const mode = requireEnum(record.mode, storyboardRunModes, "request.mode")
+  );
+  const scope = requireEnum(record.scope, storyboardRunScopes, "request.scope");
+  const mode = requireEnum(record.mode, storyboardRunModes, "request.mode");
   const manifestEntryId = requireId(
     record.manifestEntryId,
     "request.manifestEntryId",
-  )
+  );
   const manifestEntry = manifest.entries.find(
     (entry) => entry.id === manifestEntryId && entry.enabled,
-  )
+  );
   if (!manifestEntry) {
     manifestError(
       "request.manifestEntryId",
       "manifest_entry_not_found",
       "Manifest entry is not enabled for this target.",
-    )
+    );
   }
   if (manifestEntry.scope !== scope) {
     manifestError(
       "request.scope",
       "scope_mismatch",
       "request scope must match manifest entry scope",
-    )
+    );
   }
   if (!manifestEntry.modes.includes(mode)) {
     manifestError(
       "request.mode",
       "mode_not_enabled",
       "request mode is not enabled for manifest entry",
-    )
+    );
   }
-  const target = requireRecord(record.target, "request.target")
+  const target = requireRecord(record.target, "request.target");
   assertNoUnknownKeys(
     target,
-    new Set(["storyboardId", "storyId", "frameKey"]),
+    new Set([
+      "storyboardId",
+      "storyId",
+      "frameKey",
+      "outputVariantId",
+      "screenSizeId",
+    ]),
     "request.target",
-  )
+  );
   const requestTarget: StoryboardRunTarget = {
     storyboardId: optionalString(
       target.storyboardId,
@@ -1027,13 +1062,21 @@ export function validateCreateRunRequest(
     ),
     storyId: optionalString(target.storyId, "request.target.storyId"),
     frameKey: optionalString(target.frameKey, "request.target.frameKey"),
-  }
+    outputVariantId: optionalString(
+      target.outputVariantId,
+      "request.target.outputVariantId",
+    ),
+    screenSizeId: optionalString(
+      target.screenSizeId,
+      "request.target.screenSizeId",
+    ),
+  };
   for (const [key, item] of Object.entries(requestTarget)) {
     if (item !== undefined) {
       requestTarget[key as keyof StoryboardRunTarget] = requireSafeSelector(
         item,
         `request.target.${key}`,
-      )
+      );
     }
   }
   if (!requestTarget.storyboardId && !hasCurrentStoryboardContext) {
@@ -1041,44 +1084,52 @@ export function validateCreateRunRequest(
       "request.target.storyboardId",
       "missing_target_identity",
       "storyboardId is required without an explicit current storyboard context",
-    )
+    );
   }
   if ((scope === "frame" || scope === "story") && !requestTarget.storyId) {
     manifestError(
       "request.target.storyId",
       "missing_target_identity",
       `${scope} scope requires storyId`,
-    )
+    );
   }
   if (scope === "frame" && !requestTarget.frameKey) {
     manifestError(
       "request.target.frameKey",
       "missing_target_identity",
       "frame scope requires frameKey",
-    )
+    );
   }
+  const outputVariantId =
+    record.outputVariantId === undefined
+      ? requestTarget.outputVariantId
+      : requireId(record.outputVariantId, "request.outputVariantId");
+  const screenSizeId =
+    record.screenSizeId === undefined
+      ? requestTarget.screenSizeId
+      : requireId(record.screenSizeId, "request.screenSizeId");
   const params = parseParamValues(
     record.params,
     manifestEntry.paramsSchema,
     "request.params",
-  )
+  );
   const captureSetId =
     record.captureSetId === undefined
       ? undefined
-      : requireId(record.captureSetId, "request.captureSetId")
+      : requireId(record.captureSetId, "request.captureSetId");
   if ((mode === "capture" || mode === "run-and-capture") && !captureSetId) {
     manifestError(
       "request.captureSetId",
       "missing_capture_set",
       "capture mode requires captureSetId",
-    )
+    );
   }
   if (captureSetId && !manifestEntry.captureSets.includes(captureSetId)) {
     manifestError(
       "request.captureSetId",
       "capture_set_not_enabled",
       "captureSetId is not enabled for manifest entry",
-    )
+    );
   }
   return {
     scope,
@@ -1086,22 +1137,24 @@ export function validateCreateRunRequest(
     target: requestTarget,
     manifestEntryId,
     captureSetId,
+    outputVariantId,
+    screenSizeId,
     params,
-  }
+  };
 }
 
 function assertManifestPathSafe(storyboardRoot: string, manifestPath: string) {
-  const rootReal = realpathSync(storyboardRoot)
-  const parentReal = realpathSync(dirname(manifestPath))
-  const name = relative(parentReal, manifestPath)
+  const rootReal = realpathSync(storyboardRoot);
+  const parentReal = realpathSync(dirname(manifestPath));
+  const name = relative(parentReal, manifestPath);
   if (name !== "storyboard.run.json") {
     manifestError(
       "manifestPath",
       "unsafe_path",
       "manifest path must be storyboard.run.json",
-    )
+    );
   }
-  const relativeParent = relative(rootReal, parentReal)
+  const relativeParent = relative(rootReal, parentReal);
   if (
     relativeParent !== "" &&
     (relativeParent.startsWith("..") ||
@@ -1112,57 +1165,57 @@ function assertManifestPathSafe(storyboardRoot: string, manifestPath: string) {
       "manifestPath",
       "unsafe_path",
       "manifest path must stay under storyboard root",
-    )
+    );
   }
   if (lstatSync(manifestPath).isSymbolicLink()) {
     manifestError(
       "manifestPath",
       "unsafe_path",
       "manifest file must not be a symlink",
-    )
+    );
   }
 }
 
 export function loadStoryboardRunManifest(
   storyboardRoot: string,
 ): LoadStoryboardRunManifestResult {
-  const root = resolve(storyboardRoot)
-  const manifestPath = resolve(root, "storyboard.run.json")
+  const root = resolve(storyboardRoot);
+  const manifestPath = resolve(root, "storyboard.run.json");
   if (!existsSync(manifestPath)) {
     return {
       loaded: false,
       path: manifestPath,
       manifest: null,
       reason: "missing",
-    }
+    };
   }
   if (!statSync(root).isDirectory()) {
     manifestError(
       "storyboardRoot",
       "invalid_type",
       "storyboard root must be a directory",
-    )
+    );
   }
-  assertManifestPathSafe(root, manifestPath)
+  assertManifestPathSafe(root, manifestPath);
   const manifest = validateStoryboardRunManifestPayload(
     JSON.parse(readFileSync(manifestPath, "utf8")),
-  )
+  );
   if (!manifest.enabled) {
     return {
       loaded: false,
       path: manifestPath,
       manifest: null,
       reason: "disabled",
-    }
+    };
   }
-  return { loaded: true, path: manifestPath, manifest }
+  return { loaded: true, path: manifestPath, manifest };
 }
 
 export function capabilitiesFromManifest(
   result: LoadStoryboardRunManifestResult,
 ): StoryboardRunCapabilitiesDto {
   if (!result.loaded) {
-    return { runApi: false, manifestLoaded: false, manifestEntries: [] }
+    return { runApi: false, manifestLoaded: false, manifestEntries: [] };
   }
   return {
     runApi: true,
@@ -1178,5 +1231,556 @@ export function capabilitiesFromManifest(
       modes: entry.modes,
       captureSets: entry.captureSets,
     })),
+  };
+}
+
+export type StoryboardRunStorage = ReturnType<
+  typeof createStoryboardRunStorage
+>;
+export type RestartRecoveredStatus = "failed" | "expired" | "recovered";
+
+export type FreshnessDerivationInput = {
+  storyboardRoot: string;
+  storyboard: {
+    id: string;
+    stories: Array<{
+      id: string;
+      frames: Array<{ id: string } & Record<string, unknown>>;
+      branches?: Array<{
+        frames: Array<{ id: string } & Record<string, unknown>>;
+      }>;
+    }>;
+  } & Record<string, unknown>;
+  storyId: string;
+  frameKey: string;
+  manifest: StoryboardRunManifest | null;
+  manifestHash?: string;
+  manifestEntryId?: string;
+  captureSetId?: string;
+  outputVariantId?: string;
+  screenSizeId?: string;
+  mode?: RunMode;
+  runnerHashes?: Record<string, string | undefined>;
+  appBuildId?: string;
+};
+
+const storyboardRunsDirName = ".storyboard-runs";
+const nonTerminalStatusSet = new Set<RunLifecycleStatus>(
+  storyboardRunLifecycleStates.filter(
+    (status) => !terminalRunLifecycleStates.includes(status),
+  ),
+);
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort((left, right) => left.localeCompare(right))
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`,
+      )
+      .join(",")}}`;
   }
+  return JSON.stringify(value);
+}
+
+export function storyboardRunSha256(value: string | Uint8Array) {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
+export function hashStoryboardRunJson(value: unknown) {
+  return storyboardRunSha256(stableJson(value));
+}
+
+export function generateStoryboardRunJobId() {
+  return `job_${randomBytes(18).toString("base64url")}`;
+}
+
+function assertUnderRoot(root: string, pathValue: string) {
+  const resolvedRoot = resolve(root);
+  const resolved = resolve(pathValue);
+  const relativePath = relative(resolvedRoot, resolved);
+  if (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+  )
+    return resolved;
+  manifestError("path", "unsafe_path", "path must stay under storyboard root");
+}
+
+function assertNoSymlinkAncestors(root: string, pathValue: string) {
+  const resolvedRoot = resolve(root);
+  const resolved = assertUnderRoot(resolvedRoot, pathValue);
+  const relativePath = relative(resolvedRoot, resolved);
+  let current = resolvedRoot;
+  if (existsSync(current) && lstatSync(current).isSymbolicLink()) {
+    manifestError(
+      "path",
+      "unsafe_path",
+      "storyboard root must not be a symlink",
+    );
+  }
+  for (const part of relativePath.split(sep).filter(Boolean)) {
+    current = join(current, part);
+    if (existsSync(current) && lstatSync(current).isSymbolicLink()) {
+      manifestError(
+        "path",
+        "unsafe_path",
+        "storyboard run path must not traverse a symlink",
+      );
+    }
+  }
+}
+
+function atomicWriteUtf8(pathValue: string, contents: string) {
+  mkdirSync(dirname(pathValue), { recursive: true });
+  const temporaryPath = join(
+    dirname(pathValue),
+    `.tmp-${basename(pathValue)}-${randomBytes(8).toString("hex")}`,
+  );
+  writeFileSync(temporaryPath, contents, "utf8");
+  renameSync(temporaryPath, pathValue);
+}
+
+function parseJsonFile<T>(pathValue: string): T {
+  return JSON.parse(readFileSync(pathValue, "utf8")) as T;
+}
+
+function sanitizePathPart(value: string) {
+  if (!scalarIdPattern.test(value))
+    manifestError("path", "invalid_id", "expected safe storage key");
+  return value.replace(/:/gu, "_");
+}
+
+export function isSafeStoryboardRunServedArtifactPath(pathValue: string) {
+  return (
+    isSafeRelativeStoryboardRunPath(pathValue) &&
+    !pathValue
+      .split("/")
+      .some(
+        (part) =>
+          part.startsWith(".") ||
+          /(?:secret|token|credential|private[-_]?key|\.env)/iu.test(part),
+      )
+  );
+}
+
+export function createStoryboardRunStorage(storyboardRoot: string) {
+  const root = resolve(storyboardRoot);
+  const runsRoot = join(root, storyboardRunsDirName);
+  const jobsDir = join(runsRoot, "jobs");
+  const logsDir = join(runsRoot, "logs");
+  const provenanceDir = join(runsRoot, "provenance");
+  const transientDir = join(runsRoot, "transient");
+
+  function safeStoragePath(relativePath: string) {
+    if (!isSafeRelativeStoryboardRunPath(relativePath)) {
+      manifestError(
+        "path",
+        "unsafe_path",
+        "expected safe storyboard run relative path",
+      );
+    }
+    const fullPath = assertUnderRoot(root, join(root, relativePath));
+    assertNoSymlinkAncestors(root, fullPath);
+    return fullPath;
+  }
+
+  function jobPath(jobId: string) {
+    return safeStoragePath(
+      `${storyboardRunsDirName}/jobs/${sanitizePathPart(jobId)}.json`,
+    );
+  }
+
+  function logPath(jobId: string) {
+    return safeStoragePath(
+      `${storyboardRunsDirName}/logs/${sanitizePathPart(jobId)}.jsonl`,
+    );
+  }
+
+  function provenanceRelativePath(
+    provenance: Pick<
+      Provenance,
+      | "storyboardId"
+      | "frameKey"
+      | "captureSetId"
+      | "manifestEntryId"
+      | "runnerId"
+    > & { outputVariantId?: string; screenSizeId?: string },
+  ) {
+    const variant =
+      provenance.outputVariantId ?? provenance.screenSizeId ?? "default";
+    return [
+      storyboardRunsDirName,
+      "provenance",
+      sanitizePathPart(provenance.storyboardId),
+      sanitizePathPart(provenance.frameKey),
+      sanitizePathPart(provenance.captureSetId),
+      sanitizePathPart(variant),
+      sanitizePathPart(provenance.manifestEntryId),
+      `${sanitizePathPart(provenance.runnerId)}.json`,
+    ].join("/");
+  }
+
+  function writeJob(job: Run) {
+    const normalized: Run = {
+      ...job,
+      updatedAt: job.updatedAt || new Date().toISOString(),
+    };
+    atomicWriteUtf8(
+      jobPath(normalized.jobId),
+      `${JSON.stringify(normalized, null, 2)}\n`,
+    );
+    return normalized;
+  }
+
+  function readJob(jobId: string) {
+    return parseJsonFile<Run>(jobPath(jobId));
+  }
+
+  function listJobs() {
+    if (!existsSync(jobsDir)) return [] as Run[];
+    return readdirSync(jobsDir)
+      .filter((name) => name.endsWith(".json") && !name.startsWith("."))
+      .map((name) => parseJsonFile<Run>(join(jobsDir, name)))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
+
+  function appendLog(
+    jobId: string,
+    record: Omit<RunLogRecordDto, "ts"> & { ts?: string },
+  ) {
+    const logRecord: RunLogRecordDto = {
+      ts: record.ts ?? new Date().toISOString(),
+      level: record.level,
+      event: record.event,
+      ...(record.context ? { context: record.context } : {}),
+    };
+    mkdirSync(logsDir, { recursive: true });
+    appendFileSync(logPath(jobId), `${JSON.stringify(logRecord)}\n`, "utf8");
+    return logRecord;
+  }
+
+  function readLogs(jobId: string) {
+    const pathValue = logPath(jobId);
+    if (!existsSync(pathValue)) return [] as RunLogRecordDto[];
+    return readFileSync(pathValue, "utf8")
+      .split(/\n/u)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as RunLogRecordDto);
+  }
+
+  function writeProvenance(provenance: Provenance) {
+    const relativePath = provenanceRelativePath(provenance);
+    const enriched: Provenance = {
+      ...provenance,
+      key: relativePath
+        .slice(`${storyboardRunsDirName}/provenance/`.length)
+        .replace(/\.json$/u, ""),
+      path: relativePath,
+    };
+    atomicWriteUtf8(
+      safeStoragePath(relativePath),
+      `${JSON.stringify(enriched, null, 2)}\n`,
+    );
+    return enriched;
+  }
+
+  function readProvenance(
+    identity: Parameters<typeof provenanceRelativePath>[0],
+  ) {
+    const relativePath = provenanceRelativePath(identity);
+    const fullPath = safeStoragePath(relativePath);
+    if (!existsSync(fullPath)) return null;
+    return parseJsonFile<Provenance>(fullPath);
+  }
+
+  function transientArtifactPath(jobId: string, relativeArtifactPath: string) {
+    if (!isSafeStoryboardRunServedArtifactPath(relativeArtifactPath)) {
+      manifestError(
+        "artifact",
+        "unsafe_path",
+        "expected safe non-dotfile relative artifact path",
+      );
+    }
+    return safeStoragePath(
+      `${storyboardRunsDirName}/transient/${sanitizePathPart(jobId)}/${relativeArtifactPath}`,
+    );
+  }
+
+  function markNonTerminalJobsOnRestart(
+    status: RestartRecoveredStatus = "failed",
+  ) {
+    const recovered: Run[] = [];
+    for (const job of listJobs()) {
+      if (!nonTerminalStatusSet.has(job.status)) continue;
+      const now = new Date().toISOString();
+      const updated: Run = {
+        ...job,
+        status,
+        updatedAt: now,
+        completedAt: job.completedAt ?? now,
+        error:
+          status === "failed"
+            ? {
+                code: "server_restarted",
+                message: "Job was non-terminal during access-server restart.",
+              }
+            : job.error,
+      };
+      writeJob(updated);
+      appendLog(job.jobId, {
+        level: "warn",
+        event: "job_recovered_on_restart",
+        context: { status },
+      });
+      recovered.push(updated);
+    }
+    return recovered;
+  }
+
+  mkdirSync(jobsDir, { recursive: true });
+  mkdirSync(logsDir, { recursive: true });
+  mkdirSync(provenanceDir, { recursive: true });
+  mkdirSync(transientDir, { recursive: true });
+
+  return {
+    root,
+    runsRoot,
+    jobsDir,
+    logsDir,
+    provenanceDir,
+    transientDir,
+    jobPath,
+    logPath,
+    provenanceRelativePath,
+    writeJob,
+    readJob,
+    listJobs,
+    appendLog,
+    readLogs,
+    writeProvenance,
+    readProvenance,
+    transientArtifactPath,
+    markNonTerminalJobsOnRestart,
+  };
+}
+
+function allStoryboardFrames(
+  storyboard: FreshnessDerivationInput["storyboard"],
+) {
+  return storyboard.stories.flatMap((story) => [
+    ...story.frames.map((frame) => ({ story, frame })),
+    ...(story.branches ?? []).flatMap((branch) =>
+      branch.frames.map((frame) => ({ story, frame })),
+    ),
+  ]);
+}
+
+function selectorMatches(
+  selector: ManifestTargetSelector,
+  storyboardId: string,
+  storyId: string,
+  frameKey: string,
+) {
+  const wildcard = (pattern: string | undefined, value: string) => {
+    if (pattern === undefined) return true;
+    const escaped = pattern
+      .replace(/[-/\^$+?.()|[\]{}]/gu, "\$&")
+      .replace(/\*/gu, ".*");
+    return new RegExp(`^${escaped}$`, "u").test(value);
+  };
+  return (
+    (selector.storyboardId === undefined ||
+      selector.storyboardId === storyboardId) &&
+    (selector.storyId === undefined || selector.storyId === storyId) &&
+    (selector.frameKey === undefined || selector.frameKey === frameKey) &&
+    wildcard(selector.storyPattern, storyId) &&
+    wildcard(selector.framePattern, frameKey)
+  );
+}
+
+function renderOutputPath(
+  template: string,
+  values: Record<string, string | undefined>,
+) {
+  return template.replace(
+    /\{([a-zA-Z0-9_.:-]+)\}/gu,
+    (_match, key: string) => values[key] ?? "",
+  );
+}
+
+export function deriveStoryboardRunFreshness(
+  input: FreshnessDerivationInput,
+): FrameRunStateDto {
+  const generatedAt = new Date().toISOString();
+  const storyboardId = input.storyboard.id;
+  const match = allStoryboardFrames(input.storyboard).find(
+    ({ story, frame }) =>
+      story.id === input.storyId && frame.id === input.frameKey,
+  );
+  const storage = createStoryboardRunStorage(input.storyboardRoot);
+  if (!input.manifest?.enabled || !match) {
+    return {
+      storyboardId,
+      storyId: input.storyId,
+      frameKey: input.frameKey,
+      freshness: "not-runnable",
+      runnable: false,
+      disabledReason: !input.manifest?.enabled
+        ? "run_api_disabled"
+        : "frame_not_found",
+      manifestEntryIds: [],
+    };
+  }
+  const entries = input.manifest.entries.filter(
+    (entry) =>
+      entry.enabled &&
+      (!input.manifestEntryId || entry.id === input.manifestEntryId) &&
+      (!input.mode || entry.modes.includes(input.mode)) &&
+      entry.targets.some((selector) =>
+        selectorMatches(selector, storyboardId, input.storyId, input.frameKey),
+      ) &&
+      (!input.captureSetId || entry.captureSets.includes(input.captureSetId)),
+  );
+  if (entries.length === 0) {
+    return {
+      storyboardId,
+      storyId: input.storyId,
+      frameKey: input.frameKey,
+      freshness: "not-runnable",
+      runnable: false,
+      disabledReason: "no_manifest_entry",
+      manifestEntryIds: [],
+    };
+  }
+  const entry = entries[0];
+  const runner = input.manifest.runners.find(
+    (candidate) => candidate.id === entry.runnerId,
+  );
+  const captureSetId = input.captureSetId ?? entry.captureSets[0] ?? "default";
+  const captureSet = input.manifest.captureSets.find(
+    (candidate) => candidate.id === captureSetId,
+  );
+  const outputVariantId =
+    input.outputVariantId ?? input.screenSizeId ?? captureSetId;
+  const outputAsset = captureSet?.outputPathTemplate
+    ? renderOutputPath(captureSet.outputPathTemplate, {
+        storyboardId,
+        storyId: input.storyId,
+        frameKey: input.frameKey,
+        captureSetId,
+        outputVariantId,
+        screenSizeId: input.screenSizeId ?? outputVariantId,
+        mode: input.mode,
+      })
+    : "";
+  const outputPath = outputAsset ? join(input.storyboardRoot, outputAsset) : "";
+  const outputAssetHash =
+    outputPath && existsSync(outputPath) && statSync(outputPath).isFile()
+      ? storyboardRunSha256(readFileSync(outputPath))
+      : undefined;
+  const expected = {
+    manifestHash: input.manifestHash ?? hashStoryboardRunJson(input.manifest),
+    manifestEntryId: entry.id,
+    runnerId: entry.runnerId,
+    runnerHash:
+      input.runnerHashes?.[entry.runnerId] ??
+      (runner ? hashStoryboardRunJson(runner) : undefined),
+    appBuildId: input.appBuildId,
+    captureSetId,
+    captureSetHash: captureSet ? hashStoryboardRunJson(captureSet) : undefined,
+    outputVariantId,
+    screenSizeId: input.screenSizeId,
+    outputAsset,
+    outputAssetHash,
+    storyboardSpecHash: hashStoryboardRunJson(input.storyboard),
+    frameSpecHash: hashStoryboardRunJson(match.frame),
+  };
+  const provenance = storage.readProvenance({
+    storyboardId,
+    frameKey: input.frameKey,
+    captureSetId,
+    outputVariantId,
+    screenSizeId: input.screenSizeId,
+    manifestEntryId: entry.id,
+    runnerId: entry.runnerId,
+  });
+  const staleReasons: string[] = [];
+  if (!provenance) staleReasons.push("missing provenance");
+  if (outputAsset && !outputAssetHash)
+    staleReasons.push("output asset missing");
+  if (provenance) {
+    for (const key of [
+      "manifestHash",
+      "manifestEntryId",
+      "runnerId",
+      "runnerHash",
+      "appBuildId",
+      "captureSetId",
+      "captureSetHash",
+      "outputVariantId",
+      "screenSizeId",
+      "outputAsset",
+      "outputAssetHash",
+      "storyboardSpecHash",
+      "frameSpecHash",
+    ] as const) {
+      if (
+        (provenance as Record<string, unknown>)[key] !==
+        (expected as Record<string, unknown>)[key]
+      )
+        staleReasons.push(`${key} changed`);
+    }
+  }
+  const latestJob = storage
+    .listJobs()
+    .filter(
+      (job) =>
+        job.target.storyboardId === storyboardId &&
+        job.target.storyId === input.storyId &&
+        job.target.frameKey === input.frameKey &&
+        job.manifestEntryId === entry.id &&
+        job.captureSetId === captureSetId &&
+        (job.outputVariantId ?? job.target.outputVariantId ?? captureSetId) ===
+          outputVariantId,
+    )
+    .at(-1);
+  const currentJob =
+    latestJob && !terminalRunLifecycleStates.includes(latestJob.status)
+      ? {
+          jobId: latestJob.jobId,
+          status: latestJob.status,
+          queuePosition: latestJob.status === "queued" ? 0 : undefined,
+        }
+      : undefined;
+  return {
+    storyboardId,
+    storyId: input.storyId,
+    frameKey: input.frameKey,
+    freshness: staleReasons.length === 0 ? "unchanged" : "stale",
+    runnable: true,
+    disabledReason: null,
+    manifestEntryIds: entries.map((candidate) => candidate.id),
+    ...(currentJob ? { currentJob } : {}),
+    ...(latestJob
+      ? {
+          latestJob: {
+            jobId: latestJob.jobId,
+            status: latestJob.status,
+            completedAt: latestJob.completedAt,
+          },
+        }
+      : {}),
+    ...(provenance
+      ? {
+          provenance: {
+            ...provenance,
+            summary:
+              staleReasons.length === 0 ? "unchanged" : staleReasons.join(", "),
+          },
+        }
+      : {}),
+  };
 }
