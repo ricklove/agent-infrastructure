@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  buildRunAssetCacheKey,
   findSelectionForFrameId,
   readStoryboardEditorQuery,
 } from "./storyboardEditorScenarios"
@@ -87,5 +88,21 @@ describe("remote storyboard deep links", () => {
       storyId: "story-b-blocked-non-empty-subgroup-delete",
       frameId: "story-b-non-empty-subgroup-blocked-error-remains",
     })
+  })
+
+  test("uses job/provenance in screenshot cache-busting keys", () => {
+    expect(
+      buildRunAssetCacheKey({
+        jobId: "job-story-a-desktop-123",
+        completedAt: "2026-06-08T21:20:00.000Z",
+        outputAssetHash: "sha256:new-image-bytes",
+      }),
+    ).toBe("job-story-a-desktop-123::2026-06-08T21:20:00.000Z::sha256:new-image-bytes")
+
+    expect(
+      buildRunAssetCacheKey({
+        completedAt: "2026-06-08T21:20:00.000Z",
+      }),
+    ).toBe("2026-06-08T21:20:00.000Z")
   })
 })

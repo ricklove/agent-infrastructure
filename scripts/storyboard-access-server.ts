@@ -20,7 +20,7 @@ import {
   resolve,
   sep,
 } from "node:path";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   StoryboardRunManifestError,
   capabilitiesFromManifest,
@@ -645,6 +645,19 @@ async function executeRunJob(jobId: string) {
   const manifestHash = hashStoryboardRunJson(manifestResult.manifest);
   const runnerHash = hashStoryboardRunJson(runner);
   const captureSetHash = captureSet ? hashStoryboardRunJson(captureSet) : undefined;
+  let outputAssetHash: string | undefined;
+  if (outputAsset) {
+    try {
+      const { fullPath } = safeStoryboardAssetPath(outputAsset);
+      outputAssetHash = `sha256:${createHash("sha256").update(readFileSync(fullPath)).digest("hex")}`;
+    } catch (error) {
+      runStorage.appendLog(jobId, {
+        level: "warn",
+        event: "output_asset_hash_failed",
+        context: { outputAsset, message: error instanceof Error ? error.message : String(error) },
+      });
+    }
+  }
   const provenance = runStorage.writeProvenance({
     storyboardId: storyboard.id,
     frameKey: frameKey ?? "storyboard",
@@ -660,6 +673,7 @@ async function executeRunJob(jobId: string) {
     storyboardSpecHash: hashStoryboardRunJson(storyboard),
     frameSpecHash: hashStoryboardRunJson(frameMatch.frame),
     outputAsset,
+    outputAssetHash,
     completedAt,
     summary: job.mode === "run-and-capture" || job.mode === "capture"
       ? `agent-browser captured ${outputVariantId} screenshot to ${outputAsset}`

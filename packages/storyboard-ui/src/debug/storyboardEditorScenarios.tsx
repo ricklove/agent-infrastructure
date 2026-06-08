@@ -80,6 +80,13 @@ type StoryboardRunJob = {
   error?: { message?: string }
 }
 
+type RunProvenanceDto = {
+  outputAssetHash?: string
+  completedAt?: string
+  outputAsset?: string
+  summary?: string
+}
+
 type VariantRunState = {
   key: string
   storyboardId: string
@@ -94,6 +101,8 @@ type VariantRunState = {
   message?: string
   updatedAt: string
   completedAt?: string
+  outputAssetHash?: string
+  outputAsset?: string
 }
 
 type FrameRunStateDto = {
@@ -102,6 +111,7 @@ type FrameRunStateDto = {
   frameKey: string
   currentJob?: StoryboardRunJob
   latestJob?: StoryboardRunJob
+  provenance?: RunProvenanceDto
 }
 
 type StoryboardRunStateDto = {
@@ -435,6 +445,18 @@ function isTerminalRunStatus(status: VariantRunState["status"] | undefined) {
     status === "recovered" ||
     status === "failed-to-queue"
   )
+}
+
+export function buildRunAssetCacheKey(input: {
+  jobId?: string
+  completedAt?: string
+  updatedAt?: string
+  outputAssetHash?: string
+}) {
+  const parts = [input.jobId, input.completedAt, input.updatedAt, input.outputAssetHash]
+    .map((part) => part?.trim())
+    .filter((part): part is string => !!part)
+  return parts.length > 0 ? parts.join("::") : undefined
 }
 
 function humanRunStatus(status: VariantRunState["status"]) {
@@ -963,42 +985,63 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     )
     const firstQueue = variantPayloads.find((entry) => entry?.payload.queue)?.payload.queue ?? null
     setRunQueue(firstQueue)
+    const runStateUpdates: VariantRunState[] = []
+    const nextCacheKeys: Record<string, string> = {}
+    for (const entry of variantPayloads) {
+      if (!entry) continue
+      const { outputVariantId, payload } = entry
+      for (const frame of payload.frames ?? []) {
+        const job = frame.currentJob ?? frame.latestJob
+        if (!job) continue
+        const key = variantRunKey(
+          payload.storyboardId || document.id,
+          frame.storyId,
+          frame.frameKey,
+          activeCaptureSetId,
+          outputVariantId,
+          "run-and-capture",
+        )
+        const completedAt = job.completedAt ?? frame.provenance?.completedAt
+        const outputAssetHash = frame.provenance?.outputAssetHash
+        runStateUpdates.push({
+          key,
+          storyboardId: payload.storyboardId || document.id,
+          storyId: frame.storyId,
+          frameKey: frame.frameKey,
+          captureSetId: activeCaptureSetId,
+          outputVariantId,
+          mode: "run-and-capture",
+          status: job.status,
+          jobId: job.jobId,
+          queuePosition: job.queuePosition,
+          updatedAt: job.updatedAt ?? new Date().toISOString(),
+          completedAt,
+          outputAssetHash,
+          outputAsset: frame.provenance?.outputAsset,
+        })
+        const cacheKey = buildRunAssetCacheKey({
+          jobId: job.jobId,
+          completedAt,
+          updatedAt: job.updatedAt,
+          outputAssetHash,
+        })
+        if (job.status === "succeeded" && cacheKey) {
+          nextCacheKeys[key] = cacheKey
+        }
+      }
+    }
     setVariantRunStates((current) => {
       const next = { ...current }
-      for (const entry of variantPayloads) {
-        if (!entry) continue
-        const { outputVariantId, payload } = entry
-        for (const frame of payload.frames ?? []) {
-          const job = frame.currentJob ?? frame.latestJob
-          if (!job) continue
-          const key = variantRunKey(
-            payload.storyboardId || document.id,
-            frame.storyId,
-            frame.frameKey,
-            activeCaptureSetId,
-            outputVariantId,
-            "run-and-capture",
-          )
-          const existing = next[key]
-          if (existing?.jobId && existing.jobId !== job.jobId && !isTerminalRunStatus(existing.status)) continue
-          next[key] = {
-            key,
-            storyboardId: payload.storyboardId || document.id,
-            storyId: frame.storyId,
-            frameKey: frame.frameKey,
-            captureSetId: activeCaptureSetId,
-            outputVariantId,
-            mode: "run-and-capture",
-            status: job.status,
-            jobId: job.jobId,
-            queuePosition: job.queuePosition,
-            updatedAt: job.updatedAt ?? new Date().toISOString(),
-            completedAt: job.completedAt,
-          }
-        }
+      for (const update of runStateUpdates) {
+        const existing = next[update.key]
+        if (existing?.jobId && existing.jobId !== update.jobId && !isTerminalRunStatus(existing.status)) continue
+        next[update.key] = update
       }
       return next
     })
+    if (Object.keys(nextCacheKeys).length > 0) {
+      setVariantAssetCacheKeys((current) => ({ ...current, ...nextCacheKeys }))
+    }
   }
 
   async function requestFrameRun(storyId: string, frameKey: string, outputVariantId: OutputVariantId) {
@@ -1124,7 +1167,13 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           >
             <div className="font-semibold uppercase tracking-[0.12em]">{humanRunStatus(state.status)}</div>
             {state.jobId ? <div className="font-mono">{state.jobId}</div> : null}
-            {state.completedAt ? <div title={state.completedAt}>Refreshed {new Date(state.completedAt).toLocaleTimeString()}</div> : null}
+            {state.completedAt ? <div title={state.completedAt}>Captured {new Date(state.completedAt).toLocaleTimeString()}</div> : null}
+            {state.outputAssetHash ? (
+              <div className="font-mono" title={state.outputAssetHash}>
+                {state.outputAssetHash.replace(/^sha256:/u, "").slice(0, 12)}
+              </div>
+            ) : null}
+            {state.outputAsset ? <div className="max-w-[10rem] truncate" title={state.outputAsset}>{state.outputAsset.split("/").at(-1)}</div> : null}
             {state.queuePosition !== undefined ? <div>Queue #{state.queuePosition + 1}</div> : null}
             {state.message ? <div className="max-w-[10rem] truncate" title={state.message}>{state.message}</div> : null}
           </div>
@@ -1296,10 +1345,17 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
         })
         if (isTerminalRunStatus(job.status)) {
           if (job.status === "succeeded") {
-            setVariantAssetCacheKeys((current) => ({
-              ...current,
-              [variantRunKey(state.storyboardId, state.storyId, state.frameKey, state.captureSetId, state.outputVariantId, state.mode)]: job.completedAt ?? job.updatedAt ?? new Date().toISOString(),
-            }))
+            const cacheKey = buildRunAssetCacheKey({
+              jobId: job.jobId,
+              completedAt: job.completedAt,
+              updatedAt: job.updatedAt,
+            })
+            if (cacheKey) {
+              setVariantAssetCacheKeys((current) => ({
+                ...current,
+                [variantRunKey(state.storyboardId, state.storyId, state.frameKey, state.captureSetId, state.outputVariantId, state.mode)]: cacheKey,
+              }))
+            }
           }
           setStatus(`${state.outputVariantId} run ${job.jobId} ${humanRunStatus(job.status).toLowerCase()}`)
         }
