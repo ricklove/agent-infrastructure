@@ -230,6 +230,23 @@ export function StoryboardGrid({
       (sequence) => (sequence.startColumn ?? 0) + sequence.frames.length,
     ),
   )
+  const sourceFrameIds = new Set(
+    sequences.flatMap((sequence) => sequence.frames.map((frame) => frame.id)),
+  )
+  const branchStartsBySourceFrame = new Map<
+    string,
+    Array<{ label: string; sequenceId: string }>
+  >()
+
+  sequences.forEach((sequence) => {
+    if (!sequence.sourceFrameId || !sequence.startLabel) {
+      return
+    }
+
+    const starts = branchStartsBySourceFrame.get(sequence.sourceFrameId) ?? []
+    starts.push({ label: sequence.startLabel, sequenceId: sequence.id })
+    branchStartsBySourceFrame.set(sequence.sourceFrameId, starts)
+  })
   const templateColumns = gridTemplateColumns(
     maxFrames,
     frameWidth,
@@ -276,7 +293,14 @@ export function StoryboardGrid({
               const frameIndex = index - (sequence.startColumn ?? 0)
               const frame = frameIndex >= 0 ? sequence.frames[frameIndex] : undefined
               const shouldRenderStartLabel =
-                !!sequence.startLabel && index === (sequence.startColumn ?? 0) - 1
+                !!sequence.startLabel &&
+                index === (sequence.startColumn ?? 0) - 1 &&
+                (!sequence.sourceFrameId || !sourceFrameIds.has(sequence.sourceFrameId))
+              const branchStarts = frame
+                ? (branchStartsBySourceFrame.get(frame.id) ?? [])
+                : []
+              const shouldRenderNextCell =
+                !!frame && frameIndex < sequence.frames.length - 1
 
               return (
                 <>
@@ -319,19 +343,40 @@ export function StoryboardGrid({
                               : undefined
                           }
                         />
-                      ) : frame && frameIndex < sequence.frames.length - 1 ? (
-                        <StoryboardNextCell
-                          actionColumnWidth={actionColumnWidth}
-                          frame={frame}
-                          nextCellHeight={nextCellHeight}
-                          onClick={() =>
-                            onTransitionClick?.({
-                              sourceFrameId: frame.id,
-                              label: frame.nextLabel ?? "Next",
-                              sequenceId: sequence.id,
-                            })
-                          }
-                        />
+                      ) : shouldRenderNextCell || branchStarts.length > 0 ? (
+                        <div className="flex flex-col items-center gap-2">
+                          {shouldRenderNextCell && frame ? (
+                            <StoryboardNextCell
+                              actionColumnWidth={actionColumnWidth}
+                              frame={frame}
+                              nextCellHeight={nextCellHeight}
+                              onClick={() =>
+                                onTransitionClick?.({
+                                  sourceFrameId: frame.id,
+                                  label: frame.nextLabel ?? "Next",
+                                  sequenceId: sequence.id,
+                                })
+                              }
+                            />
+                          ) : null}
+                          {frame
+                            ? branchStarts.map((branchStart) => (
+                                <StoryboardStartCell
+                                  actionColumnWidth={actionColumnWidth}
+                                  key={`${frame.id}-${branchStart.sequenceId}`}
+                                  label={branchStart.label}
+                                  nextCellHeight={nextCellHeight}
+                                  onClick={() =>
+                                    onTransitionClick?.({
+                                      sourceFrameId: frame.id,
+                                      label: branchStart.label,
+                                      sequenceId: branchStart.sequenceId,
+                                    })
+                                  }
+                                />
+                              ))
+                            : null}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}

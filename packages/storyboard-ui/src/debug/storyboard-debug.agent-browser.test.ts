@@ -131,7 +131,7 @@ async function createBrowser() {
         newPage(options: {
           viewport: { width: number; height: number }
         }): Promise<{
-          goto(url: string, options: { waitUntil: "networkidle" }): Promise<void>
+          goto(url: string, options: { waitUntil: "domcontentloaded" | "networkidle" }): Promise<void>
           waitForTimeout(ms: number): Promise<void>
           evaluate<T, A>(
             fn: (arg: A) => T | Promise<T>,
@@ -201,7 +201,7 @@ async function captureDebugScenarioArtifact(
   try {
     await page.goto(
       `${baseUrl}/storyboard/debug/${componentSlug}/${scenarioSlug}/`,
-      { waitUntil: "networkidle" },
+      { waitUntil: "domcontentloaded" },
     )
     await page.waitForTimeout(180)
 
@@ -561,6 +561,80 @@ async function verifyPanZoomInteraction() {
   }
 }
 
+async function verifyStoryboardBranchTransitionLayout() {
+  const browser = await createBrowser()
+  try {
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 1024 },
+    })
+    try {
+      await page.goto(
+        `${baseUrl}/storyboard/debug/storyboardEditor/test-storyboard-json/`,
+        { waitUntil: "domcontentloaded" },
+      )
+      await page.waitForTimeout(180)
+
+      const layout = await page.evaluate(() => {
+        const primary = document.querySelector(
+          '[data-storyboard-next="start-a-voice-call-from-chat-step-3-next-frame-a951c1ce"]',
+        )
+        if (!(primary instanceof HTMLElement)) {
+          return null
+        }
+
+        const primaryRect = primary.getBoundingClientRect()
+        const branch = [...document.querySelectorAll('[data-storyboard-transition]')]
+          .filter((element): element is HTMLElement => element instanceof HTMLElement)
+          .find((element) => {
+            const rect = element.getBoundingClientRect()
+            return (
+              element.textContent?.trim() === "Branch 2" &&
+              rect.top > primaryRect.bottom &&
+              Math.abs(rect.left - primaryRect.left) < 4
+            )
+          })
+
+        if (!branch) {
+          return null
+        }
+
+        const branchRect = branch.getBoundingClientRect()
+        return {
+          primary: {
+            left: primaryRect.left,
+            top: primaryRect.top,
+            bottom: primaryRect.bottom,
+          },
+          branch: {
+            left: branchRect.left,
+            top: branchRect.top,
+            bottom: branchRect.bottom,
+          },
+        }
+      }, undefined)
+
+      if (!layout) {
+        throw new Error("missing vertically grouped branch transition layout")
+      }
+
+      if (layout.branch.top <= layout.primary.bottom) {
+        throw new Error(
+          `branch transition should be below primary transition: primary bottom ${layout.primary.bottom}, branch top ${layout.branch.top}`,
+        )
+      }
+      if (Math.abs(layout.branch.left - layout.primary.left) > 4) {
+        throw new Error(
+          `branch transition should align with primary transition: primary left ${layout.primary.left}, branch left ${layout.branch.left}`,
+        )
+      }
+    } finally {
+      await page.close()
+    }
+  } finally {
+    await browser.close()
+  }
+}
+
 async function main() {
   ensureDir(publicArtifactRoot)
   ensureDir(htmlArtifactRoot)
@@ -568,6 +642,7 @@ async function main() {
   try {
     await writeArtifacts()
     await verifyPanZoomInteraction()
+    await verifyStoryboardBranchTransitionLayout()
     for (const component of storyboardDebugComponents) {
       console.log(
         `${component.slug}: ${storyboardDebugComponentArtifactPath(component.slug)}`,
