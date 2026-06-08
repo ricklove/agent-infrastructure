@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
 import { PanZoomContainer, type PanZoomContainerHandle } from "../PanZoomContainer"
 import { PanelLayout, type PanelLayoutPanel } from "../PanelLayout"
@@ -54,6 +54,61 @@ type SnapshotJob = {
   exitCode?: number
   stdout?: string
   stderr?: string
+}
+
+type RunLifecycleStatus =
+  | "queued"
+  | "pending"
+  | "running"
+  | "capturing"
+  | "succeeded"
+  | "failed"
+  | "skipped"
+  | "cancelled"
+  | "expired"
+  | "recovered"
+
+type RunMode = "run-to-state" | "capture" | "run-and-capture"
+type OutputVariantId = "desktop" | "mobile" | "square"
+
+type StoryboardRunJob = {
+  jobId: string
+  status: RunLifecycleStatus
+  queuePosition?: number
+  completedAt?: string
+  updatedAt?: string
+  error?: { message?: string }
+}
+
+type VariantRunState = {
+  key: string
+  storyboardId: string
+  storyId: string
+  frameKey: string
+  captureSetId: string
+  outputVariantId: OutputVariantId
+  mode: RunMode
+  status: RunLifecycleStatus | "pending" | "failed-to-queue"
+  jobId?: string
+  queuePosition?: number
+  message?: string
+  updatedAt: string
+  completedAt?: string
+}
+
+type FrameRunStateDto = {
+  storyboardId: string
+  storyId: string
+  frameKey: string
+  currentJob?: StoryboardRunJob
+  latestJob?: StoryboardRunJob
+}
+
+type StoryboardRunStateDto = {
+  ok?: boolean
+  storyboardId: string
+  queue?: { active: number; queued: number; maxActive: number }
+  frames: FrameRunStateDto[]
 }
 
 type SelectedTarget =
@@ -133,6 +188,7 @@ const apiRoot = "/api/storyboard"
 const bundledDefaultStoryboardUrl = "http://127.0.0.1:8798/default-storyboard"
 const testFixtureStoryboardUrl = "http://127.0.0.1:8799/test-storyboard"
 const remoteStoryboardUrlStorageKey = "storyboard.debug.remoteStoryboardUrl"
+const runStateStorageKey = "storyboard.debug.variantRunState"
 const frameSize = 220
 const screenshotFrameWidth = 720
 const screenshotFrameHeight = 720
@@ -353,6 +409,63 @@ function proxiedAssetUrl(storyboardUrl: string, assetPath: string | undefined) {
   return `${apiRoot}/access-asset?storyboardUrl=${encodeURIComponent(storyboardUrl)}&path=${encodeURIComponent(assetPath)}`
 }
 
+function variantRunKey(
+  storyboardId: string,
+  storyId: string,
+  frameKey: string,
+  captureSetId: string,
+  outputVariantId: OutputVariantId,
+  mode: RunMode,
+) {
+  return [storyboardId, storyId, frameKey, captureSetId, outputVariantId, mode].join("::")
+}
+
+function isTerminalRunStatus(status: VariantRunState["status"] | undefined) {
+  return (
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "skipped" ||
+    status === "cancelled" ||
+    status === "expired" ||
+    status === "recovered" ||
+    status === "failed-to-queue"
+  )
+}
+
+function humanRunStatus(status: VariantRunState["status"]) {
+  if (status === "pending") return "Pending"
+  if (status === "queued") return "Queued"
+  if (status === "running") return "Running"
+  if (status === "capturing") return "Capturing"
+  if (status === "succeeded") return "Succeeded"
+  if (status === "failed") return "Failed"
+  if (status === "failed-to-queue") return "Failed to queue"
+  if (status === "skipped") return "Skipped"
+  if (status === "cancelled") return "Cancelled"
+  if (status === "expired") return "Expired"
+  return "Recovered"
+}
+
+function loadPersistedVariantRunStates() {
+  if (typeof window === "undefined") return {} as Record<string, VariantRunState>
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(runStateStorageKey) ?? "{}") as Record<string, VariantRunState>
+    return parsed && typeof parsed === "object" ? parsed : {}
+  } catch {
+    return {} as Record<string, VariantRunState>
+  }
+}
+
+function findStoryIdForFrame(document: StoryboardDocument | null, frameId: string) {
+  for (const story of document?.stories ?? []) {
+    if (story.frames.some((frame) => frame.id === frameId)) return story.id
+    for (const branch of story.branches ?? []) {
+      if (branch.frames.some((frame) => frame.id === frameId)) return story.id
+    }
+  }
+  return undefined
+}
+
 function AssetImage({ src, alt }: { src: string; alt: string }) {
   return <img alt={alt} className="h-full w-full object-contain bg-zinc-950" src={src} />
 }
@@ -371,6 +484,7 @@ function renderEditorFrame(
   frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>,
   storyboardUrl: string,
   captureSetId: string,
+  runVariantActions?: Partial<Record<OutputVariantId, ReactNode>>,
 ) {
   if (hasFrameScreenshots(frame)) {
     const screenshots = frameScreenshots(frame, captureSetId)
@@ -382,8 +496,11 @@ function renderEditorFrame(
       <ScreenshotFrameCell
         description={frame.description}
         desktop={desktop ? <AssetImage alt={`${frame.title} desktop`} src={desktop} /> : undefined}
+        desktopAction={runVariantActions?.desktop}
         mobile={mobile ? <AssetImage alt={`${frame.title} mobile`} src={mobile} /> : undefined}
+        mobileAction={runVariantActions?.mobile}
         square={square ? <AssetImage alt={`${frame.title} square`} src={square} /> : undefined}
+        squareAction={runVariantActions?.square}
         title={frame.title}
       />
     )
@@ -575,6 +692,8 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   const lastSavedRef = useRef("")
   const transitionRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [activeCaptureSetId, setActiveCaptureSetId] = useState("default")
+  const [variantRunStates, setVariantRunStates] = useState<Record<string, VariantRunState>>(() => loadPersistedVariantRunStates())
+  const [runQueue, setRunQueue] = useState<StoryboardRunStateDto["queue"] | null>(null)
   const isConnected = connectedStoryboardUrl.trim().length > 0
   const isAccessServerRootMode = useMemo(
     () => isConnected && isAccessServerRootUrl(connectedStoryboardUrl),
@@ -596,6 +715,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       setStoryboardList([])
       setStoryboardListRootDir(null)
       setStoryboardListError(null)
+      setRunQueue(null)
       setStatus("Enter a storyboard URL to connect")
       setSaveState("idle")
       return
@@ -775,6 +895,200 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     setStatus(`Snapshot job ${payload.job.id} started`)
   }
 
+  function upsertVariantRunState(next: VariantRunState) {
+    setVariantRunStates((current) => ({ ...current, [next.key]: next }))
+  }
+
+  async function refreshRunState() {
+    if (!document || !isConnected || isAccessServerRootMode) return
+    const variantPayloads = await Promise.all(
+      (["desktop", "mobile", "square"] as OutputVariantId[]).map(async (outputVariantId) => {
+        const response = await fetch(
+          `${apiRoot}/run-state?${sourceQuery}&captureSetId=${encodeURIComponent(activeCaptureSetId)}&outputVariantId=${encodeURIComponent(outputVariantId)}`,
+        )
+        if (!response.ok) return null
+        return { outputVariantId, payload: (await response.json()) as StoryboardRunStateDto }
+      }),
+    )
+    const firstQueue = variantPayloads.find((entry) => entry?.payload.queue)?.payload.queue ?? null
+    setRunQueue(firstQueue)
+    setVariantRunStates((current) => {
+      const next = { ...current }
+      for (const entry of variantPayloads) {
+        if (!entry) continue
+        const { outputVariantId, payload } = entry
+        for (const frame of payload.frames ?? []) {
+          const job = frame.currentJob ?? frame.latestJob
+          if (!job) continue
+          const key = variantRunKey(
+            payload.storyboardId || document.id,
+            frame.storyId,
+            frame.frameKey,
+            activeCaptureSetId,
+            outputVariantId,
+            "run-to-state",
+          )
+          const existing = next[key]
+          if (existing?.jobId && existing.jobId !== job.jobId && !isTerminalRunStatus(existing.status)) continue
+          next[key] = {
+            key,
+            storyboardId: payload.storyboardId || document.id,
+            storyId: frame.storyId,
+            frameKey: frame.frameKey,
+            captureSetId: activeCaptureSetId,
+            outputVariantId,
+            mode: "run-to-state",
+            status: job.status,
+            jobId: job.jobId,
+            queuePosition: job.queuePosition,
+            updatedAt: job.updatedAt ?? new Date().toISOString(),
+            completedAt: job.completedAt,
+          }
+        }
+      }
+      return next
+    })
+  }
+
+  async function requestFrameRun(storyId: string, frameKey: string, outputVariantId: OutputVariantId) {
+    if (!document || !isConnected) return
+    const mode: RunMode = "run-to-state"
+    const key = variantRunKey(document.id, storyId, frameKey, activeCaptureSetId, outputVariantId, mode)
+    const now = new Date().toISOString()
+    upsertVariantRunState({
+      key,
+      storyboardId: document.id,
+      storyId,
+      frameKey,
+      captureSetId: activeCaptureSetId,
+      outputVariantId,
+      mode,
+      status: "pending",
+      message: "Queueing run…",
+      updatedAt: now,
+    })
+    setStatus(`Queueing ${outputVariantId} run for ${frameKey}…`)
+    try {
+      const response = await fetch(`${apiRoot}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storyboardUrl: connectedStoryboardUrl,
+          scope: "frame",
+          mode,
+          target: { storyboardId: document.id, storyId, frameKey, outputVariantId },
+          manifestEntryId: "agent-browser-run-to-state",
+          outputVariantId,
+          params: {},
+        }),
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        upsertVariantRunState({
+          key,
+          storyboardId: document.id,
+          storyId,
+          frameKey,
+          captureSetId: activeCaptureSetId,
+          outputVariantId,
+          mode,
+          status: "failed-to-queue",
+          message,
+          updatedAt: new Date().toISOString(),
+        })
+        setStatus(`Failed to queue ${outputVariantId} run: ${message}`)
+        return
+      }
+      const payload = (await response.json()) as { ok?: true; job?: StoryboardRunJob; jobId?: string; status?: RunLifecycleStatus; queuePosition?: number }
+      const jobId = payload.job?.jobId ?? payload.jobId
+      const jobStatus = payload.job?.status ?? payload.status ?? "queued"
+      upsertVariantRunState({
+        key,
+        storyboardId: document.id,
+        storyId,
+        frameKey,
+        captureSetId: activeCaptureSetId,
+        outputVariantId,
+        mode,
+        status: jobStatus,
+        jobId,
+        queuePosition: payload.job?.queuePosition ?? payload.queuePosition,
+        updatedAt: payload.job?.updatedAt ?? new Date().toISOString(),
+      })
+      setStatus(`Queued ${outputVariantId} run ${jobId ?? ""}`.trim())
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      upsertVariantRunState({
+        key,
+        storyboardId: document.id,
+        storyId,
+        frameKey,
+        captureSetId: activeCaptureSetId,
+        outputVariantId,
+        mode,
+        status: "failed-to-queue",
+        message,
+        updatedAt: new Date().toISOString(),
+      })
+      setStatus(`Failed to queue ${outputVariantId} run: ${message}`)
+    }
+  }
+
+  function renderRunVariantAction(storyId: string | undefined, frameKey: string, outputVariantId: OutputVariantId) {
+    if (!document || !storyId) return null
+    const mode: RunMode = "run-to-state"
+    const key = variantRunKey(document.id, storyId, frameKey, activeCaptureSetId, outputVariantId, mode)
+    const state = variantRunStates[key]
+    const busy = state && !isTerminalRunStatus(state.status)
+    return (
+      <div className="pointer-events-auto flex max-w-[11rem] flex-col items-end gap-1 text-right">
+        <button
+          className={`nopan nowheel rounded border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] shadow transition ${
+            busy
+              ? "border-amber-200/60 bg-amber-300/20 text-amber-50"
+              : "border-cyan-200/50 bg-cyan-300/15 text-cyan-50 hover:border-cyan-100 hover:bg-cyan-300/25"
+          }`}
+          disabled={!!busy}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            void requestFrameRun(storyId, frameKey, outputVariantId)
+          }}
+          title={`Run ${frameKey} ${outputVariantId}`}
+          type="button"
+        >
+          {busy ? `${humanRunStatus(state.status)}…` : `Run ${outputVariantId}`}
+        </button>
+        {state ? (
+          <div
+            className={`rounded border px-2 py-1 text-[10px] leading-4 shadow ${
+              state.status === "succeeded"
+                ? "border-emerald-300/45 bg-emerald-300/15 text-emerald-50"
+                : state.status === "failed" || state.status === "failed-to-queue"
+                  ? "border-rose-300/45 bg-rose-300/15 text-rose-50"
+                  : "border-amber-200/45 bg-amber-300/15 text-amber-50"
+            }`}
+            data-run-state-key={key}
+          >
+            <div className="font-semibold uppercase tracking-[0.12em]">{humanRunStatus(state.status)}</div>
+            {state.jobId ? <div className="font-mono">{state.jobId}</div> : null}
+            {state.queuePosition !== undefined ? <div>Queue #{state.queuePosition + 1}</div> : null}
+            {state.message ? <div className="max-w-[10rem] truncate" title={state.message}>{state.message}</div> : null}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  function runVariantActionsForFrame(frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>) {
+    const storyId = findStoryIdForFrame(document, frame.id)
+    return {
+      desktop: renderRunVariantAction(storyId, frame.id, "desktop"),
+      mobile: renderRunVariantAction(storyId, frame.id, "mobile"),
+      square: renderRunVariantAction(storyId, frame.id, "square"),
+    }
+  }
+
   async function initializeStoryboard() {
     if (!isConnected) {
       return
@@ -890,6 +1204,46 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     return () => window.clearInterval(timer)
   }, [snapshotJob])
 
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.localStorage.setItem(runStateStorageKey, JSON.stringify(variantRunStates))
+  }, [variantRunStates])
+
+  useEffect(() => {
+    const jobsToPoll = Object.values(variantRunStates).filter((state) => state.jobId && !isTerminalRunStatus(state.status))
+    if (jobsToPoll.length === 0 || !isConnected) return
+    const timer = window.setInterval(async () => {
+      await Promise.all(jobsToPoll.map(async (state) => {
+        if (!state.jobId) return
+        const response = await fetch(`${apiRoot}/runs/${state.jobId}?${sourceQuery}`)
+        if (!response.ok) return
+        const payload = (await response.json()) as { ok: true; job: StoryboardRunJob }
+        const job = payload.job
+        upsertVariantRunState({
+          ...state,
+          status: job.status,
+          jobId: job.jobId,
+          queuePosition: job.queuePosition,
+          updatedAt: job.updatedAt ?? new Date().toISOString(),
+          completedAt: job.completedAt,
+          message: job.error?.message,
+        })
+        if (isTerminalRunStatus(job.status)) {
+          setStatus(`${state.outputVariantId} run ${job.jobId} ${humanRunStatus(job.status).toLowerCase()}`)
+        }
+      }))
+      void refreshRunState()
+    }, 900)
+    return () => window.clearInterval(timer)
+  }, [variantRunStates, isConnected, sourceQuery])
+
+  useEffect(() => {
+    if (!document || !isConnected || isAccessServerRootMode) return
+    void refreshRunState()
+    const timer = window.setInterval(() => void refreshRunState(), 5000)
+    return () => window.clearInterval(timer)
+  }, [document?.id, isConnected, isAccessServerRootMode, sourceQuery, activeCaptureSetId])
+
   const storyCount = document?.stories.length ?? 0
   const frameCount =
     document?.stories.reduce((total, story) => {
@@ -980,6 +1334,15 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }
     return (document?.stories ?? []).filter((story) => story.title.toLowerCase().includes(query))
   }, [document?.stories, storySearch])
+
+  const visibleVariantRunStates = useMemo(() =>
+    Object.values(variantRunStates)
+      .filter((state) => state.storyboardId === document?.id)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, 6),
+    [variantRunStates, document?.id],
+  )
+  const activeVariantRunStates = visibleVariantRunStates.filter((state) => !isTerminalRunStatus(state.status))
 
   const navigatorPanel = useMemo<PanelLayoutPanel>(
     () => ({
@@ -2276,6 +2639,18 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
               {headerStatus ? (
                 <div className="text-[11px] text-amber-200/80">{headerStatus}</div>
               ) : null}
+              <div className="rounded border border-amber-200/20 bg-amber-300/10 px-2 py-1 text-[11px] text-amber-100" data-run-queue-indicator="true">
+                Run queue: {runQueue ? `${runQueue.active} running · ${runQueue.queued} queued` : `${activeVariantRunStates.length} pending`}
+              </div>
+              {visibleVariantRunStates.length > 0 ? (
+                <div className="flex max-w-full flex-wrap gap-1" data-run-queue-list="true">
+                  {visibleVariantRunStates.map((state) => (
+                    <span className="rounded border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/65" key={state.key}>
+                      {state.outputVariantId} {humanRunStatus(state.status)} {state.jobId ? state.jobId : "pending"}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
               {!isAccessServerRootMode ? (
@@ -2553,6 +2928,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                       frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>,
                       connectedStoryboardUrl,
                       activeCaptureSetId,
+                      runVariantActionsForFrame(frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>),
                     )
                   )}
                   renderFrameHeaderControls={() =>

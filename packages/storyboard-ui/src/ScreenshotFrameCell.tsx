@@ -6,6 +6,7 @@ type ScreenshotPaneProps = {
   width: number
   height: number
   scale: number
+  action?: ReactNode
   children?: ReactNode
 }
 
@@ -15,6 +16,9 @@ type ScreenshotFrameCellProps = {
   desktop?: ReactNode
   mobile?: ReactNode
   square?: ReactNode
+  desktopAction?: ReactNode
+  mobileAction?: ReactNode
+  squareAction?: ReactNode
 }
 
 const TOP_WIDTH = 480
@@ -38,6 +42,9 @@ export const ScreenshotFrameCell = memo(function ScreenshotFrameCell({
   desktop,
   mobile,
   square,
+  desktopAction,
+  mobileAction,
+  squareAction,
 }: ScreenshotFrameCellProps) {
   return (
     <article className="flex h-[720px] w-[720px] flex-col bg-zinc-800 text-white">
@@ -53,6 +60,7 @@ export const ScreenshotFrameCell = memo(function ScreenshotFrameCell({
         >
           <div className="flex justify-center">
             <ScreenshotPane
+              action={desktopAction}
               height={TOP_HEIGHT}
               label="Desktop"
               scale={0.25}
@@ -64,6 +72,7 @@ export const ScreenshotFrameCell = memo(function ScreenshotFrameCell({
           </div>
           <div className="mt-2 flex items-start justify-center gap-2">
             <ScreenshotPane
+              action={mobileAction}
               height={MOBILE_HEIGHT}
               label="Mobile"
               scale={0.375}
@@ -73,6 +82,7 @@ export const ScreenshotFrameCell = memo(function ScreenshotFrameCell({
               {mobile}
             </ScreenshotPane>
             <ScreenshotPane
+              action={squareAction}
               height={SQUARE_HEIGHT}
               label="Square"
               scale={0.25}
@@ -89,6 +99,7 @@ export const ScreenshotFrameCell = memo(function ScreenshotFrameCell({
 })
 
 function ScreenshotPane({
+  action,
   label,
   sizeLabel,
   width,
@@ -115,6 +126,7 @@ function ScreenshotPane({
       <div className="pointer-events-none absolute left-2 top-2 rounded border border-white/10 bg-black/60 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-white/65">
         {label}
       </div>
+      {action ? <div className="absolute right-2 top-2 z-10">{action}</div> : null}
     </section>
   )
 }

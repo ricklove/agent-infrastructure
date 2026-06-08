@@ -7,6 +7,7 @@ import {
   readdirSync,
   realpathSync,
   renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -1782,5 +1783,502 @@ export function deriveStoryboardRunFreshness(
           },
         }
       : {}),
+  };
+}
+
+export type StoryboardRunnerFastHealthResult = {
+  ok: boolean;
+  status: "ok" | "degraded" | "unavailable";
+  elapsedMs: number;
+  runnerId: string;
+  runnerKind: RunnerKind;
+  components: Array<{
+    component: string;
+    status: "ok" | "warn" | "error";
+    elapsedMs: number;
+    severity?: "info" | "warn" | "error";
+    owner?: "agent" | "human" | "runner" | "system" | string;
+    actionTarget?: string;
+    humanActionRequired?: boolean;
+    nextAction?: string;
+  }>;
+};
+
+export type StoryboardRunAuditEventDto = {
+  ts: string;
+  event: string;
+  jobId?: string;
+  parentJobId?: string;
+  context?: Record<string, unknown>;
+};
+
+export type StoryboardDryRunQueueOptions = {
+  storyboardRoot: string;
+  storyboard: FreshnessDerivationInput["storyboard"];
+  manifest: StoryboardRunManifest;
+  maxActive?: 1;
+  now?: () => Date;
+  jobIdFactory?: () => string;
+  ttlMs?: number;
+};
+
+export type StoryboardDryRunEnqueueResult = CreateRunResponseDto & {
+  childJobIds?: string[];
+};
+
+const redactedPlaceholder = "[REDACTED]";
+const redactedKeyPattern = /(?:secret|token|password|passwd|credential|private[-_]?key|api[-_]?key|authorization|cookie)/iu;
+
+function redactStoryboardRunValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactStoryboardRunValue);
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = redactedKeyPattern.test(key)
+        ? redactedPlaceholder
+        : redactStoryboardRunValue(item);
+    }
+    return result;
+  }
+  if (typeof value === "string") {
+    return value.replace(
+      /(bearer\s+)[a-z0-9._~+/=-]+|([?&](?:token|api_key|key|secret|password)=)[^\s&]+/giu,
+      (_match, bearerPrefix: string | undefined, queryPrefix: string | undefined) =>
+        `${bearerPrefix ?? queryPrefix ?? ""}${redactedPlaceholder}`,
+    );
+  }
+  return value;
+}
+
+export function redactStoryboardRunContext<T extends Record<string, unknown>>(
+  context: T,
+): T {
+  return redactStoryboardRunValue(context) as T;
+}
+
+export function storyboardDryRunFastHealth(
+  runner: Runner,
+): StoryboardRunnerFastHealthResult {
+  const componentStatus =
+    runner.kind === "dry-run" && runner.enabled ? "ok" : "error";
+  return {
+    ok: componentStatus === "ok",
+    status: componentStatus === "ok" ? "ok" : "unavailable",
+    elapsedMs: 0,
+    runnerId: runner.id,
+    runnerKind: runner.kind,
+    components: [
+      {
+        component: "dry-run-runner",
+        status: componentStatus,
+        elapsedMs: 0,
+        severity: componentStatus === "ok" ? "info" : "error",
+        owner: "agent",
+        actionTarget: "storyboard-runner",
+        humanActionRequired: false,
+        nextAction:
+          componentStatus === "ok"
+            ? "run deterministic dry-run job"
+            : "enable a dry-run runner in storyboard.run.json",
+      },
+    ],
+  };
+}
+
+function terminalAgeMs(job: Run, now: Date) {
+  const timestamp = job.completedAt ?? job.updatedAt ?? job.createdAt;
+  return now.getTime() - new Date(timestamp).getTime();
+}
+
+function runnableFramesForRequest(
+  storyboard: FreshnessDerivationInput["storyboard"],
+  request: CreateRunRequestDto,
+) {
+  const storyboardId = request.target.storyboardId ?? storyboard.id;
+  return allStoryboardFrames(storyboard)
+    .filter(({ story, frame }) => {
+      if (request.scope === "frame") {
+        return story.id === request.target.storyId && frame.id === request.target.frameKey;
+      }
+      if (request.scope === "story") {
+        return story.id === request.target.storyId;
+      }
+      return true;
+    })
+    .map(({ story, frame }) => ({ storyboardId, storyId: story.id, frame }));
+}
+
+function runnerForRequest(manifest: StoryboardRunManifest, request: Pick<CreateRunRequestDto, "manifestEntryId"> | Run) {
+  const entry = manifest.entries.find((candidate) => candidate.id === request.manifestEntryId);
+  const runner = entry
+    ? manifest.runners.find((candidate) => candidate.id === entry.runnerId)
+    : undefined;
+  if (!entry || !runner) {
+    manifestError("request.manifestEntryId", "manifest_entry_not_found", "Manifest entry is not enabled for this target.");
+  }
+  return { entry, runner };
+}
+
+export function createStoryboardDryRunQueue(options: StoryboardDryRunQueueOptions) {
+  const storage = createStoryboardRunStorage(options.storyboardRoot);
+  const maxActive = 1;
+  const ttlMs = options.ttlMs ?? 15 * 60 * 1000;
+  const now = () => (options.now ? options.now() : new Date());
+  const jobIdFactory = options.jobIdFactory ?? generateStoryboardRunJobId;
+  const active = new Set<string>();
+
+  function stamp() {
+    return now().toISOString();
+  }
+
+  function appendAudit(record: Omit<StoryboardRunAuditEventDto, "ts"> & { ts?: string }) {
+    const auditRecord: StoryboardRunAuditEventDto = {
+      ts: record.ts ?? stamp(),
+      event: record.event,
+      ...(record.jobId ? { jobId: record.jobId } : {}),
+      ...(record.parentJobId ? { parentJobId: record.parentJobId } : {}),
+      ...(record.context ? { context: redactStoryboardRunContext(record.context) } : {}),
+    };
+    mkdirSync(join(storage.runsRoot, "audit"), { recursive: true });
+    appendFileSync(
+      join(storage.runsRoot, "audit", "events.jsonl"),
+      `${JSON.stringify(auditRecord)}\n`,
+      "utf8",
+    );
+    return auditRecord;
+  }
+
+  function readAudit() {
+    const pathValue = join(storage.runsRoot, "audit", "events.jsonl");
+    if (!existsSync(pathValue)) return [] as StoryboardRunAuditEventDto[];
+    return readFileSync(pathValue, "utf8")
+      .split(/\n/u)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as StoryboardRunAuditEventDto);
+  }
+
+  function writeJob(job: Run) {
+    return storage.writeJob({ ...job, updatedAt: stamp() });
+  }
+
+  function log(jobId: string, event: string, context?: Record<string, unknown>, level: RunLogRecordDto["level"] = "info") {
+    return storage.appendLog(jobId, {
+      ts: stamp(),
+      level,
+      event,
+      ...(context ? { context: redactStoryboardRunContext(context) } : {}),
+    });
+  }
+
+  function queuePosition(jobId: string) {
+    return storage
+      .listJobs()
+      .filter((job) => job.status === "queued")
+      .findIndex((job) => job.jobId === jobId);
+  }
+
+  function removeTransient(jobId: string) {
+    rmSync(join(storage.transientDir, sanitizePathPart(jobId)), {
+      recursive: true,
+      force: true,
+    });
+  }
+
+  function transition(job: Run, status: RunLifecycleStatus, extra: Partial<Run> = {}) {
+    const terminal = terminalRunLifecycleStates.includes(status);
+    const updated = writeJob({
+      ...job,
+      ...extra,
+      status,
+      ...(status === "running" || status === "capturing" ? { startedAt: job.startedAt ?? stamp() } : {}),
+      ...(terminal ? { completedAt: extra.completedAt ?? job.completedAt ?? stamp() } : {}),
+    });
+    log(job.jobId, `job_${status}`, { status });
+    appendAudit({ event: `job_${status}`, jobId: job.jobId, context: { status } });
+    if (terminal) {
+      active.delete(job.jobId);
+      if (status === "cancelled" || status === "expired") removeTransient(job.jobId);
+    }
+    return updated;
+  }
+
+  function outputForJob(job: Run) {
+    const captureSet = options.manifest.captureSets.find(
+      (candidate) => candidate.id === job.captureSetId,
+    );
+    const outputVariantId = job.outputVariantId ?? job.screenSizeId ?? job.captureSetId ?? "default";
+    const outputAsset = captureSet?.outputPathTemplate
+      ? renderOutputPath(captureSet.outputPathTemplate, {
+          storyboardId: job.target.storyboardId ?? options.storyboard.id,
+          storyId: job.target.storyId,
+          frameKey: job.target.frameKey,
+          captureSetId: job.captureSetId,
+          outputVariantId,
+          screenSizeId: job.screenSizeId ?? outputVariantId,
+          mode: job.mode,
+        })
+      : "";
+    return { captureSet, outputVariantId, outputAsset };
+  }
+
+  function writeCaptureArtifacts(job: Run) {
+    const { entry, runner } = runnerForRequest(options.manifest, job);
+    const { captureSet, outputVariantId, outputAsset } = outputForJob(job);
+    if (!job.target.frameKey || !job.captureSetId || !captureSet || !outputAsset) return job;
+    const outputPath = join(options.storyboardRoot, outputAsset);
+    const assetBody = `dry-run:${job.jobId}:${job.target.storyboardId ?? options.storyboard.id}:${job.target.storyId}:${job.target.frameKey}:${job.captureSetId}:${outputVariantId}:${job.mode}\n`;
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, assetBody, "utf8");
+    const frame = allStoryboardFrames(options.storyboard).find(
+      (candidate) =>
+        candidate.story.id === job.target.storyId && candidate.frame.id === job.target.frameKey,
+    )?.frame;
+    const provenance = storage.writeProvenance({
+      storyboardId: job.target.storyboardId ?? options.storyboard.id,
+      frameKey: job.target.frameKey,
+      manifestHash: hashStoryboardRunJson(options.manifest),
+      manifestEntryId: entry.id,
+      runnerId: runner.id,
+      runnerHash: hashStoryboardRunJson(runner),
+      captureSetId: job.captureSetId,
+      captureSetHash: hashStoryboardRunJson(captureSet),
+      outputVariantId,
+      screenSizeId: job.screenSizeId,
+      storyboardSpecHash: hashStoryboardRunJson(options.storyboard),
+      frameSpecHash: hashStoryboardRunJson(frame ?? { id: job.target.frameKey }),
+      outputAsset,
+      outputAssetHash: storyboardRunSha256(assetBody),
+      completedAt: stamp(),
+    });
+    log(job.jobId, "provenance_written", {
+      path: provenance.path,
+      token: "must-not-leak",
+    });
+    return writeJob({ ...job, provenanceWrites: [...job.provenanceWrites, provenance.path ?? provenance.key ?? ""] });
+  }
+
+  function runLeafJob(job: Run) {
+    const { runner } = runnerForRequest(options.manifest, job);
+    const health = storyboardDryRunFastHealth(runner);
+    log(job.jobId, "runner_fast_health", { health });
+    appendAudit({ event: "runner_fast_health", jobId: job.jobId, context: { health } });
+    if (!health.ok) {
+      return transition(job, "failed", {
+        error: { code: "runner_unavailable", message: "Dry-run runner fast health failed." },
+      });
+    }
+    let current = transition(job, "running");
+    if (job.mode === "capture" || job.mode === "run-and-capture") {
+      current = transition(current, "capturing");
+      current = writeCaptureArtifacts(current);
+    }
+    return transition(current, "succeeded");
+  }
+
+  function maybeCompleteParent(parent: Run) {
+    const children = storage.listJobs().filter(
+      (job) => (job.params.parentJobId as string | undefined) === parent.jobId,
+    );
+    if (children.length === 0) return parent;
+    if (!children.every((child) => terminalRunLifecycleStates.includes(child.status))) {
+      return parent;
+    }
+    const failed = children.find((child) => child.status === "failed");
+    const cancelled = children.find((child) => child.status === "cancelled");
+    if (failed || cancelled) {
+      return transition(parent, failed ? "failed" : "cancelled", {
+        error: failed?.error ?? cancelled?.error,
+        progress: {
+          completedFrames: children.filter((child) => child.status === "succeeded").length,
+          totalFrames: children.length,
+        },
+      });
+    }
+    return transition(parent, "succeeded", {
+      progress: { completedFrames: children.length, totalFrames: children.length },
+    });
+  }
+
+  function processNext() {
+    if (active.size >= maxActive) return null;
+    const next = storage.listJobs().find((job) => job.status === "queued");
+    if (!next) return null;
+    active.add(next.jobId);
+    const completed = runLeafJob(next);
+    const parentId = completed.params.parentJobId as string | undefined;
+    if (parentId) {
+      maybeCompleteParent(storage.readJob(parentId));
+    }
+    return completed;
+  }
+
+  function drain() {
+    const completed: Run[] = [];
+    while (active.size < maxActive) {
+      const result = processNext();
+      if (!result) break;
+      completed.push(result);
+    }
+    return completed;
+  }
+
+  function createJob(request: CreateRunRequestDto, status: RunLifecycleStatus, parentJobId?: string): Run {
+    const createdAt = stamp();
+    return {
+      jobId: jobIdFactory(),
+      scope: request.scope,
+      mode: request.mode,
+      status,
+      target: {
+        ...request.target,
+        storyboardId: request.target.storyboardId ?? options.storyboard.id,
+        outputVariantId: request.outputVariantId ?? request.target.outputVariantId,
+        screenSizeId: request.screenSizeId ?? request.target.screenSizeId,
+      },
+      manifestEntryId: request.manifestEntryId,
+      captureSetId: request.captureSetId,
+      outputVariantId: request.outputVariantId ?? request.target.outputVariantId,
+      screenSizeId: request.screenSizeId ?? request.target.screenSizeId,
+      createdAt,
+      updatedAt: createdAt,
+      params: parentJobId ? { ...(request.params ?? {}), parentJobId } : (request.params ?? {}),
+      provenanceWrites: [],
+    };
+  }
+
+  function enqueue(request: CreateRunRequestDto): StoryboardDryRunEnqueueResult {
+    runnerForRequest(options.manifest, request);
+    if (request.scope === "frame") {
+      const job = storage.writeJob(createJob(request, "queued"));
+      log(job.jobId, "job_queued", { request, authorization: "Bearer should-redact" });
+      appendAudit({ event: "job_queued", jobId: job.jobId, context: { request } });
+      return {
+        jobId: job.jobId,
+        status: "queued",
+        queuePosition: Math.max(queuePosition(job.jobId), 0),
+        links: {
+          job: `/api/storyboard/runs/${job.jobId}`,
+          logs: `/api/storyboard/runs/${job.jobId}/logs`,
+          cancel: `/api/storyboard/runs/${job.jobId}/cancel`,
+        },
+      };
+    }
+    const parent = storage.writeJob(createJob(request, "running"));
+    log(parent.jobId, "parent_job_running", { scope: request.scope });
+    appendAudit({ event: "parent_job_running", jobId: parent.jobId, context: { scope: request.scope } });
+    const frames = runnableFramesForRequest(options.storyboard, request);
+    if (frames.length === 0) {
+      transition(parent, "skipped", {
+        error: { code: "no_matching_frames", message: "No frames matched the parent run target." },
+      });
+      return {
+        jobId: parent.jobId,
+        status: "queued",
+        queuePosition: 0,
+        childJobIds: [],
+        links: {
+          job: `/api/storyboard/runs/${parent.jobId}`,
+          logs: `/api/storyboard/runs/${parent.jobId}/logs`,
+          cancel: `/api/storyboard/runs/${parent.jobId}/cancel`,
+        },
+      };
+    }
+    const childJobIds = frames.map(({ storyboardId, storyId, frame }) => {
+      const child = storage.writeJob(
+        createJob(
+          {
+            ...request,
+            scope: "frame",
+            target: {
+              ...request.target,
+              storyboardId,
+              storyId,
+              frameKey: frame.id,
+            },
+          },
+          "pending",
+          parent.jobId,
+        ),
+      );
+      log(child.jobId, "child_job_pending", { parentJobId: parent.jobId });
+      appendAudit({ event: "child_job_pending", jobId: child.jobId, parentJobId: parent.jobId });
+      return child.jobId;
+    });
+    for (const childId of childJobIds) {
+      const child = storage.readJob(childId);
+      transition(child, "queued", {
+        progress: { currentFrameKey: child.target.frameKey },
+      });
+    }
+    return {
+      jobId: parent.jobId,
+      status: "queued",
+      queuePosition: 0,
+      childJobIds,
+      links: {
+        job: `/api/storyboard/runs/${parent.jobId}`,
+        logs: `/api/storyboard/runs/${parent.jobId}/logs`,
+        cancel: `/api/storyboard/runs/${parent.jobId}/cancel`,
+      },
+    };
+  }
+
+  function cancel(jobId: string, reason = "cancelled") {
+    const job = storage.readJob(jobId);
+    if (terminalRunLifecycleStates.includes(job.status)) {
+      if (job.status === "cancelled") {
+        return { jobId, status: "cancelled", cancelledAt: job.completedAt ?? stamp() } as CancelRunResponseDto;
+      }
+      manifestError("job", "job_terminal", "terminal jobs cannot be cancelled");
+    }
+    const cancelled = transition(job, "cancelled", {
+      error: { code: "cancelled", message: reason },
+    });
+    for (const child of storage.listJobs().filter((candidate) => (candidate.params.parentJobId as string | undefined) === jobId)) {
+      if (!terminalRunLifecycleStates.includes(child.status)) {
+        transition(child, "cancelled", { error: { code: "parent_cancelled", message: reason } });
+      }
+    }
+    appendAudit({ event: "job_cancel_requested", jobId, context: { reason } });
+    return { jobId, status: "cancelled", cancelledAt: cancelled.completedAt ?? stamp() } as CancelRunResponseDto;
+  }
+
+  function cleanupExpired(nowOverride = now()) {
+    const expired: Run[] = [];
+    for (const job of storage.listJobs()) {
+      if (terminalRunLifecycleStates.includes(job.status)) {
+        if (terminalAgeMs(job, nowOverride) > ttlMs) removeTransient(job.jobId);
+        continue;
+      }
+      if (terminalAgeMs(job, nowOverride) <= ttlMs) continue;
+      expired.push(transition(job, "expired", {
+        error: { code: "ttl_expired", message: "Job expired before completion." },
+      }));
+    }
+    if (expired.length > 0) {
+      appendAudit({ event: "ttl_cleanup", context: { expiredJobIds: expired.map((job) => job.jobId) } });
+    }
+    return expired;
+  }
+
+  function state() {
+    const jobs = storage.listJobs();
+    return {
+      maxActive,
+      active: jobs.filter((job) => job.status === "running" || job.status === "capturing").length,
+      queued: jobs.filter((job) => job.status === "queued").length,
+      jobs,
+    };
+  }
+
+  return {
+    storage,
+    enqueue,
+    drain,
+    processNext,
+    cancel,
+    cleanupExpired,
+    state,
+    readAudit,
   };
 }

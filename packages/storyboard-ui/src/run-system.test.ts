@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   capabilitiesFromManifest,
+  createStoryboardDryRunQueue,
   createStoryboardRunStorage,
   deriveStoryboardRunFreshness,
   generateStoryboardRunJobId,

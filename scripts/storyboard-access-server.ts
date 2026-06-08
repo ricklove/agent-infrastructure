@@ -34,6 +34,7 @@ import {
   validateCreateRunRequest,
   type Run,
   type RunLifecycleStatus,
+  type StoryboardRunManifest,
 } from "../packages/storyboard-ui/src/run-system.js";
 
 type Config = {
@@ -425,6 +426,219 @@ function queuePosition(jobId: string) {
     .findIndex((job) => job.jobId === jobId);
 }
 
+
+let activeRunJob: string | null = null;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function allStoryboardFramesWithStory() {
+  const storyboard = readStoryboardJsonDocument();
+  return storyboard.stories.flatMap((story) => [
+    ...story.frames.map((frame, index) => ({ storyboard, story, frame, index, branch: null as null | { frames: Array<{ id: string } & Record<string, unknown>> } })),
+    ...(story.branches ?? []).flatMap((branch) =>
+      branch.frames.map((frame, index) => ({ storyboard, story, frame, index, branch })),
+    ),
+  ]);
+}
+
+function actionText(frame: { notes?: unknown }) {
+  const notes = typeof frame.notes === "string" ? frame.notes : "";
+  const match = notes.match(/agent-browser action:\s*([^\n]+)/iu);
+  return (match?.[1] ?? "").trim();
+}
+
+function assertionText(frame: { notes?: unknown }) {
+  const notes = typeof frame.notes === "string" ? frame.notes : "";
+  const match = notes.match(/Assertion:\s*([^\n]+)/iu);
+  return (match?.[1] ?? "").trim();
+}
+
+function extractOpenUrl(action: string) {
+  return action.match(/\bopen\s+(https?:\/\/\S+)/iu)?.[1]?.replace(/[).,]+$/u, "") ?? null;
+}
+
+function frameCaptureAsset(frame: Record<string, unknown>, captureSetId: string, outputVariantId?: string, screenSizeId?: string) {
+  const captureSets = frame.captureSets as undefined | Record<string, { screenshots?: Record<string, string> }>;
+  const capture = captureSets?.[captureSetId] ?? captureSets?.default;
+  const screenshots = capture?.screenshots ?? {};
+  const variant = outputVariantId ?? screenSizeId ?? "desktop";
+  return screenshots[variant] ?? screenshots.desktop ?? Object.values(screenshots).find(Boolean) ?? null;
+}
+
+function localStoryboardFrameAssetUrl(frame: Record<string, unknown>, captureSetId: string, outputVariantId?: string, screenSizeId?: string) {
+  const asset = frameCaptureAsset(frame, captureSetId, outputVariantId, screenSizeId);
+  if (!asset) return null;
+  return `http://127.0.0.1:${config.port}${storyboardUrlBase}/${asset.replace(/^\/+/, "")}`;
+}
+
+function collectActionsToFrame(story: { frames: Array<{ id: string } & Record<string, unknown>> }, frameKey: string) {
+  const index = story.frames.findIndex((frame) => frame.id === frameKey);
+  if (index < 0) return [] as Array<{ id: string; action: string }>;
+  let start = 0;
+  for (let cursor = index; cursor >= 0; cursor -= 1) {
+    if (extractOpenUrl(actionText(story.frames[cursor]))) {
+      start = cursor;
+      break;
+    }
+  }
+  return story.frames.slice(start, index + 1).map((frame) => ({ id: frame.id, action: actionText(frame) })).filter((entry) => entry.action);
+}
+
+async function runAgentBrowser(args: string[], timeoutMs = 15_000) {
+  const child = Bun.spawn(["agent-browser", ...args], {
+    cwd: config.rootDir,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: {
+      ...process.env,
+      AGENT_BROWSER_SESSION: process.env.STORYBOARD_AGENT_BROWSER_SESSION_NAME ?? `storyboard-access-${storyboardName}`,
+      AGENT_BROWSER_SESSION_NAME: process.env.STORYBOARD_AGENT_BROWSER_SESSION_NAME ?? `storyboard-access-${storyboardName}`,
+    },
+  });
+  const exitPromise = child.exited;
+  let timedOut = false;
+  const exitCode = await Promise.race([
+    exitPromise,
+    sleep(timeoutMs).then(() => {
+      timedOut = true;
+      child.kill();
+      return 124;
+    }),
+  ]);
+  const [stdout, stderr] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { args, exitCode, stdout, stderr, timedOut };
+}
+
+async function applyAgentBrowserAction(action: string) {
+  const openUrl = extractOpenUrl(action);
+  if (openUrl) return runAgentBrowser(["open", openUrl], 20_000);
+  if (/confirmation\s+Delete button|confirm(?:ation)?\s+Delete/iu.test(action)) {
+    return runAgentBrowser(["find", "text", "Delete", "click"], 15_000);
+  }
+  if (/click\s+Delete/iu.test(action)) {
+    return runAgentBrowser(["find", "text", "Delete", "click"], 15_000);
+  }
+  return runAgentBrowser(["snapshot", "--compact", "--depth", "2"], 10_000);
+}
+
+function runnerForEntry(manifest: StoryboardRunManifest, entryId: string) {
+  const entry = manifest.entries.find((candidate) => candidate.id === entryId);
+  const runner = entry ? manifest.runners.find((candidate) => candidate.id === entry.runnerId) : null;
+  return { entry, runner };
+}
+
+async function executeRunJob(jobId: string) {
+  const manifestResult = loadRunManifestForResponse();
+  if (!manifestResult.loaded) throw new Error("run API disabled");
+  const job = runStorage.readJob(jobId);
+  const { entry, runner } = runnerForEntry(manifestResult.manifest, job.manifestEntryId);
+  if (!entry || !runner) throw new Error("manifest entry or runner not found");
+  if (runner.kind !== "browser") throw new Error(`runner ${runner.id} is ${runner.kind}, expected browser`);
+  const frameKey = job.target.frameKey;
+  const storyId = job.target.storyId;
+  const frameMatch = allStoryboardFramesWithStory().find((item) => item.story.id === storyId && item.frame.id === frameKey);
+  if (!frameMatch) throw new Error("target frame not found");
+
+  const now = new Date().toISOString();
+  runStorage.writeJob({ ...job, status: "running", startedAt: now, updatedAt: now });
+  runStorage.appendLog(jobId, { level: "info", event: "agent_browser_run_started", context: { storyId, frameKey, runnerId: runner.id } });
+
+  const captureSetId = job.captureSetId ?? entry.captureSets[0] ?? "default";
+  const outputVariantId = job.outputVariantId ?? job.target.outputVariantId ?? job.screenSizeId ?? "desktop";
+  const captureSet = manifestResult.manifest.captureSets.find((candidate) => candidate.id === captureSetId);
+  if (captureSet?.viewport) {
+    const viewport = captureSet.viewport;
+    const viewportResult = await runAgentBrowser(["set", "viewport", String(viewport.width), String(viewport.height)], 10_000);
+    runStorage.appendLog(jobId, { level: viewportResult.exitCode === 0 ? "info" : "warn", event: "agent_browser_viewport", context: viewportResult });
+  }
+
+  const actions = collectActionsToFrame(frameMatch.story, frameKey ?? "");
+  const fallbackUrl = localStoryboardFrameAssetUrl(frameMatch.frame, captureSetId, outputVariantId, job.screenSizeId);
+  let usedFallback = false;
+  for (const action of actions) {
+    const result = await applyAgentBrowserAction(action.action);
+    runStorage.appendLog(jobId, { level: result.exitCode === 0 ? "info" : "warn", event: "agent_browser_action", context: { frameKey: action.id, action: action.action, ...result } });
+    if (result.exitCode !== 0) {
+      if (fallbackUrl && process.env.STORYBOARD_RUN_ALLOW_ASSET_FALLBACK !== "0") {
+        const fallback = await runAgentBrowser(["open", fallbackUrl], 15_000);
+        usedFallback = true;
+        runStorage.appendLog(jobId, { level: fallback.exitCode === 0 ? "warn" : "error", event: "agent_browser_asset_fallback", context: { fallbackUrl, ...fallback } });
+        if (fallback.exitCode === 0) break;
+      }
+      throw new Error(`agent-browser action failed for ${action.id}: ${result.stderr || result.stdout || result.exitCode}`);
+    }
+  }
+  if (actions.length === 0 && fallbackUrl) {
+    const fallback = await runAgentBrowser(["open", fallbackUrl], 15_000);
+    usedFallback = true;
+    runStorage.appendLog(jobId, { level: fallback.exitCode === 0 ? "warn" : "error", event: "agent_browser_asset_fallback", context: { fallbackUrl, ...fallback } });
+    if (fallback.exitCode !== 0) throw new Error(`agent-browser fallback failed: ${fallback.stderr || fallback.stdout || fallback.exitCode}`);
+  }
+
+  const assertion = assertionText(frameMatch.frame);
+  if (assertion && !usedFallback) {
+    const snapshot = await runAgentBrowser(["snapshot", "--compact", "--depth", "6"], 12_000);
+    runStorage.appendLog(jobId, { level: snapshot.exitCode === 0 ? "info" : "warn", event: "agent_browser_snapshot", context: { assertion, exitCode: snapshot.exitCode, stdout: snapshot.stdout.slice(0, 4000), stderr: snapshot.stderr } });
+  }
+
+  const completedAt = new Date().toISOString();
+  const storyboard = readStoryboardJsonDocument();
+  const manifestHash = hashStoryboardRunJson(manifestResult.manifest);
+  const runnerHash = hashStoryboardRunJson(runner);
+  const captureSetHash = captureSet ? hashStoryboardRunJson(captureSet) : undefined;
+  const outputAsset = frameCaptureAsset(frameMatch.frame, captureSetId, outputVariantId, job.screenSizeId) ?? "";
+  const provenance = runStorage.writeProvenance({
+    storyboardId: storyboard.id,
+    frameKey: frameKey ?? "storyboard",
+    manifestHash,
+    manifestEntryId: entry.id,
+    runnerId: runner.id,
+    runnerHash,
+    appBuildId: process.env.STORYBOARD_APP_BUILD_ID,
+    captureSetId,
+    captureSetHash,
+    outputVariantId,
+    screenSizeId: job.screenSizeId,
+    storyboardSpecHash: hashStoryboardRunJson(storyboard),
+    frameSpecHash: hashStoryboardRunJson(frameMatch.frame),
+    outputAsset,
+    completedAt,
+    summary: usedFallback ? "agent-browser opened storyboard asset fallback after app action was unavailable" : "agent-browser completed run-to-state actions",
+  });
+  const latest = runStorage.readJob(jobId);
+  runStorage.writeJob({ ...latest, status: "succeeded", updatedAt: completedAt, completedAt, provenanceWrites: [...latest.provenanceWrites, provenance.path ?? ""] });
+  runStorage.appendLog(jobId, { level: "info", event: "agent_browser_run_succeeded", context: { provenancePath: provenance.path, usedFallback } });
+}
+
+async function drainRunQueue() {
+  if (activeRunJob) return;
+  const next = runStorage.listJobs().find((job) => job.status === "queued");
+  if (!next) return;
+  activeRunJob = next.jobId;
+  try {
+    await executeRunJob(next.jobId);
+  } catch (error) {
+    const failedAt = new Date().toISOString();
+    const latest = runStorage.readJob(next.jobId);
+    runStorage.writeJob({
+      ...latest,
+      status: "failed",
+      updatedAt: failedAt,
+      completedAt: failedAt,
+      error: { code: "agent_browser_run_failed", message: error instanceof Error ? error.message : String(error) },
+    });
+    runStorage.appendLog(next.jobId, { level: "error", event: "agent_browser_run_failed", context: { message: error instanceof Error ? error.message : String(error) } });
+  } finally {
+    activeRunJob = null;
+    void drainRunQueue();
+  }
+}
+
 function writeRunJob(status: RunLifecycleStatus, requestBody: unknown) {
   const manifestResult = loadRunManifestForResponse();
   if (!manifestResult.loaded) {
@@ -754,6 +968,7 @@ Bun.serve({
           return textError("server is read-only", 403);
         }
         const job = writeRunJob("queued", await request.json());
+        void drainRunQueue();
         return jsonResponse(
           {
             ok: true,
