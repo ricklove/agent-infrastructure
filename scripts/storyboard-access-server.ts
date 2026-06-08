@@ -467,6 +467,54 @@ function frameCaptureAsset(frame: Record<string, unknown>, captureSetId: string,
   return screenshots[variant] ?? screenshots.desktop ?? Object.values(screenshots).find(Boolean) ?? null;
 }
 
+function safeStoryboardAssetPath(assetPath: string) {
+  const clean = assetPath.replace(/^\/+/, "");
+  const fullPath = resolve(config.rootDir, clean);
+  const rel = relative(config.rootDir, fullPath);
+  if (rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(`unsafe asset path: ${assetPath}`);
+  }
+  return { clean, fullPath };
+}
+
+function outputPathFromTemplate(template: string, frameKey: string, outputVariantId: string, screenSizeId?: string) {
+  return template
+    .replaceAll("{frameKey}", frameKey)
+    .replaceAll("{outputVariantId}", outputVariantId)
+    .replaceAll("{screenSizeId}", screenSizeId ?? outputVariantId)
+    .replaceAll("{variant}", outputVariantId);
+}
+
+async function captureAgentBrowserVariant(
+  jobId: string,
+  frame: Record<string, unknown>,
+  captureSetId: string,
+  outputVariantId: string,
+  captureSet: { outputPathTemplate?: string; imageFormat?: string } | undefined,
+  screenSizeId?: string,
+) {
+  const existingAsset = frameCaptureAsset(frame, captureSetId, outputVariantId, screenSizeId);
+  const templatedAsset = captureSet?.outputPathTemplate
+    ? outputPathFromTemplate(captureSet.outputPathTemplate, String(frame.id ?? "frame"), outputVariantId, screenSizeId)
+    : null;
+  const assetPath = existingAsset ?? templatedAsset;
+  if (!assetPath) {
+    throw new Error(`no output asset path for ${captureSetId}/${outputVariantId}`);
+  }
+  const { clean, fullPath } = safeStoryboardAssetPath(assetPath);
+  mkdirSync(dirname(fullPath), { recursive: true });
+  const screenshot = await runAgentBrowser(["screenshot", fullPath], 20_000);
+  runStorage.appendLog(jobId, {
+    level: screenshot.exitCode === 0 ? "info" : "error",
+    event: "agent_browser_capture",
+    context: { outputAsset: clean, ...screenshot },
+  });
+  if (screenshot.exitCode !== 0) {
+    throw new Error(`agent-browser capture failed: ${screenshot.stderr || screenshot.stdout || screenshot.exitCode}`);
+  }
+  return clean;
+}
+
 function localStoryboardFrameAssetUrl(frame: Record<string, unknown>, captureSetId: string, outputVariantId?: string, screenSizeId?: string) {
   const asset = frameCaptureAsset(frame, captureSetId, outputVariantId, screenSizeId);
   if (!asset) return null;
@@ -586,12 +634,17 @@ async function executeRunJob(jobId: string) {
     runStorage.appendLog(jobId, { level: snapshot.exitCode === 0 ? "info" : "warn", event: "agent_browser_snapshot", context: { assertion, exitCode: snapshot.exitCode, stdout: snapshot.stdout.slice(0, 4000), stderr: snapshot.stderr } });
   }
 
+  let outputAsset = frameCaptureAsset(frameMatch.frame, captureSetId, outputVariantId, job.screenSizeId) ?? "";
+  if (job.mode === "run-and-capture" || job.mode === "capture") {
+    runStorage.writeJob({ ...runStorage.readJob(jobId), status: "capturing", updatedAt: new Date().toISOString() });
+    outputAsset = await captureAgentBrowserVariant(jobId, frameMatch.frame, captureSetId, outputVariantId, captureSet, job.screenSizeId);
+  }
+
   const completedAt = new Date().toISOString();
   const storyboard = readStoryboardJsonDocument();
   const manifestHash = hashStoryboardRunJson(manifestResult.manifest);
   const runnerHash = hashStoryboardRunJson(runner);
   const captureSetHash = captureSet ? hashStoryboardRunJson(captureSet) : undefined;
-  const outputAsset = frameCaptureAsset(frameMatch.frame, captureSetId, outputVariantId, job.screenSizeId) ?? "";
   const provenance = runStorage.writeProvenance({
     storyboardId: storyboard.id,
     frameKey: frameKey ?? "storyboard",
@@ -608,7 +661,9 @@ async function executeRunJob(jobId: string) {
     frameSpecHash: hashStoryboardRunJson(frameMatch.frame),
     outputAsset,
     completedAt,
-    summary: usedFallback ? "agent-browser opened storyboard asset fallback after app action was unavailable" : "agent-browser completed run-to-state actions",
+    summary: job.mode === "run-and-capture" || job.mode === "capture"
+      ? `agent-browser captured ${outputVariantId} screenshot to ${outputAsset}`
+      : usedFallback ? "agent-browser opened storyboard asset fallback after app action was unavailable" : "agent-browser completed run-to-state actions",
   });
   const latest = runStorage.readJob(jobId);
   runStorage.writeJob({ ...latest, status: "succeeded", updatedAt: completedAt, completedAt, provenanceWrites: [...latest.provenanceWrites, provenance.path ?? ""] });

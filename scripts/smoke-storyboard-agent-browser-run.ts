@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -84,9 +84,9 @@ try {
   const manifest = {
     version: 1,
     enabled: true,
-    runners: [{ id: "agent-browser", label: "agent-browser", kind: "browser", enabled: true, capabilities: ["run-to-state"] }],
-    captureSets: [{ id: "default", label: "Default desktop", viewport: { width: 1440, height: 900, deviceScaleFactor: 1 }, outputPathTemplate: "assets/{frameKey}.desktop.png", imageFormat: "png", comparisonPolicy: "manual" }],
-    entries: [{ id: "agent-browser-run-to-state", label: "agent-browser run-to-state", scope: "frame", runnerId: "agent-browser", modes: ["run-to-state"], targets: [{ storyboardId: storyboard.id, storyPattern: "*", framePattern: "*" }], paramsSchema: {}, captureSets: ["default"], enabled: true }],
+    runners: [{ id: "agent-browser", label: "agent-browser", kind: "browser", enabled: true, capabilities: ["run-to-state", "capture", "run-and-capture"] }],
+    captureSets: [{ id: "default", label: "Default", viewport: { width: 1440, height: 900, deviceScaleFactor: 1 }, outputPathTemplate: "assets/{frameKey}.{outputVariantId}.png", imageFormat: "png", comparisonPolicy: "manual" }],
+    entries: [{ id: "agent-browser-run-to-state", label: "agent-browser run/capture", scope: "frame", runnerId: "agent-browser", modes: ["run-to-state", "capture", "run-and-capture"], targets: [{ storyboardId: storyboard.id, storyPattern: "*", framePattern: "*" }], paramsSchema: {}, captureSets: ["default"], enabled: true }],
   };
   writeFileSync(join(root, "storyboard.run.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
@@ -109,7 +109,7 @@ try {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         scope: "frame",
-        mode: "run-to-state",
+        mode: "run-and-capture",
         target: { storyboardId: storyboard.id, storyId: story.id, frameKey: frame.id, outputVariantId: "desktop" },
         manifestEntryId: "agent-browser-run-to-state",
         captureSetId: "default",
@@ -120,7 +120,17 @@ try {
     const payload: any = await response.json();
     const terminal = await waitJob(baseUrl, payload.jobId);
     const logs: any = await fetchJson(`${baseUrl}/api/storyboard-access/runs/${payload.jobId}/logs`);
-    jobs.push({ jobId: payload.jobId, frameKey: frame.id, status: terminal.status, provenanceWrites: terminal.provenanceWrites, logs: logs.logs?.map((entry: any) => entry.event) });
+    const captureLog = logs.logs?.find((entry: any) => entry.event === "agent_browser_capture");
+    const captureAsset = captureLog?.context?.outputAsset ? join(root, captureLog.context.outputAsset) : null;
+    const captureStats = captureAsset && existsSync(captureAsset) ? statSync(captureAsset) : null;
+    jobs.push({
+      jobId: payload.jobId,
+      frameKey: frame.id,
+      status: terminal.status,
+      provenanceWrites: terminal.provenanceWrites,
+      logs: logs.logs?.map((entry: any) => entry.event),
+      capturedAsset: captureStats ? { path: captureAsset, bytes: captureStats.size, mtimeMs: captureStats.mtimeMs } : null,
+    });
   }
   const state: any = await fetchJson(`${baseUrl}/api/storyboard-access/state?captureSetId=default&outputVariantId=desktop`);
   server.kill();

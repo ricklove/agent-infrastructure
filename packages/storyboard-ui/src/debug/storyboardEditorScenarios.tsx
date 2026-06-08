@@ -402,11 +402,16 @@ function nextCaptureSetId(frame: Partial<StoryboardFrameRecord>) {
   return "set-" + index
 }
 
-function proxiedAssetUrl(storyboardUrl: string, assetPath: string | undefined) {
+function proxiedAssetUrl(storyboardUrl: string, assetPath: string | undefined, cacheKey?: string) {
   if (!storyboardUrl || !assetPath) {
     return undefined
   }
-  return `${apiRoot}/access-asset?storyboardUrl=${encodeURIComponent(storyboardUrl)}&path=${encodeURIComponent(assetPath)}`
+  const params = new URLSearchParams({ storyboardUrl, path: assetPath })
+  if (cacheKey) {
+    params.set("cacheBust", cacheKey)
+    params.set("preferRunMirror", "1")
+  }
+  return `${apiRoot}/access-asset?${params.toString()}`
 }
 
 function variantRunKey(
@@ -485,12 +490,13 @@ function renderEditorFrame(
   storyboardUrl: string,
   captureSetId: string,
   runVariantActions?: Partial<Record<OutputVariantId, ReactNode>>,
+  variantAssetCacheKeys?: Partial<Record<OutputVariantId, string>>,
 ) {
   if (hasFrameScreenshots(frame)) {
     const screenshots = frameScreenshots(frame, captureSetId)
-    const desktop = proxiedAssetUrl(storyboardUrl, screenshots?.desktop)
-    const mobile = proxiedAssetUrl(storyboardUrl, screenshots?.mobile)
-    const square = proxiedAssetUrl(storyboardUrl, screenshots?.square)
+    const desktop = proxiedAssetUrl(storyboardUrl, screenshots?.desktop, variantAssetCacheKeys?.desktop)
+    const mobile = proxiedAssetUrl(storyboardUrl, screenshots?.mobile, variantAssetCacheKeys?.mobile)
+    const square = proxiedAssetUrl(storyboardUrl, screenshots?.square, variantAssetCacheKeys?.square)
 
     return (
       <ScreenshotFrameCell
@@ -693,6 +699,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   const transitionRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [activeCaptureSetId, setActiveCaptureSetId] = useState("default")
   const [variantRunStates, setVariantRunStates] = useState<Record<string, VariantRunState>>(() => loadPersistedVariantRunStates())
+  const [variantAssetCacheKeys, setVariantAssetCacheKeys] = useState<Record<string, string>>({})
   const [runQueue, setRunQueue] = useState<StoryboardRunStateDto["queue"] | null>(null)
   const isConnected = connectedStoryboardUrl.trim().length > 0
   const isAccessServerRootMode = useMemo(
@@ -926,7 +933,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
             frame.frameKey,
             activeCaptureSetId,
             outputVariantId,
-            "run-to-state",
+            "run-and-capture",
           )
           const existing = next[key]
           if (existing?.jobId && existing.jobId !== job.jobId && !isTerminalRunStatus(existing.status)) continue
@@ -937,7 +944,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
             frameKey: frame.frameKey,
             captureSetId: activeCaptureSetId,
             outputVariantId,
-            mode: "run-to-state",
+            mode: "run-and-capture",
             status: job.status,
             jobId: job.jobId,
             queuePosition: job.queuePosition,
@@ -952,7 +959,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
 
   async function requestFrameRun(storyId: string, frameKey: string, outputVariantId: OutputVariantId) {
     if (!document || !isConnected) return
-    const mode: RunMode = "run-to-state"
+    const mode: RunMode = "run-and-capture"
     const key = variantRunKey(document.id, storyId, frameKey, activeCaptureSetId, outputVariantId, mode)
     const now = new Date().toISOString()
     upsertVariantRunState({
@@ -978,6 +985,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           mode,
           target: { storyboardId: document.id, storyId, frameKey, outputVariantId },
           manifestEntryId: "agent-browser-run-to-state",
+          captureSetId: activeCaptureSetId,
           outputVariantId,
           params: {},
         }),
@@ -1036,7 +1044,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
 
   function renderRunVariantAction(storyId: string | undefined, frameKey: string, outputVariantId: OutputVariantId) {
     if (!document || !storyId) return null
-    const mode: RunMode = "run-to-state"
+    const mode: RunMode = "run-and-capture"
     const key = variantRunKey(document.id, storyId, frameKey, activeCaptureSetId, outputVariantId, mode)
     const state = variantRunStates[key]
     const busy = state && !isTerminalRunStatus(state.status)
@@ -1072,6 +1080,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           >
             <div className="font-semibold uppercase tracking-[0.12em]">{humanRunStatus(state.status)}</div>
             {state.jobId ? <div className="font-mono">{state.jobId}</div> : null}
+            {state.completedAt ? <div title={state.completedAt}>Refreshed {new Date(state.completedAt).toLocaleTimeString()}</div> : null}
             {state.queuePosition !== undefined ? <div>Queue #{state.queuePosition + 1}</div> : null}
             {state.message ? <div className="max-w-[10rem] truncate" title={state.message}>{state.message}</div> : null}
           </div>
@@ -1087,6 +1096,19 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       mobile: renderRunVariantAction(storyId, frame.id, "mobile"),
       square: renderRunVariantAction(storyId, frame.id, "square"),
     }
+  }
+
+  function runVariantAssetCacheKeysForFrame(frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>) {
+    if (!document) return {}
+    const storyId = findStoryIdForFrame(document, frame.id)
+    if (!storyId) return {}
+    const keys: Partial<Record<OutputVariantId, string>> = {}
+    ;(["desktop", "mobile", "square"] as OutputVariantId[]).forEach((outputVariantId) => {
+      const key = variantRunKey(document.id, storyId, frame.id, activeCaptureSetId, outputVariantId, "run-and-capture")
+      const cacheKey = variantAssetCacheKeys[key]
+      if (cacheKey) keys[outputVariantId] = cacheKey
+    })
+    return keys
   }
 
   async function initializeStoryboard() {
@@ -1229,6 +1251,12 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           message: job.error?.message,
         })
         if (isTerminalRunStatus(job.status)) {
+          if (job.status === "succeeded") {
+            setVariantAssetCacheKeys((current) => ({
+              ...current,
+              [variantRunKey(state.storyboardId, state.storyId, state.frameKey, state.captureSetId, state.outputVariantId, state.mode)]: job.completedAt ?? job.updatedAt ?? new Date().toISOString(),
+            }))
+          }
           setStatus(`${state.outputVariantId} run ${job.jobId} ${humanRunStatus(job.status).toLowerCase()}`)
         }
       }))
@@ -2929,6 +2957,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                       connectedStoryboardUrl,
                       activeCaptureSetId,
                       runVariantActionsForFrame(frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>),
+                      runVariantAssetCacheKeysForFrame(frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>),
                     )
                   )}
                   renderFrameHeaderControls={() =>

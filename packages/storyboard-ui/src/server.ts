@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
-import { dirname, extname, join, relative, resolve } from "node:path"
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path"
 import { createHash, randomUUID } from "node:crypto"
 import { formatStoryboardDocument, frameCaptureSet, normalizeStoryboardDocument, isStoryboardDocument, type StoryboardDocument, type StoryboardFrameRecord, type StoryboardStoryRecord, type StoryboardTransitionRecord } from "./storyboard-document.js"
 
@@ -395,9 +395,9 @@ async function writeRunMirrorFiles(storyboardUrl: string, root: string) {
   const manifest = {
     version: 1,
     enabled: true,
-    runners: [{ id: "agent-browser", label: "agent-browser", kind: "browser", enabled: true, capabilities: ["run-to-state"] }],
+    runners: [{ id: "agent-browser", label: "agent-browser", kind: "browser", enabled: true, capabilities: ["run-to-state", "capture", "run-and-capture"] }],
     captureSets: [{ id: "default", label: "Default", viewport: { width: 1440, height: 900, deviceScaleFactor: 1 }, outputPathTemplate: "assets/{frameKey}.{outputVariantId}.png", imageFormat: "png", comparisonPolicy: "manual" }],
-    entries: [{ id: "agent-browser-run-to-state", label: "agent-browser run-to-state", scope: "frame", runnerId: "agent-browser", modes: ["run-to-state"], targets: [{ storyboardId: storyboard.id, storyPattern: "*", framePattern: "*" }], paramsSchema: {}, captureSets: ["default"], enabled: true }],
+    entries: [{ id: "agent-browser-run-to-state", label: "agent-browser run/capture", scope: "frame", runnerId: "agent-browser", modes: ["run-to-state", "capture", "run-and-capture"], targets: [{ storyboardId: storyboard.id, storyPattern: "*", framePattern: "*" }], paramsSchema: {}, captureSets: ["default"], enabled: true }],
   }
   writeFileSync(join(root, "storyboard.run.json"), `${JSON.stringify(manifest, null, 2)}\n`)
 }
@@ -463,12 +463,38 @@ async function proxyStoryboardUrlDocument(storyboardUrl: string, init?: RequestI
   }
 }
 
-async function proxyStoryboardAsset(storyboardUrl: string, assetPath: string) {
+async function proxyStoryboardAsset(storyboardUrl: string, assetPath: string, preferRunMirror = false) {
+  if (preferRunMirror) {
+    const mirror = runMirrors.get(runMirrorKey(storyboardUrl))
+    if (mirror) {
+      const clean = assetPath.replace(/^\/+/, "")
+      const mirrorPath = resolve(mirror.root, clean)
+      const rel = relative(mirror.root, mirrorPath)
+      if (!rel.startsWith("..") && !isAbsolute(rel) && existsSync(mirrorPath)) {
+        return new Response(Bun.file(mirrorPath), {
+          headers: {
+            "Content-Type": contentTypeForAssetPath(mirrorPath),
+            "X-Storyboard-Run-Mirror": "1",
+            "X-Storyboard-Run-Mirror-MtimeMs": String(statSync(mirrorPath).mtimeMs),
+          },
+        })
+      }
+    }
+  }
   const response = await fetch(new URL(assetPath, `${normalizeStoryboardBaseUrl(storyboardUrl)}/`))
   if (!response.ok) {
     throw new Error(await response.text())
   }
   return response
+}
+
+function contentTypeForAssetPath(pathname: string) {
+  const ext = extname(pathname).toLowerCase()
+  if (ext === ".png") return "image/png"
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg"
+  if (ext === ".webp") return "image/webp"
+  if (ext === ".svg") return "image/svg+xml"
+  return "application/octet-stream"
 }
 
 function listTemplateAssetFiles(currentDir: string, results: string[] = []) {
@@ -1054,7 +1080,7 @@ Bun.serve({
         if (!assetPath) {
           return textError("missing asset path", 400)
         }
-        const response = await proxyStoryboardAsset(storyboardUrl, assetPath)
+        const response = await proxyStoryboardAsset(storyboardUrl, assetPath, url.searchParams.get("preferRunMirror") === "1")
         return new Response(response.body, {
           status: response.status,
           headers: {
@@ -1105,11 +1131,23 @@ Bun.serve({
           return textError("missing storyboardUrl", 400)
         }
         const { storyboardUrl: _storyboardUrl, ...runRequest } = body
-        const payload = await proxyStoryboardAccessJsonWithRunMirrorFallback(storyboardUrl, "/api/storyboard-access/runs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(runRequest),
-        })
+        let payload: unknown
+        if (runRequest.mode === "run-and-capture" || runRequest.mode === "capture") {
+          const mirror = await ensureRunMirror(storyboardUrl)
+          const response = await fetch(new URL("/api/storyboard-access/runs", `${mirror.baseUrl}/`), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(runRequest),
+          })
+          if (!response.ok) throw new Error(await response.text())
+          payload = await response.json()
+        } else {
+          payload = await proxyStoryboardAccessJsonWithRunMirrorFallback(storyboardUrl, "/api/storyboard-access/runs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(runRequest),
+          })
+        }
         return jsonResponse(payload, 202)
       } catch (error) {
         return textError(error instanceof Error ? error.message : String(error), 400)
