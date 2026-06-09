@@ -535,6 +535,45 @@ describe("storyboard run freshness derivation", () => {
     });
     expect(missingRuntime.runnable).toBe(false);
     expect(missingRuntime.disabledReason).toBe("missing runtime/server config");
+    expect(missingRuntime.automationDriver).toEqual({
+      runnerId: "agent-browser",
+      runnerKind: "browser",
+      manifestEntryId: "login-happy-path",
+      scriptId: "login-happy-path",
+      stepId: "login-happy-path::login::login.success::desktop::desktop",
+      command: "agent-browser run-to-state",
+      fullyAutomated: false,
+      stateTarget: {
+        storyboardId: "default-storyboard",
+        storyId: "login",
+        frameKey: "login.success",
+        captureSetId: "desktop",
+        outputVariantId: "desktop",
+        mode: undefined,
+      },
+      disabledReason: "missing runtime/server config",
+    });
+
+    const browserManifestWithoutAutomation = structuredClone(browserManifestWithoutRuntime);
+    browserManifestWithoutAutomation.runners[0].capabilities = ["capture"];
+    const missingAutomation = deriveStoryboardRunFreshness({
+      storyboardRoot: root,
+      storyboard: {
+        ...storyboard,
+        runTarget: { kind: "web", url: "https://app.example.test/default" },
+      },
+      storyId: "login",
+      frameKey: "login.success",
+      manifest: browserManifestWithoutAutomation,
+      captureSetId: "desktop",
+      outputVariantId: "desktop",
+    });
+    expect(missingAutomation.runnable).toBe(false);
+    expect(missingAutomation.disabledReason).toBe("missing automation driver: login-happy-path");
+    expect(missingAutomation.automationDriver?.fullyAutomated).toBe(false);
+    expect(missingAutomation.automationDriver?.stepId).toBe(
+      "login-happy-path::login::login.success::desktop::desktop",
+    );
 
     const defaultTargetRuntime = deriveStoryboardRunFreshness({
       storyboardRoot: root,
@@ -553,6 +592,15 @@ describe("storyboard run freshness derivation", () => {
       id: "storyboard:default",
       label: "Storyboard default web",
       appUrl: "https://app.example.test/default",
+    });
+    expect(defaultTargetRuntime.automationDriver?.fullyAutomated).toBe(true);
+    expect(defaultTargetRuntime.automationDriver?.stateTarget).toEqual({
+      storyboardId: "default-storyboard",
+      storyId: "login",
+      frameKey: "login.success",
+      captureSetId: "desktop",
+      outputVariantId: "desktop",
+      mode: undefined,
     });
 
     const runtimeTarget = {

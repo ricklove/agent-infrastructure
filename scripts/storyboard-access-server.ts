@@ -1050,6 +1050,17 @@ Bun.serve({
             )
           : [];
         const jobs = runStorage.listJobs();
+        const automationMatrix = frames.map((frame) => ({
+          frameKey: frame.frameKey,
+          storyId: frame.storyId,
+          captureSetId: url.searchParams.get("captureSetId") ?? frame.automationDriver?.stateTarget.captureSetId ?? "default",
+          outputVariantId: url.searchParams.get("outputVariantId") ?? frame.automationDriver?.stateTarget.outputVariantId ?? "default",
+          ...(frame.runtimeTarget ? { runtimeTarget: frame.runtimeTarget } : {}),
+          ...(frame.automationDriver ? { automationDriver: frame.automationDriver } : {}),
+          fullyAutomated: frame.automationDriver?.fullyAutomated === true,
+          runnable: frame.runnable,
+          disabledReason: frame.disabledReason,
+        }));
         return jsonResponse({
           ok: true,
           storyboardId: readStoryboardJsonDocument().id,
@@ -1065,6 +1076,7 @@ Bun.serve({
             queued: jobs.filter((job) => job.status === "queued").length,
           },
           frames,
+          automationMatrix,
         });
       }
 

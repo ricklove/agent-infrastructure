@@ -99,6 +99,18 @@ type RuntimeTargetDto = {
   apiStubInfo?: string
 }
 
+type AutomationDriverDto = {
+  runnerId: string
+  runnerKind: string
+  manifestEntryId: string
+  scriptId: string
+  stepId: string
+  command: string
+  fullyAutomated: boolean
+  stateTarget: { storyboardId: string; storyId: string; frameKey: string; captureSetId: string; outputVariantId: string; mode?: string }
+  disabledReason: string | null
+}
+
 type VariantRunState = {
   key: string
   storyboardId: string
@@ -119,6 +131,7 @@ type VariantRunState = {
   runnable?: boolean
   disabledReason?: string | null
   manifestEntryIds?: string[]
+  automationDriver?: AutomationDriverDto
 }
 
 type FrameRunStateDto = {
@@ -129,6 +142,7 @@ type FrameRunStateDto = {
   disabledReason?: string | null
   runtimeTarget?: RuntimeTargetDto
   manifestEntryIds?: string[]
+  automationDriver?: AutomationDriverDto
   currentJob?: StoryboardRunJob
   latestJob?: StoryboardRunJob
   provenance?: RunProvenanceDto
@@ -1047,6 +1061,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
               runnable: frame.runnable,
               disabledReason: frame.disabledReason,
               manifestEntryIds: frame.manifestEntryIds,
+              automationDriver: frame.automationDriver,
             })
           }
           continue
@@ -1072,6 +1087,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           runnable: frame.runnable,
           disabledReason: frame.disabledReason,
           manifestEntryIds: frame.manifestEntryIds,
+          automationDriver: frame.automationDriver,
         })
         const cacheKey = buildRunAssetCacheKey({
           jobId: job.jobId,
@@ -1235,6 +1251,11 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
             {state.runtimeTarget ? (
               <div className="max-w-[10rem] truncate" title={`${state.runtimeTarget.appUrl}${state.runtimeTarget.apiRoot ? ` | API ${state.runtimeTarget.apiRoot}` : ""}${state.runtimeTarget.apiMode ? ` | ${state.runtimeTarget.apiMode}` : ""}`}>
                 {state.runtimeTarget.id}
+              </div>
+            ) : null}
+            {state.automationDriver ? (
+              <div className="max-w-[10rem] truncate" title={`${state.automationDriver.command} | ${state.automationDriver.stepId}`}>
+                {state.automationDriver.fullyAutomated ? "auto" : "missing auto"}: {state.automationDriver.scriptId}
               </div>
             ) : null}
             {state.queuePosition !== undefined ? <div>Queue #{state.queuePosition + 1}</div> : null}

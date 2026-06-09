@@ -105,6 +105,25 @@ export type RuntimeTarget = {
   apiStubInfo?: string;
 };
 
+export type AutomationDriver = {
+  runnerId: string;
+  runnerKind: RunnerKind;
+  manifestEntryId: string;
+  scriptId: string;
+  stepId: string;
+  command: string;
+  fullyAutomated: boolean;
+  stateTarget: {
+    storyboardId: string;
+    storyId: string;
+    frameKey: string;
+    captureSetId: string;
+    outputVariantId: string;
+    mode?: RunMode;
+  };
+  disabledReason: string | null;
+};
+
 export type Run = {
   jobId: string;
   scope: RunScope;
@@ -183,6 +202,7 @@ export type ManifestEntry = {
   paramsSchema: Record<string, ParamDefinition>;
   captureSets: string[];
   runtimeTarget?: RuntimeTarget;
+  scriptId?: string;
   enabled: boolean;
 };
 
@@ -225,7 +245,7 @@ export type StoryboardRunCapabilitiesDto = {
   lifecycleStates?: RunLifecycleStatus[];
   freshnessStates?: FrameRunStatus[];
   manifestEntries: Array<
-    Pick<ManifestEntry, "id" | "label" | "scope" | "modes" | "captureSets"> & { runtimeTarget?: RuntimeTarget }
+    Pick<ManifestEntry, "id" | "label" | "scope" | "modes" | "captureSets"> & { runtimeTarget?: RuntimeTarget; automationDriver?: AutomationDriver }
   >;
 };
 
@@ -238,6 +258,7 @@ export type FrameRunStateDto = {
   disabledReason: string | null;
   manifestEntryIds: string[];
   runtimeTarget?: RuntimeTarget;
+  automationDriver?: AutomationDriver;
   currentJob?: {
     jobId: string;
     status: RunLifecycleStatus;
@@ -251,12 +272,25 @@ export type FrameRunStateDto = {
   provenance?: Provenance;
 };
 
+export type StoryboardRunAutomationMatrixRow = {
+  frameKey: string;
+  storyId: string;
+  captureSetId: string;
+  outputVariantId: string;
+  runtimeTarget?: RuntimeTarget;
+  automationDriver?: AutomationDriver;
+  fullyAutomated: boolean;
+  runnable: boolean;
+  disabledReason: string | null;
+};
+
 export type StoryboardRunStateDto = {
   storyboardId: string;
   generatedAt: string;
   runApi: boolean;
   queue: { maxActive: number; active: number; queued: number };
   frames: FrameRunStateDto[];
+  automationMatrix?: StoryboardRunAutomationMatrixRow[];
 };
 
 export type CreateRunRequestDto = {
@@ -362,6 +396,7 @@ const allowedEntryKeys = new Set([
   "paramsSchema",
   "captureSets",
   "runtimeTarget",
+  "scriptId",
   "enabled",
 ]);
 const allowedTargetKeys = new Set([
@@ -893,6 +928,7 @@ function parseEntry(value: unknown, path: string): ManifestEntry {
             (item, itemPath) => requireId(item, itemPath),
           ),
     runtimeTarget: record.runtimeTarget === undefined ? undefined : parseRuntimeTarget(record.runtimeTarget, `${path}.runtimeTarget`),
+    scriptId: optionalString(record.scriptId, `${path}.scriptId`),
     enabled,
   };
 }
@@ -1306,14 +1342,24 @@ export function capabilitiesFromManifest(
     modes: [...storyboardRunModes],
     lifecycleStates: [...storyboardRunLifecycleStates],
     freshnessStates: ["not-runnable", "unchanged", "stale"],
-    manifestEntries: result.manifest.entries.map((entry) => ({
-      id: entry.id,
-      label: entry.label,
-      scope: entry.scope,
-      modes: entry.modes,
-      captureSets: entry.captureSets,
-      ...(entry.runtimeTarget ? { runtimeTarget: entry.runtimeTarget } : {}),
-    })),
+    manifestEntries: result.manifest.entries.map((entry) => {
+      const automationDriver = manifestEntryAutomationDriver(result.manifest, entry, {
+        storyboardId: entry.targets[0]?.storyboardId ?? "*",
+        storyId: entry.targets[0]?.storyId ?? entry.targets[0]?.storyPattern ?? "*",
+        frameKey: entry.targets[0]?.frameKey ?? entry.targets[0]?.framePattern ?? "*",
+        captureSetId: entry.captureSets[0] ?? "default",
+        outputVariantId: entry.captureSets[0] ?? "default",
+      });
+      return {
+        id: entry.id,
+        label: entry.label,
+        scope: entry.scope,
+        modes: entry.modes,
+        captureSets: entry.captureSets,
+        ...(entry.runtimeTarget ? { runtimeTarget: entry.runtimeTarget } : {}),
+        ...(automationDriver ? { automationDriver } : {}),
+      };
+    }),
   };
 }
 
@@ -1699,6 +1745,39 @@ function entryRequiresRuntimeTarget(runner: Runner | undefined, entry: ManifestE
   return runner?.kind === "browser" && entry.modes.some((mode) => mode === "run-to-state" || mode === "run-and-capture");
 }
 
+function automationDriverCommand(runner: Runner) {
+  if (runner.kind === "browser") return "agent-browser run-to-state";
+  if (runner.kind === "dry-run") return "dry-run";
+  return `${runner.kind}:${runner.id} run-to-state`;
+}
+
+function manifestEntryAutomationDriver(
+  manifest: StoryboardRunManifest,
+  entry: ManifestEntry,
+  target: AutomationDriver["stateTarget"],
+  runtimeTarget?: RuntimeTarget,
+  disabledReason: string | null = null,
+): AutomationDriver | undefined {
+  const runner = manifest.runners.find((candidate) => candidate.id === entry.runnerId);
+  if (!runner) return undefined;
+  const supportsRunToState = runner.enabled && entry.enabled && runner.capabilities.includes("run-to-state");
+  const missingRuntime = entryRequiresRuntimeTarget(runner, entry) && !runtimeTarget;
+  const automationDisabledReason = disabledReason ?? (supportsRunToState && !missingRuntime ? null : `missing automation driver: ${entry.id}`);
+  const scriptId = entry.scriptId ?? entry.id;
+  const stepParts = [scriptId, target.storyId, target.frameKey, target.captureSetId, target.outputVariantId].filter(Boolean);
+  return {
+    runnerId: runner.id,
+    runnerKind: runner.kind,
+    manifestEntryId: entry.id,
+    scriptId,
+    stepId: stepParts.join("::"),
+    command: automationDriverCommand(runner),
+    fullyAutomated: supportsRunToState && !missingRuntime && !automationDisabledReason,
+    stateTarget: target,
+    disabledReason: automationDisabledReason,
+  };
+}
+
 function storyboardFrameOutputAsset(
   frame: Record<string, unknown>,
   captureSetId: string,
@@ -1856,6 +1935,37 @@ export function deriveStoryboardRunFreshness(
   const runner = input.manifest.runners.find(
     (candidate) => candidate.id === entry.runnerId,
   );
+  const driverTarget = {
+    storyboardId,
+    storyId: input.storyId,
+    frameKey: input.frameKey,
+    captureSetId,
+    outputVariantId,
+    mode: input.mode,
+  };
+  if (!runner) {
+    return {
+      storyboardId,
+      storyId: input.storyId,
+      frameKey: input.frameKey,
+      freshness: "not-runnable",
+      runnable: false,
+      disabledReason: `missing automation driver: runner ${entry.runnerId}`,
+      manifestEntryIds: entries.map((candidate) => candidate.id),
+    };
+  }
+  if (!runner.capabilities.includes("run-to-state")) {
+    return {
+      storyboardId,
+      storyId: input.storyId,
+      frameKey: input.frameKey,
+      freshness: "not-runnable",
+      runnable: false,
+      disabledReason: `missing automation driver: ${entry.id}`,
+      manifestEntryIds: entries.map((candidate) => candidate.id),
+      automationDriver: manifestEntryAutomationDriver(input.manifest, entry, driverTarget, runtimeTarget, `missing automation driver: ${entry.id}`),
+    };
+  }
   if (entryRequiresRuntimeTarget(runner, entry) && !runtimeTarget) {
     return {
       storyboardId,
@@ -1865,6 +1975,7 @@ export function deriveStoryboardRunFreshness(
       runnable: false,
       disabledReason: "missing runtime/server config",
       manifestEntryIds: entries.map((candidate) => candidate.id),
+      automationDriver: manifestEntryAutomationDriver(input.manifest, entry, driverTarget, runtimeTarget, "missing runtime/server config"),
     };
   }
   const captureSet = input.manifest.captureSets.find(
@@ -1979,6 +2090,9 @@ export function deriveStoryboardRunFreshness(
     disabledReason: null,
     manifestEntryIds: entries.map((candidate) => candidate.id),
     ...(runtimeTarget ? { runtimeTarget } : {}),
+    ...(manifestEntryAutomationDriver(input.manifest, entry, driverTarget, runtimeTarget)
+      ? { automationDriver: manifestEntryAutomationDriver(input.manifest, entry, driverTarget, runtimeTarget) }
+      : {}),
     ...(currentJob ? { currentJob } : {}),
     ...(latestJob
       ? {

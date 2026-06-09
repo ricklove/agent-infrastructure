@@ -531,6 +531,7 @@ async function writeRunMirrorFiles(
         targets: [{ storyboardId: storyboard.id, storyId: story.id, frameKey: frame.id }],
         paramsSchema: {},
         captureSets: ["default"],
+        scriptId: runManifestEntryId(story.id, frame.id),
         ...(runtimeTarget ? { runtimeTarget } : {}),
         enabled: true,
       }
