@@ -370,7 +370,7 @@ async function proxyStoryboardAccessJson(storyboardUrl: string, pathAndSearch: s
   return await response.json()
 }
 
-type RunMirror = { root: string; port: number; baseUrl: string; process?: ReturnType<typeof Bun.spawn> }
+type RunMirror = { root: string; port: number; baseUrl: string; documentMtimeMs: number | null; process?: ReturnType<typeof Bun.spawn> }
 const runMirrors = new Map<string, RunMirror>()
 
 function runMirrorKey(storyboardUrl: string) {
@@ -491,8 +491,12 @@ function firstFrameAsset(frame: StoryboardFrameRecord) {
   return undefined
 }
 
-async function writeRunMirrorFiles(storyboardUrl: string, root: string) {
-  const documentPayload = await proxyStoryboardUrlDocument(storyboardUrl)
+async function writeRunMirrorFiles(
+  storyboardUrl: string,
+  root: string,
+  providedDocumentPayload?: Awaited<ReturnType<typeof proxyStoryboardUrlDocument>>,
+) {
+  const documentPayload = providedDocumentPayload ?? await proxyStoryboardUrlDocument(storyboardUrl)
   const storyboard = normalizeStoryboardDocument(documentPayload.document)
   mkdirSync(join(root, "assets"), { recursive: true })
   writeFileSync(join(root, "storyboard.json"), `${JSON.stringify(storyboard, null, 2)}\n`)
@@ -539,16 +543,25 @@ async function writeRunMirrorFiles(storyboardUrl: string, root: string) {
     entries,
   }
   writeFileSync(join(root, "storyboard.run.json"), `${JSON.stringify(manifest, null, 2)}\n`)
+  return { documentMtimeMs: documentPayload.mtimeMs }
 }
 
 async function ensureRunMirror(storyboardUrl: string) {
   const key = runMirrorKey(storyboardUrl)
   const existing = runMirrors.get(key)
-  if (existing) return existing
+  if (existing) {
+    const documentPayload = await proxyStoryboardUrlDocument(storyboardUrl)
+    if (documentPayload.mtimeMs === null || documentPayload.mtimeMs <= (existing.documentMtimeMs ?? 0)) {
+      return existing
+    }
+    const refreshed = await writeRunMirrorFiles(storyboardUrl, existing.root, documentPayload)
+    existing.documentMtimeMs = refreshed.documentMtimeMs
+    return existing
+  }
   const root = join(runMirrorRoot, key)
   const port = runMirrorPort(key)
   mkdirSync(root, { recursive: true })
-  await writeRunMirrorFiles(storyboardUrl, root)
+  const written = await writeRunMirrorFiles(storyboardUrl, root)
   const proc = Bun.spawn(["bun", "scripts/storyboard-access-server.ts", "--root", root, "--port", String(port)], {
     cwd: repoRoot,
     stdout: "pipe",
@@ -560,7 +573,7 @@ async function ensureRunMirror(storyboardUrl: string) {
       STORYBOARD_AGENT_BROWSER_SESSION_NAME: `storyboard-ui-${key}`,
     },
   })
-  const mirror = { root, port, baseUrl: `http://127.0.0.1:${port}`, process: proc }
+  const mirror = { root, port, baseUrl: `http://127.0.0.1:${port}`, documentMtimeMs: written.documentMtimeMs, process: proc }
   runMirrors.set(key, mirror)
   for (let attempt = 0; attempt < 20; attempt += 1) {
     try {
