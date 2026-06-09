@@ -94,6 +94,17 @@ export type RunProgress = {
   totalFrames?: number;
 };
 
+export type RuntimeTarget = {
+  id: string;
+  label?: string;
+  appUrl: string;
+  configuredRunTargetUrl?: string;
+  appOrigin?: string;
+  apiRoot?: string;
+  apiMode?: "real" | "stub" | "mock" | "unknown";
+  apiStubInfo?: string;
+};
+
 export type Run = {
   jobId: string;
   scope: RunScope;
@@ -171,6 +182,7 @@ export type ManifestEntry = {
   targets: ManifestTargetSelector[];
   paramsSchema: Record<string, ParamDefinition>;
   captureSets: string[];
+  runtimeTarget?: RuntimeTarget;
   enabled: boolean;
 };
 
@@ -198,6 +210,7 @@ export type Provenance = {
   screenSizeId?: string;
   outputAsset: string;
   outputAssetHash?: string;
+  runtimeTarget?: RuntimeTarget;
   completedAt: string;
   key?: string;
   path?: string;
@@ -212,7 +225,7 @@ export type StoryboardRunCapabilitiesDto = {
   lifecycleStates?: RunLifecycleStatus[];
   freshnessStates?: FrameRunStatus[];
   manifestEntries: Array<
-    Pick<ManifestEntry, "id" | "label" | "scope" | "modes" | "captureSets">
+    Pick<ManifestEntry, "id" | "label" | "scope" | "modes" | "captureSets"> & { runtimeTarget?: RuntimeTarget }
   >;
 };
 
@@ -224,6 +237,7 @@ export type FrameRunStateDto = {
   runnable: boolean;
   disabledReason: string | null;
   manifestEntryIds: string[];
+  runtimeTarget?: RuntimeTarget;
   currentJob?: {
     jobId: string;
     status: RunLifecycleStatus;
@@ -347,6 +361,7 @@ const allowedEntryKeys = new Set([
   "targets",
   "paramsSchema",
   "captureSets",
+  "runtimeTarget",
   "enabled",
 ]);
 const allowedTargetKeys = new Set([
@@ -382,6 +397,16 @@ const allowedViewportKeys = new Set([
   "height",
   "deviceScaleFactor",
   "isMobile",
+]);
+const allowedRuntimeTargetKeys = new Set([
+  "id",
+  "label",
+  "appUrl",
+  "configuredRunTargetUrl",
+  "appOrigin",
+  "apiRoot",
+  "apiMode",
+  "apiStubInfo",
 ]);
 
 function manifestError(path: string, code: string, message: string): never {
@@ -787,6 +812,53 @@ function parseCaptureSet(value: unknown, path: string): CaptureSet {
   };
 }
 
+function parseRuntimeTarget(value: unknown, path: string): RuntimeTarget {
+  const record = requireRecord(value, path);
+  assertNoUnknownKeys(record, allowedRuntimeTargetKeys, path);
+  const appUrl = requireString(record.appUrl, `${path}.appUrl`);
+  let parsedAppUrl: URL;
+  try {
+    parsedAppUrl = new URL(appUrl);
+  } catch {
+    manifestError(`${path}.appUrl`, "invalid_url", "appUrl must be an absolute http(s) URL");
+  }
+  if (parsedAppUrl.protocol !== "http:" && parsedAppUrl.protocol !== "https:") {
+    manifestError(`${path}.appUrl`, "invalid_url", "appUrl must be an absolute http(s) URL");
+  }
+  const appOrigin = optionalString(record.appOrigin, `${path}.appOrigin`);
+  if (appOrigin !== undefined) {
+    try {
+      const origin = new URL(appOrigin);
+      if (origin.protocol !== "http:" && origin.protocol !== "https:") {
+        manifestError(`${path}.appOrigin`, "invalid_url", "appOrigin must be an absolute http(s) origin");
+      }
+    } catch {
+      manifestError(`${path}.appOrigin`, "invalid_url", "appOrigin must be an absolute http(s) origin");
+    }
+  }
+  const apiRoot = optionalString(record.apiRoot, `${path}.apiRoot`);
+  if (apiRoot !== undefined) {
+    try {
+      const api = new URL(apiRoot);
+      if (api.protocol !== "http:" && api.protocol !== "https:") {
+        manifestError(`${path}.apiRoot`, "invalid_url", "apiRoot must be an absolute http(s) URL");
+      }
+    } catch {
+      manifestError(`${path}.apiRoot`, "invalid_url", "apiRoot must be an absolute http(s) URL");
+    }
+  }
+  return {
+    id: requireId(record.id, `${path}.id`),
+    label: optionalString(record.label, `${path}.label`),
+    appUrl,
+    configuredRunTargetUrl: optionalString(record.configuredRunTargetUrl, `${path}.configuredRunTargetUrl`),
+    appOrigin,
+    apiRoot,
+    apiMode: record.apiMode === undefined ? undefined : requireEnum(record.apiMode, ["real", "stub", "mock", "unknown"] as const, `${path}.apiMode`),
+    apiStubInfo: optionalString(record.apiStubInfo, `${path}.apiStubInfo`),
+  };
+}
+
 function parseEntry(value: unknown, path: string): ManifestEntry {
   const record = requireRecord(value, path);
   assertNoUnknownKeys(record, allowedEntryKeys, path);
@@ -820,6 +892,7 @@ function parseEntry(value: unknown, path: string): ManifestEntry {
             `${path}.captureSets`,
             (item, itemPath) => requireId(item, itemPath),
           ),
+    runtimeTarget: record.runtimeTarget === undefined ? undefined : parseRuntimeTarget(record.runtimeTarget, `${path}.runtimeTarget`),
     enabled,
   };
 }
@@ -1044,6 +1117,14 @@ export function validateCreateRunRequest(
       "request mode is not enabled for manifest entry",
     );
   }
+  const requestRunner = manifest.runners.find((candidate) => candidate.id === manifestEntry.runnerId);
+  if (entryRequiresRuntimeTarget(requestRunner, manifestEntry) && !manifestEntry.runtimeTarget) {
+    manifestError(
+      "request.manifestEntryId",
+      "missing_runtime_target",
+      "missing runtime/server config",
+    );
+  }
   const target = requireRecord(record.target, "request.target");
   assertNoUnknownKeys(
     target,
@@ -1231,6 +1312,7 @@ export function capabilitiesFromManifest(
       scope: entry.scope,
       modes: entry.modes,
       captureSets: entry.captureSets,
+      ...(entry.runtimeTarget ? { runtimeTarget: entry.runtimeTarget } : {}),
     })),
   };
 }
@@ -1588,8 +1670,9 @@ function selectorMatches(
   const wildcard = (pattern: string | undefined, value: string) => {
     if (pattern === undefined) return true;
     const escaped = pattern
-      .replace(/[-/\^$+?.()|[\]{}]/gu, "\$&")
-      .replace(/\*/gu, ".*");
+      .split("*")
+      .map((part) => part.replace(/[.+?^${}()|[\]\\]/gu, "\\$&"))
+      .join(".*");
     return new RegExp(`^${escaped}$`, "u").test(value);
   };
   return (
@@ -1612,10 +1695,114 @@ function renderOutputPath(
   );
 }
 
+function entryRequiresRuntimeTarget(runner: Runner | undefined, entry: ManifestEntry) {
+  return runner?.kind === "browser" && entry.modes.some((mode) => mode === "run-to-state" || mode === "run-and-capture");
+}
+
+function storyboardFrameOutputAsset(
+  frame: Record<string, unknown>,
+  captureSetId: string,
+  outputVariantId: string | undefined,
+  screenSizeId?: string,
+) {
+  const captureSets = frame.captureSets;
+  if (!captureSets || typeof captureSets !== "object" || Array.isArray(captureSets)) return undefined;
+  const captureSet = (captureSets as Record<string, unknown>)[captureSetId];
+  if (!captureSet || typeof captureSet !== "object" || Array.isArray(captureSet)) return undefined;
+  const screenshots = (captureSet as Record<string, unknown>).screenshots;
+  if (!screenshots || typeof screenshots !== "object" || Array.isArray(screenshots)) return undefined;
+  const variants = screenshots as Record<string, unknown>;
+  const candidate =
+    variants[screenSizeId ?? ""] ??
+    variants[outputVariantId ?? ""] ??
+    variants.desktop ??
+    variants.mobile ??
+    variants.square;
+  return typeof candidate === "string" && candidate.trim() ? candidate : undefined;
+}
+
+function documentRuntimeTarget(
+  storyboard: Record<string, unknown>,
+  captureSetId: string,
+  outputVariantId: string | undefined,
+): RuntimeTarget | undefined {
+  const runTargetToRuntimeTarget = (
+    runTarget: unknown,
+    id: string,
+    label: string,
+  ): RuntimeTarget | undefined => {
+    if (!runTarget || typeof runTarget !== "object" || Array.isArray(runTarget)) return undefined;
+    const kind = (runTarget as Record<string, unknown>).kind;
+    const url = (runTarget as Record<string, unknown>).url;
+    if (kind !== "web" || typeof url !== "string" || url.trim().length === 0) return undefined;
+    return { id, label, appUrl: url.trim() };
+  };
+  const captureSets = storyboard.captureSets;
+  if (captureSets && typeof captureSets === "object" && !Array.isArray(captureSets)) {
+    const captureSet = (captureSets as Record<string, unknown>)[captureSetId];
+    if (captureSet && typeof captureSet === "object" && !Array.isArray(captureSet)) {
+      const sizes = (captureSet as Record<string, unknown>).sizes;
+      if (sizes && typeof sizes === "object" && !Array.isArray(sizes)) {
+        const size = (sizes as Record<string, unknown>)[outputVariantId ?? "desktop"];
+        if (size && typeof size === "object" && !Array.isArray(size)) {
+          const sizeTarget = runTargetToRuntimeTarget(
+            (size as Record<string, unknown>).runTarget,
+            `storyboard:${captureSetId}:${outputVariantId ?? "desktop"}`,
+            `${captureSetId} ${outputVariantId ?? "desktop"} web`,
+          );
+          if (sizeTarget) return sizeTarget;
+        }
+      }
+    }
+  }
+  return runTargetToRuntimeTarget(
+    storyboard.runTarget,
+    "storyboard:default",
+    "Storyboard default web",
+  );
+}
+
+export function resolveStoryboardDocumentRuntimeTarget(
+  storyboard: Record<string, unknown>,
+  captureSetId: string,
+  outputVariantId: string | undefined,
+  fallback?: RuntimeTarget,
+): RuntimeTarget | undefined {
+  const documentTarget = documentRuntimeTarget(storyboard, captureSetId, outputVariantId);
+  if (!documentTarget) return fallback;
+  if (!fallback) return documentTarget;
+  return {
+    ...fallback,
+    id: documentTarget.id,
+    label: documentTarget.label,
+    configuredRunTargetUrl: documentTarget.appUrl,
+  };
+}
+
+export function augmentManifestWithStoryboardDocumentRuntimeTargets(
+  manifest: StoryboardRunManifest,
+  storyboard: Record<string, unknown>,
+): StoryboardRunManifest {
+  return {
+    ...manifest,
+    entries: manifest.entries.map((entry) => ({
+      ...entry,
+      runtimeTarget:
+        entry.captureSets
+          .map((captureSetId) =>
+            resolveStoryboardDocumentRuntimeTarget(storyboard, captureSetId, "desktop", entry.runtimeTarget) ??
+            resolveStoryboardDocumentRuntimeTarget(storyboard, captureSetId, "mobile", entry.runtimeTarget) ??
+            resolveStoryboardDocumentRuntimeTarget(storyboard, captureSetId, "square", entry.runtimeTarget),
+          )
+          .find((target): target is RuntimeTarget => !!target) ??
+        entry.runtimeTarget,
+    })),
+  };
+}
+
 export function deriveStoryboardRunFreshness(
   input: FreshnessDerivationInput,
 ): FrameRunStateDto {
-  const generatedAt = new Date().toISOString();
   const storyboardId = input.storyboard.id;
   const match = allStoryboardFrames(input.storyboard).find(
     ({ story, frame }) =>
@@ -1657,16 +1844,39 @@ export function deriveStoryboardRunFreshness(
     };
   }
   const entry = entries[0];
+  const captureSetId = input.captureSetId ?? entry.captureSets[0] ?? "default";
+  const outputVariantId =
+    input.outputVariantId ?? input.screenSizeId ?? captureSetId;
+  const runtimeTarget = resolveStoryboardDocumentRuntimeTarget(
+    input.storyboard,
+    captureSetId,
+    outputVariantId,
+    entry.runtimeTarget,
+  );
   const runner = input.manifest.runners.find(
     (candidate) => candidate.id === entry.runnerId,
   );
-  const captureSetId = input.captureSetId ?? entry.captureSets[0] ?? "default";
+  if (entryRequiresRuntimeTarget(runner, entry) && !runtimeTarget) {
+    return {
+      storyboardId,
+      storyId: input.storyId,
+      frameKey: input.frameKey,
+      freshness: "not-runnable",
+      runnable: false,
+      disabledReason: "missing runtime/server config",
+      manifestEntryIds: entries.map((candidate) => candidate.id),
+    };
+  }
   const captureSet = input.manifest.captureSets.find(
     (candidate) => candidate.id === captureSetId,
   );
-  const outputVariantId =
-    input.outputVariantId ?? input.screenSizeId ?? captureSetId;
-  const outputAsset = captureSet?.outputPathTemplate
+  const frameOutputAsset = storyboardFrameOutputAsset(
+    match.frame,
+    captureSetId,
+    outputVariantId,
+    input.screenSizeId,
+  );
+  const outputAsset = frameOutputAsset ?? (captureSet?.outputPathTemplate
     ? renderOutputPath(captureSet.outputPathTemplate, {
         storyboardId,
         storyId: input.storyId,
@@ -1676,7 +1886,7 @@ export function deriveStoryboardRunFreshness(
         screenSizeId: input.screenSizeId ?? outputVariantId,
         mode: input.mode,
       })
-    : "";
+    : "");
   const outputPath = outputAsset ? join(input.storyboardRoot, outputAsset) : "";
   const outputAssetHash =
     outputPath && existsSync(outputPath) && statSync(outputPath).isFile()
@@ -1696,6 +1906,7 @@ export function deriveStoryboardRunFreshness(
     screenSizeId: input.screenSizeId,
     outputAsset,
     outputAssetHash,
+    runtimeTarget,
     storyboardSpecHash: hashStoryboardRunJson(input.storyboard),
     frameSpecHash: hashStoryboardRunJson(match.frame),
   };
@@ -1725,14 +1936,17 @@ export function deriveStoryboardRunFreshness(
       "screenSizeId",
       "outputAsset",
       "outputAssetHash",
+      "runtimeTarget",
       "storyboardSpecHash",
       "frameSpecHash",
     ] as const) {
-      if (
-        (provenance as Record<string, unknown>)[key] !==
-        (expected as Record<string, unknown>)[key]
-      )
-        staleReasons.push(`${key} changed`);
+      const provenanceValue = (provenance as Record<string, unknown>)[key];
+      const expectedValue = (expected as Record<string, unknown>)[key];
+      const matches =
+        key === "runtimeTarget"
+          ? stableJson(provenanceValue) === stableJson(expectedValue)
+          : provenanceValue === expectedValue;
+      if (!matches) staleReasons.push(`${key} changed`);
     }
   }
   const latestJob = storage
@@ -1764,6 +1978,7 @@ export function deriveStoryboardRunFreshness(
     runnable: true,
     disabledReason: null,
     manifestEntryIds: entries.map((candidate) => candidate.id),
+    ...(runtimeTarget ? { runtimeTarget } : {}),
     ...(currentJob ? { currentJob } : {}),
     ...(latestJob
       ? {
@@ -2048,6 +2263,7 @@ export function createStoryboardDryRunQueue(options: StoryboardDryRunQueueOption
       frameSpecHash: hashStoryboardRunJson(frame ?? { id: job.target.frameKey }),
       outputAsset,
       outputAssetHash: storyboardRunSha256(assetBody),
+      ...(entry.runtimeTarget ? { runtimeTarget: entry.runtimeTarget } : {}),
       completedAt: stamp(),
     });
     log(job.jobId, "provenance_written", {

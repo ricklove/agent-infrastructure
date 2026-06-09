@@ -100,7 +100,7 @@ try {
     enabled: true,
     runners: [{ id: "agent-browser", label: "agent-browser", kind: "browser", enabled: true, capabilities: ["run-to-state", "capture", "run-and-capture"] }],
     captureSets: [{ id: "default", label: "Default", viewport: { width: 1440, height: 900, deviceScaleFactor: 1 }, outputPathTemplate: "assets/{frameKey}.{outputVariantId}.png", imageFormat: "png", comparisonPolicy: "manual" }],
-    entries: [{ id: "agent-browser-run-to-state", label: "agent-browser run/capture", scope: "frame", runnerId: "agent-browser", modes: ["run-to-state", "capture", "run-and-capture"], targets: [{ storyboardId: storyboard.id, storyPattern: "*", framePattern: "*" }], paramsSchema: {}, captureSets: ["default"], enabled: true }],
+    entries: [{ id: "agent-browser-run-to-state", label: "agent-browser run/capture", scope: "frame", runnerId: "agent-browser", modes: ["run-to-state", "capture", "run-and-capture"], targets: [{ storyboardId: storyboard.id, storyPattern: "*", framePattern: "*" }], paramsSchema: {}, captureSets: ["default"], runtimeTarget: { id: "smoke-source", label: "Smoke source", appUrl: source.replace(/\/$/, ""), appOrigin: new URL(source).origin, apiMode: "unknown" }, enabled: true }],
   };
   writeFileSync(join(root, "storyboard.run.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 

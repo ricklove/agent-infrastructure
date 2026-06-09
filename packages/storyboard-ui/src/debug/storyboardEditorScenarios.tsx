@@ -14,6 +14,7 @@ import {
 import {
   type StoryboardBranchRecord,
   type StoryboardDocument,
+  type StoryboardRunTargetWeb,
   type StoryboardStoryRecord,
   type StoryboardTransitionRecord,
   type StoryboardFrameRecord,
@@ -85,6 +86,17 @@ type RunProvenanceDto = {
   completedAt?: string
   outputAsset?: string
   summary?: string
+  runtimeTarget?: RuntimeTargetDto
+}
+
+type RuntimeTargetDto = {
+  id: string
+  label?: string
+  appUrl: string
+  appOrigin?: string
+  apiRoot?: string
+  apiMode?: "real" | "stub" | "mock" | "unknown"
+  apiStubInfo?: string
 }
 
 type VariantRunState = {
@@ -95,7 +107,7 @@ type VariantRunState = {
   captureSetId: string
   outputVariantId: OutputVariantId
   mode: RunMode
-  status: RunLifecycleStatus | "pending" | "failed-to-queue"
+  status: RunLifecycleStatus | "pending" | "failed-to-queue" | "disabled"
   jobId?: string
   queuePosition?: number
   message?: string
@@ -103,12 +115,20 @@ type VariantRunState = {
   completedAt?: string
   outputAssetHash?: string
   outputAsset?: string
+  runtimeTarget?: RuntimeTargetDto
+  runnable?: boolean
+  disabledReason?: string | null
+  manifestEntryIds?: string[]
 }
 
 type FrameRunStateDto = {
   storyboardId: string
   storyId: string
   frameKey: string
+  runnable?: boolean
+  disabledReason?: string | null
+  runtimeTarget?: RuntimeTargetDto
+  manifestEntryIds?: string[]
   currentJob?: StoryboardRunJob
   latestJob?: StoryboardRunJob
   provenance?: RunProvenanceDto
@@ -460,6 +480,7 @@ export function buildRunAssetCacheKey(input: {
 }
 
 function humanRunStatus(status: VariantRunState["status"]) {
+  if (status === "disabled") return "Disabled"
   if (status === "pending") return "Pending"
   if (status === "queued") return "Queued"
   if (status === "running") return "Running"
@@ -471,6 +492,15 @@ function humanRunStatus(status: VariantRunState["status"]) {
   if (status === "cancelled") return "Cancelled"
   if (status === "expired") return "Expired"
   return "Recovered"
+}
+
+function runManifestEntryId(storyId: string, frameKey: string) {
+  const suffix = `${storyId}-${frameKey}`
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 180)
+  return suffix ? `agent-browser-run-to-state-${suffix}` : "agent-browser-run-to-state-frame"
 }
 
 function loadPersistedVariantRunStates() {
@@ -991,8 +1021,6 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       if (!entry) continue
       const { outputVariantId, payload } = entry
       for (const frame of payload.frames ?? []) {
-        const job = frame.currentJob ?? frame.latestJob
-        if (!job) continue
         const key = variantRunKey(
           payload.storyboardId || document.id,
           frame.storyId,
@@ -1001,6 +1029,28 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           outputVariantId,
           "run-and-capture",
         )
+        const job = frame.currentJob ?? frame.latestJob
+        if (!job) {
+          if (frame.runnable === false || frame.disabledReason) {
+            runStateUpdates.push({
+              key,
+              storyboardId: payload.storyboardId || document.id,
+              storyId: frame.storyId,
+              frameKey: frame.frameKey,
+              captureSetId: activeCaptureSetId,
+              outputVariantId,
+              mode: "run-and-capture",
+              status: "disabled",
+              message: frame.disabledReason ?? "not runnable",
+              updatedAt: new Date().toISOString(),
+              runtimeTarget: frame.runtimeTarget,
+              runnable: frame.runnable,
+              disabledReason: frame.disabledReason,
+              manifestEntryIds: frame.manifestEntryIds,
+            })
+          }
+          continue
+        }
         const completedAt = job.completedAt ?? frame.provenance?.completedAt
         const outputAssetHash = frame.provenance?.outputAssetHash
         runStateUpdates.push({
@@ -1018,6 +1068,10 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           completedAt,
           outputAssetHash,
           outputAsset: frame.provenance?.outputAsset,
+          runtimeTarget: frame.provenance?.runtimeTarget ?? frame.runtimeTarget,
+          runnable: frame.runnable,
+          disabledReason: frame.disabledReason,
+          manifestEntryIds: frame.manifestEntryIds,
         })
         const cacheKey = buildRunAssetCacheKey({
           jobId: job.jobId,
@@ -1048,6 +1102,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     if (!document || !isConnected) return
     const mode: RunMode = "run-and-capture"
     const key = variantRunKey(document.id, storyId, frameKey, activeCaptureSetId, outputVariantId, mode)
+    const manifestEntryId = variantRunStates[key]?.manifestEntryIds?.[0] ?? runManifestEntryId(storyId, frameKey)
     const now = new Date().toISOString()
     upsertVariantRunState({
       key,
@@ -1071,7 +1126,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           scope: "frame",
           mode,
           target: { storyboardId: document.id, storyId, frameKey, outputVariantId },
-          manifestEntryId: "agent-browser-run-to-state",
+          manifestEntryId,
           captureSetId: activeCaptureSetId,
           outputVariantId,
           params: {},
@@ -1135,24 +1190,27 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     const key = variantRunKey(document.id, storyId, frameKey, activeCaptureSetId, outputVariantId, mode)
     const state = variantRunStates[key]
     const busy = state && !isTerminalRunStatus(state.status)
+    const disabled = state?.status === "disabled"
     return (
       <div className="pointer-events-auto flex max-w-[11rem] flex-col items-end gap-1 text-right">
         <button
           className={`nopan nowheel rounded border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] shadow transition ${
-            busy
+            disabled
+              ? "border-slate-300/35 bg-slate-300/10 text-slate-200"
+              : busy
               ? "border-amber-200/60 bg-amber-300/20 text-amber-50"
               : "border-cyan-200/50 bg-cyan-300/15 text-cyan-50 hover:border-cyan-100 hover:bg-cyan-300/25"
           }`}
-          disabled={!!busy}
+          disabled={!!busy || disabled}
           onClick={(event) => {
             event.preventDefault()
             event.stopPropagation()
             void requestFrameRun(storyId, frameKey, outputVariantId)
           }}
-          title={`Run ${frameKey} ${outputVariantId}`}
+          title={disabled ? state?.disabledReason ?? state?.message ?? `Run disabled for ${frameKey}` : `Run ${frameKey} ${outputVariantId}`}
           type="button"
         >
-          {busy ? `${humanRunStatus(state.status)}…` : `Run ${outputVariantId}`}
+          {disabled ? "Run disabled" : busy ? `${humanRunStatus(state.status)}…` : `Run ${outputVariantId}`}
         </button>
         {state ? (
           <div
@@ -1174,6 +1232,11 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
               </div>
             ) : null}
             {state.outputAsset ? <div className="max-w-[10rem] truncate" title={state.outputAsset}>{state.outputAsset.split("/").at(-1)}</div> : null}
+            {state.runtimeTarget ? (
+              <div className="max-w-[10rem] truncate" title={`${state.runtimeTarget.appUrl}${state.runtimeTarget.apiRoot ? ` | API ${state.runtimeTarget.apiRoot}` : ""}${state.runtimeTarget.apiMode ? ` | ${state.runtimeTarget.apiMode}` : ""}`}>
+                {state.runtimeTarget.id}
+              </div>
+            ) : null}
             {state.queuePosition !== undefined ? <div>Queue #{state.queuePosition + 1}</div> : null}
             {state.message ? <div className="max-w-[10rem] truncate" title={state.message}>{state.message}</div> : null}
           </div>
@@ -1396,7 +1459,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     [document],
   )
   const availableCaptureSetIds = useMemo(() => {
-    const ids = new Set<string>()
+    const ids = new Set<string>(Object.keys(document?.captureSets ?? {}))
     for (const story of document?.stories ?? []) {
       for (const frame of story.frames) {
         for (const id of frameCaptureSetIds(frame)) ids.add(id)
@@ -1440,8 +1503,17 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     selected,
   )
   const selectedFrameTransitions = selectedFrame?.transitions ?? []
-  const selectedFrameCaptureSetIds = frameCaptureSetIds(selectedFrame ?? {})
+  const documentCaptureSetIds = Object.keys(document?.captureSets ?? {})
+  const storyboardInspectorCaptureSetIds =
+    documentCaptureSetIds.length > 0 ? documentCaptureSetIds : [activeCaptureSetId]
+  const selectedFrameCaptureSetIds = Array.from(new Set([
+    ...documentCaptureSetIds,
+    ...frameCaptureSetIds(selectedFrame ?? {}),
+  ]))
   const selectedFrameCapture = frameCaptureSet(selectedFrame ?? {}, activeCaptureSetId)
+  const selectedDocumentCaptureSet = document?.captureSets?.[activeCaptureSetId]
+  const selectedCaptureSizes = selectedDocumentCaptureSet?.sizes ?? {}
+  const storyboardDefaultRunUrl = document?.runTarget?.kind === "web" ? document.runTarget.url : ""
   const selectedFrameScreenshotUrls = {
     desktop: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.desktop),
     mobile: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.mobile),
@@ -1730,6 +1802,94 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                   </div>
                 </div>
               </div>
+              <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">
+                    Default run target
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Stored as storyboard.runTarget. All capture sizes use this web URL unless a size sets its own override.
+                  </div>
+                </div>
+                <label className="block">
+                  <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                    Web URL
+                  </div>
+                  <input
+                    className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                    onChange={(event) => updateStoryboardDefaultRunTarget(event.currentTarget.value)}
+                    placeholder={storyboardDefaultRunUrl || "https://app.example.test/path"}
+                    value={storyboardDefaultRunUrl}
+                  />
+                </label>
+              </div>
+              <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">
+                    Run targets
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Optional per-size overrides. Leave these blank to use the storyboard default target.
+                  </div>
+                </div>
+                <label className="block">
+                  <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                    Capture set
+                  </div>
+                  <select
+                    className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                    onChange={(event) => setActiveCaptureSetId(event.currentTarget.value)}
+                    value={activeCaptureSetId}
+                  >
+                    {storyboardInspectorCaptureSetIds.map((captureSetId) => (
+                      <option key={captureSetId} value={captureSetId}>
+                        {document.captureSets?.[captureSetId]?.label ?? captureSetId}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {(["desktop", "mobile", "square"] as OutputVariantId[]).map((outputVariantId) => {
+                  const size = selectedCaptureSizes[outputVariantId]
+                  const runUrl = size?.runTarget?.kind === "web" ? size.runTarget.url : ""
+                  const dimensions = size?.width && size?.height ? `${size.width} × ${size.height}` : outputVariantId === "desktop" ? "1440 × 900" : outputVariantId === "mobile" ? "390 × 844" : "1024 × 1024"
+                  return (
+                    <div className="rounded border border-white/10 bg-black/25 p-3" key={outputVariantId}>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">
+                            {outputVariantId}
+                          </div>
+                          <div className="mt-1 text-[11px] text-white/40">{dimensions}</div>
+                        </div>
+                        {runUrl ? (
+                          <div className="rounded border border-emerald-300/30 bg-emerald-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-emerald-100">
+                            web
+                          </div>
+                        ) : storyboardDefaultRunUrl ? (
+                          <div className="rounded border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100">
+                            default
+                          </div>
+                        ) : (
+                          <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/35">
+                            no target
+                          </div>
+                        )}
+                      </div>
+                      <label className="block">
+                        <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                          Web URL
+                        </div>
+                        <input
+                          className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                          onChange={(event) => updateCaptureSizeWebUrl(activeCaptureSetId, outputVariantId, event.currentTarget.value)}
+                          placeholder={storyboardDefaultRunUrl || "https://app.example.test/path"}
+                          value={runUrl}
+                        />
+                      </label>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           ) : null}
 
@@ -2003,6 +2163,58 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                   </label>
                 </div>
               </div>
+
+              <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">
+                    Run targets
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Optional per-size overrides. Leave these blank to use the storyboard default target.
+                  </div>
+                </div>
+                {(["desktop", "mobile", "square"] as OutputVariantId[]).map((outputVariantId) => {
+                  const size = selectedCaptureSizes[outputVariantId]
+                  const runUrl = size?.runTarget?.kind === "web" ? size.runTarget.url : ""
+                  const dimensions = size?.width && size?.height ? `${size.width} × ${size.height}` : outputVariantId === "desktop" ? "1440 × 900" : outputVariantId === "mobile" ? "390 × 844" : "1024 × 1024"
+                  return (
+                    <div className="rounded border border-white/10 bg-black/25 p-3" key={outputVariantId}>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">
+                            {outputVariantId}
+                          </div>
+                          <div className="mt-1 text-[11px] text-white/40">{dimensions}</div>
+                        </div>
+                        {runUrl ? (
+                          <div className="rounded border border-emerald-300/30 bg-emerald-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-emerald-100">
+                            web
+                          </div>
+                        ) : storyboardDefaultRunUrl ? (
+                          <div className="rounded border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100">
+                            default
+                          </div>
+                        ) : (
+                          <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/35">
+                            no target
+                          </div>
+                        )}
+                      </div>
+                      <label className="block">
+                        <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                          Web URL
+                        </div>
+                        <input
+                          className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                          onChange={(event) => updateCaptureSizeWebUrl(activeCaptureSetId, outputVariantId, event.currentTarget.value)}
+                          placeholder={storyboardDefaultRunUrl || "https://app.example.test/path"}
+                          value={runUrl}
+                        />
+                      </label>
+                    </div>
+                  )
+                })}
+              </div>
               {selectedBranch ? (
                 <label className="block">
                   <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
@@ -2152,14 +2364,24 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       ),
     }),
     [
+      activeCaptureSetId,
+      document,
+      filteredStories,
       pendingDeleteStory,
       pendingDeleteTransition,
       selected,
       selectedBranch,
+      selectedCaptureSizes,
       selectedFrame,
+      selectedFrameCaptureSetIds,
+      selectedFrameScreenshotUrls.desktop,
+      selectedFrameScreenshotUrls.mobile,
+      selectedFrameScreenshotUrls.square,
       selectedFrameTransitions,
       selectedStory,
       snapshotJob,
+      storyboardDefaultRunUrl,
+      storyboardInspectorCaptureSetIds,
       storyFrameOptions,
       storySearch,
     ],
@@ -2403,21 +2625,92 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }))
   }
 
+  function updateStoryboardDefaultRunTarget(rawUrl: string) {
+    const url = rawUrl.trim()
+    setDocument((current) => {
+      if (!current) {
+        return current
+      }
+      return {
+        ...current,
+        runTarget: url ? ({ kind: "web", url } satisfies StoryboardRunTargetWeb) : undefined,
+      }
+    })
+  }
+
+  function updateCaptureSizeWebUrl(captureSetId: string, outputVariantId: OutputVariantId, rawUrl: string) {
+    if (!document) {
+      return
+    }
+    const url = rawUrl.trim()
+    const captureSets = { ...(document.captureSets ?? {}) }
+    const captureSet = { ...(captureSets[captureSetId] ?? {}) }
+    const sizes = { ...(captureSet.sizes ?? {}) }
+    const currentSize = { ...(sizes[outputVariantId] ?? {}) }
+    if (url) {
+      sizes[outputVariantId] = {
+        ...currentSize,
+        runTarget: {
+          kind: "web",
+          url,
+        },
+      }
+    } else {
+      const { runTarget: _runTarget, ...rest } = currentSize
+      if (Object.keys(rest).length > 0) {
+        sizes[outputVariantId] = rest
+      } else {
+        delete sizes[outputVariantId]
+      }
+    }
+    captureSets[captureSetId] = {
+      ...captureSet,
+      sizes,
+    }
+    setDocument({
+      ...document,
+      captureSets,
+    })
+  }
+
   function addCaptureSet() {
-    if (!selectedFrame) {
+    if (!document || !selected || selected.kind !== "frame" || !selectedFrame) {
       return
     }
     const nextId = nextCaptureSetId(selectedFrame)
-    updateCurrentFrame((frame) => ({
-      ...frame,
+    setDocument({
+      ...updateStory(document, selected.storyId, (story) => {
+        const updateFrame = (frame: StoryboardFrameRecord) => frame.id === selected.frameId
+          ? {
+              ...frame,
+              captureSets: {
+                ...(frame.captureSets ?? {}),
+                [nextId]: {
+                  screenshots: {},
+                },
+              },
+              screenshots: undefined,
+            }
+          : frame
+        if (selected.branchId) {
+          return {
+            ...story,
+            branches: (story.branches ?? []).map((branch) => branch.id === selected.branchId
+              ? { ...branch, frames: branch.frames.map(updateFrame) }
+              : branch,
+            ),
+          }
+        }
+        return {
+          ...story,
+          frames: story.frames.map(updateFrame),
+        }
+      }),
       captureSets: {
-        ...(frame.captureSets ?? {}),
-        [nextId]: {
-          screenshots: {},
-        },
+        ...(document.captureSets ?? {}),
+        [nextId]: { label: nextId, sizes: {} },
       },
-      screenshots: undefined,
-    }))
+    })
     setActiveCaptureSetId(nextId)
   }
 
@@ -2446,6 +2739,16 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
         screenshots: undefined,
       }
     })
+    setDocument((current) => {
+      if (!current?.captureSets?.[activeCaptureSetId]) return current
+      const captureSets = { ...current.captureSets }
+      const currentCaptureSet = captureSets[activeCaptureSetId]
+      delete captureSets[activeCaptureSetId]
+      return {
+        ...current,
+        captureSets: Object.fromEntries([...Object.entries(captureSets), [nextId, currentCaptureSet]]),
+      }
+    })
     setActiveCaptureSetId(nextId)
   }
 
@@ -2461,6 +2764,15 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
         ...frame,
         captureSets,
         screenshots: undefined,
+      }
+    })
+    setDocument((current) => {
+      if (!current?.captureSets?.[activeCaptureSetId]) return current
+      const captureSets = { ...current.captureSets }
+      delete captureSets[activeCaptureSetId]
+      return {
+        ...current,
+        captureSets,
       }
     })
     setActiveCaptureSetId(remainingIds.includes("default") ? "default" : remainingIds[0] ?? "default")

@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statS
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path"
 import { createHash, randomUUID } from "node:crypto"
 import { formatStoryboardDocument, frameCaptureSet, normalizeStoryboardDocument, isStoryboardDocument, type StoryboardDocument, type StoryboardFrameRecord, type StoryboardStoryRecord, type StoryboardTransitionRecord } from "./storyboard-document.js"
+import { parseNumericStoryboardHeader, shouldRefreshRunMirrorAsset } from "./run-mirror.js"
 
 const port = Number.parseInt(process.env.STORYBOARD_PORT ?? "8797", 10)
 const workspaceRoot = process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace"
@@ -24,6 +25,10 @@ const testFixtureStoryboardUrl =
   process.env.STORYBOARD_TEST_FIXTURE_URL?.trim() ||
   `http://127.0.0.1:${testFixtureAccessPort}/test-storyboard`
 const runMirrorRoot = resolve(stateDir, "storyboard-run-mirrors")
+const storyboardRunTargetConfigPath = resolve(
+  process.env.STORYBOARD_RUN_TARGET_CONFIG?.trim() ||
+    join(repoRoot, "packages/storyboard-ui/storyboard-run-targets.json"),
+)
 
 type SnapshotJob = {
   id: string
@@ -112,6 +117,32 @@ function formatStoryboardMarkdown(document: StoryboardDocument) {
     "## Meta",
     `- Title: ${normalized.title}`,
   ]
+
+  if (normalized.runTarget?.kind === "web" && normalized.runTarget.url.trim()) {
+    lines.push(`- Run target: ${normalized.runTarget.url.trim()}`)
+  }
+
+  const captureSetRunTargets = Object.entries(normalized.captureSets ?? {})
+    .map(([captureSetId, captureSet]) => {
+      const sizes = Object.entries(captureSet.sizes ?? {}).filter((entry) => {
+        const size = entry[1]
+        return size?.runTarget?.kind === "web" && !!size.runTarget.url.trim()
+      })
+      return { captureSetId, sizes }
+    })
+    .filter((entry) => entry.sizes.length > 0)
+
+  if (captureSetRunTargets.length > 0) {
+    lines.push("- Capture set run targets:")
+    for (const { captureSetId, sizes } of captureSetRunTargets) {
+      lines.push(`  - ${captureSetId}:`)
+      for (const [sizeId, size] of sizes) {
+        const runTarget = size.runTarget
+        if (runTarget?.kind !== "web" || !runTarget.url.trim()) continue
+        lines.push(`    - ${sizeId}: ${runTarget.url.trim()}`)
+      }
+    }
+  }
 
   for (const story of normalized.stories) {
     lines.push("", `## Story: ${story.id}`, `- Title: ${story.title}`)
@@ -350,6 +381,98 @@ function runMirrorPort(key: string) {
   return 8900 + (Number.parseInt(key.slice(0, 4), 16) % 700)
 }
 
+type StoryboardRunTargetConfigEntry = {
+  storyboardUrl?: string
+  storyboardUrlPattern?: string
+  storyboardId?: string
+  storyId?: string
+  frameKey?: string
+  runtimeTarget: {
+    id: string
+    label?: string
+    appUrl: string
+    appOrigin?: string
+    apiRoot?: string
+    apiMode?: "real" | "stub" | "mock" | "unknown"
+    apiStubInfo?: string
+  }
+}
+
+function wildcardMatch(pattern: string | undefined, value: string) {
+  if (!pattern) return true
+  const escaped = pattern
+    .split("*")
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/gu, "\\$&"))
+    .join(".*")
+  return new RegExp(`^${escaped}$`, "u").test(value)
+}
+
+function readStoryboardRunTargetConfig() {
+  if (!existsSync(storyboardRunTargetConfigPath)) return [] as StoryboardRunTargetConfigEntry[]
+  const payload = JSON.parse(readFileSync(storyboardRunTargetConfigPath, "utf8")) as unknown
+  if (Array.isArray(payload)) return payload as StoryboardRunTargetConfigEntry[]
+  if (payload && typeof payload === "object" && Array.isArray((payload as { targets?: unknown }).targets)) {
+    return (payload as { targets: StoryboardRunTargetConfigEntry[] }).targets
+  }
+  return [] as StoryboardRunTargetConfigEntry[]
+}
+
+function runtimeTargetFromWebUrl(
+  url: string | undefined,
+  id: string,
+  label: string,
+  fallback?: StoryboardRunTargetConfigEntry["runtimeTarget"],
+): StoryboardRunTargetConfigEntry["runtimeTarget"] | undefined {
+  const appUrl = url?.trim()
+  if (!appUrl) return undefined
+  let appOrigin = fallback?.appOrigin
+  try {
+    appOrigin = new URL(appUrl).origin
+  } catch {
+    // Leave appOrigin from the fallback, if any; validation happens when the runner opens appUrl.
+  }
+  return {
+    ...fallback,
+    id,
+    label,
+    appUrl,
+    ...(appOrigin ? { appOrigin } : {}),
+  }
+}
+
+function documentRuntimeTargetForFrame(
+  storyboard: StoryboardDocument,
+  fallback?: StoryboardRunTargetConfigEntry["runtimeTarget"],
+) {
+  const captureSetRunTarget = storyboard.captureSets?.default?.sizes?.desktop?.runTarget
+  return (
+    runtimeTargetFromWebUrl(captureSetRunTarget?.url, "storyboard:default:desktop", "Storyboard default desktop web", fallback) ??
+    runtimeTargetFromWebUrl(storyboard.runTarget?.url, "storyboard:default", "Storyboard default web", fallback)
+  )
+}
+
+function runtimeTargetForFrame(storyboardUrl: string, storyboard: StoryboardDocument, storyId: string, frameKey: string) {
+  const normalizedUrl = normalizeStoryboardBaseUrl(storyboardUrl)
+  const configuredFallback = readStoryboardRunTargetConfig().find((entry) => {
+    if (entry.storyboardUrl && normalizeStoryboardBaseUrl(entry.storyboardUrl) !== normalizedUrl) return false
+    if (entry.storyboardUrlPattern && !wildcardMatch(entry.storyboardUrlPattern, normalizedUrl)) return false
+    if (entry.storyboardId && entry.storyboardId !== storyboard.id) return false
+    if (entry.storyId && entry.storyId !== storyId) return false
+    if (entry.frameKey && entry.frameKey !== frameKey) return false
+    return true
+  })?.runtimeTarget
+  return documentRuntimeTargetForFrame(storyboard, configuredFallback) ?? configuredFallback
+}
+
+function runManifestEntryId(storyId: string, frameKey: string) {
+  const suffix = `${storyId}-${frameKey}`
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 180)
+  return suffix ? `agent-browser-run-to-state-${suffix}` : "agent-browser-run-to-state-frame"
+}
+
 function allDocumentFrames(storyboard: StoryboardDocument) {
   return storyboard.stories.flatMap((story) => [
     ...story.frames.map((frame) => ({ story, frame })),
@@ -392,12 +515,28 @@ async function writeRunMirrorFiles(storyboardUrl: string, root: string) {
       // Asset copying is best-effort; run-to-state can still proceed with the mirrored storyboard spec.
     }
   }
+  const entries = allDocumentFrames(storyboard)
+    .map(({ story, frame }) => {
+      const runtimeTarget = runtimeTargetForFrame(storyboardUrl, storyboard, story.id, frame.id)
+      return {
+        id: runManifestEntryId(story.id, frame.id),
+        label: "agent-browser run/capture",
+        scope: "frame",
+        runnerId: "agent-browser",
+        modes: ["run-to-state", "capture", "run-and-capture"],
+        targets: [{ storyboardId: storyboard.id, storyId: story.id, frameKey: frame.id }],
+        paramsSchema: {},
+        captureSets: ["default"],
+        ...(runtimeTarget ? { runtimeTarget } : {}),
+        enabled: true,
+      }
+    })
   const manifest = {
     version: 1,
     enabled: true,
     runners: [{ id: "agent-browser", label: "agent-browser", kind: "browser", enabled: true, capabilities: ["run-to-state", "capture", "run-and-capture"] }],
     captureSets: [{ id: "default", label: "Default", viewport: { width: 1440, height: 900, deviceScaleFactor: 1 }, outputPathTemplate: "assets/{frameKey}.{outputVariantId}.png", imageFormat: "png", comparisonPolicy: "manual" }],
-    entries: [{ id: "agent-browser-run-to-state", label: "agent-browser run/capture", scope: "frame", runnerId: "agent-browser", modes: ["run-to-state", "capture", "run-and-capture"], targets: [{ storyboardId: storyboard.id, storyPattern: "*", framePattern: "*" }], paramsSchema: {}, captureSets: ["default"], enabled: true }],
+    entries,
   }
   writeFileSync(join(root, "storyboard.run.json"), `${JSON.stringify(manifest, null, 2)}\n`)
 }
@@ -469,6 +608,7 @@ async function proxyStoryboardUrlDocument(storyboardUrl: string, init?: RequestI
 }
 
 async function proxyStoryboardAsset(storyboardUrl: string, assetPath: string, preferRunMirror = false) {
+  const sourceUrl = new URL(assetPath, `${normalizeStoryboardBaseUrl(storyboardUrl)}/`)
   if (preferRunMirror) {
     const mirror = runMirrors.get(runMirrorKey(storyboardUrl))
     if (mirror) {
@@ -476,17 +616,38 @@ async function proxyStoryboardAsset(storyboardUrl: string, assetPath: string, pr
       const mirrorPath = resolve(mirror.root, clean)
       const rel = relative(mirror.root, mirrorPath)
       if (!rel.startsWith("..") && !isAbsolute(rel) && existsSync(mirrorPath)) {
+        const mirrorStat = statSync(mirrorPath)
+        const sourceResponse = await fetch(sourceUrl)
+        if (sourceResponse.ok) {
+          const sourceMtimeMs = parseNumericStoryboardHeader(sourceResponse.headers.get("X-Storyboard-MtimeMs"))
+          if (shouldRefreshRunMirrorAsset(sourceMtimeMs, mirrorStat.mtimeMs)) {
+            const sourceBytes = new Uint8Array(await sourceResponse.arrayBuffer())
+            mkdirSync(dirname(mirrorPath), { recursive: true })
+            writeFileSync(mirrorPath, sourceBytes)
+            return new Response(sourceBytes, {
+              headers: {
+                "Content-Type": sourceResponse.headers.get("Content-Type") ?? contentTypeForAssetPath(mirrorPath),
+                "X-Storyboard-Run-Mirror": "refreshed-from-source",
+                "X-Storyboard-Run-Mirror-MtimeMs": String(statSync(mirrorPath).mtimeMs),
+                "X-Storyboard-Source-MtimeMs": String(sourceMtimeMs),
+              },
+            })
+          }
+        }
         return new Response(Bun.file(mirrorPath), {
           headers: {
             "Content-Type": contentTypeForAssetPath(mirrorPath),
             "X-Storyboard-Run-Mirror": "1",
-            "X-Storyboard-Run-Mirror-MtimeMs": String(statSync(mirrorPath).mtimeMs),
+            "X-Storyboard-Run-Mirror-MtimeMs": String(mirrorStat.mtimeMs),
+            ...(sourceResponse.ok && parseNumericStoryboardHeader(sourceResponse.headers.get("X-Storyboard-MtimeMs")) !== null
+              ? { "X-Storyboard-Source-MtimeMs": String(parseNumericStoryboardHeader(sourceResponse.headers.get("X-Storyboard-MtimeMs"))) }
+              : {}),
           },
         })
       }
     }
   }
-  const response = await fetch(new URL(assetPath, `${normalizeStoryboardBaseUrl(storyboardUrl)}/`))
+  const response = await fetch(sourceUrl)
   if (!response.ok) {
     throw new Error(await response.text())
   }
@@ -590,8 +751,9 @@ function parseStoryboardMarkdown(markdown: string, fallbackId = "storyboard") {
   const parsedStories: Array<{ id: string; title: string; notes?: string; frames: StoryboardFrameRecord[] }> = []
   let currentStory: { id: string; title: string; notes?: string; frames: StoryboardFrameRecord[] } | null = null
   let currentFrame: StoryboardFrameRecord | null = null
-  let currentSection: "description" | "notes" | "transitions" | "capture-sets" | "screenshots" | null = null
+  let currentSection: "description" | "notes" | "transitions" | "capture-sets" | "screenshots" | "document-capture-run-targets" | null = null
   let currentCaptureSetId: string | null = null
+  let currentDocumentCaptureSetId: string | null = null
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
@@ -609,6 +771,7 @@ function parseStoryboardMarkdown(markdown: string, fallbackId = "storyboard") {
       currentFrame = null
       currentSection = null
       currentCaptureSetId = null
+      currentDocumentCaptureSetId = null
       continue
     }
     if (trimmed.startsWith("### Frame: ")) {
@@ -623,6 +786,17 @@ function parseStoryboardMarkdown(markdown: string, fallbackId = "storyboard") {
       currentStory.frames.push(currentFrame)
       currentSection = null
       currentCaptureSetId = null
+      currentDocumentCaptureSetId = null
+      continue
+    }
+    if (!currentStory && trimmed.startsWith("- Run target: ")) {
+      const value = trimmed.slice("- Run target: ".length).trim()
+      document.runTarget = value ? { kind: "web", url: value } : undefined
+      continue
+    }
+    if (!currentStory && trimmed === "- Capture set run targets:") {
+      currentSection = "document-capture-run-targets"
+      currentDocumentCaptureSetId = null
       continue
     }
     if (trimmed.startsWith("- Title: ")) {
@@ -714,6 +888,18 @@ function parseStoryboardMarkdown(markdown: string, fallbackId = "storyboard") {
       }
       continue
     }
+    if (line.startsWith("  - ") && currentSection === "document-capture-run-targets") {
+      const value = line.slice(4).trim()
+      if (!value.endsWith(":")) {
+        throw new Error(`Invalid document capture-set run target syntax at line ${index + 1}: ${value}`)
+      }
+      currentDocumentCaptureSetId = value.slice(0, -1).trim()
+      document.captureSets = {
+        ...(document.captureSets ?? {}),
+        [currentDocumentCaptureSetId]: document.captureSets?.[currentDocumentCaptureSetId] ?? {},
+      }
+      continue
+    }
     if (line.startsWith("  - ") && currentSection === "screenshots") {
       if (!currentFrame) {
         throw new Error(`Screenshots found before frame at line ${index + 1}`)
@@ -755,6 +941,33 @@ function parseStoryboardMarkdown(markdown: string, fallbackId = "storyboard") {
       }
       continue
     }
+    if (line.startsWith("    - ") && currentSection === "document-capture-run-targets") {
+      if (!currentDocumentCaptureSetId) {
+        throw new Error(`Run target found before document capture set at line ${index + 1}`)
+      }
+      const match = line.slice(6).trim().match(/^(desktop|mobile|square):\s*(.*)$/)
+      if (!match) {
+        throw new Error(`Invalid document capture-set run target syntax at line ${index + 1}: ${line.trim()}`)
+      }
+      const url = match[2].trim()
+      if (!url) continue
+      const currentCaptureSet = document.captureSets?.[currentDocumentCaptureSetId] ?? {}
+      const sizeKey = match[1] as "desktop" | "mobile" | "square"
+      document.captureSets = {
+        ...(document.captureSets ?? {}),
+        [currentDocumentCaptureSetId]: {
+          ...currentCaptureSet,
+          sizes: {
+            ...(currentCaptureSet.sizes ?? {}),
+            [sizeKey]: {
+              ...(currentCaptureSet.sizes?.[sizeKey] ?? {}),
+              runTarget: { kind: "web", url },
+            },
+          },
+        },
+      }
+      continue
+    }
   }
 
   function buildRow(frameMap: Map<string, StoryboardFrameRecord>, startId: string, visited: Set<string>) {
@@ -762,7 +975,8 @@ function parseStoryboardMarkdown(markdown: string, fallbackId = "storyboard") {
     let currentId: string | undefined = startId
     while (currentId && frameMap.has(currentId) && !visited.has(currentId)) {
       visited.add(currentId)
-      const frame: StoryboardFrameRecord = frameMap.get(currentId)!
+      const frame = frameMap.get(currentId)
+      if (!frame) break
       frames.push(frame)
       currentId = frame.transitions?.[0]?.targetFrameId
     }
@@ -1086,12 +1300,17 @@ Bun.serve({
           return textError("missing asset path", 400)
         }
         const response = await proxyStoryboardAsset(storyboardUrl, assetPath, url.searchParams.get("preferRunMirror") === "1")
+        const headers = new Headers({
+          "Content-Type": response.headers.get("Content-Type") ?? "application/octet-stream",
+          "Cache-Control": "no-cache",
+        })
+        for (const headerName of ["X-Storyboard-Run-Mirror", "X-Storyboard-Run-Mirror-MtimeMs", "X-Storyboard-Source-MtimeMs"]) {
+          const value = response.headers.get(headerName)
+          if (value) headers.set(headerName, value)
+        }
         return new Response(response.body, {
           status: response.status,
-          headers: {
-            "Content-Type": response.headers.get("Content-Type") ?? "application/octet-stream",
-            "Cache-Control": "no-cache",
-          },
+          headers,
         })
       } catch (error) {
         return textError(error instanceof Error ? error.message : String(error), 404)

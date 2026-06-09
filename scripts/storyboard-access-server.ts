@@ -23,6 +23,7 @@ import {
 import { createHash, randomBytes } from "node:crypto";
 import {
   StoryboardRunManifestError,
+  augmentManifestWithStoryboardDocumentRuntimeTargets,
   capabilitiesFromManifest,
   createStoryboardRunStorage,
   deriveStoryboardRunFreshness,
@@ -30,6 +31,7 @@ import {
   hashStoryboardRunJson,
   isSafeStoryboardRunServedArtifactPath,
   loadStoryboardRunManifest,
+  resolveStoryboardDocumentRuntimeTarget,
   terminalRunLifecycleStates,
   validateCreateRunRequest,
   type Run,
@@ -175,7 +177,15 @@ const runStorage = createStoryboardRunStorage(config.rootDir);
 
 function loadRunManifestForResponse() {
   try {
-    return loadStoryboardRunManifest(config.rootDir);
+    const result = loadStoryboardRunManifest(config.rootDir);
+    if (!result.loaded) return result;
+    return {
+      ...result,
+      manifest: augmentManifestWithStoryboardDocumentRuntimeTargets(
+        result.manifest,
+        readStoryboardJsonDocument(),
+      ),
+    };
   } catch (error) {
     if (error instanceof StoryboardRunManifestError) {
       throw new Error(`${error.code}: ${error.message}`);
@@ -605,10 +615,19 @@ async function executeRunJob(jobId: string) {
 
   const now = new Date().toISOString();
   runStorage.writeJob({ ...job, status: "running", startedAt: now, updatedAt: now });
-  runStorage.appendLog(jobId, { level: "info", event: "agent_browser_run_started", context: { storyId, frameKey, runnerId: runner.id } });
-
   const captureSetId = job.captureSetId ?? entry.captureSets[0] ?? "default";
   const outputVariantId = job.outputVariantId ?? job.target.outputVariantId ?? job.screenSizeId ?? "desktop";
+  const storyboard = readStoryboardJsonDocument();
+  const runtimeTarget = resolveStoryboardDocumentRuntimeTarget(storyboard, captureSetId, outputVariantId, entry.runtimeTarget);
+  if (!runtimeTarget) {
+    throw new Error("missing runtime/server config");
+  }
+  runStorage.appendLog(jobId, {
+    level: "info",
+    event: "agent_browser_run_started",
+    context: { storyId, frameKey, runnerId: runner.id, runtimeTarget },
+  });
+
   const captureSet = manifestResult.manifest.captureSets.find((candidate) => candidate.id === captureSetId);
   if (captureSet?.viewport) {
     const viewport = captureSet.viewport;
@@ -616,8 +635,17 @@ async function executeRunJob(jobId: string) {
     runStorage.appendLog(jobId, { level: viewportResult.exitCode === 0 ? "info" : "warn", event: "agent_browser_viewport", context: viewportResult });
   }
 
-  const actions = collectActionsToFrame(frameMatch.story, frameKey ?? "");
-  const fallbackUrl = localStoryboardFrameAssetUrl(frameMatch.frame, captureSetId, outputVariantId, job.screenSizeId);
+  const runtimeOpen = await runAgentBrowser(["open", runtimeTarget.appUrl], 20_000);
+  runStorage.appendLog(jobId, {
+    level: runtimeOpen.exitCode === 0 ? "info" : "error",
+    event: "agent_browser_runtime_open",
+    context: { runtimeTarget, ...runtimeOpen },
+  });
+  if (runtimeOpen.exitCode !== 0) {
+    throw new Error(`runtime target failed to open: ${runtimeOpen.stderr || runtimeOpen.stdout || runtimeOpen.exitCode}`);
+  }
+  const actions = collectActionsToFrame(frameMatch.story, frameKey ?? "").filter((action) => !extractOpenUrl(action.action));
+  const fallbackUrl = null;
   let usedFallback = false;
   for (const action of actions) {
     const result = await applyAgentBrowserAction(action.action);
@@ -652,7 +680,6 @@ async function executeRunJob(jobId: string) {
   }
 
   const completedAt = new Date().toISOString();
-  const storyboard = readStoryboardJsonDocument();
   const manifestHash = hashStoryboardRunJson(manifestResult.manifest);
   const runnerHash = hashStoryboardRunJson(runner);
   const captureSetHash = captureSet ? hashStoryboardRunJson(captureSet) : undefined;
@@ -685,6 +712,7 @@ async function executeRunJob(jobId: string) {
     frameSpecHash: hashStoryboardRunJson(frameMatch.frame),
     outputAsset,
     outputAssetHash,
+    runtimeTarget,
     completedAt,
     summary: job.mode === "run-and-capture" || job.mode === "capture"
       ? `agent-browser captured ${outputVariantId} screenshot to ${outputAsset}`
@@ -692,7 +720,7 @@ async function executeRunJob(jobId: string) {
   });
   const latest = runStorage.readJob(jobId);
   runStorage.writeJob({ ...latest, status: "succeeded", updatedAt: completedAt, completedAt, provenanceWrites: [...latest.provenanceWrites, provenance.path ?? ""] });
-  runStorage.appendLog(jobId, { level: "info", event: "agent_browser_run_succeeded", context: { provenancePath: provenance.path, usedFallback } });
+  runStorage.appendLog(jobId, { level: "info", event: "agent_browser_run_succeeded", context: { provenancePath: provenance.path, usedFallback, runtimeTarget } });
 }
 
 async function drainRunQueue() {

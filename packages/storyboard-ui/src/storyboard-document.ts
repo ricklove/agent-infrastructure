@@ -11,6 +11,28 @@ export type StoryboardFrameScreenshots = {
   square?: string
 }
 
+export type StoryboardRunTargetWeb = {
+  kind: "web"
+  url: string
+}
+
+export type StoryboardCaptureSizeRecord = {
+  label?: string
+  width?: number
+  height?: number
+  runTarget?: StoryboardRunTargetWeb
+}
+
+export type StoryboardDocumentCaptureSetRecord = {
+  label?: string
+  sizes?: Partial<Record<keyof StoryboardFrameScreenshots, StoryboardCaptureSizeRecord>>
+}
+
+export type StoryboardDocumentCaptureSets = Record<
+  string,
+  StoryboardDocumentCaptureSetRecord
+>
+
 export type StoryboardFrameCaptureSetRecord = {
   label?: string
   screenshots?: StoryboardFrameScreenshots
@@ -64,6 +86,46 @@ function isFrameCaptureSets(value: unknown): value is StoryboardFrameCaptureSets
   return Object.values(value).every(isFrameCaptureSetRecord)
 }
 
+function isWebRunTarget(value: unknown): value is StoryboardRunTargetWeb {
+  if (!value || typeof value !== "object") return false
+  const candidate = value as Partial<StoryboardRunTargetWeb>
+  return candidate.kind === "web" && typeof candidate.url === "string"
+}
+
+function isCaptureSizeRecord(value: unknown): value is StoryboardCaptureSizeRecord {
+  if (!value || typeof value !== "object") return false
+  const candidate = value as Partial<StoryboardCaptureSizeRecord>
+  return (
+    (candidate.label === undefined || typeof candidate.label === "string") &&
+    (candidate.width === undefined || typeof candidate.width === "number") &&
+    (candidate.height === undefined || typeof candidate.height === "number") &&
+    (candidate.runTarget === undefined || isWebRunTarget(candidate.runTarget))
+  )
+}
+
+function isDocumentCaptureSetRecord(value: unknown): value is StoryboardDocumentCaptureSetRecord {
+  if (!value || typeof value !== "object") return false
+  const candidate = value as Partial<StoryboardDocumentCaptureSetRecord>
+  const sizes = candidate.sizes as Record<string, unknown> | undefined
+  return (
+    (candidate.label === undefined || typeof candidate.label === "string") &&
+    (sizes === undefined || (
+      typeof sizes === "object" &&
+      !Array.isArray(sizes) &&
+      Object.entries(sizes).every(([key, size]) =>
+        ["desktop", "mobile", "square"].includes(key) && isCaptureSizeRecord(size),
+      )
+    ))
+  )
+}
+
+function isDocumentCaptureSets(value: unknown): value is StoryboardDocumentCaptureSets {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false
+  }
+  return Object.values(value).every(isDocumentCaptureSetRecord)
+}
+
 export type StoryboardBranchRecord = {
   id: string
   label: string
@@ -96,6 +158,8 @@ export type StoryboardSnapshotRequest = {
 export type StoryboardDocument = {
   id: string
   title: string
+  runTarget?: StoryboardRunTargetWeb
+  captureSets?: StoryboardDocumentCaptureSets
   stories: StoryboardStoryRecord[]
   humanNotes?: StoryboardHumanNote[]
   snapshotRequests?: StoryboardSnapshotRequest[]
@@ -170,6 +234,8 @@ export function isStoryboardDocument(value: unknown): value is StoryboardDocumen
   return (
     typeof candidate.id === "string" &&
     typeof candidate.title === "string" &&
+    (candidate.runTarget === undefined || isWebRunTarget(candidate.runTarget)) &&
+    (candidate.captureSets === undefined || isDocumentCaptureSets(candidate.captureSets)) &&
     Array.isArray(candidate.stories) &&
     candidate.stories.every(isStoryRecord)
   )

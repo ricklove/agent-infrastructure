@@ -10,8 +10,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  augmentManifestWithStoryboardDocumentRuntimeTargets,
   capabilitiesFromManifest,
-  createStoryboardDryRunQueue,
   createStoryboardRunStorage,
   deriveStoryboardRunFreshness,
   generateStoryboardRunJobId,
@@ -25,6 +25,7 @@ import {
   validateCreateRunRequest,
   validateStoryboardRunManifestPayload,
 } from "./run-system";
+import { parseNumericStoryboardHeader, shouldRefreshRunMirrorAsset } from "./run-mirror";
 
 const validManifest = {
   version: 1,
@@ -287,6 +288,71 @@ describe("storyboard run manifest validator", () => {
     );
   });
 
+  test("requires browser run targets to carry runtime/server config before queuing", () => {
+    const manifestPayload = cloneManifest();
+    manifestPayload.runners[0].kind = "browser";
+    manifestPayload.runners[0].id = "agent-browser";
+    manifestPayload.entries[0].runnerId = "agent-browser";
+    const manifest = validateStoryboardRunManifestPayload(manifestPayload);
+    const capabilities = capabilitiesFromManifest({ loaded: true, path: "/tmp/storyboard.run.json", manifest });
+    expect(capabilities.manifestEntries[0]?.runtimeTarget).toBeUndefined();
+    expectManifestError(
+      () =>
+        validateCreateRunRequest(
+          {
+            scope: "frame",
+            mode: "run-and-capture",
+            target: {
+              storyboardId: "default-storyboard",
+              storyId: "login",
+              frameKey: "login.success",
+            },
+            manifestEntryId: "login-happy-path",
+            captureSetId: "desktop",
+            params: { seedUser: "demo" },
+          },
+          manifest,
+        ),
+      "missing_runtime_target",
+    );
+  });
+
+  test("exposes configured runtime/server targets in run capabilities", () => {
+    const manifestPayload = cloneManifest();
+    manifestPayload.runners[0].kind = "browser";
+    manifestPayload.runners[0].id = "agent-browser";
+    manifestPayload.entries[0].runnerId = "agent-browser";
+    (manifestPayload.entries[0] as Record<string, unknown>).runtimeTarget = {
+      id: "baseconnect-onboarding-user-verification",
+      label: "BaseConnect onboarding dev desktop",
+      appUrl: "http://10.0.0.239:8086/user-verification",
+      appOrigin: "http://10.0.0.239:8086",
+      apiRoot: "http://10.0.0.49:8808",
+      apiMode: "stub",
+      apiStubInfo: "POST /api/v3/public/user-verification/email -> 204",
+    };
+    const manifest = validateStoryboardRunManifestPayload(manifestPayload);
+    const capabilities = capabilitiesFromManifest({ loaded: true, path: "/tmp/storyboard.run.json", manifest });
+    expect(capabilities.manifestEntries[0]?.runtimeTarget?.appUrl).toBe("http://10.0.0.239:8086/user-verification");
+    expect(
+      validateCreateRunRequest(
+        {
+          scope: "frame",
+          mode: "run-and-capture",
+          target: {
+            storyboardId: "default-storyboard",
+            storyId: "login",
+            frameKey: "login.success",
+          },
+          manifestEntryId: "login-happy-path",
+          captureSetId: "desktop",
+          params: { seedUser: "demo" },
+        },
+        manifest,
+      ).manifestEntryId,
+    ).toBe("login-happy-path");
+  });
+
   test("loadStoryboardRunManifest rejects symlink manifests", () => {
     const root = mkdtempSync(join(tmpdir(), "storyboard-run-manifest-"));
     const outside = join(
@@ -453,6 +519,105 @@ describe("storyboard run freshness derivation", () => {
       }).freshness,
     ).toBe("not-runnable");
 
+    const browserManifestPayload = cloneManifest();
+    browserManifestPayload.runners[0].kind = "browser";
+    browserManifestPayload.runners[0].id = "agent-browser";
+    browserManifestPayload.entries[0].runnerId = "agent-browser";
+    const browserManifestWithoutRuntime = validateStoryboardRunManifestPayload(browserManifestPayload);
+    const missingRuntime = deriveStoryboardRunFreshness({
+      storyboardRoot: root,
+      storyboard,
+      storyId: "login",
+      frameKey: "login.success",
+      manifest: browserManifestWithoutRuntime,
+      captureSetId: "desktop",
+      outputVariantId: "desktop",
+    });
+    expect(missingRuntime.runnable).toBe(false);
+    expect(missingRuntime.disabledReason).toBe("missing runtime/server config");
+
+    const defaultTargetRuntime = deriveStoryboardRunFreshness({
+      storyboardRoot: root,
+      storyboard: {
+        ...storyboard,
+        runTarget: { kind: "web", url: "https://app.example.test/default" },
+      },
+      storyId: "login",
+      frameKey: "login.success",
+      manifest: browserManifestWithoutRuntime,
+      captureSetId: "desktop",
+      outputVariantId: "desktop",
+    });
+    expect(defaultTargetRuntime.runnable).toBe(true);
+    expect(defaultTargetRuntime.runtimeTarget).toEqual({
+      id: "storyboard:default",
+      label: "Storyboard default web",
+      appUrl: "https://app.example.test/default",
+    });
+
+    const runtimeTarget = {
+      id: "baseconnect-onboarding-user-verification",
+      label: "BaseConnect onboarding dev desktop",
+      appUrl: "http://10.0.0.239:8086/user-verification",
+      appOrigin: "http://10.0.0.239:8086",
+      apiRoot: "http://10.0.0.49:8808",
+      apiMode: "stub" as const,
+      apiStubInfo: "POST /api/v3/public/user-verification/email -> 204",
+    };
+    const browserManifestWithRuntime = validateStoryboardRunManifestPayload({
+      ...browserManifestPayload,
+      entries: [
+        {
+          ...browserManifestPayload.entries[0],
+          runtimeTarget,
+        },
+      ],
+    });
+    const configuredRuntime = deriveStoryboardRunFreshness({
+      storyboardRoot: root,
+      storyboard,
+      storyId: "login",
+      frameKey: "login.success",
+      manifest: browserManifestWithRuntime,
+      captureSetId: "desktop",
+      outputVariantId: "desktop",
+    });
+    expect(configuredRuntime.runnable).toBe(true);
+    expect(configuredRuntime.disabledReason).toBeNull();
+    expect(configuredRuntime.runtimeTarget).toEqual(runtimeTarget);
+
+    const manifestWithDocumentTarget = augmentManifestWithStoryboardDocumentRuntimeTargets(
+      browserManifestWithRuntime,
+      {
+        ...storyboard,
+        runTarget: { kind: "web", url: "https://app.example.test/persisted-default" },
+      },
+    );
+    expect(manifestWithDocumentTarget.entries[0]?.runtimeTarget).toEqual({
+      ...runtimeTarget,
+      id: "storyboard:default",
+      label: "Storyboard default web",
+      configuredRunTargetUrl: "https://app.example.test/persisted-default",
+    });
+    const documentTargetOverridesManifestFallback = deriveStoryboardRunFreshness({
+      storyboardRoot: root,
+      storyboard: {
+        ...storyboard,
+        runTarget: { kind: "web", url: "https://app.example.test/persisted-default" },
+      },
+      storyId: "login",
+      frameKey: "login.success",
+      manifest: manifestWithDocumentTarget,
+      captureSetId: "desktop",
+      outputVariantId: "desktop",
+    });
+    expect(documentTargetOverridesManifestFallback.runtimeTarget?.appUrl).toBe(
+      "http://10.0.0.239:8086/user-verification",
+    );
+    expect(documentTargetOverridesManifestFallback.runtimeTarget?.configuredRunTargetUrl).toBe(
+      "https://app.example.test/persisted-default",
+    );
+
     const staleMissing = deriveStoryboardRunFreshness({
       storyboardRoot: root,
       storyboard,
@@ -529,5 +694,18 @@ describe("storyboard run freshness derivation", () => {
         appBuildId: "git:a",
       }).freshness,
     ).toBe("stale");
+  });
+});
+
+
+describe("storyboard run mirror asset freshness", () => {
+  test("refreshes stale mirror assets only when the source asset is newer", () => {
+    expect(parseNumericStoryboardHeader("1781015029084.3096")).toBe(1781015029084.3096);
+    expect(parseNumericStoryboardHeader("not-a-number")).toBeNull();
+    expect(parseNumericStoryboardHeader(null)).toBeNull();
+
+    expect(shouldRefreshRunMirrorAsset(1781015029084.3096, 1781014000000)).toBe(true);
+    expect(shouldRefreshRunMirrorAsset(1781015029084.3096, 1781015029084.0)).toBe(false);
+    expect(shouldRefreshRunMirrorAsset(null, 1781014000000)).toBe(false);
   });
 });
