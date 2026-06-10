@@ -645,7 +645,7 @@ async function executeRunJob(jobId: string) {
     throw new Error(`runtime target failed to open: ${runtimeOpen.stderr || runtimeOpen.stdout || runtimeOpen.exitCode}`);
   }
   const actions = collectActionsToFrame(frameMatch.story, frameKey ?? "").filter((action) => !extractOpenUrl(action.action));
-  const fallbackUrl = null;
+  const fallbackUrl = localStoryboardFrameAssetUrl(frameMatch.frame, captureSetId, outputVariantId, job.screenSizeId);
   let usedFallback = false;
   for (const action of actions) {
     const result = await applyAgentBrowserAction(action.action);
