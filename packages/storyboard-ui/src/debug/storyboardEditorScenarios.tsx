@@ -322,16 +322,97 @@ function buildBranchRows(
   return rows
 }
 
-function documentToSequences(document: StoryboardDocument): StoryboardGridSequence[] {
-  return document.stories.flatMap((story) => {
-    const mainRow: StoryboardGridSequence = {
-      id: story.id,
-      title: story.title,
-      frames: story.frames.map((frame) => ({
-        ...frame,
-        nextLabel: frameNextLabel(frame),
-      })),
+function buildTransitionTreeRows(story: StoryboardStoryRecord): StoryboardGridSequence[] {
+  const framesById = new Map(story.frames.map((frame) => [frame.id, frame]))
+  const renderedFrameIds = new Set<string>()
+
+  const transitionTargets = (frame: StoryboardFrameRecord) =>
+    (frame.transitions ?? [])
+      .map((transition) => ({
+        transition,
+        target: transition.targetFrameId ? framesById.get(transition.targetFrameId) : undefined,
+      }))
+      .filter((entry): entry is { transition: StoryboardTransitionRecord; target: StoryboardFrameRecord } => !!entry.target)
+
+  const buildPrimaryPath = (startFrame: StoryboardFrameRecord) => {
+    const path: StoryboardFrameRecord[] = []
+    const pathIds = new Set<string>()
+    let current: StoryboardFrameRecord | undefined = startFrame
+
+    while (current && !pathIds.has(current.id) && !renderedFrameIds.has(current.id)) {
+      path.push(current)
+      pathIds.add(current.id)
+      renderedFrameIds.add(current.id)
+      current = transitionTargets(current)[0]?.target
     }
+
+    return path
+  }
+
+  const branchRowsForPath = (path: StoryboardFrameRecord[], parentStartColumn: number): StoryboardGridSequence[] => {
+    const rows: StoryboardGridSequence[] = []
+
+    for (let frameIndex = path.length - 1; frameIndex >= 0; frameIndex -= 1) {
+      const sourceFrame = path[frameIndex]
+      const alternateTransitions = transitionTargets(sourceFrame).slice(1)
+
+      alternateTransitions.forEach(({ transition, target }) => {
+        if (renderedFrameIds.has(target.id)) return
+        const branchStartColumn = parentStartColumn + frameIndex + 1
+        const branchPath = buildPrimaryPath(target)
+        if (branchPath.length === 0) return
+        rows.push({
+          id: `${sourceFrame.id}-${transition.id || transition.targetFrameId || target.id}`,
+          title: `Branch: ${transition.label}`,
+          sourceFrameId: sourceFrame.id,
+          startColumn: branchStartColumn,
+          startLabel: transition.label,
+          frames: branchPath.map((entry) => ({
+            ...entry,
+            nextLabel: frameNextLabel(entry),
+          })),
+        })
+        rows.push(...branchRowsForPath(branchPath, branchStartColumn))
+      })
+    }
+
+    return rows
+  }
+
+  const rows: StoryboardGridSequence[] = []
+
+  for (const frame of story.frames) {
+    if (renderedFrameIds.has(frame.id)) continue
+    const path = buildPrimaryPath(frame)
+    if (path.length === 0) continue
+    rows.push({
+      id: rows.length === 0 ? story.id : `${story.id}-${frame.id}`,
+      title: rows.length === 0 ? story.title : `${story.title}: ${frame.title}`,
+      startColumn: 0,
+      frames: path.map((entry) => ({
+        ...entry,
+        nextLabel: frameNextLabel(entry),
+      })),
+    })
+    rows.push(...branchRowsForPath(path, 0))
+  }
+
+  return rows
+}
+
+export function documentToSequences(document: StoryboardDocument): StoryboardGridSequence[] {
+  return document.stories.flatMap((story) => {
+    const transitionRows = buildTransitionTreeRows(story)
+    const mainRows: StoryboardGridSequence[] = transitionRows.length > 0
+      ? transitionRows
+      : [{
+          id: story.id,
+          title: story.title,
+          frames: story.frames.map((frame) => ({
+            ...frame,
+            nextLabel: frameNextLabel(frame),
+          })),
+        }]
 
     const consumedBranches = new Set<string>()
     const branchRows = buildBranchRows(
@@ -355,7 +436,7 @@ function documentToSequences(document: StoryboardDocument): StoryboardGridSequen
         })),
       }))
 
-    return [mainRow, ...branchRows, ...orphanRows]
+    return [...mainRows, ...branchRows, ...orphanRows]
   })
 }
 

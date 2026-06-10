@@ -574,7 +574,8 @@ async function runAgentBrowser(args: string[], timeoutMs = 15_000) {
 }
 
 function isTransientAgentBrowserOpenFailure(result: Awaited<ReturnType<typeof runAgentBrowser>>) {
-  if (result.exitCode === 0 || result.timedOut) return false;
+  if (result.exitCode === 0) return false;
+  if (result.timedOut) return true;
   const output = `${result.stderr}\n${result.stdout}`;
   return /ERR_CONNECTION_(?:REFUSED|RESET)|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED|Target closed/iu.test(output);
 }
@@ -582,13 +583,13 @@ function isTransientAgentBrowserOpenFailure(result: Awaited<ReturnType<typeof ru
 async function openRuntimeTargetWithRetry(url: string) {
   let lastResult: Awaited<ReturnType<typeof runAgentBrowser>> | null = null;
   for (let attempt = 1; attempt <= 4; attempt += 1) {
-    const result = await runAgentBrowser(["open", url], 20_000);
+    const result = await runAgentBrowser(["open", url], 35_000);
     lastResult = { ...result, args: [...result.args, `attempt=${attempt}`] };
     if (result.exitCode === 0) return lastResult;
     if (!isTransientAgentBrowserOpenFailure(result) || attempt === 4) return lastResult;
     await sleep(attempt * 1500);
   }
-  return lastResult ?? runAgentBrowser(["open", url], 20_000);
+  return lastResult ?? runAgentBrowser(["open", url], 35_000);
 }
 
 async function applyAgentBrowserAction(action: string) {

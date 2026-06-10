@@ -451,17 +451,32 @@ function documentRuntimeTargetForFrame(
   )
 }
 
-function runtimeTargetForFrame(storyboardUrl: string, storyboard: StoryboardDocument, storyId: string, frameKey: string) {
+function configuredRuntimeTargetForFrame(
+  storyboardUrl: string,
+  storyboard: StoryboardDocument,
+  storyId?: string,
+  frameKey?: string,
+) {
   const normalizedUrl = normalizeStoryboardBaseUrl(storyboardUrl)
-  const configuredFallback = readStoryboardRunTargetConfig().find((entry) => {
+  return readStoryboardRunTargetConfig().find((entry) => {
     if (entry.storyboardUrl && normalizeStoryboardBaseUrl(entry.storyboardUrl) !== normalizedUrl) return false
     if (entry.storyboardUrlPattern && !wildcardMatch(entry.storyboardUrlPattern, normalizedUrl)) return false
     if (entry.storyboardId && entry.storyboardId !== storyboard.id) return false
-    if (entry.storyId && entry.storyId !== storyId) return false
-    if (entry.frameKey && entry.frameKey !== frameKey) return false
+    if (entry.storyId && storyId && entry.storyId !== storyId) return false
+    if (entry.storyId && !storyId) return false
+    if (entry.frameKey && frameKey && entry.frameKey !== frameKey) return false
+    if (entry.frameKey && !frameKey) return false
     return true
   })?.runtimeTarget
-  return documentRuntimeTargetForFrame(storyboard, configuredFallback) ?? configuredFallback
+}
+
+function documentRunTargetOverride(storyboardUrl: string, storyboard: StoryboardDocument) {
+  const runtimeTarget = configuredRuntimeTargetForFrame(storyboardUrl, storyboard)
+  return runtimeTarget?.appUrl ? { kind: "web" as const, url: runtimeTarget.appUrl } : undefined
+}
+
+function runtimeTargetForFrame(storyboardUrl: string, storyboard: StoryboardDocument, storyId: string, frameKey: string) {
+  return configuredRuntimeTargetForFrame(storyboardUrl, storyboard, storyId, frameKey) ?? documentRuntimeTargetForFrame(storyboard)
 }
 
 function runManifestEntryId(storyId: string, frameKey: string) {
@@ -498,6 +513,10 @@ async function writeRunMirrorFiles(
 ) {
   const documentPayload = providedDocumentPayload ?? await proxyStoryboardUrlDocument(storyboardUrl)
   const storyboard = normalizeStoryboardDocument(documentPayload.document)
+  const runTargetOverride = documentRunTargetOverride(storyboardUrl, storyboard)
+  if (runTargetOverride) {
+    storyboard.runTarget = runTargetOverride
+  }
   mkdirSync(join(root, "assets"), { recursive: true })
   writeFileSync(join(root, "storyboard.json"), `${JSON.stringify(storyboard, null, 2)}\n`)
   try {

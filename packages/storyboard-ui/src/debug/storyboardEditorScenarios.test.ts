@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   buildRunAssetCacheKey,
+  documentToSequences,
   findSelectionForFrameId,
   readStoryboardEditorQuery,
 } from "./storyboardEditorScenarios"
@@ -168,5 +169,50 @@ describe("remote storyboard deep links", () => {
       storyId: "story-c-manager-successful-empty-subgroup-delete",
       frameId: "story-c-manager-empty-subgroup-confirm-delete",
     })
+  })
+
+  test("lays out transition targets as a deterministic depth-first tree", () => {
+    const document: StoryboardDocument = {
+      id: "transition-tree",
+      title: "Transition tree",
+      stories: [
+        {
+          id: "story-a",
+          title: "Story A",
+          frames: [
+            {
+              id: "start",
+              title: "Start",
+              transitions: [
+                { id: "primary", label: "Primary", kind: "user", targetFrameId: "primary-1" },
+                { id: "alternate", label: "Alternate", kind: "user", targetFrameId: "alternate-1" },
+              ],
+            },
+            {
+              id: "primary-1",
+              title: "Primary 1",
+              transitions: [
+                { id: "continue", label: "Continue", kind: "user", targetFrameId: "primary-2" },
+                { id: "nested", label: "Nested alternate", kind: "user", targetFrameId: "nested-1" },
+              ],
+            },
+            { id: "primary-2", title: "Primary 2", transitions: [] },
+            { id: "alternate-1", title: "Alternate 1", transitions: [] },
+            { id: "nested-1", title: "Nested 1", transitions: [] },
+          ],
+          branches: [],
+        },
+      ],
+    }
+
+    const sequences = documentToSequences(document)
+
+    expect(sequences.map((sequence) => sequence.frames.map((frame) => frame.id))).toEqual([
+      ["start", "primary-1", "primary-2"],
+      ["nested-1"],
+      ["alternate-1"],
+    ])
+    expect(sequences[1]).toMatchObject({ sourceFrameId: "primary-1", startColumn: 2, startLabel: "Nested alternate" })
+    expect(sequences[2]).toMatchObject({ sourceFrameId: "start", startColumn: 1, startLabel: "Alternate" })
   })
 })
