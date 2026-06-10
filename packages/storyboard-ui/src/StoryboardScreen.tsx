@@ -5,7 +5,7 @@ import {
   StoryboardDebugPreviewScreen,
   StoryboardDebugScenarioScreen,
 } from "./debug/DebugCatalog"
-import { RemoteStoryboardEditorScreen, readStoryboardEditorQuery } from "./debug/storyboardEditorScenarios"
+import { RemoteStoryboardEditorScreen, StoryboardRunTargetHealthScreen, readStoryboardEditorQuery } from "./debug/storyboardEditorScenarios"
 import { parseStoryboardDebugRoute } from "./debug/routes"
 
 export function StoryboardScreen() {
@@ -19,6 +19,10 @@ export function StoryboardScreen() {
 
   if (pathname.replace(/\/+$/, "") === "/storyboard" && (query.storyboardUrl || query.frameId)) {
     return <RemoteStoryboardEditorScreen />
+  }
+
+  if (pathname.replace(/\/+$/, "") === "/storyboard/debug/storyboardRunTargetHealth") {
+    return <StoryboardRunTargetHealthScreen />
   }
 
   if (debugRoute?.kind === "index") {

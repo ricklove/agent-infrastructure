@@ -3,7 +3,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path
 import { createHash, randomUUID } from "node:crypto"
 import { formatStoryboardDocument, frameCaptureSet, normalizeStoryboardDocument, isStoryboardDocument, type StoryboardDocument, type StoryboardFrameRecord, type StoryboardStoryRecord, type StoryboardTransitionRecord } from "./storyboard-document.js"
 import { parseNumericStoryboardHeader, shouldRefreshRunMirrorAsset } from "./run-mirror.js"
-import { normalizeWebRunTargetUrl, runTargetHealthApiPath } from "./run-target-health.js"
+import { normalizeWebRunTargetUrl, runTargetHealthApiPath, runTargetProviderApiPath } from "./run-target-health.js"
 
 const port = Number.parseInt(process.env.STORYBOARD_PORT ?? "8797", 10)
 const workspaceRoot = process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace"
@@ -369,6 +369,33 @@ async function proxyStoryboardAccessJson(storyboardUrl: string, pathAndSearch: s
     throw new Error(await response.text())
   }
   return await response.json()
+}
+
+async function proxyProviderJson(url: string, init?: RequestInit) {
+  const response = await fetch(url, init)
+  const contentType = response.headers.get("Content-Type") ?? ""
+  const payload = contentType.includes("application/json")
+    ? await response.json().catch(() => null)
+    : { message: await response.text().catch(() => "") }
+  if (!response.ok) {
+    return {
+      status: response.status,
+      payload: {
+        ok: false,
+        unsupported: response.status === 404 || response.status === 405,
+        unavailable: response.status >= 500,
+        message:
+          typeof payload === "object" && payload && "message" in payload && typeof payload.message === "string"
+            ? payload.message
+            : `Provider API returned HTTP ${response.status}`,
+      },
+    }
+  }
+  return { status: response.status, payload }
+}
+
+function providerJsonIsUnsupported(result: { status: number; payload: unknown }) {
+  return result.status === 404 || result.status === 405 || (typeof result.payload === "object" && result.payload !== null && Boolean((result.payload as { unsupported?: unknown }).unsupported))
 }
 
 async function proxyRunTargetHealthJson(storyboardUrl: string, path: string, runTargetId: string, init?: RequestInit) {
@@ -1406,6 +1433,46 @@ Bun.serve({
         return jsonResponse({ ok: true, ...((await proxyStoryboardAccessJsonWithRunMirrorFallback(storyboardUrl, `${upstream.pathname}${upstream.search}`)) as Record<string, unknown>) })
       } catch (error) {
         return textError(error instanceof Error ? error.message : String(error), 400)
+      }
+    }
+
+    if (pathname === "/api/storyboard/run-targets" && request.method === "GET") {
+      try {
+        const storyboardUrl = resolveStoryboardUrl(url, request.url)
+        if (!storyboardUrl) return textError("missing storyboardUrl", 400)
+        const { status, payload } = await proxyProviderJson(runTargetProviderApiPath(storyboardUrl, "run-targets"))
+        return jsonResponse(payload, status)
+      } catch (error) {
+        return jsonResponse({ ok: false, unavailable: true, message: error instanceof Error ? error.message : String(error) }, 502)
+      }
+    }
+
+    if (pathname === "/api/storyboard/run-targets/config" && (request.method === "PUT" || request.method === "POST")) {
+      try {
+        const body = ((await request.json().catch(() => ({}))) ?? {}) as { storyboardUrl?: string; runTargetId?: string; values?: Record<string, unknown> }
+        const storyboardUrl = body.storyboardUrl?.trim()
+        const runTargetId = body.runTargetId?.trim()
+        if (!storyboardUrl) return textError("missing storyboardUrl", 400)
+        if (!runTargetId) return textError("missing runTargetId", 400)
+        const values = body.values ?? {}
+        const method = request.method
+        const headers = { "Content-Type": "application/json" }
+        const legacyResult = await proxyProviderJson(runTargetProviderApiPath(storyboardUrl, "run-target-config"), {
+          method,
+          headers,
+          body: JSON.stringify({ runTargetId, config: values }),
+        })
+        if (!providerJsonIsUnsupported(legacyResult)) {
+          return jsonResponse(legacyResult.payload, legacyResult.status)
+        }
+        const genericResult = await proxyProviderJson(runTargetProviderApiPath(storyboardUrl, "run-targets/config"), {
+          method,
+          headers,
+          body: JSON.stringify({ runTargetId, values }),
+        })
+        return jsonResponse(genericResult.payload, genericResult.status)
+      } catch (error) {
+        return jsonResponse({ ok: false, unavailable: true, message: error instanceof Error ? error.message : String(error) }, 502)
       }
     }
 

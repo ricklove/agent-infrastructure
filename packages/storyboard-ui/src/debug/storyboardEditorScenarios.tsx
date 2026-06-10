@@ -24,11 +24,16 @@ import {
 } from "../storyboard-document"
 import {
   normalizeRunTargetHealthChecks,
+  normalizeRunTargets,
+  normalizeRunTarget,
   normalizeWebRunTargetUrl,
+  runTargetDisplayName,
   runTargetHealthSummary,
+  type RunTargetConfigField,
   type RunTargetHealthCheck,
   type RunTargetHealthPayload,
   type RunTargetHealthStatus,
+  type RunTargetProviderTarget,
 } from "../run-target-health"
 import type { StoryboardDebugComponentDefinition } from "./types"
 
@@ -107,11 +112,15 @@ type RuntimeTargetDto = {
   apiStubInfo?: string
 }
 
-type RunTargetHealthPanelState = {
+export type RunTargetHealthPanelState = {
   open: boolean
   runTargetId: string
   runTargetLabel: string
   runTargetUrl?: string
+  target?: RunTargetProviderTarget | null
+  configDraft?: Record<string, string>
+  configSaveState?: "idle" | "saving" | "saved" | "unsupported" | "error"
+  configSaveMessage?: string | null
   checks: RunTargetHealthCheck[]
   owner?: string
   loading: boolean
@@ -278,10 +287,11 @@ function compactEvidence(value: unknown) {
   }
 }
 
-function normalizeRunTargetHealthPayload(payload: unknown): { checks: RunTargetHealthCheck[]; owner?: string } {
+function normalizeRunTargetHealthPayload(payload: unknown): { checks: RunTargetHealthCheck[]; owner?: string; target?: RunTargetProviderTarget | null } {
   const record = payload && typeof payload === "object" ? (payload as RunTargetHealthPayload) : {}
   return {
     checks: normalizeRunTargetHealthChecks(payload),
+    target: normalizeRunTarget(payload),
     ...(typeof record.owner === "string" && record.owner.trim() ? { owner: record.owner.trim() } : {}),
   }
 }
@@ -735,14 +745,19 @@ export function RunTargetHealthPanel({
   onRunAll,
   onRunOne,
   onClose,
+  onConfigValueChange,
+  onSaveConfig,
 }: {
   state: RunTargetHealthPanelState
   onRefresh?: () => void
   onRunAll?: () => void
   onRunOne?: (key: string) => void
   onClose?: () => void
+  onConfigValueChange?: (key: string, value: string) => void
+  onSaveConfig?: () => void
 }) {
   const statusCounts = runTargetHealthSummary(state.checks)
+  const configFields = state.target?.configFields ?? []
   return (
     <div className="space-y-3 rounded border border-cyan-300/20 bg-cyan-300/5 p-3 text-xs text-white/65" data-run-target-health-panel="true">
       <div className="flex items-start justify-between gap-3">
@@ -751,6 +766,12 @@ export function RunTargetHealthPanel({
           <div className="mt-1 text-sm font-semibold text-white">{state.runTargetLabel || state.runTargetId}</div>
           <div className="mt-1 break-all font-mono text-[11px] text-white/45">{state.runTargetId}</div>
           {state.runTargetUrl ? <div className="mt-1 break-all text-[11px] text-white/45">{state.runTargetUrl}</div> : null}
+          {state.target ? (
+            <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-white/45">
+              {state.target.kind ? <span>type: <span className="font-mono">{state.target.kind}</span></span> : null}
+              {state.target.owner ? <span>provider: <span className="font-mono">{state.target.owner}</span></span> : null}
+            </div>
+          ) : null}
         </div>
         {onClose ? (
           <button
@@ -765,6 +786,64 @@ export function RunTargetHealthPanel({
       <div className="rounded border border-white/10 bg-black/20 p-3 text-white/55">
         Provider-owned checks make sure the selected Run target has everything needed for Run to work: app entrypoint, backend/API, script prerequisites, source validity, stable app experience, and output readiness.
         {state.owner ? <span> Provider: <span className="font-mono text-cyan-100">{state.owner}</span>.</span> : null}
+      </div>
+      {state.target?.description ? (
+        <div className="rounded border border-white/10 bg-black/20 p-3 text-white/55">{state.target.description}</div>
+      ) : null}
+      <div className="rounded border border-white/10 bg-black/20 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.14em] text-white/40">Config</div>
+            <div className="mt-1 text-white/60">Provider-defined fields and current values. Missing config is separate from failed active health checks.</div>
+          </div>
+          {configFields.length > 0 ? (
+            <button
+              className="rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
+              disabled={!onSaveConfig || state.configSaveState === "saving"}
+              onClick={onSaveConfig}
+              type="button"
+            >
+              {state.configSaveState === "saving" ? "Saving…" : "Save config"}
+            </button>
+          ) : null}
+        </div>
+        {configFields.length === 0 ? (
+          <div className="mt-3 rounded border border-dashed border-white/10 p-3 text-white/40">No provider config fields returned for this run target.</div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {configFields.map((field) => {
+              const draftValue = state.configDraft?.[field.key] ?? (field.value === undefined || field.value === null ? "" : String(field.value))
+              const fieldStatus = field.status ?? "unknown"
+              const missing = fieldStatus === "missing" || (field.required && !draftValue.trim())
+              return (
+                <label className={`block rounded border p-3 ${missing ? "border-rose-300/35 bg-rose-300/10" : "border-white/10 bg-black/20"}`} key={field.key}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold text-white">{field.label ?? field.key}</span>
+                    <span className="rounded border border-white/10 bg-black/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-white/55">{fieldStatus}{field.required ? " · required" : ""}</span>
+                  </div>
+                  <div className="mt-1 break-all font-mono text-[11px] text-white/40">{field.key}</div>
+                  <input
+                    className="mt-2 w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 font-mono text-xs text-cyan-100 outline-none focus:border-cyan-300 disabled:text-white/35"
+                    disabled={field.readOnly || !onConfigValueChange}
+                    onChange={(event) => onConfigValueChange?.(field.key, event.currentTarget.value)}
+                    placeholder={field.type ?? "value"}
+                    value={draftValue}
+                  />
+                  {field.detail ? <div className="mt-2 text-[11px] text-white/55">{field.detail}</div> : null}
+                  {field.suggestedAction ? <div className="mt-2 text-[11px] text-amber-100/80">Suggested action: {field.suggestedAction}</div> : null}
+                </label>
+              )
+            })}
+          </div>
+        )}
+        {state.configSaveMessage ? (
+          <div className={`mt-3 rounded border p-2 text-[11px] ${state.configSaveState === "saved" ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100" : "border-amber-300/35 bg-amber-300/10 text-amber-100"}`}>
+            {state.configSaveMessage}
+          </div>
+        ) : null}
+        {configFields.length > 0 && !onSaveConfig ? (
+          <div className="mt-3 rounded border border-amber-300/25 bg-amber-300/10 p-2 text-[11px] text-amber-100">Config is read-only in this surface until the provider exposes a config-save contract.</div>
+        ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button className="rounded border border-white/10 bg-black/30 px-2 py-1 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100" disabled={state.loading} onClick={onRefresh} type="button">
@@ -3803,6 +3882,288 @@ function StoryboardEditorPreview() {
           <div>Edit the storyboard through the grid inspector</div>
           <div>Persist changes through the storyboard server</div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+function configDraftFromTarget(target: RunTargetProviderTarget | null | undefined) {
+  const draft: Record<string, string> = {}
+  for (const field of target?.configFields ?? []) {
+    draft[field.key] = field.value === undefined || field.value === null ? "" : String(field.value)
+  }
+  return draft
+}
+
+function targetPanelState(target: RunTargetProviderTarget, checks: RunTargetHealthCheck[] = [], owner?: string): RunTargetHealthPanelState {
+  return {
+    open: true,
+    runTargetId: target.id,
+    runTargetLabel: runTargetDisplayName(target),
+    target,
+    configDraft: configDraftFromTarget(target),
+    configSaveState: "idle",
+    configSaveMessage: null,
+    checks,
+    owner: owner ?? target.owner,
+    loading: false,
+    error: null,
+  }
+}
+
+export function StoryboardRunTargetHealthScreen() {
+  const initialUrl = typeof window === "undefined" ? "" : readStoryboardEditorQuery(window.location.search).storyboardUrl
+  const [draftStoryboardUrl, setDraftStoryboardUrl] = useState(initialUrl)
+  const [connectedStoryboardUrl, setConnectedStoryboardUrl] = useState(initialUrl)
+  const [targets, setTargets] = useState<RunTargetProviderTarget[]>([])
+  const [selectedTargetId, setSelectedTargetId] = useState("")
+  const [panelState, setPanelState] = useState<RunTargetHealthPanelState>(emptyRunTargetHealthState)
+  const [loadingTargets, setLoadingTargets] = useState(false)
+  const [targetError, setTargetError] = useState<string | null>(null)
+
+  const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? null
+
+  async function loadRunTargets(storyboardUrl = connectedStoryboardUrl) {
+    const normalizedUrl = storyboardUrl.trim()
+    if (!normalizedUrl) {
+      setTargetError("Enter a storyboardUrl to load provider-named run targets.")
+      return
+    }
+    setLoadingTargets(true)
+    setTargetError(null)
+    try {
+      const params = new URLSearchParams({ storyboardUrl: normalizedUrl })
+      const response = await fetch(`${apiRoot}/run-targets?${params.toString()}`)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || (payload && typeof payload === "object" && (payload as { ok?: boolean }).ok === false)) {
+        const message = payload && typeof payload === "object" && typeof (payload as { message?: unknown }).message === "string"
+          ? (payload as { message: string }).message
+          : `Provider run-target API returned HTTP ${response.status}`
+        throw new Error(message)
+      }
+      const nextTargets = normalizeRunTargets(payload)
+      setTargets(nextTargets)
+      const nextSelected = nextTargets[0]?.id ?? ""
+      setSelectedTargetId(nextSelected)
+      setPanelState(nextTargets[0] ? targetPanelState(nextTargets[0], [], (payload as { owner?: string } | null)?.owner) : emptyRunTargetHealthState)
+      if (nextTargets[0]) {
+        void requestRunTargetHealth(nextTargets[0].id, "list", undefined, nextTargets[0], normalizedUrl)
+      }
+    } catch (error) {
+      setTargets([])
+      setSelectedTargetId("")
+      setPanelState(emptyRunTargetHealthState)
+      setTargetError(`Provider run-target API unavailable or unsupported: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setLoadingTargets(false)
+    }
+  }
+
+  async function requestRunTargetHealth(
+    runTargetId: string,
+    action: "list" | "check" | "check-all" = "list",
+    key?: string,
+    targetOverride?: RunTargetProviderTarget | null,
+    storyboardUrl = connectedStoryboardUrl,
+  ) {
+    const target = targetOverride ?? targets.find((entry) => entry.id === runTargetId) ?? selectedTarget
+    if (!storyboardUrl.trim() || !runTargetId) return
+    setPanelState((current) => ({
+      ...current,
+      open: true,
+      runTargetId,
+      runTargetLabel: target ? runTargetDisplayName(target) : runTargetId,
+      target: target ?? current.target,
+      configDraft: current.runTargetId === runTargetId ? current.configDraft : configDraftFromTarget(target),
+      loading: true,
+      runningKey: action === "check-all" ? "*" : action === "check" ? key : undefined,
+      error: null,
+    }))
+    try {
+      const params = new URLSearchParams({ storyboardUrl, runTargetId })
+      const init: RequestInit = action === "list"
+        ? { method: "GET" }
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ storyboardUrl, runTargetId, ...(key ? { key } : {}) }),
+          }
+      const path = action === "list" ? "run-target-health" : action === "check" ? "run-target-health/check" : "run-target-health/check-all"
+      const response = await fetch(`${apiRoot}/${path}?${params.toString()}`, init)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || (payload && typeof payload === "object" && (payload as { ok?: boolean }).ok === false)) {
+        const message = payload && typeof payload === "object" && typeof (payload as { message?: unknown }).message === "string"
+          ? (payload as { message: string }).message
+          : `Provider Run Target Health API returned HTTP ${response.status}`
+        throw new Error(message)
+      }
+      const health = normalizeRunTargetHealthPayload(payload)
+      const nextTarget = health.target ?? target
+      setPanelState((current) => ({
+        ...current,
+        open: true,
+        runTargetId,
+        runTargetLabel: nextTarget ? runTargetDisplayName(nextTarget) : runTargetId,
+        target: nextTarget ?? current.target,
+        configDraft: current.configDraft && current.runTargetId === runTargetId ? current.configDraft : configDraftFromTarget(nextTarget),
+        checks: health.checks,
+        owner: health.owner ?? nextTarget?.owner ?? current.owner,
+        loading: false,
+        runningKey: undefined,
+        error: null,
+        updatedAt: new Date().toISOString(),
+      }))
+    } catch (error) {
+      setPanelState((current) => ({
+        ...current,
+        open: true,
+        loading: false,
+        runningKey: undefined,
+        error: error instanceof Error ? error.message : String(error),
+        updatedAt: new Date().toISOString(),
+      }))
+    }
+  }
+
+  function selectTarget(target: RunTargetProviderTarget) {
+    setSelectedTargetId(target.id)
+    setPanelState(targetPanelState(target))
+    void requestRunTargetHealth(target.id, "list", undefined, target)
+  }
+
+  async function saveConfig() {
+    if (!panelState.runTargetId || !connectedStoryboardUrl.trim()) return
+    setPanelState((current) => ({ ...current, configSaveState: "saving", configSaveMessage: null }))
+    try {
+      const response = await fetch(`${apiRoot}/run-targets/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storyboardUrl: connectedStoryboardUrl,
+          runTargetId: panelState.runTargetId,
+          values: panelState.configDraft ?? {},
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || (payload && typeof payload === "object" && (payload as { ok?: boolean }).ok === false)) {
+        const unsupported = payload && typeof payload === "object" && Boolean((payload as { unsupported?: unknown }).unsupported)
+        const message = payload && typeof payload === "object" && typeof (payload as { message?: unknown }).message === "string"
+          ? (payload as { message: string }).message
+          : `Provider config-save API returned HTTP ${response.status}`
+        setPanelState((current) => ({
+          ...current,
+          configSaveState: unsupported ? "unsupported" : "error",
+          configSaveMessage: unsupported
+            ? `Provider config save is unsupported/read-only for this storyboard source: ${message}`
+            : `Provider config save failed: ${message}`,
+        }))
+        return
+      }
+      const nextTargets = normalizeRunTargets(payload)
+      if (nextTargets.length > 0) {
+        setTargets(nextTargets)
+      }
+      const nextTarget = normalizeRunTarget(payload) ?? nextTargets.find((target) => target.id === panelState.runTargetId) ?? panelState.target
+      setPanelState((current) => ({
+        ...current,
+        target: nextTarget,
+        configDraft: configDraftFromTarget(nextTarget),
+        configSaveState: "saved",
+        configSaveMessage: "Provider config saved.",
+      }))
+      void requestRunTargetHealth(panelState.runTargetId, "list", undefined, nextTarget)
+    } catch (error) {
+      setPanelState((current) => ({
+        ...current,
+        configSaveState: "error",
+        configSaveMessage: `Provider config save unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      }))
+    }
+  }
+
+  useEffect(() => {
+    if (connectedStoryboardUrl) {
+      void loadRunTargets(connectedStoryboardUrl)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-black text-white" data-storyboard-run-target-health-root="true">
+      <header className="flex flex-none flex-col gap-3 border-b border-white/10 bg-zinc-950 px-4 py-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/60">Standalone Run Target Health</div>
+          <div className="mt-1 text-lg font-semibold text-white">Provider-owned run targets, config, and health checks</div>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-white/55">Paste a single storyboardUrl. DEV Storyboard lists provider-named run targets, then opens a dedicated Run Target panel for provider-defined config and health checks. Dashboard code renders the contract generically.</p>
+        </div>
+        <div className="flex min-w-0 gap-2">
+          <input
+            className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-cyan-100 outline-none focus:border-cyan-400"
+            onChange={(event) => setDraftStoryboardUrl(event.currentTarget.value)}
+            placeholder="http://10.0.0.239:8898/onboarding"
+            value={draftStoryboardUrl}
+          />
+          <button
+            className="rounded border border-cyan-300/35 bg-cyan-300/10 px-3 py-1.5 text-xs uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
+            disabled={loadingTargets}
+            onClick={() => {
+              const next = draftStoryboardUrl.trim()
+              setConnectedStoryboardUrl(next)
+              void loadRunTargets(next)
+            }}
+            type="button"
+          >
+            {loadingTargets ? "Loading…" : "Load targets"}
+          </button>
+        </div>
+      </header>
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)] bg-zinc-950/70">
+        <aside className="min-h-0 overflow-auto border-r border-white/10 p-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Provider-named targets</div>
+            <button className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/55 hover:border-cyan-300/40 hover:text-cyan-100" onClick={() => void loadRunTargets()} type="button">Refresh</button>
+          </div>
+          {targetError ? <div className="rounded border border-amber-300/35 bg-amber-300/10 p-3 text-xs text-amber-100">{targetError}</div> : null}
+          {targets.length === 0 && !targetError ? <div className="rounded border border-dashed border-white/10 p-4 text-sm text-white/40">No run targets loaded yet.</div> : null}
+          <div className="space-y-2">
+            {targets.map((target) => (
+              <button
+                className={`w-full rounded border p-3 text-left transition ${target.id === selectedTargetId ? "border-cyan-300/45 bg-cyan-300/10" : "border-white/10 bg-black/25 hover:border-cyan-300/35"}`}
+                key={target.id}
+                onClick={() => selectTarget(target)}
+                type="button"
+              >
+                <div className="font-semibold text-white">{runTargetDisplayName(target)}</div>
+                <div className="mt-1 break-all font-mono text-[11px] text-white/45">{target.id}</div>
+                <div className="mt-2 flex flex-wrap gap-1 text-[10px] uppercase tracking-[0.12em] text-white/45">
+                  {target.kind ? <span className="rounded border border-white/10 px-1.5 py-0.5">{target.kind}</span> : null}
+                  <span className="rounded border border-white/10 px-1.5 py-0.5">{target.configFields.length} config</span>
+                  <span className="rounded border border-white/10 px-1.5 py-0.5">{target.healthCheckKeys.length} checks</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </aside>
+        <main className="min-h-0 overflow-auto p-4">
+          {panelState.open ? (
+            <RunTargetHealthPanel
+              state={panelState}
+              onConfigValueChange={(key, value) => setPanelState((current) => ({
+                ...current,
+                configDraft: { ...(current.configDraft ?? {}), [key]: value },
+                configSaveState: "idle",
+                configSaveMessage: null,
+              }))}
+              onRefresh={() => void requestRunTargetHealth(panelState.runTargetId)}
+              onRunAll={() => void requestRunTargetHealth(panelState.runTargetId, "check-all")}
+              onRunOne={(key) => void requestRunTargetHealth(panelState.runTargetId, "check", key)}
+              onSaveConfig={() => void saveConfig()}
+            />
+          ) : (
+            <div className="rounded border border-dashed border-white/10 p-8 text-sm text-white/45">Select a provider-named run target to open the dedicated Run Target Health panel.</div>
+          )}
+        </main>
       </div>
     </div>
   )

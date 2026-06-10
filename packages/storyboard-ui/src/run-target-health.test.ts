@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   normalizeRunTargetHealthChecks,
+  normalizeRunTargets,
   normalizeWebRunTargetUrl,
   runTargetHealthApiPath,
   runTargetHealthSummary,
@@ -78,6 +79,28 @@ describe("run target health provider payload parsing", () => {
         suggestedAction: "Regenerate storyboard.json before running frames",
       },
     ])
+  })
+
+  test("normalizes provider-named targets with generic config definitions", () => {
+    const targets = normalizeRunTargets({
+      ok: true,
+      runTargets: [
+        {
+          id: "baseconnect-frontend-web",
+          name: "baseconnect frontend web",
+          kind: "web-app",
+          owner: "bc-storyboard",
+          configFields: [
+            { key: "frontendWebUrl", label: "Frontend web URL", type: "url", required: true, status: "configured", value: "http://10.0.0.239:8086/" },
+          ],
+          healthCheckKeys: ["frontend-web-configured", "app-root-reachable"],
+        },
+      ],
+    })
+    expect(targets[0]?.id).toBe("baseconnect-frontend-web")
+    expect(targets[0]?.configFields[0]?.key).toBe("frontendWebUrl")
+    expect(targets[0]?.configFields[0]?.status).toBe("configured")
+    expect(targets[0]?.healthCheckKeys).toEqual(["frontend-web-configured", "app-root-reachable"])
   })
 
   test("builds provider health URLs under the storyboard source URL", () => {

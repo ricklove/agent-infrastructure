@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 
 import {
   RunTargetHealthPanel,
+  StoryboardRunTargetHealthScreen,
   buildRunAssetCacheKey,
   documentToSequences,
   findSelectionForFrameId,
@@ -143,6 +144,16 @@ describe("RunTargetHealthPanel", () => {
     expect(html).toContain("Health API unavailable or unsupported")
     expect(html).toContain("Provider Run Target Health API returned HTTP 404")
     expect(html).not.toContain("Run failed")
+  })
+})
+
+describe("StoryboardRunTargetHealthScreen", () => {
+  test("renders as a standalone dedicated run target health work surface", () => {
+    const html = renderToStaticMarkup(createElement(StoryboardRunTargetHealthScreen))
+    expect(html).toContain("Standalone Run Target Health")
+    expect(html).toContain("Provider-owned run targets, config, and health checks")
+    expect(html).toContain("Provider-named targets")
+    expect(html).toContain("Select a provider-named run target")
   })
 })
 
