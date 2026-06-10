@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
+import { StoryboardDebugIndexScreen } from "./DebugCatalog"
 import {
   RunTargetHealthPanel,
   StoryboardRunTargetHealthScreen,
@@ -144,6 +145,15 @@ describe("RunTargetHealthPanel", () => {
     expect(html).toContain("Health API unavailable or unsupported")
     expect(html).toContain("Provider Run Target Health API returned HTTP 404")
     expect(html).not.toContain("Run failed")
+  })
+})
+
+describe("Storyboard debug index", () => {
+  test("links to the standalone Run Target Health work surface", () => {
+    const html = renderToStaticMarkup(createElement(StoryboardDebugIndexScreen))
+    expect(html).toContain("Run Target Health")
+    expect(html).toContain("/storyboard/debug/storyboardRunTargetHealth/")
+    expect(html).toContain("Standalone provider-named run target config and health check tool")
   })
 })
 
