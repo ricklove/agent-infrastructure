@@ -678,21 +678,43 @@ function accountVerificationScript(options: { checkRequiredSmsBoxes: boolean }) 
     }
     await sleep(750);
 
-    const continueCandidates = Array.from(document.querySelectorAll('div[tabindex],button,[role="button"],div'))
-      .filter((el) => text(el) === 'Continue');
-    const continueButton = continueCandidates.find((el) => el.getBoundingClientRect().height >= 40) || continueCandidates[0];
-    const continueStyle = continueButton ? getComputedStyle(continueButton) : null;
+    const isChecked = (checkbox) => text(checkbox).includes('');
+    const checkedStates = checkboxes.map((checkbox) => isChecked(checkbox));
+    const expectedChecked = ${options.checkRequiredSmsBoxes ? "true" : "false"};
+    if (checkedStates.some((checked) => checked !== expectedChecked)) {
+      throw new Error('unexpected SMS checkbox state for frame: ' + JSON.stringify(checkedStates));
+    }
+
+    const continueCandidates = Array.from(document.querySelectorAll('div[tabindex],button,[role="button"]'))
+      .filter((el) => text(el) === 'Continue')
+      .map((el) => ({ el, rect: el.getBoundingClientRect(), style: getComputedStyle(el) }))
+      .filter(({ rect }) => rect.height >= 36 && rect.height <= 72 && rect.width >= 160);
+    const continueButton = continueCandidates.find(({ el }) => String(el.className).includes('h-12'))?.el ?? continueCandidates[0]?.el ?? null;
+    if (!continueButton) throw new Error('Continue button not found');
+    continueButton.scrollIntoView({ block: 'center', inline: 'center' });
+    await sleep(350);
+    const continueStyle = getComputedStyle(continueButton);
+    const continueDisabled = continueButton.getAttribute('aria-disabled') === 'true'
+      || continueButton.getAttribute('tabindex') === '-1'
+      || continueStyle.pointerEvents === 'none'
+      || Number.parseFloat(continueStyle.opacity || '1') < 0.75
+      || String(continueButton.className).includes('disabled');
+    if (continueDisabled === expectedChecked) {
+      throw new Error('unexpected Continue enabled/disabled state for frame: ' + JSON.stringify({ expectedChecked, continueDisabled, className: continueButton.className, pointerEvents: continueStyle.pointerEvents, opacity: continueStyle.opacity }));
+    }
     return {
       url: location.href,
       checkedStates: checkboxes.map((checkbox) => text(checkbox)),
-      continue: continueButton ? {
+      continue: {
+        disabled: continueDisabled,
         ariaDisabled: continueButton.getAttribute('aria-disabled'),
         tabIndex: continueButton.getAttribute('tabindex'),
         className: continueButton.className,
-        pointerEvents: continueStyle?.pointerEvents,
-        opacity: continueStyle?.opacity,
-        backgroundColor: continueStyle?.backgroundColor,
-      } : null,
+        pointerEvents: continueStyle.pointerEvents,
+        opacity: continueStyle.opacity,
+        backgroundColor: continueStyle.backgroundColor,
+      },
+      scrollY: window.scrollY,
       bodyHasCompleteProfile: document.body.innerText.includes('Complete Your Profile'),
     };
   }`;
