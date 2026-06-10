@@ -574,31 +574,34 @@ async function verifyStoryboardBranchTransitionLayout() {
       )
       await page.waitForTimeout(180)
 
-      const layout = await page.evaluate(() => {
+      let layout: {
+        primary: { left: number; top: number; bottom: number }
+        branch: { left: number; top: number; right: number; centerY: number }
+        branchTarget: { left: number; top: number; centerY: number }
+      } | null = null
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        layout = await page.evaluate(() => {
         const primary = document.querySelector(
           '[data-storyboard-next="start-a-voice-call-from-chat-step-3-next-frame-a951c1ce"]',
         )
-        if (!(primary instanceof HTMLElement)) {
+        const branchSequence = document.querySelector(
+          '[data-storyboard-sequence="start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-9b71a832"]',
+        )
+        const branch = branchSequence?.querySelector('[data-storyboard-transition="Branch 2"]')
+        const branchTarget = branchSequence?.querySelector(
+          '[data-storyboard-frame-shell="start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-frame-34b918d7"]',
+        )
+        if (
+          !(primary instanceof HTMLElement) ||
+          !(branch instanceof HTMLElement) ||
+          !(branchTarget instanceof HTMLElement)
+        ) {
           return null
         }
 
         const primaryRect = primary.getBoundingClientRect()
-        const branch = [...document.querySelectorAll('[data-storyboard-transition]')]
-          .filter((element): element is HTMLElement => element instanceof HTMLElement)
-          .find((element) => {
-            const rect = element.getBoundingClientRect()
-            return (
-              element.textContent?.trim() === "Branch 2" &&
-              rect.top > primaryRect.bottom &&
-              Math.abs(rect.left - primaryRect.left) < 4
-            )
-          })
-
-        if (!branch) {
-          return null
-        }
-
         const branchRect = branch.getBoundingClientRect()
+        const branchTargetRect = branchTarget.getBoundingClientRect()
         return {
           primary: {
             left: primaryRect.left,
@@ -608,23 +611,42 @@ async function verifyStoryboardBranchTransitionLayout() {
           branch: {
             left: branchRect.left,
             top: branchRect.top,
-            bottom: branchRect.bottom,
+            right: branchRect.right,
+            centerY: branchRect.top + branchRect.height / 2,
+          },
+          branchTarget: {
+            left: branchTargetRect.left,
+            top: branchTargetRect.top,
+            centerY: branchTargetRect.top + branchTargetRect.height / 2,
           },
         }
       }, undefined)
+        if (layout) break
+        await page.waitForTimeout(100)
+      }
 
       if (!layout) {
-        throw new Error("missing vertically grouped branch transition layout")
+        throw new Error("missing branch transition row layout")
       }
 
       if (layout.branch.top <= layout.primary.bottom) {
         throw new Error(
-          `branch transition should be below primary transition: primary bottom ${layout.primary.bottom}, branch top ${layout.branch.top}`,
+          `branch transition should be vertically stacked below the primary row: primary bottom ${layout.primary.bottom}, branch top ${layout.branch.top}`,
         )
       }
       if (Math.abs(layout.branch.left - layout.primary.left) > 4) {
         throw new Error(
-          `branch transition should align with primary transition: primary left ${layout.primary.left}, branch left ${layout.branch.left}`,
+          `branch transition should remain in the same action column as its source transition: primary left ${layout.primary.left}, branch left ${layout.branch.left}`,
+        )
+      }
+      if (layout.branch.right > layout.branchTarget.left) {
+        throw new Error(
+          `branch transition should render to the left of its target frame: branch right ${layout.branch.right}, target left ${layout.branchTarget.left}`,
+        )
+      }
+      if (Math.abs(layout.branch.centerY - layout.branchTarget.centerY) > 4) {
+        throw new Error(
+          `branch transition should align vertically with its target frame: branch center ${layout.branch.centerY}, target center ${layout.branchTarget.centerY}`,
         )
       }
     } finally {

@@ -573,6 +573,24 @@ async function runAgentBrowser(args: string[], timeoutMs = 15_000) {
   return { args, exitCode, stdout, stderr, timedOut };
 }
 
+function isTransientAgentBrowserOpenFailure(result: Awaited<ReturnType<typeof runAgentBrowser>>) {
+  if (result.exitCode === 0 || result.timedOut) return false;
+  const output = `${result.stderr}\n${result.stdout}`;
+  return /ERR_CONNECTION_(?:REFUSED|RESET)|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED|Target closed/iu.test(output);
+}
+
+async function openRuntimeTargetWithRetry(url: string) {
+  let lastResult: Awaited<ReturnType<typeof runAgentBrowser>> | null = null;
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const result = await runAgentBrowser(["open", url], 20_000);
+    lastResult = { ...result, args: [...result.args, `attempt=${attempt}`] };
+    if (result.exitCode === 0) return lastResult;
+    if (!isTransientAgentBrowserOpenFailure(result) || attempt === 4) return lastResult;
+    await sleep(attempt * 1500);
+  }
+  return lastResult ?? runAgentBrowser(["open", url], 20_000);
+}
+
 async function applyAgentBrowserAction(action: string) {
   const rewrittenAction = rewriteLoopbackUrlsInActionForStoryboardSource(
     action,
@@ -635,7 +653,7 @@ async function executeRunJob(jobId: string) {
     runStorage.appendLog(jobId, { level: viewportResult.exitCode === 0 ? "info" : "warn", event: "agent_browser_viewport", context: viewportResult });
   }
 
-  const runtimeOpen = await runAgentBrowser(["open", runtimeTarget.appUrl], 20_000);
+  const runtimeOpen = await openRuntimeTargetWithRetry(runtimeTarget.appUrl);
   runStorage.appendLog(jobId, {
     level: runtimeOpen.exitCode === 0 ? "info" : "error",
     event: "agent_browser_runtime_open",
