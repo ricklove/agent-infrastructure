@@ -466,6 +466,12 @@ function assertionText(frame: { notes?: unknown }) {
   return (match?.[1] ?? "").trim();
 }
 
+function automationIdentityText(frame: { notes?: unknown }) {
+  const notes = typeof frame.notes === "string" ? frame.notes : "";
+  const match = notes.match(/Automation identity:\s*([^\n]+)/iu);
+  return (match?.[1] ?? "").trim();
+}
+
 function extractOpenUrl(action: string) {
   return action.match(/\bopen\s+(https?:\/\/\S+)/iu)?.[1]?.replace(/[).,]+$/u, "") ?? null;
 }
@@ -577,7 +583,7 @@ function isTransientAgentBrowserOpenFailure(result: Awaited<ReturnType<typeof ru
   if (result.exitCode === 0) return false;
   if (result.timedOut) return true;
   const output = `${result.stderr}\n${result.stdout}`;
-  return /ERR_CONNECTION_(?:REFUSED|RESET)|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED|Target closed/iu.test(output);
+  return /ERR_CONNECTION_(?:REFUSED|RESET)|ERR_EMPTY_RESPONSE|ERR_SOCKET_NOT_CONNECTED|Target closed|Operation timed out/iu.test(output);
 }
 
 async function openRuntimeTargetWithRetry(url: string) {
@@ -612,6 +618,102 @@ async function applyAgentBrowserAction(action: string) {
   }
   const result = await runAgentBrowser(["snapshot", "--compact", "--depth", "2"], 10_000);
   return { ...result, rewrittenAction };
+}
+
+function accountVerificationScript(options: { checkRequiredSmsBoxes: boolean }) {
+  return `async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const text = (el) => (el?.innerText || el?.textContent || "").trim();
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    const setInput = (input, value) => {
+      nativeInputValueSetter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "Tab" }));
+      input.blur?.();
+    };
+    const clickButtonText = (label) => {
+      const candidates = Array.from(document.querySelectorAll('div[tabindex="0"],button,[role="button"]'));
+      const target = candidates.find((el) => text(el) === label || text(el).includes(label));
+      if (!target) throw new Error('button not found: ' + label);
+      target.click();
+      return target;
+    };
+    const waitForText = async (needle, timeoutMs = 10000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        if (document.body.innerText.includes(needle)) return;
+        await sleep(250);
+      }
+      throw new Error('text not found: ' + needle);
+    };
+    const waitForInputs = async (count, timeoutMs = 10000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        const inputs = Array.from(document.querySelectorAll('input'));
+        if (inputs.length >= count) return inputs;
+        await sleep(250);
+      }
+      throw new Error('expected at least ' + count + ' inputs, found ' + document.querySelectorAll('input').length);
+    };
+
+    let inputs = await waitForInputs(1);
+    setInput(inputs[0], 'avery.long.email.address.with.many.sections.and.no.short.breaks@army.mil');
+    clickButtonText('Send Verification Code');
+    await waitForText('Complete Your Profile', 15000);
+    inputs = await waitForInputs(5, 15000);
+    ['123456', 'Storyboard', 'Proof', 'Password1!', '5555550123'].forEach((value, index) => setInput(inputs[index], value));
+    await waitForText('BaseConnect SMS Program', 5000);
+    await sleep(500);
+
+    const checkboxes = Array.from(document.querySelectorAll('[data-testid="CLCheckbox"]'));
+    if (checkboxes.length < 3) throw new Error('expected 3 SMS Program checkboxes, found ' + checkboxes.length);
+    if (${options.checkRequiredSmsBoxes ? "true" : "false"}) {
+      for (const checkbox of checkboxes) {
+        if (!text(checkbox).includes('')) {
+          checkbox.click();
+          await sleep(150);
+        }
+      }
+    }
+    await sleep(750);
+
+    const continueCandidates = Array.from(document.querySelectorAll('div[tabindex],button,[role="button"],div'))
+      .filter((el) => text(el) === 'Continue');
+    const continueButton = continueCandidates.find((el) => el.getBoundingClientRect().height >= 40) || continueCandidates[0];
+    const continueStyle = continueButton ? getComputedStyle(continueButton) : null;
+    return {
+      url: location.href,
+      checkedStates: checkboxes.map((checkbox) => text(checkbox)),
+      continue: continueButton ? {
+        ariaDisabled: continueButton.getAttribute('aria-disabled'),
+        tabIndex: continueButton.getAttribute('tabindex'),
+        className: continueButton.className,
+        pointerEvents: continueStyle?.pointerEvents,
+        opacity: continueStyle?.opacity,
+        backgroundColor: continueStyle?.backgroundColor,
+      } : null,
+      bodyHasCompleteProfile: document.body.innerText.includes('Complete Your Profile'),
+    };
+  }`;
+}
+
+async function applyKnownFrameAutomation(frame: Record<string, unknown>, runtimeTarget: { appOrigin?: string; appUrl?: string } | null) {
+  const identity = automationIdentityText(frame);
+  const frameId = String(frame.id ?? "");
+  const title = typeof frame.title === "string" ? frame.title : "";
+  if (!/account-verification-entry/iu.test(identity)) return null;
+  const appBase = runtimeTarget?.appOrigin || runtimeTarget?.appUrl;
+  if (appBase) {
+    const verificationUrl = new URL("/user-verification", appBase).toString();
+    const open = await openRuntimeTargetWithRetry(verificationUrl);
+    if (open.exitCode !== 0) {
+      return { ...open, rewrittenAction: `known automation open: ${verificationUrl}`, knownAutomation: true };
+    }
+  }
+  const shouldCheckSmsBoxes = /checked-enabled|checked:\s*continue is enabled/iu.test(`${frameId}\n${title}`) || /actions\s+4,\s*5,\s*and\s*7/iu.test(identity);
+  const result = await runAgentBrowser(["eval", `(${accountVerificationScript({ checkRequiredSmsBoxes: shouldCheckSmsBoxes })})()`], 45_000);
+  return { ...result, rewrittenAction: `known automation: ${identity}`, knownAutomation: true };
 }
 
 function runnerForEntry(manifest: StoryboardRunManifest, entryId: string) {
@@ -654,11 +756,14 @@ async function executeRunJob(jobId: string) {
     runStorage.appendLog(jobId, { level: viewportResult.exitCode === 0 ? "info" : "warn", event: "agent_browser_viewport", context: viewportResult });
   }
 
-  const runtimeOpen = await openRuntimeTargetWithRetry(runtimeTarget.appUrl);
+  const accountVerificationRuntimeUrl = /account-verification-entry/iu.test(automationIdentityText(frameMatch.frame))
+    ? new URL("/user-verification", runtimeTarget.appUrl).toString()
+    : runtimeTarget.appUrl;
+  const runtimeOpen = await openRuntimeTargetWithRetry(accountVerificationRuntimeUrl);
   runStorage.appendLog(jobId, {
     level: runtimeOpen.exitCode === 0 ? "info" : "error",
     event: "agent_browser_runtime_open",
-    context: { runtimeTarget, ...runtimeOpen },
+    context: { runtimeTarget: { ...runtimeTarget, appUrl: accountVerificationRuntimeUrl }, configuredRuntimeTarget: runtimeTarget, ...runtimeOpen },
   });
   if (runtimeOpen.exitCode !== 0) {
     throw new Error(`runtime target failed to open: ${runtimeOpen.stderr || runtimeOpen.stdout || runtimeOpen.exitCode}`);
@@ -666,6 +771,21 @@ async function executeRunJob(jobId: string) {
   const actions = collectActionsToFrame(frameMatch.story, frameKey ?? "").filter((action) => !extractOpenUrl(action.action));
   const fallbackUrl = localStoryboardFrameAssetUrl(frameMatch.frame, captureSetId, outputVariantId, job.screenSizeId);
   let usedFallback = false;
+  let usedKnownAutomation = false;
+  if (actions.length === 0) {
+    const knownAutomation = await applyKnownFrameAutomation(frameMatch.frame, runtimeTarget);
+    if (knownAutomation) {
+      usedKnownAutomation = true;
+      runStorage.appendLog(jobId, {
+        level: knownAutomation.exitCode === 0 ? "info" : "error",
+        event: "agent_browser_known_automation",
+        context: { frameKey, ...knownAutomation },
+      });
+      if (knownAutomation.exitCode !== 0) {
+        throw new Error(`agent-browser known automation failed for ${frameKey}: ${knownAutomation.stderr || knownAutomation.stdout || knownAutomation.exitCode}`);
+      }
+    }
+  }
   for (const action of actions) {
     const result = await applyAgentBrowserAction(action.action);
     runStorage.appendLog(jobId, { level: result.exitCode === 0 ? "info" : "warn", event: "agent_browser_action", context: { frameKey: action.id, action: action.action, ...result } });
@@ -679,7 +799,7 @@ async function executeRunJob(jobId: string) {
       throw new Error(`agent-browser action failed for ${action.id}: ${result.stderr || result.stdout || result.exitCode}`);
     }
   }
-  if (actions.length === 0 && fallbackUrl) {
+  if (actions.length === 0 && !usedKnownAutomation && fallbackUrl) {
     const fallback = await runAgentBrowser(["open", fallbackUrl], 15_000);
     usedFallback = true;
     runStorage.appendLog(jobId, { level: fallback.exitCode === 0 ? "warn" : "error", event: "agent_browser_asset_fallback", context: { fallbackUrl, ...fallback } });
