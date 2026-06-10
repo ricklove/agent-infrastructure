@@ -590,7 +590,12 @@ async function ensureRunMirror(storyboardUrl: string) {
 
 function shouldFallbackToRunMirror(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
-  return message.includes("storyboard not found: api") || message.includes("storyboard.run.json") || message.includes("not found")
+  return (
+    message.includes("storyboard not found: api") ||
+    message.includes("storyboard.run.json") ||
+    message.includes("not found") ||
+    message.includes("Unable to connect")
+  )
 }
 
 async function proxyStoryboardAccessJsonWithRunMirrorFallback(storyboardUrl: string, pathAndSearch: string, init?: RequestInit) {

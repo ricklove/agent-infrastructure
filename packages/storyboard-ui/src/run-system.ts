@@ -1343,13 +1343,18 @@ export function capabilitiesFromManifest(
     lifecycleStates: [...storyboardRunLifecycleStates],
     freshnessStates: ["not-runnable", "unchanged", "stale"],
     manifestEntries: result.manifest.entries.map((entry) => {
-      const automationDriver = manifestEntryAutomationDriver(result.manifest, entry, {
-        storyboardId: entry.targets[0]?.storyboardId ?? "*",
-        storyId: entry.targets[0]?.storyId ?? entry.targets[0]?.storyPattern ?? "*",
-        frameKey: entry.targets[0]?.frameKey ?? entry.targets[0]?.framePattern ?? "*",
-        captureSetId: entry.captureSets[0] ?? "default",
-        outputVariantId: entry.captureSets[0] ?? "default",
-      });
+      const automationDriver = manifestEntryAutomationDriver(
+        result.manifest,
+        entry,
+        {
+          storyboardId: entry.targets[0]?.storyboardId ?? "*",
+          storyId: entry.targets[0]?.storyId ?? entry.targets[0]?.storyPattern ?? "*",
+          frameKey: entry.targets[0]?.frameKey ?? entry.targets[0]?.framePattern ?? "*",
+          captureSetId: entry.captureSets[0] ?? "default",
+          outputVariantId: "default",
+        },
+        entry.runtimeTarget,
+      );
       return {
         id: entry.id,
         label: entry.label,
