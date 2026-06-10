@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
+import { createElement } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
 
 import {
+  RunTargetHealthPanel,
   buildRunAssetCacheKey,
   documentToSequences,
   findSelectionForFrameId,
@@ -78,6 +81,70 @@ const bcn814Storyboard: StoryboardDocument = {
     },
   ],
 }
+
+describe("RunTargetHealthPanel", () => {
+  test("renders provider-owned health checks with status rows and controls", () => {
+    const html = renderToStaticMarkup(
+      createElement(RunTargetHealthPanel, {
+        state: {
+          open: true,
+          runTargetId: "storyboard:default",
+          runTargetLabel: "Storyboard default run target",
+          runTargetUrl: "http://10.0.0.239:8086/",
+          owner: "bc-storyboard",
+          loading: false,
+          error: null,
+          checks: [
+            {
+              key: "app-entrypoint",
+              status: "pass",
+              label: "App entrypoint reachable",
+              detail: "Loaded the app entrypoint.",
+              owner: "provider",
+              evidence: { url: "http://10.0.0.239:8086/" },
+            },
+            {
+              key: "backend-api",
+              status: "warn",
+              detail: "Backend is reachable but reports stale fixtures.",
+              suggestedAction: "Restart the provider-owned backend.",
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(html).toContain("Run Target Health")
+    expect(html).toContain("Provider-owned checks make sure")
+    expect(html).toContain("Provider:")
+    expect(html).toContain("bc-storyboard")
+    expect(html).toContain("Refresh status")
+    expect(html).toContain("Run all checks")
+    expect(html).toContain("app-entrypoint")
+    expect(html).toContain("pass: 1")
+    expect(html).toContain("warn: 1")
+    expect(html).toContain("Suggested action: Restart the provider-owned backend.")
+  })
+
+  test("renders unsupported health API state distinctly from run failure", () => {
+    const html = renderToStaticMarkup(
+      createElement(RunTargetHealthPanel, {
+        state: {
+          open: true,
+          runTargetId: "storyboard:default",
+          runTargetLabel: "Storyboard default run target",
+          loading: false,
+          error: "Provider Run Target Health API returned HTTP 404",
+          checks: [],
+        },
+      }),
+    )
+
+    expect(html).toContain("Health API unavailable or unsupported")
+    expect(html).toContain("Provider Run Target Health API returned HTTP 404")
+    expect(html).not.toContain("Run failed")
+  })
+})
 
 describe("remote storyboard deep links", () => {
   test("reads storyboardUrl and frameId from the exact /storyboard query shape", () => {

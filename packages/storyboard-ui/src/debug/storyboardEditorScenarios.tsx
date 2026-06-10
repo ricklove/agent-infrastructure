@@ -22,6 +22,14 @@ import {
   frameCaptureSetIds,
   normalizeStoryboardDocument,
 } from "../storyboard-document"
+import {
+  normalizeRunTargetHealthChecks,
+  normalizeWebRunTargetUrl,
+  runTargetHealthSummary,
+  type RunTargetHealthCheck,
+  type RunTargetHealthPayload,
+  type RunTargetHealthStatus,
+} from "../run-target-health"
 import type { StoryboardDebugComponentDefinition } from "./types"
 
 type DocumentResponse = {
@@ -97,6 +105,19 @@ type RuntimeTargetDto = {
   apiRoot?: string
   apiMode?: "real" | "stub" | "mock" | "unknown"
   apiStubInfo?: string
+}
+
+type RunTargetHealthPanelState = {
+  open: boolean
+  runTargetId: string
+  runTargetLabel: string
+  runTargetUrl?: string
+  checks: RunTargetHealthCheck[]
+  owner?: string
+  loading: boolean
+  runningKey?: string
+  error?: string | null
+  updatedAt?: string
 }
 
 type AutomationDriverDto = {
@@ -231,6 +252,39 @@ function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
 const apiRoot = "/api/storyboard"
 const bundledDefaultStoryboardUrl = "http://127.0.0.1:8798/default-storyboard"
 const testFixtureStoryboardUrl = "http://127.0.0.1:8799/test-storyboard"
+const emptyRunTargetHealthState: RunTargetHealthPanelState = {
+  open: false,
+  runTargetId: "",
+  runTargetLabel: "",
+  checks: [],
+  loading: false,
+  error: null,
+}
+
+function runTargetHealthStatusClass(status: RunTargetHealthStatus) {
+  if (status === "pass") return "border-emerald-300/40 bg-emerald-300/10 text-emerald-100"
+  if (status === "warn") return "border-amber-300/45 bg-amber-300/10 text-amber-100"
+  if (status === "fail") return "border-rose-300/45 bg-rose-300/10 text-rose-100"
+  return "border-slate-300/35 bg-slate-300/10 text-slate-100"
+}
+
+function compactEvidence(value: unknown) {
+  if (value === undefined || value === null || value === "") return ""
+  if (typeof value === "string") return value
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function normalizeRunTargetHealthPayload(payload: unknown): { checks: RunTargetHealthCheck[]; owner?: string } {
+  const record = payload && typeof payload === "object" ? (payload as RunTargetHealthPayload) : {}
+  return {
+    checks: normalizeRunTargetHealthChecks(payload),
+    ...(typeof record.owner === "string" && record.owner.trim() ? { owner: record.owner.trim() } : {}),
+  }
+}
 const remoteStoryboardUrlStorageKey = "storyboard.debug.remoteStoryboardUrl"
 const runStateStorageKey = "storyboard.debug.variantRunState"
 const frameSize = 220
@@ -675,6 +729,94 @@ function AssetPreview({ src, alt }: { src?: string; alt: string }) {
   )
 }
 
+export function RunTargetHealthPanel({
+  state,
+  onRefresh,
+  onRunAll,
+  onRunOne,
+  onClose,
+}: {
+  state: RunTargetHealthPanelState
+  onRefresh?: () => void
+  onRunAll?: () => void
+  onRunOne?: (key: string) => void
+  onClose?: () => void
+}) {
+  const statusCounts = runTargetHealthSummary(state.checks)
+  return (
+    <div className="space-y-3 rounded border border-cyan-300/20 bg-cyan-300/5 p-3 text-xs text-white/65" data-run-target-health-panel="true">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/75">Run Target Health</div>
+          <div className="mt-1 text-sm font-semibold text-white">{state.runTargetLabel || state.runTargetId}</div>
+          <div className="mt-1 break-all font-mono text-[11px] text-white/45">{state.runTargetId}</div>
+          {state.runTargetUrl ? <div className="mt-1 break-all text-[11px] text-white/45">{state.runTargetUrl}</div> : null}
+        </div>
+        {onClose ? (
+          <button
+            className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/55 transition hover:border-cyan-300/40 hover:text-cyan-100"
+            onClick={onClose}
+            type="button"
+          >
+            Close
+          </button>
+        ) : null}
+      </div>
+      <div className="rounded border border-white/10 bg-black/20 p-3 text-white/55">
+        Provider-owned checks make sure the selected Run target has everything needed for Run to work: app entrypoint, backend/API, script prerequisites, source validity, stable app experience, and output readiness.
+        {state.owner ? <span> Provider: <span className="font-mono text-cyan-100">{state.owner}</span>.</span> : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="rounded border border-white/10 bg-black/30 px-2 py-1 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100" disabled={state.loading} onClick={onRefresh} type="button">
+          {state.loading && !state.runningKey ? "Loading…" : "Refresh status"}
+        </button>
+        <button className="rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-cyan-100 transition hover:border-cyan-200" disabled={state.loading} onClick={onRunAll} type="button">
+          {state.runningKey === "*" ? "Running all…" : "Run all checks"}
+        </button>
+        <div className="ml-auto flex flex-wrap gap-1 text-[10px] uppercase tracking-[0.12em]">
+          {(["pass", "warn", "fail", "unknown"] as RunTargetHealthStatus[]).map((status) => (
+            <span className={`rounded border px-2 py-1 ${runTargetHealthStatusClass(status)}`} key={status}>{status}: {statusCounts[status]}</span>
+          ))}
+        </div>
+      </div>
+      {state.error ? (
+        <div className="rounded border border-amber-300/35 bg-amber-300/10 p-3 text-amber-100">
+          Health API unavailable or unsupported: {state.error}
+        </div>
+      ) : null}
+      {state.checks.length === 0 && !state.loading && !state.error ? (
+        <div className="rounded border border-dashed border-white/10 p-3 text-white/40">No provider health checks returned yet. Refresh status to load the provider-owned check list.</div>
+      ) : null}
+      <div className="space-y-2">
+        {state.checks.map((check) => {
+          const evidence = compactEvidence(check.evidence)
+          return (
+            <div className={`rounded border p-3 ${runTargetHealthStatusClass(check.status)}`} key={check.key}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded bg-black/25 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em]">{check.status}</span>
+                    <span className="font-semibold text-white">{check.label ?? check.key}</span>
+                  </div>
+                  <div className="mt-1 break-all font-mono text-[11px] text-white/45">{check.key}</div>
+                </div>
+                <button className="rounded border border-white/15 bg-black/25 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/70 transition hover:border-cyan-200/60 hover:text-cyan-50" disabled={state.loading} onClick={() => onRunOne?.(check.key)} type="button">
+                  {state.runningKey === check.key ? "Running…" : "Run check"}
+                </button>
+              </div>
+              {check.detail ? <div className="mt-2 text-white/70">{check.detail}</div> : null}
+              {check.owner ? <div className="mt-2 text-[11px] text-white/45">Owner: <span className="font-mono">{check.owner}</span></div> : null}
+              {evidence ? <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-[10px] text-white/60">{evidence}</pre> : null}
+              {check.suggestedAction ? <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-white/70">Suggested action: {check.suggestedAction}</div> : null}
+            </div>
+          )
+        })}
+      </div>
+      {state.updatedAt ? <div className="text-[11px] text-white/35">Updated {new Date(state.updatedAt).toLocaleTimeString()}</div> : null}
+    </div>
+  )
+}
+
 function renderEditorFrame(
   frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>,
   storyboardUrl: string,
@@ -895,6 +1037,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   const [variantRunStates, setVariantRunStates] = useState<Record<string, VariantRunState>>(() => loadPersistedVariantRunStates())
   const [variantAssetCacheKeys, setVariantAssetCacheKeys] = useState<Record<string, string>>({})
   const [runQueue, setRunQueue] = useState<StoryboardRunStateDto["queue"] | null>(null)
+  const [runTargetHealth, setRunTargetHealth] = useState<RunTargetHealthPanelState>(emptyRunTargetHealthState)
   const isConnected = connectedStoryboardUrl.trim().length > 0
   const isAccessServerRootMode = useMemo(
     () => isConnected && isAccessServerRootUrl(connectedStoryboardUrl),
@@ -1202,6 +1345,67 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     if (Object.keys(nextCacheKeys).length > 0) {
       setVariantAssetCacheKeys((current) => ({ ...current, ...nextCacheKeys }))
     }
+  }
+
+  async function requestRunTargetHealth(runTargetId: string, action: "list" | "check" | "check-all" = "list", key?: string) {
+    if (!isConnected || !runTargetId) return
+    setRunTargetHealth((current) => ({
+      ...current,
+      open: true,
+      loading: true,
+      runningKey: action === "check-all" ? "*" : action === "check" ? key : undefined,
+      error: null,
+    }))
+    try {
+      const params = new URLSearchParams(sourceQuery)
+      params.set("runTargetId", runTargetId)
+      const init: RequestInit = action === "list"
+        ? { method: "GET" }
+        : {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ storyboardUrl: connectedStoryboardUrl, runTargetId, ...(key ? { key } : {}) }),
+          }
+      const path = action === "list" ? "run-target-health" : action === "check" ? "run-target-health/check" : "run-target-health/check-all"
+      const response = await fetch(`${apiRoot}/${path}?${params.toString()}`, init)
+      if (!response.ok) throw new Error(await response.text())
+      const payload = normalizeRunTargetHealthPayload(await response.json())
+      setRunTargetHealth((current) => ({
+        ...current,
+        open: true,
+        checks: payload.checks,
+        owner: payload.owner ?? current.owner,
+        loading: false,
+        runningKey: undefined,
+        error: null,
+        updatedAt: new Date().toISOString(),
+      }))
+      setStatus(`Loaded ${payload.checks.length} provider health checks for ${runTargetId}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setRunTargetHealth((current) => ({
+        ...current,
+        open: true,
+        loading: false,
+        runningKey: undefined,
+        error: message,
+        updatedAt: new Date().toISOString(),
+      }))
+      setStatus(`Run target health unavailable: ${message}`)
+    }
+  }
+
+  function openRunTargetHealth(runTargetId: string, runTargetLabel: string, runTargetUrl?: string) {
+    setRunTargetHealth({
+      open: true,
+      runTargetId,
+      runTargetLabel,
+      runTargetUrl,
+      checks: [],
+      loading: true,
+      error: null,
+    })
+    void requestRunTargetHealth(runTargetId)
   }
 
   async function requestFrameRun(storyId: string, frameKey: string, outputVariantId: OutputVariantId) {
@@ -1624,7 +1828,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   const selectedFrameCapture = frameCaptureSet(selectedFrame ?? {}, activeCaptureSetId)
   const selectedDocumentCaptureSet = document?.captureSets?.[activeCaptureSetId]
   const selectedCaptureSizes = selectedDocumentCaptureSet?.sizes ?? {}
-  const storyboardDefaultRunUrl = document?.runTarget?.kind === "web" ? document.runTarget.url : ""
+  const storyboardDefaultRunUrl = normalizeWebRunTargetUrl(document?.runTarget?.kind === "web" ? document.runTarget.url : "")
   const selectedFrameScreenshotUrls = {
     desktop: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.desktop),
     mobile: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.mobile),
@@ -1849,6 +2053,16 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
             </div>
           </div>
 
+          {runTargetHealth.open ? (
+            <RunTargetHealthPanel
+              onClose={() => setRunTargetHealth(emptyRunTargetHealthState)}
+              onRefresh={() => void requestRunTargetHealth(runTargetHealth.runTargetId)}
+              onRunAll={() => void requestRunTargetHealth(runTargetHealth.runTargetId, "check-all")}
+              onRunOne={(key) => void requestRunTargetHealth(runTargetHealth.runTargetId, "check", key)}
+              state={runTargetHealth}
+            />
+          ) : null}
+
           {selected?.kind === "storyboard" && document ? (
             <div className="space-y-4">
               <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
@@ -1933,6 +2147,14 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                     value={storyboardDefaultRunUrl}
                   />
                 </label>
+                <button
+                  className="rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:opacity-50"
+                  disabled={!isConnected || !storyboardDefaultRunUrl}
+                  onClick={() => openRunTargetHealth("storyboard:default", "Storyboard default run target", storyboardDefaultRunUrl)}
+                  type="button"
+                >
+                  Run Target Health
+                </button>
               </div>
               <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
                 <div>
@@ -1961,7 +2183,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                 </label>
                 {(["desktop", "mobile", "square"] as OutputVariantId[]).map((outputVariantId) => {
                   const size = selectedCaptureSizes[outputVariantId]
-                  const runUrl = size?.runTarget?.kind === "web" ? size.runTarget.url : ""
+                  const runUrl = normalizeWebRunTargetUrl(size?.runTarget?.kind === "web" ? size.runTarget.url : "")
                   const dimensions = size?.width && size?.height ? `${size.width} × ${size.height}` : outputVariantId === "desktop" ? "1440 × 900" : outputVariantId === "mobile" ? "390 × 844" : "1024 × 1024"
                   return (
                     <div className="rounded border border-white/10 bg-black/25 p-3" key={outputVariantId}>
@@ -1997,6 +2219,14 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                           value={runUrl}
                         />
                       </label>
+                      <button
+                        className="mt-2 rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:opacity-50"
+                        disabled={!isConnected || !(runUrl || storyboardDefaultRunUrl)}
+                        onClick={() => openRunTargetHealth(runUrl ? `storyboard:${activeCaptureSetId}:${outputVariantId}` : "storyboard:default", `${activeCaptureSetId} ${outputVariantId} run target`, runUrl || storyboardDefaultRunUrl)}
+                        type="button"
+                      >
+                        Run Target Health
+                      </button>
                     </div>
                   )
                 })}
@@ -2286,7 +2516,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                 </div>
                 {(["desktop", "mobile", "square"] as OutputVariantId[]).map((outputVariantId) => {
                   const size = selectedCaptureSizes[outputVariantId]
-                  const runUrl = size?.runTarget?.kind === "web" ? size.runTarget.url : ""
+                  const runUrl = normalizeWebRunTargetUrl(size?.runTarget?.kind === "web" ? size.runTarget.url : "")
                   const dimensions = size?.width && size?.height ? `${size.width} × ${size.height}` : outputVariantId === "desktop" ? "1440 × 900" : outputVariantId === "mobile" ? "390 × 844" : "1024 × 1024"
                   return (
                     <div className="rounded border border-white/10 bg-black/25 p-3" key={outputVariantId}>
@@ -2322,6 +2552,14 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                           value={runUrl}
                         />
                       </label>
+                      <button
+                        className="mt-2 rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:opacity-50"
+                        disabled={!isConnected || !(runUrl || storyboardDefaultRunUrl)}
+                        onClick={() => openRunTargetHealth(runUrl ? `storyboard:${activeCaptureSetId}:${outputVariantId}` : "storyboard:default", `${activeCaptureSetId} ${outputVariantId} run target`, runUrl || storyboardDefaultRunUrl)}
+                        type="button"
+                      >
+                        Run Target Health
+                      </button>
                     </div>
                   )
                 })}
@@ -2480,6 +2718,8 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       filteredStories,
       pendingDeleteStory,
       pendingDeleteTransition,
+      runQueue,
+      runTargetHealth,
       selected,
       selectedBranch,
       selectedCaptureSizes,

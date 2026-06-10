@@ -3,6 +3,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path
 import { createHash, randomUUID } from "node:crypto"
 import { formatStoryboardDocument, frameCaptureSet, normalizeStoryboardDocument, isStoryboardDocument, type StoryboardDocument, type StoryboardFrameRecord, type StoryboardStoryRecord, type StoryboardTransitionRecord } from "./storyboard-document.js"
 import { parseNumericStoryboardHeader, shouldRefreshRunMirrorAsset } from "./run-mirror.js"
+import { normalizeWebRunTargetUrl, runTargetHealthApiPath } from "./run-target-health.js"
 
 const port = Number.parseInt(process.env.STORYBOARD_PORT ?? "8797", 10)
 const workspaceRoot = process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace"
@@ -370,6 +371,29 @@ async function proxyStoryboardAccessJson(storyboardUrl: string, pathAndSearch: s
   return await response.json()
 }
 
+async function proxyRunTargetHealthJson(storyboardUrl: string, path: string, runTargetId: string, init?: RequestInit) {
+  const response = await fetch(runTargetHealthApiPath(storyboardUrl, path, runTargetId), init)
+  const contentType = response.headers.get("Content-Type") ?? ""
+  const payload = contentType.includes("application/json")
+    ? await response.json().catch(() => null)
+    : { message: await response.text().catch(() => "") }
+  if (!response.ok) {
+    return {
+      status: response.status,
+      payload: {
+        ok: false,
+        unsupported: response.status === 404 || response.status === 405,
+        unavailable: response.status >= 500,
+        message:
+          typeof payload === "object" && payload && "message" in payload && typeof payload.message === "string"
+            ? payload.message
+            : `Provider Run Target Health API returned HTTP ${response.status}`,
+      },
+    }
+  }
+  return { status: response.status, payload }
+}
+
 type RunMirror = { root: string; port: number; baseUrl: string; documentMtimeMs: number | null; process?: ReturnType<typeof Bun.spawn> }
 const runMirrors = new Map<string, RunMirror>()
 
@@ -423,7 +447,7 @@ function runtimeTargetFromWebUrl(
   label: string,
   fallback?: StoryboardRunTargetConfigEntry["runtimeTarget"],
 ): StoryboardRunTargetConfigEntry["runtimeTarget"] | undefined {
-  const appUrl = url?.trim()
+  const appUrl = normalizeWebRunTargetUrl(url)
   if (!appUrl) return undefined
   let appOrigin = fallback?.appOrigin
   try {
@@ -1382,6 +1406,45 @@ Bun.serve({
         return jsonResponse({ ok: true, ...((await proxyStoryboardAccessJsonWithRunMirrorFallback(storyboardUrl, `${upstream.pathname}${upstream.search}`)) as Record<string, unknown>) })
       } catch (error) {
         return textError(error instanceof Error ? error.message : String(error), 400)
+      }
+    }
+
+    if (pathname === "/api/storyboard/run-target-health" && request.method === "GET") {
+      try {
+        const storyboardUrl = resolveStoryboardUrl(url, request.url)
+        const runTargetId = url.searchParams.get("runTargetId")?.trim()
+        if (!storyboardUrl) return textError("missing storyboardUrl", 400)
+        if (!runTargetId) return textError("missing runTargetId", 400)
+        const { status, payload } = await proxyRunTargetHealthJson(storyboardUrl, "run-target-health", runTargetId)
+        return jsonResponse(payload, status)
+      } catch (error) {
+        return jsonResponse({ ok: false, unavailable: true, message: error instanceof Error ? error.message : String(error) }, 502)
+      }
+    }
+
+    if ((pathname === "/api/storyboard/run-target-health/check" || pathname === "/api/storyboard/run-target-health/check-all") && request.method === "POST") {
+      try {
+        const body = ((await request.json().catch(() => ({}))) ?? {}) as { storyboardUrl?: string; runTargetId?: string; key?: string }
+        const storyboardUrl = body.storyboardUrl?.trim()
+        const runTargetId = body.runTargetId?.trim()
+        const key = body.key?.trim()
+        if (!storyboardUrl) return textError("missing storyboardUrl", 400)
+        if (!runTargetId) return textError("missing runTargetId", 400)
+        const isCheckAll = pathname === "/api/storyboard/run-target-health/check-all"
+        if (!isCheckAll && !key) return textError("missing health check key", 400)
+        const { status, payload } = await proxyRunTargetHealthJson(
+          storyboardUrl,
+          isCheckAll ? "run-target-health/check-all" : "run-target-health/check",
+          runTargetId,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ runTargetId, ...(key ? { key } : {}) }),
+          },
+        )
+        return jsonResponse(payload, status)
+      } catch (error) {
+        return jsonResponse({ ok: false, unavailable: true, message: error instanceof Error ? error.message : String(error) }, 502)
       }
     }
 
