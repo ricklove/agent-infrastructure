@@ -379,9 +379,18 @@ function buildTransitionTreeRows(story: StoryboardStoryRecord): StoryboardGridSe
     return rows
   }
 
-  const rows: StoryboardGridSequence[] = []
-
+  const targetedFrameIds = new Set<string>()
   for (const frame of story.frames) {
+    for (const { target } of transitionTargets(frame)) {
+      targetedFrameIds.add(target.id)
+    }
+  }
+
+  const rows: StoryboardGridSequence[] = []
+  const rootFrames = story.frames.filter((frame) => !targetedFrameIds.has(frame.id))
+  const orphanFrames = story.frames.filter((frame) => targetedFrameIds.has(frame.id))
+
+  for (const frame of [...rootFrames, ...orphanFrames]) {
     if (renderedFrameIds.has(frame.id)) continue
     const path = buildPrimaryPath(frame)
     if (path.length === 0) continue

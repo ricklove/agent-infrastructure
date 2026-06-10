@@ -215,4 +215,64 @@ describe("remote storyboard deep links", () => {
     expect(sequences[1]).toMatchObject({ sourceFrameId: "primary-1", startColumn: 2, startLabel: "Nested alternate" })
     expect(sequences[2]).toMatchObject({ sourceFrameId: "start", startColumn: 1, startLabel: "Alternate" })
   })
+
+  test("keeps onboarding invalid email validation as the email-step error branch even if frame order changes", () => {
+    const document: StoryboardDocument = {
+      id: "onboarding",
+      title: "Onboarding",
+      stories: [
+        {
+          id: "story-a-account-verification-entry",
+          title: "Prospective account user starts verification and sees eligibility branches",
+          frames: [
+            { id: "story-a-02-invalid-email-validation", title: "Invalid civilian email is blocked", transitions: [] },
+            {
+              id: "story-a-01-account-email-step",
+              title: "User reaches the email eligibility decision",
+              transitions: [
+                {
+                  id: "account-path",
+                  label: "Account path: submit eligible address and proceed to SMS Program unchecked/disabled contract",
+                  kind: "user",
+                  targetFrameId: "story-a-03-sms-program-unchecked-disabled",
+                },
+                {
+                  id: "invalid-email-branch",
+                  label: "Invalid email branch: submit non-eligible email and stay blocked",
+                  kind: "user",
+                  targetFrameId: "story-a-02-invalid-email-validation",
+                },
+              ],
+            },
+            {
+              id: "story-a-03-sms-program-unchecked-disabled",
+              title: "SMS Program unchecked: Continue is disabled",
+              transitions: [
+                {
+                  id: "sms-program-accepted",
+                  label: "SMS Program required checkboxes accepted",
+                  kind: "user",
+                  targetFrameId: "story-a-04-sms-program-checked-enabled",
+                },
+              ],
+            },
+            { id: "story-a-04-sms-program-checked-enabled", title: "SMS Program checked: Continue is enabled", transitions: [] },
+          ],
+          branches: [],
+        },
+      ],
+    }
+
+    const sequences = documentToSequences(document)
+
+    expect(sequences.map((sequence) => sequence.frames.map((frame) => frame.id))).toEqual([
+      ["story-a-01-account-email-step", "story-a-03-sms-program-unchecked-disabled", "story-a-04-sms-program-checked-enabled"],
+      ["story-a-02-invalid-email-validation"],
+    ])
+    expect(sequences[1]).toMatchObject({
+      sourceFrameId: "story-a-01-account-email-step",
+      startColumn: 1,
+      startLabel: "Invalid email branch: submit non-eligible email and stay blocked",
+    })
+  })
 })
