@@ -1,0 +1,51 @@
+{
+  "id": "bc_storyboard_dev_dashboard_staging_backend",
+  "title": "bc-storyboard on dev dashboard with staging backend",
+  "description": "Cold-start top-level health profile for the full DEV Storyboard + BaseConnect onboarding path: bc-storyboard source, ddev dashboard remote-storyboard route, and BaseConnect frontend staging backend runtime.",
+  "runLocation": {
+    "executor": "dashboard-health-api",
+    "workTarget": "agent-infra-dev/ddev-dashboard",
+    "host": "agent-swarm-worker-i-0b48c8cbd72379b7a",
+    "source": "dashboard server initiating cross-surface probes",
+    "vantagePoint": "ddev worker dashboard API",
+    "providerType": "workflow-rollup"
+  },
+  "params": {
+    "storyboardUrl": "http://10.0.0.239:8898/onboarding",
+    "runTargetId": "baseconnect-frontend-web",
+    "frontendUrl": "http://10.0.0.239:8086",
+    "localDashboardUrl": "http://127.0.0.1:3300",
+    "publicDashboardUrl": "",
+    "viteUrl": "http://127.0.0.1:5173",
+    "expectedMinimumPassCount": "27",
+    "timeoutSeconds": "8"
+  },
+  "checks": [
+    {
+      "id": "bc_storyboard_dev_dashboard_staging_backend_cold_start",
+      "checkId": "storyboard_cold_start_dev_dashboard_staging_backend",
+      "title": "Cold-start DEV Storyboard + BaseConnect onboarding path",
+      "component": "bc-storyboard on dev dashboard with staging backend",
+      "runLocation": {
+        "executor": "dashboard-health-api",
+        "workTarget": "agent-infra-dev/ddev-dashboard",
+        "host": "agent-swarm-worker-i-0b48c8cbd72379b7a",
+        "source": "dashboard server initiated workflow health",
+        "vantagePoint": "ddev worker dashboard API",
+        "providerType": "workflow-rollup"
+      },
+      "severity": "blocking",
+      "repairHint": "Repair the failing child group owner: bc-frontend staging runtime, bc-storyboard source/provider health, ddev dashboard/tunnel/remote-storyboard route, or fast health/check-all summary. No fake repair action is exposed here; use only typed provider run-check-all where supported.",
+      "params": {
+        "storyboardUrl": "{{storyboardUrl}}",
+        "runTargetId": "{{runTargetId}}",
+        "frontendUrl": "{{frontendUrl}}",
+        "localDashboardUrl": "{{localDashboardUrl}}",
+        "publicDashboardUrl": "{{publicDashboardUrl}}",
+        "viteUrl": "{{viteUrl}}",
+        "expectedMinimumPassCount": "{{expectedMinimumPassCount}}",
+        "timeoutSeconds": "{{timeoutSeconds}}"
+      }
+    }
+  ]
+}

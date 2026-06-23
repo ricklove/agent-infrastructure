@@ -40,6 +40,11 @@ describe("dashboard health API", () => {
         (profile) => profile.id === "work_at_dashboard_app_quick_tunnel_surface",
       ),
     ).toBe(true)
+    expect(
+      payload.profiles.some(
+        (profile) => profile.id === "bc_storyboard_dev_dashboard_staging_backend",
+      ),
+    ).toBe(true)
     expect(payload.profiles.every((profile) => profile.checkCount > 0)).toBe(true)
   })
 
