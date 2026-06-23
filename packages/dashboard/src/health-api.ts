@@ -448,19 +448,21 @@ function addProviderRow(
     runLocation?: HealthRunLocation
     evidence?: Record<string, unknown>
   },
+  context: { backendMode?: string; frontendUrl?: string } = {},
 ): void {
-  rows.push({ owner: "ddev-storyboard", kind: "cold-start", runLocation: row.runLocation ?? coldStartRunLocation(row.group), ...row })
+  rows.push({ owner: "ddev-storyboard", kind: "cold-start", runLocation: row.runLocation ?? coldStartRunLocation(row.group, context), ...row })
 }
 
-function coldStartRunLocation(group: string): HealthRunLocation {
-  if (group === "bc-frontend staging runtime") {
+function coldStartRunLocation(group: string, context: { backendMode?: string; frontendUrl?: string } = {}): HealthRunLocation {
+  const backendMode = context.backendMode === "docker" ? "docker" : "staging"
+  if (group === `bc-frontend ${backendMode} runtime`) {
     return {
       executor: "dashboard-health-api",
-      workTarget: "bc-fullstack/frontend",
-      host: "10.0.0.239:8086",
-      source: "BaseConnect frontend staging runtime",
-      vantagePoint: "ddev worker -> bc-frontend service",
-      providerType: "http-probe",
+      workTarget: backendMode === "docker" ? "bc-fullstack/docker-backend" : "bc-fullstack/frontend",
+      host: context.frontendUrl || (backendMode === "docker" ? "docker/local backend stack" : "10.0.0.239:8086"),
+      source: `BaseConnect frontend ${backendMode} runtime`,
+      vantagePoint: backendMode === "docker" ? "ddev worker -> bc-frontend service -> local Docker backend" : "ddev worker -> bc-frontend service",
+      providerType: backendMode === "docker" ? "docker-runtime-http-probe" : "http-probe",
     }
   }
   if (group === "bc-storyboard source/provider health") {
@@ -522,22 +524,23 @@ async function jsonFromUrl(url: string, timeoutMs: number, init: RequestInit = {
   }
 }
 
-async function detectStagingBackendMarker(frontendUrl: string, timeoutMs: number): Promise<{ present: boolean; urls: string[]; marker: string }> {
+async function detectBackendMarker(frontendUrl: string, backendMode: string, timeoutMs: number): Promise<{ present: boolean; urls: string[]; marker: string }> {
   const root = await textFromUrl(frontendUrl, timeoutMs)
   if (!httpStatusIsOk(root.status)) return { present: false, urls: [], marker: root.error || `HTTP ${root.status}` }
-  if (root.text.includes("api-staging.baseconnect-app.com") || /staging/iu.test(root.text)) {
-    return { present: true, urls: [frontendUrl], marker: "root-html" }
-  }
   const scriptPaths = Array.from(root.text.matchAll(/src="([^"]+\.js)"/gu)).map((match) => match[1]).slice(0, 8)
-  const foundUrls: string[] = []
+  const texts: Array<{ url: string; text: string }> = [{ url: frontendUrl, text: root.text }]
   for (const scriptPath of scriptPaths) {
     const scriptUrl = new URL(scriptPath, `${frontendUrl.replace(/\/+$/u, "/")}`).toString()
     const script = await textFromUrl(scriptUrl, timeoutMs)
-    if (httpStatusIsOk(script.status) && (script.text.includes("api-staging.baseconnect-app.com") || /staging/iu.test(script.text))) {
-      foundUrls.push(scriptUrl)
-    }
+    if (httpStatusIsOk(script.status)) texts.push({ url: scriptUrl, text: script.text })
   }
-  return { present: foundUrls.length > 0, urls: foundUrls, marker: foundUrls.length > 0 ? "bundle-staging-marker" : "missing" }
+  const stagingHits = texts.filter((entry) => entry.text.includes("api-staging.baseconnect-app.com") || /staging/iu.test(entry.text)).map((entry) => entry.url)
+  if (backendMode === "docker") {
+    const dockerHints = texts.filter((entry) => /localhost|127\.0\.0\.1|host\.docker\.internal|docker|local backend|VITE_API_URL|EXPO_PUBLIC_API_URL/iu.test(entry.text)).map((entry) => entry.url)
+    if (stagingHits.length > 0) return { present: false, urls: stagingHits, marker: "staging-marker-present" }
+    return { present: dockerHints.length > 0, urls: dockerHints, marker: dockerHints.length > 0 ? "bundle-docker-or-local-backend-marker" : "missing-docker-local-marker" }
+  }
+  return { present: stagingHits.length > 0, urls: stagingHits, marker: stagingHits.length > 0 ? (stagingHits[0] === frontendUrl ? "root-html" : "bundle-staging-marker") : "missing" }
 }
 
 function providerSummary(payload: unknown): Record<string, unknown> {
@@ -876,9 +879,13 @@ async function evaluateBuiltinCheck(
       }
     }
 
+    case "storyboard_cold_start_dev_dashboard_backend":
     case "storyboard_cold_start_dev_dashboard_staging_backend": {
+      const backendMode = maybeString(params.backendMode) === "docker" ? "docker" : "staging"
+      const workflowTitle = `bc-storyboard on dev dashboard with ${backendMode} backend`
       const storyboardUrl = maybeString(params.storyboardUrl) || "http://10.0.0.239:8898/onboarding"
-      const frontendUrl = maybeString(params.frontendUrl) || "http://10.0.0.239:8086"
+      const frontendUrl = maybeString(params.frontendUrl) || (backendMode === "docker" ? "http://10.0.0.239:8085" : "http://10.0.0.239:8086")
+      const backendApiUrl = maybeString(params.backendApiUrl) || (backendMode === "docker" ? "http://10.0.0.239:8080" : "https://api-staging.baseconnect-app.com")
       const localDashboardUrl = maybeString(params.localDashboardUrl) || "http://127.0.0.1:3300"
       const publicDashboardUrl = maybeString(params.publicDashboardUrl) || localDashboardUrl
       const viteUrl = maybeString(params.viteUrl) || "http://127.0.0.1:5173"
@@ -889,6 +896,7 @@ async function evaluateBuiltinCheck(
       const routePath = "/storyboard/debug/storyboardEditor/remote-storyboard/"
       const encodedSource = new URLSearchParams({ storyboardUrl }).toString()
       const providerRows: Array<Record<string, unknown>> = []
+      const providerContext = { backendMode, frontendUrl }
 
       const sourceMdUrl = storyboardProviderUrl(storyboardUrl, "storyboard.md") ?? ""
       const sourceJsonUrl = storyboardProviderUrl(storyboardUrl, "storyboard.json") ?? ""
@@ -904,8 +912,8 @@ async function evaluateBuiltinCheck(
         group: "bc-storyboard source/provider health",
         status: httpStatusIsOk(sourceMd.status) ? "pass" : "fail",
         detail: httpStatusIsOk(sourceMd.status) ? `HTTP ${sourceMd.status}` : sourceMd.error || `HTTP ${sourceMd.status}`,
-        evidence: { url: sourceMdUrl, httpStatus: sourceMd.status },
-      })
+        evidence: { url: sourceMdUrl, httpStatus: sourceMd.status, sharedSubcheckDefinitionId: "bc-storyboard-source-storyboard-md" },
+      }, providerContext)
 
       const sourceJson = sourceJsonUrl ? await jsonFromUrl(sourceJsonUrl, timeoutMs) : { status: null, payload: null, error: "invalid storyboardUrl" }
       const document = sourceJson.payload && typeof sourceJson.payload === "object" ? sourceJson.payload as Record<string, unknown> : {}
@@ -918,8 +926,8 @@ async function evaluateBuiltinCheck(
         group: "bc-storyboard source/provider health",
         status: httpStatusIsOk(sourceJson.status) ? "pass" : "fail",
         detail: httpStatusIsOk(sourceJson.status) ? `HTTP ${sourceJson.status}; stories=${storyCount}; frames=${frameCount}` : sourceJson.error || `HTTP ${sourceJson.status}`,
-        evidence: { url: sourceJsonUrl, httpStatus: sourceJson.status, storyCount, frameCount },
-      })
+        evidence: { url: sourceJsonUrl, httpStatus: sourceJson.status, storyCount, frameCount, sharedSubcheckDefinitionId: "bc-storyboard-source-storyboard-json" },
+      }, providerContext)
 
       const healthPayload = runTargetHealthUrl ? await jsonFromUrl(runTargetHealthUrl, timeoutMs) : { status: null, payload: null, error: "invalid storyboardUrl" }
       addProviderRow(providerRows, {
@@ -928,8 +936,8 @@ async function evaluateBuiltinCheck(
         group: "fast health/check-all summary",
         status: httpStatusIsOk(healthPayload.status) ? "pass" : "fail",
         detail: httpStatusIsOk(healthPayload.status) ? `HTTP ${healthPayload.status}` : healthPayload.error || `HTTP ${healthPayload.status}`,
-        evidence: { url: runTargetHealthUrl, httpStatus: healthPayload.status },
-      })
+        evidence: { url: runTargetHealthUrl, httpStatus: healthPayload.status, sharedSubcheckDefinitionId: "bc-storyboard-run-target-health-endpoint" },
+      }, providerContext)
 
       const checkAllPayload = checkAllUrl ? await jsonFromUrl(checkAllUrl, timeoutMs, {
         method: "POST",
@@ -947,8 +955,8 @@ async function evaluateBuiltinCheck(
         group: "fast health/check-all summary",
         status: httpStatusIsOk(checkAllPayload.status) && failCount === 0 && passCount >= expectedMinimumPassCount ? "pass" : "fail",
         detail: `HTTP ${checkAllPayload.status}; pass=${passCount}; warn=${warnCount}; fail=${failCount}; expected_min_pass=${expectedMinimumPassCount}`,
-        evidence: { url: checkAllUrl, httpStatus: checkAllPayload.status, passCount, warnCount, failCount, expectedMinimumPassCount, summary: checkAllRecord.summary ?? null },
-      })
+        evidence: { url: checkAllUrl, httpStatus: checkAllPayload.status, passCount, warnCount, failCount, expectedMinimumPassCount, summary: checkAllRecord.summary ?? null, sharedSubcheckDefinitionId: "bc-storyboard-check-all-summary" },
+      }, providerContext)
 
       for (const path of ["/", "/login", "/user-verification"]) {
         const url = `${frontendUrl.replace(/\/+$/u, "")}${path}`
@@ -956,21 +964,42 @@ async function evaluateBuiltinCheck(
         addProviderRow(providerRows, {
           key: `bc-frontend${path === "/" ? "-root" : path.replace(/\//gu, "-")}-200`,
           label: `bc-frontend ${path} 200`,
-          group: "bc-frontend staging runtime",
+          group: `bc-frontend ${backendMode} runtime`,
           status: httpStatusIsOk(response.status) ? "pass" : "fail",
           detail: httpStatusIsOk(response.status) ? `HTTP ${response.status}` : response.error || `HTTP ${response.status}`,
-          evidence: { url, httpStatus: response.status },
-        })
+          evidence: { url, httpStatus: response.status, sharedSubcheckDefinitionId: "bc-frontend-route-200" },
+        }, providerContext)
       }
-      const stagingMarker = await detectStagingBackendMarker(frontendUrl, timeoutMs)
+      const backendMarker = await detectBackendMarker(frontendUrl, backendMode, timeoutMs)
       addProviderRow(providerRows, {
-        key: "bc-frontend-staging-backend-marker-present",
-        label: "staging backend marker present",
-        group: "bc-frontend staging runtime",
-        status: stagingMarker.present ? "pass" : "fail",
-        detail: stagingMarker.present ? stagingMarker.marker : "api-staging/baseconnect staging marker missing from frontend bundle",
-        evidence: { frontendUrl, marker: stagingMarker.marker, urls: stagingMarker.urls },
-      })
+        key: `bc-frontend-${backendMode}-backend-marker-present`,
+        label: `${backendMode} backend marker present`,
+        group: `bc-frontend ${backendMode} runtime`,
+        status: backendMarker.present ? "pass" : "fail",
+        detail: backendMarker.present ? backendMarker.marker : (backendMode === "docker" ? "docker/local backend marker missing or staging marker present" : "api-staging/baseconnect staging marker missing from frontend bundle"),
+        evidence: { frontendUrl, backendApiUrl, marker: backendMarker.marker, urls: backendMarker.urls, sharedSubcheckDefinitionId: "bc-frontend-backend-marker" },
+      }, providerContext)
+
+      if (backendMode === "docker") {
+        const dockerInfo = await runCommand(["bash", "-lc", "command -v docker >/dev/null 2>&1 && docker info --format '{{json .ServerVersion}}'"], { cwd: state.repoRoot, timeoutMs })
+        addProviderRow(providerRows, {
+          key: "docker-daemon-reachable",
+          label: "Docker daemon reachable from Docker-host parent",
+          group: "bc-frontend docker runtime",
+          status: dockerInfo.exitCode === 0 ? "pass" : "fail",
+          detail: dockerInfo.exitCode === 0 ? `docker ${dockerInfo.stdout}` : (dockerInfo.stderr || dockerInfo.stdout || "docker daemon unavailable"),
+          evidence: { exitCode: dockerInfo.exitCode, stdout: dockerInfo.stdout, stderr: dockerInfo.stderr, sharedSubcheckDefinitionId: "docker-daemon-reachable" },
+        }, providerContext)
+        const backendApi = await textFromUrl(backendApiUrl, timeoutMs)
+        addProviderRow(providerRows, {
+          key: "docker-backend-api-reachable",
+          label: "Docker/local backend API reachable",
+          group: "bc-frontend docker runtime",
+          status: httpStatusIsOk(backendApi.status) ? "pass" : "fail",
+          detail: httpStatusIsOk(backendApi.status) ? `HTTP ${backendApi.status}` : backendApi.error || `HTTP ${backendApi.status}`,
+          evidence: { url: backendApiUrl, httpStatus: backendApi.status, sharedSubcheckDefinitionId: "backend-api-reachable" },
+        }, providerContext)
+      }
 
       for (const [key, label, url] of [
         ["ddev-dashboard-gateway-200", "ddev dashboard gateway 200", localDashboardUrl],
@@ -985,8 +1014,8 @@ async function evaluateBuiltinCheck(
           group: "ddev dashboard/tunnel/remote-storyboard route",
           status: httpStatusIsOk(response.status) ? "pass" : "fail",
           detail: httpStatusIsOk(response.status) ? `HTTP ${response.status}` : response.error || `HTTP ${response.status}`,
-          evidence: { url, httpStatus: response.status },
-        })
+          evidence: { url, httpStatus: response.status, sharedSubcheckDefinitionId: "ddev-dashboard-route-200" },
+        }, providerContext)
       }
 
       const status = statusFromStringRows(providerRows.map((row) => ({ status: maybeString(row.status) || "unknown" })))
@@ -996,7 +1025,14 @@ async function evaluateBuiltinCheck(
         children,
         evidence: {
           dispatchModel: "delegated-parent-dispatch.v1",
-          dispatchPath: ["bc-storyboard on dev dashboard with staging backend"],
+          backendMode,
+          backendApiUrl,
+          profileComposition: {
+            template: "storyboard-cold-start-dev-dashboard-backend.v1",
+            sharedSubcheckDefinitionIds: ["bc-storyboard-source-storyboard-md", "bc-storyboard-source-storyboard-json", "bc-storyboard-run-target-health-endpoint", "bc-storyboard-check-all-summary", "bc-frontend-route-200", "bc-frontend-backend-marker", "ddev-dashboard-route-200"],
+            backendSpecificBranch: backendMode,
+          },
+          dispatchPath: [workflowTitle],
           childDispatchSemantics: "dashboard health API dispatches only direct component parents; component/provider parents own and return their child rows recursively",
           sourceUrl: storyboardUrl,
           frontendUrl,
@@ -1016,7 +1052,7 @@ async function evaluateBuiltinCheck(
           providerRows,
           children,
         },
-        failure: status === "PASS" ? null : failure("cold_start_health_failed", "One or more DEV Storyboard + BaseConnect onboarding health children failed"),
+        failure: status === "PASS" ? null : failure("cold_start_health_failed", `One or more DEV Storyboard + BaseConnect onboarding ${backendMode} health children failed`),
       }
     }
 

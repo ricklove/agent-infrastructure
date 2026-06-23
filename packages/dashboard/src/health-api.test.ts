@@ -45,7 +45,62 @@ describe("dashboard health API", () => {
         (profile) => profile.id === "bc_storyboard_dev_dashboard_staging_backend",
       ),
     ).toBe(true)
+    expect(
+      payload.profiles.some(
+        (profile) => profile.id === "bc_storyboard_dev_dashboard_docker_backend",
+      ),
+    ).toBe(true)
     expect(payload.profiles.every((profile) => profile.checkCount > 0)).toBe(true)
+  })
+
+  test("runs staging and docker storyboard profiles through the shared cold-start template", async () => {
+    const api = createHealthApi({ repoRoot, stateRoot: tempStateRoot() })
+    async function run(profileId: string) {
+      const response = await api.handle(
+        new Request("http://dashboard.local/api/health/run", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            profileId,
+            targetId: "local",
+            params: {
+              storyboardUrl: "http://127.0.0.1:1/onboarding",
+              frontendUrl: "http://127.0.0.1:1",
+              backendApiUrl: "http://127.0.0.1:1",
+              localDashboardUrl: "http://127.0.0.1:1",
+              publicDashboardUrl: "http://127.0.0.1:1",
+              viteUrl: "http://127.0.0.1:1",
+              timeoutSeconds: "1",
+            },
+          }),
+        }),
+      )
+      expect(response?.status).toBe(202)
+      return (await response?.json()) as {
+        result: {
+          profileId: string
+          checks: Array<{
+            status: string
+            evidence: { backendMode: string; profileComposition: { template: string }; children: Array<{ title: string }> }
+            children: Array<{ title: string; children?: Array<{ title: string }> }>
+          }>
+        }
+      }
+    }
+
+    const staging = await run("bc_storyboard_dev_dashboard_staging_backend")
+    const docker = await run("bc_storyboard_dev_dashboard_docker_backend")
+    const stagingCheck = staging.result.checks[0]
+    const dockerCheck = docker.result.checks[0]
+
+    expect(stagingCheck?.evidence.profileComposition.template).toBe("storyboard-cold-start-dev-dashboard-backend.v1")
+    expect(dockerCheck?.evidence.profileComposition.template).toBe("storyboard-cold-start-dev-dashboard-backend.v1")
+    expect(stagingCheck?.evidence.backendMode).toBe("staging")
+    expect(dockerCheck?.evidence.backendMode).toBe("docker")
+    expect(stagingCheck?.children.map((child) => child.title)).toContain("bc-frontend staging runtime")
+    expect(dockerCheck?.children.map((child) => child.title)).toContain("bc-frontend docker runtime")
+    expect(stagingCheck?.children.map((child) => child.title)).not.toContain("bc-frontend docker runtime")
+    expect(dockerCheck?.children.map((child) => child.title)).not.toContain("bc-frontend staging runtime")
   })
 
   test("runs a profile and persists the latest result", async () => {

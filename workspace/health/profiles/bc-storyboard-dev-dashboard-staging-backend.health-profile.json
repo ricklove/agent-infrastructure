@@ -11,6 +11,7 @@
     "providerType": "workflow-rollup"
   },
   "params": {
+    "backendMode": "staging",
     "storyboardUrl": "http://10.0.0.239:8898/onboarding",
     "runTargetId": "baseconnect-frontend-web",
     "frontendUrl": "http://10.0.0.239:8086",
@@ -23,8 +24,8 @@
   "checks": [
     {
       "id": "bc_storyboard_dev_dashboard_staging_backend_cold_start",
-      "checkId": "storyboard_cold_start_dev_dashboard_staging_backend",
-      "title": "Cold-start DEV Storyboard + BaseConnect onboarding path",
+      "checkId": "storyboard_cold_start_dev_dashboard_backend",
+      "title": "Cold-start DEV Storyboard + BaseConnect onboarding path (staging backend)",
       "component": "bc-storyboard on dev dashboard with staging backend",
       "runLocation": {
         "executor": "dashboard-health-api",
@@ -37,6 +38,7 @@
       "severity": "blocking",
       "repairHint": "Repair the failing child group owner: bc-frontend staging runtime, bc-storyboard source/provider health, ddev dashboard/tunnel/remote-storyboard route, or fast health/check-all summary. No fake repair action is exposed here; use only typed provider run-check-all where supported.",
       "params": {
+        "backendMode": "{{backendMode}}",
         "storyboardUrl": "{{storyboardUrl}}",
         "runTargetId": "{{runTargetId}}",
         "frontendUrl": "{{frontendUrl}}",
