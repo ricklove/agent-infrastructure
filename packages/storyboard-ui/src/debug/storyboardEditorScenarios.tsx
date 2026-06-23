@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
-import { PanZoomContainer, type PanZoomContainerHandle } from "../PanZoomContainer"
+import {
+  PanZoomContainer,
+  type PanZoomContainerHandle,
+} from "../PanZoomContainer"
 import { PanelLayout, type PanelLayoutPanel } from "../PanelLayout"
 import { ScreenshotFrameCell } from "../ScreenshotFrameCell"
 import {
@@ -43,7 +46,6 @@ type DocumentResponse = {
   document: StoryboardDocument
   mtimeMs: number
 }
-
 
 type StoryboardListEntry = {
   name: string
@@ -137,7 +139,9 @@ type StoryboardHealthBadgeState = {
   profileId: string
 }
 
-function storyboardHealthStatusClass(status: StoryboardHealthBadgeState["status"]) {
+function storyboardHealthStatusClass(
+  status: StoryboardHealthBadgeState["status"],
+) {
   switch (status) {
     case "PASS":
       return "border-emerald-300/40 bg-emerald-300/10 text-emerald-100"
@@ -150,17 +154,55 @@ function storyboardHealthStatusClass(status: StoryboardHealthBadgeState["status"
   }
 }
 
-function storyboardHealthStatusFromRun(result: { checks?: Array<{ status?: string }>; status?: string } | null | undefined): StoryboardHealthBadgeState["status"] {
+function storyboardHealthStatusFromRun(
+  result:
+    | { checks?: Array<{ status?: string }>; status?: string }
+    | null
+    | undefined,
+): StoryboardHealthBadgeState["status"] {
   const checks = Array.isArray(result?.checks) ? result.checks : []
-  if (checks.some((check) => check.status === "FAIL")) return "FAIL"
-  if (checks.some((check) => check.status === "WARN")) return "WARN"
-  if (checks.some((check) => check.status === "UNKNOWN")) return "UNKNOWN"
+  const statuses = checks.map((check) =>
+    String(check.status ?? "UNKNOWN").toUpperCase(),
+  )
+  if (
+    statuses.some(
+      (status) =>
+        status === "FAIL" ||
+        status === "DISPATCH_FAILED" ||
+        status === "UNAUTHORIZED",
+    )
+  )
+    return "FAIL"
+  if (
+    statuses.some(
+      (status) =>
+        status === "WARN" || status === "BLOCKED" || status === "STALE",
+    )
+  )
+    return "WARN"
+  if (
+    statuses.some(
+      (status) =>
+        status === "UNKNOWN" ||
+        status === "NOT_RUN" ||
+        status === "UNSUPPORTED" ||
+        status === "RUNNING",
+    )
+  )
+    return "UNKNOWN"
   if (checks.length > 0) return "PASS"
-  return result?.status === "pass" ? "PASS" : result?.status === "fail" ? "FAIL" : "UNKNOWN"
+  return result?.status === "pass"
+    ? "PASS"
+    : result?.status === "fail"
+      ? "FAIL"
+      : "UNKNOWN"
 }
 
 function storyboardHealthViewHref(storyboardUrl: string) {
-  const params = new URLSearchParams({ profileId: "storyboard_source_health", storyboardUrl })
+  const params = new URLSearchParams({
+    profileId: "storyboard_source_health",
+    storyboardUrl,
+  })
   return `/health?${params.toString()}`
 }
 
@@ -179,7 +221,14 @@ type AutomationDriverDto = {
   stepId: string
   command: string
   fullyAutomated: boolean
-  stateTarget: { storyboardId: string; storyId: string; frameKey: string; captureSetId: string; outputVariantId: string; mode?: string }
+  stateTarget: {
+    storyboardId: string
+    storyId: string
+    frameKey: string
+    captureSetId: string
+    outputVariantId: string
+    mode?: string
+  }
   disabledReason: string | null
 }
 
@@ -239,7 +288,12 @@ type TransitionSelection = {
 
 function PlusIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
       <path
         d="M12 5v14M5 12h14"
         stroke="currentColor"
@@ -253,7 +307,12 @@ function PlusIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
 
 function TrashIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
       <path
         d="M4 7h16M9.5 11.5v5M14.5 11.5v5M7.5 7l1 11.5a1 1 0 001 .9h5a1 1 0 001-.9L16.5 7M9 7l.7-1.6a1 1 0 01.9-.6h2.8a1 1 0 01.9.6L15 7"
         stroke="currentColor"
@@ -267,7 +326,12 @@ function TrashIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
 
 function ArrowRightIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
       <path
         d="M5 12h13m0 0-5-5m5 5-5 5"
         stroke="currentColor"
@@ -281,7 +345,12 @@ function ArrowRightIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
 
 function CopyIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
   return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+    <svg
+      aria-hidden="true"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+    >
       <path
         d="M9 9.75A2.25 2.25 0 0111.25 7.5h6a2.25 2.25 0 012.25 2.25v8.5a2.25 2.25 0 01-2.25 2.25h-6A2.25 2.25 0 019 18.25v-8.5z"
         stroke="currentColor"
@@ -313,9 +382,12 @@ const emptyRunTargetHealthState: RunTargetHealthPanelState = {
 }
 
 function runTargetHealthStatusClass(status: RunTargetHealthStatus) {
-  if (status === "pass") return "border-emerald-300/40 bg-emerald-300/10 text-emerald-100"
-  if (status === "warn") return "border-amber-300/45 bg-amber-300/10 text-amber-100"
-  if (status === "fail") return "border-rose-300/45 bg-rose-300/10 text-rose-100"
+  if (status === "pass")
+    return "border-emerald-300/40 bg-emerald-300/10 text-emerald-100"
+  if (status === "warn")
+    return "border-amber-300/45 bg-amber-300/10 text-amber-100"
+  if (status === "fail")
+    return "border-rose-300/45 bg-rose-300/10 text-rose-100"
   return "border-slate-300/35 bg-slate-300/10 text-slate-100"
 }
 
@@ -329,12 +401,21 @@ function compactEvidence(value: unknown) {
   }
 }
 
-function normalizeRunTargetHealthPayload(payload: unknown): { checks: RunTargetHealthCheck[]; owner?: string; target?: RunTargetProviderTarget | null } {
-  const record = payload && typeof payload === "object" ? (payload as RunTargetHealthPayload) : {}
+function normalizeRunTargetHealthPayload(payload: unknown): {
+  checks: RunTargetHealthCheck[]
+  owner?: string
+  target?: RunTargetProviderTarget | null
+} {
+  const record =
+    payload && typeof payload === "object"
+      ? (payload as RunTargetHealthPayload)
+      : {}
   return {
     checks: normalizeRunTargetHealthChecks(payload),
     target: normalizeRunTarget(payload),
-    ...(typeof record.owner === "string" && record.owner.trim() ? { owner: record.owner.trim() } : {}),
+    ...(typeof record.owner === "string" && record.owner.trim()
+      ? { owner: record.owner.trim() }
+      : {}),
   }
 }
 const remoteStoryboardUrlStorageKey = "storyboard.debug.remoteStoryboardUrl"
@@ -358,13 +439,16 @@ function findBranch(story: StoryboardStoryRecord | null, branchId?: string) {
   return story.branches?.find((branch) => branch.id === branchId) ?? null
 }
 
-function findFrameRecord(document: StoryboardDocument | null, selected: SelectedTarget | null) {
+function findFrameRecord(
+  document: StoryboardDocument | null,
+  selected: SelectedTarget | null,
+) {
   if (!document || !selected || selected.kind !== "frame") {
     return { story: null, branch: null, frame: null }
   }
   const story = findStory(document, selected.storyId)
   const branch = findBranch(story, selected.branchId)
-  const frames = branch ? branch.frames : story?.frames ?? []
+  const frames = branch ? branch.frames : (story?.frames ?? [])
   const frame = frames.find((entry) => entry.id === selected.frameId) ?? null
   return { story, branch, frame }
 }
@@ -382,7 +466,9 @@ function updateStory(
   }
 }
 
-function frameNextLabel(frame: StoryboardGridFrame & { transitions?: StoryboardTransitionRecord[] }) {
+function frameNextLabel(
+  frame: StoryboardGridFrame & { transitions?: StoryboardTransitionRecord[] },
+) {
   return frame.transitions?.[0]?.label ?? frame.nextLabel
 }
 
@@ -394,7 +480,11 @@ function buildBranchRows(
 ): StoryboardGridSequence[] {
   const rows: StoryboardGridSequence[] = []
 
-  for (let frameIndex = parentFrames.length - 1; frameIndex >= 0; frameIndex -= 1) {
+  for (
+    let frameIndex = parentFrames.length - 1;
+    frameIndex >= 0;
+    frameIndex -= 1
+  ) {
     const frame = parentFrames[frameIndex]
     const childBranches = branches.filter(
       (branch) => branch.sourceFrameId === frame.id && !consumed.has(branch.id),
@@ -428,7 +518,9 @@ function buildBranchRows(
   return rows
 }
 
-function buildTransitionTreeRows(story: StoryboardStoryRecord): StoryboardGridSequence[] {
+function buildTransitionTreeRows(
+  story: StoryboardStoryRecord,
+): StoryboardGridSequence[] {
   const framesById = new Map(story.frames.map((frame) => [frame.id, frame]))
   const renderedFrameIds = new Set<string>()
 
@@ -436,16 +528,29 @@ function buildTransitionTreeRows(story: StoryboardStoryRecord): StoryboardGridSe
     (frame.transitions ?? [])
       .map((transition) => ({
         transition,
-        target: transition.targetFrameId ? framesById.get(transition.targetFrameId) : undefined,
+        target: transition.targetFrameId
+          ? framesById.get(transition.targetFrameId)
+          : undefined,
       }))
-      .filter((entry): entry is { transition: StoryboardTransitionRecord; target: StoryboardFrameRecord } => !!entry.target)
+      .filter(
+        (
+          entry,
+        ): entry is {
+          transition: StoryboardTransitionRecord
+          target: StoryboardFrameRecord
+        } => !!entry.target,
+      )
 
   const buildPrimaryPath = (startFrame: StoryboardFrameRecord) => {
     const path: StoryboardFrameRecord[] = []
     const pathIds = new Set<string>()
     let current: StoryboardFrameRecord | undefined = startFrame
 
-    while (current && !pathIds.has(current.id) && !renderedFrameIds.has(current.id)) {
+    while (
+      current &&
+      !pathIds.has(current.id) &&
+      !renderedFrameIds.has(current.id)
+    ) {
       path.push(current)
       pathIds.add(current.id)
       renderedFrameIds.add(current.id)
@@ -455,7 +560,10 @@ function buildTransitionTreeRows(story: StoryboardStoryRecord): StoryboardGridSe
     return path
   }
 
-  const branchRowsForPath = (path: StoryboardFrameRecord[], parentStartColumn: number): StoryboardGridSequence[] => {
+  const branchRowsForPath = (
+    path: StoryboardFrameRecord[],
+    parentStartColumn: number,
+  ): StoryboardGridSequence[] => {
     const rows: StoryboardGridSequence[] = []
 
     for (let frameIndex = path.length - 1; frameIndex >= 0; frameIndex -= 1) {
@@ -493,8 +601,12 @@ function buildTransitionTreeRows(story: StoryboardStoryRecord): StoryboardGridSe
   }
 
   const rows: StoryboardGridSequence[] = []
-  const rootFrames = story.frames.filter((frame) => !targetedFrameIds.has(frame.id))
-  const orphanFrames = story.frames.filter((frame) => targetedFrameIds.has(frame.id))
+  const rootFrames = story.frames.filter(
+    (frame) => !targetedFrameIds.has(frame.id),
+  )
+  const orphanFrames = story.frames.filter((frame) =>
+    targetedFrameIds.has(frame.id),
+  )
 
   for (const frame of [...rootFrames, ...orphanFrames]) {
     if (renderedFrameIds.has(frame.id)) continue
@@ -515,19 +627,24 @@ function buildTransitionTreeRows(story: StoryboardStoryRecord): StoryboardGridSe
   return rows
 }
 
-export function documentToSequences(document: StoryboardDocument): StoryboardGridSequence[] {
+export function documentToSequences(
+  document: StoryboardDocument,
+): StoryboardGridSequence[] {
   return document.stories.flatMap((story) => {
     const transitionRows = buildTransitionTreeRows(story)
-    const mainRows: StoryboardGridSequence[] = transitionRows.length > 0
-      ? transitionRows
-      : [{
-          id: story.id,
-          title: story.title,
-          frames: story.frames.map((frame) => ({
-            ...frame,
-            nextLabel: frameNextLabel(frame),
-          })),
-        }]
+    const mainRows: StoryboardGridSequence[] =
+      transitionRows.length > 0
+        ? transitionRows
+        : [
+            {
+              id: story.id,
+              title: story.title,
+              frames: story.frames.map((frame) => ({
+                ...frame,
+                nextLabel: frameNextLabel(frame),
+              })),
+            },
+          ]
 
     const consumedBranches = new Set<string>()
     const branchRows = buildBranchRows(
@@ -580,11 +697,22 @@ function estimateGridWidth(
       (sequence) => (sequence.startColumn ?? 0) + sequence.frames.length,
     ),
   )
-  return maxColumns * frameWidth + Math.max(maxColumns - 1, 0) * (actionColumnWidth + 16) + 240
+  return (
+    maxColumns * frameWidth +
+    Math.max(maxColumns - 1, 0) * (actionColumnWidth + 16) +
+    240
+  )
 }
 
-function estimateGridHeight(sequences: StoryboardGridSequence[], frameHeight: number, nextCellHeight: number) {
-  return Math.max(520, sequences.length * (frameHeight + nextCellHeight + 24) + 160)
+function estimateGridHeight(
+  sequences: StoryboardGridSequence[],
+  frameHeight: number,
+  nextCellHeight: number,
+) {
+  return Math.max(
+    520,
+    sequences.length * (frameHeight + nextCellHeight + 24) + 160,
+  )
 }
 
 function storyboardUrlToDocumentQuery(storyboardUrl: string) {
@@ -620,7 +748,11 @@ function hasFrameScreenshots(frame: Partial<StoryboardFrameRecord>) {
         ),
     )
   }
-  return !!(frame.screenshots?.desktop || frame.screenshots?.mobile || frame.screenshots?.square)
+  return !!(
+    frame.screenshots?.desktop ||
+    frame.screenshots?.mobile ||
+    frame.screenshots?.square
+  )
 }
 
 function frameScreenshots(
@@ -642,7 +774,11 @@ function nextCaptureSetId(frame: Partial<StoryboardFrameRecord>) {
   return "set-" + index
 }
 
-function proxiedAssetUrl(storyboardUrl: string, assetPath: string | undefined, cacheKey?: string) {
+function proxiedAssetUrl(
+  storyboardUrl: string,
+  assetPath: string | undefined,
+  cacheKey?: string,
+) {
   if (!storyboardUrl || !assetPath) {
     return undefined
   }
@@ -662,7 +798,14 @@ function variantRunKey(
   outputVariantId: OutputVariantId,
   mode: RunMode,
 ) {
-  return [storyboardId, storyId, frameKey, captureSetId, outputVariantId, mode].join("::")
+  return [
+    storyboardId,
+    storyId,
+    frameKey,
+    captureSetId,
+    outputVariantId,
+    mode,
+  ].join("::")
 }
 
 function isTerminalRunStatus(status: VariantRunState["status"] | undefined) {
@@ -683,7 +826,12 @@ export function buildRunAssetCacheKey(input: {
   updatedAt?: string
   outputAssetHash?: string
 }) {
-  const parts = [input.jobId, input.completedAt, input.updatedAt, input.outputAssetHash]
+  const parts = [
+    input.jobId,
+    input.completedAt,
+    input.updatedAt,
+    input.outputAssetHash,
+  ]
     .map((part) => part?.trim())
     .filter((part): part is string => !!part)
   return parts.length > 0 ? parts.join("::") : undefined
@@ -710,20 +858,28 @@ function runManifestEntryId(storyId: string, frameKey: string) {
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 180)
-  return suffix ? `agent-browser-run-to-state-${suffix}` : "agent-browser-run-to-state-frame"
+  return suffix
+    ? `agent-browser-run-to-state-${suffix}`
+    : "agent-browser-run-to-state-frame"
 }
 
 function loadPersistedVariantRunStates() {
-  if (typeof window === "undefined") return {} as Record<string, VariantRunState>
+  if (typeof window === "undefined")
+    return {} as Record<string, VariantRunState>
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(runStateStorageKey) ?? "{}") as Record<string, VariantRunState>
+    const parsed = JSON.parse(
+      window.localStorage.getItem(runStateStorageKey) ?? "{}",
+    ) as Record<string, VariantRunState>
     return parsed && typeof parsed === "object" ? parsed : {}
   } catch {
     return {} as Record<string, VariantRunState>
   }
 }
 
-function findStoryIdForFrame(document: StoryboardDocument | null, frameId: string) {
+function findStoryIdForFrame(
+  document: StoryboardDocument | null,
+  frameId: string,
+) {
   for (const story of document?.stories ?? []) {
     if (story.frames.some((frame) => frame.id === frameId)) return story.id
     for (const branch of story.branches ?? []) {
@@ -768,12 +924,22 @@ export function readStoryboardEditorQuery(search: string) {
 }
 
 function AssetImage({ src, alt }: { src: string; alt: string }) {
-  return <img alt={alt} className="h-full w-full object-contain bg-zinc-950" src={src} />
+  return (
+    <img
+      alt={alt}
+      className="h-full w-full object-contain bg-zinc-950"
+      src={src}
+    />
+  )
 }
 
 function AssetPreview({ src, alt }: { src?: string; alt: string }) {
   return src ? (
-    <img alt={alt} className="h-full w-full object-contain bg-zinc-950" src={src} />
+    <img
+      alt={alt}
+      className="h-full w-full object-contain bg-zinc-950"
+      src={src}
+    />
   ) : (
     <div className="flex h-full w-full items-center justify-center bg-zinc-950 text-[11px] uppercase tracking-[0.14em] text-white/35">
       No image
@@ -817,8 +983,15 @@ export function RunTargetHealthPanel({
     2,
   )
   const groupedChecks = useMemo(() => {
-    const groups: { key: string; label?: string; checks: RunTargetHealthCheck[] }[] = []
-    const groupIndex = new Map<string, { key: string; label?: string; checks: RunTargetHealthCheck[] }>()
+    const groups: {
+      key: string
+      label?: string
+      checks: RunTargetHealthCheck[]
+    }[] = []
+    const groupIndex = new Map<
+      string,
+      { key: string; label?: string; checks: RunTargetHealthCheck[] }
+    >()
     for (const check of state.checks) {
       const groupKey = check.group?.trim()
       if (!groupKey) {
@@ -838,40 +1011,98 @@ export function RunTargetHealthPanel({
   const renderCheck = (check: RunTargetHealthCheck) => {
     const evidence = compactEvidence(check.evidence)
     return (
-      <div className={`rounded border p-3 ${runTargetHealthStatusClass(check.status)}`} key={check.key}>
+      <div
+        className={`rounded border p-3 ${runTargetHealthStatusClass(check.status)}`}
+        key={check.key}
+      >
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded bg-black/25 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em]">{check.status}</span>
-              <span className="font-semibold text-white">{check.label ?? check.key}</span>
+              <span className="rounded bg-black/25 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em]">
+                {check.status}
+              </span>
+              <span className="font-semibold text-white">
+                {check.label ?? check.key}
+              </span>
             </div>
-            <div className="mt-1 break-all font-mono text-[11px] text-white/45">{check.key}</div>
+            <div className="mt-1 break-all font-mono text-[11px] text-white/45">
+              {check.key}
+            </div>
           </div>
-          <button className="rounded border border-white/15 bg-black/25 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/70 transition hover:border-cyan-200/60 hover:text-cyan-50" disabled={state.loading} onClick={() => onRunOne?.(check.key)} type="button">
+          <button
+            className="rounded border border-white/15 bg-black/25 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/70 transition hover:border-cyan-200/60 hover:text-cyan-50"
+            disabled={state.loading}
+            onClick={() => onRunOne?.(check.key)}
+            type="button"
+          >
             {state.runningKey === check.key ? "Running…" : "Run check"}
           </button>
         </div>
-        {check.detail ? <div className="mt-2 text-white/70">{check.detail}</div> : null}
-        {check.owner ? <div className="mt-2 text-[11px] text-white/45">Owner: <span className="font-mono">{check.owner}</span></div> : null}
-        {check.checkedAt ? <div className="mt-2 text-[11px] text-white/45">Checked: <span className="font-mono">{check.checkedAt}</span></div> : null}
-        {evidence ? <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-[10px] text-white/60">{evidence}</pre> : null}
-        {check.remediation ? <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-white/70">Remediation: {check.remediation}</div> : null}
-        {check.suggestedAction ? <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-white/70">Suggested action: {check.suggestedAction}</div> : null}
+        {check.detail ? (
+          <div className="mt-2 text-white/70">{check.detail}</div>
+        ) : null}
+        {check.owner ? (
+          <div className="mt-2 text-[11px] text-white/45">
+            Owner: <span className="font-mono">{check.owner}</span>
+          </div>
+        ) : null}
+        {check.checkedAt ? (
+          <div className="mt-2 text-[11px] text-white/45">
+            Checked: <span className="font-mono">{check.checkedAt}</span>
+          </div>
+        ) : null}
+        {evidence ? (
+          <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-[10px] text-white/60">
+            {evidence}
+          </pre>
+        ) : null}
+        {check.remediation ? (
+          <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-white/70">
+            Remediation: {check.remediation}
+          </div>
+        ) : null}
+        {check.suggestedAction ? (
+          <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-white/70">
+            Suggested action: {check.suggestedAction}
+          </div>
+        ) : null}
       </div>
     )
   }
   return (
-    <div className="space-y-3 rounded border border-cyan-300/20 bg-cyan-300/5 p-3 text-xs text-white/65" data-run-target-health-panel="true">
+    <div
+      className="space-y-3 rounded border border-cyan-300/20 bg-cyan-300/5 p-3 text-xs text-white/65"
+      data-run-target-health-panel="true"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/75">Run Target Health</div>
-          <div className="mt-1 text-sm font-semibold text-white">{state.runTargetLabel || state.runTargetId}</div>
-          <div className="mt-1 break-all font-mono text-[11px] text-white/45">{state.runTargetId}</div>
-          {state.runTargetUrl ? <div className="mt-1 break-all text-[11px] text-white/45">{state.runTargetUrl}</div> : null}
+          <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/75">
+            Run Target Health
+          </div>
+          <div className="mt-1 text-sm font-semibold text-white">
+            {state.runTargetLabel || state.runTargetId}
+          </div>
+          <div className="mt-1 break-all font-mono text-[11px] text-white/45">
+            {state.runTargetId}
+          </div>
+          {state.runTargetUrl ? (
+            <div className="mt-1 break-all text-[11px] text-white/45">
+              {state.runTargetUrl}
+            </div>
+          ) : null}
           {state.target ? (
             <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-white/45">
-              {state.target.kind ? <span>type: <span className="font-mono">{state.target.kind}</span></span> : null}
-              {state.target.owner ? <span>provider: <span className="font-mono">{state.target.owner}</span></span> : null}
+              {state.target.kind ? (
+                <span>
+                  type: <span className="font-mono">{state.target.kind}</span>
+                </span>
+              ) : null}
+              {state.target.owner ? (
+                <span>
+                  provider:{" "}
+                  <span className="font-mono">{state.target.owner}</span>
+                </span>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -886,17 +1117,33 @@ export function RunTargetHealthPanel({
         ) : null}
       </div>
       <div className="rounded border border-white/10 bg-black/20 p-3 text-white/55">
-        Provider-owned checks make sure the selected Run target has everything needed for Run to work: app entrypoint, backend/API, script prerequisites, source validity, stable app experience, and output readiness.
-        {state.owner ? <span> Provider: <span className="font-mono text-cyan-100">{state.owner}</span>.</span> : null}
+        Provider-owned checks make sure the selected Run target has everything
+        needed for Run to work: app entrypoint, backend/API, script
+        prerequisites, source validity, stable app experience, and output
+        readiness.
+        {state.owner ? (
+          <span>
+            {" "}
+            Provider:{" "}
+            <span className="font-mono text-cyan-100">{state.owner}</span>.
+          </span>
+        ) : null}
       </div>
       {state.target?.description ? (
-        <div className="rounded border border-white/10 bg-black/20 p-3 text-white/55">{state.target.description}</div>
+        <div className="rounded border border-white/10 bg-black/20 p-3 text-white/55">
+          {state.target.description}
+        </div>
       ) : null}
       <div className="rounded border border-white/10 bg-black/20 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.14em] text-white/40">Config</div>
-            <div className="mt-1 text-white/60">Provider-defined fields and current values. Missing config is separate from failed active health checks.</div>
+            <div className="text-[11px] uppercase tracking-[0.14em] text-white/40">
+              Config
+            </div>
+            <div className="mt-1 text-white/60">
+              Provider-defined fields and current values. Missing config is
+              separate from failed active health checks.
+            </div>
           </div>
           {configFields.length > 0 ? (
             <button
@@ -910,57 +1157,114 @@ export function RunTargetHealthPanel({
           ) : null}
         </div>
         {configFields.length === 0 ? (
-          <div className="mt-3 rounded border border-dashed border-white/10 p-3 text-white/40">No provider config fields returned for this run target.</div>
+          <div className="mt-3 rounded border border-dashed border-white/10 p-3 text-white/40">
+            No provider config fields returned for this run target.
+          </div>
         ) : (
           <div className="mt-3 space-y-2">
             {configFields.map((field) => {
-              const draftValue = state.configDraft?.[field.key] ?? (field.value === undefined || field.value === null ? "" : String(field.value))
+              const draftValue =
+                state.configDraft?.[field.key] ??
+                (field.value === undefined || field.value === null
+                  ? ""
+                  : String(field.value))
               const fieldStatus = field.status ?? "unknown"
-              const missing = fieldStatus === "missing" || (field.required && !draftValue.trim())
+              const missing =
+                fieldStatus === "missing" ||
+                (field.required && !draftValue.trim())
               return (
-                <label className={`block rounded border p-3 ${missing ? "border-rose-300/35 bg-rose-300/10" : "border-white/10 bg-black/20"}`} key={field.key}>
+                <label
+                  className={`block rounded border p-3 ${missing ? "border-rose-300/35 bg-rose-300/10" : "border-white/10 bg-black/20"}`}
+                  key={field.key}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold text-white">{field.label ?? field.key}</span>
-                    <span className="rounded border border-white/10 bg-black/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-white/55">{fieldStatus}{field.required ? " · required" : ""}</span>
+                    <span className="font-semibold text-white">
+                      {field.label ?? field.key}
+                    </span>
+                    <span className="rounded border border-white/10 bg-black/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-white/55">
+                      {fieldStatus}
+                      {field.required ? " · required" : ""}
+                    </span>
                   </div>
-                  <div className="mt-1 break-all font-mono text-[11px] text-white/40">{field.key}</div>
+                  <div className="mt-1 break-all font-mono text-[11px] text-white/40">
+                    {field.key}
+                  </div>
                   <input
                     className="mt-2 w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 font-mono text-xs text-cyan-100 outline-none focus:border-cyan-300 disabled:text-white/35"
                     disabled={field.readOnly || !onConfigValueChange}
-                    onChange={(event) => onConfigValueChange?.(field.key, event.currentTarget.value)}
+                    onChange={(event) =>
+                      onConfigValueChange?.(
+                        field.key,
+                        event.currentTarget.value,
+                      )
+                    }
                     placeholder={field.type ?? "value"}
                     value={draftValue}
                   />
-                  {field.detail ? <div className="mt-2 text-[11px] text-white/55">{field.detail}</div> : null}
-                  {field.suggestedAction ? <div className="mt-2 text-[11px] text-amber-100/80">Suggested action: {field.suggestedAction}</div> : null}
+                  {field.detail ? (
+                    <div className="mt-2 text-[11px] text-white/55">
+                      {field.detail}
+                    </div>
+                  ) : null}
+                  {field.suggestedAction ? (
+                    <div className="mt-2 text-[11px] text-amber-100/80">
+                      Suggested action: {field.suggestedAction}
+                    </div>
+                  ) : null}
                 </label>
               )
             })}
           </div>
         )}
         {state.configSaveMessage ? (
-          <div className={`mt-3 rounded border p-2 text-[11px] ${state.configSaveState === "saved" ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100" : "border-amber-300/35 bg-amber-300/10 text-amber-100"}`}>
+          <div
+            className={`mt-3 rounded border p-2 text-[11px] ${state.configSaveState === "saved" ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100" : "border-amber-300/35 bg-amber-300/10 text-amber-100"}`}
+          >
             {state.configSaveMessage}
           </div>
         ) : null}
         {configFields.length > 0 && !onSaveConfig ? (
-          <div className="mt-3 rounded border border-amber-300/25 bg-amber-300/10 p-2 text-[11px] text-amber-100">Config is read-only in this surface until the provider exposes a config-save contract.</div>
+          <div className="mt-3 rounded border border-amber-300/25 bg-amber-300/10 p-2 text-[11px] text-amber-100">
+            Config is read-only in this surface until the provider exposes a
+            config-save contract.
+          </div>
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <button className="rounded border border-white/10 bg-black/30 px-2 py-1 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100" disabled={state.loading} onClick={onRefresh} type="button">
+        <button
+          className="rounded border border-white/10 bg-black/30 px-2 py-1 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+          disabled={state.loading}
+          onClick={onRefresh}
+          type="button"
+        >
           {state.loading && !state.runningKey ? "Loading…" : "Refresh status"}
         </button>
-        <button className="rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-cyan-100 transition hover:border-cyan-200" disabled={state.loading} onClick={onRunAll} type="button">
+        <button
+          className="rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-cyan-100 transition hover:border-cyan-200"
+          disabled={state.loading}
+          onClick={onRunAll}
+          type="button"
+        >
           {state.runningKey === "*" ? "Running all…" : "Run all checks"}
         </button>
-        <button className="rounded border border-white/10 bg-black/30 px-2 py-1 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100" onClick={() => void copyTextToClipboard(diagnosticsJson)} type="button">
+        <button
+          className="rounded border border-white/10 bg-black/30 px-2 py-1 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+          onClick={() => void copyTextToClipboard(diagnosticsJson)}
+          type="button"
+        >
           Copy diagnostics JSON
         </button>
         <div className="ml-auto flex flex-wrap gap-1 text-[10px] uppercase tracking-[0.12em]">
-          {(["pass", "warn", "fail", "unknown"] as RunTargetHealthStatus[]).map((status) => (
-            <span className={`rounded border px-2 py-1 ${runTargetHealthStatusClass(status)}`} key={status}>{status}: {statusCounts[status]}</span>
-          ))}
+          {(["pass", "warn", "fail", "unknown"] as RunTargetHealthStatus[]).map(
+            (status) => (
+              <span
+                className={`rounded border px-2 py-1 ${runTargetHealthStatusClass(status)}`}
+                key={status}
+              >
+                {status}: {statusCounts[status]}
+              </span>
+            ),
+          )}
         </div>
       </div>
       {state.error ? (
@@ -969,20 +1273,33 @@ export function RunTargetHealthPanel({
         </div>
       ) : null}
       {state.checks.length === 0 && !state.loading && !state.error ? (
-        <div className="rounded border border-dashed border-white/10 p-3 text-white/40">No provider health checks returned yet. Refresh status to load the provider-owned check list.</div>
+        <div className="rounded border border-dashed border-white/10 p-3 text-white/40">
+          No provider health checks returned yet. Refresh status to load the
+          provider-owned check list.
+        </div>
       ) : null}
       <div className="space-y-2">
         {groupedChecks.map((group) => {
-          if (group.checks.length === 1 && !group.checks[0]?.group) return renderCheck(group.checks[0])
+          if (group.checks.length === 1 && !group.checks[0]?.group)
+            return renderCheck(group.checks[0])
           return (
-            <section className="space-y-2 rounded border border-white/10 bg-black/20 p-2" key={group.key}>
-              <div className="px-1 text-[10px] uppercase tracking-[0.16em] text-white/45">{group.label ?? group.key}</div>
+            <section
+              className="space-y-2 rounded border border-white/10 bg-black/20 p-2"
+              key={group.key}
+            >
+              <div className="px-1 text-[10px] uppercase tracking-[0.16em] text-white/45">
+                {group.label ?? group.key}
+              </div>
               {group.checks.map(renderCheck)}
             </section>
           )
         })}
       </div>
-      {state.updatedAt ? <div className="text-[11px] text-white/35">Updated {new Date(state.updatedAt).toLocaleTimeString()}</div> : null}
+      {state.updatedAt ? (
+        <div className="text-[11px] text-white/35">
+          Updated {new Date(state.updatedAt).toLocaleTimeString()}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -996,29 +1313,62 @@ function renderEditorFrame(
 ) {
   if (hasFrameScreenshots(frame)) {
     const screenshots = frameScreenshots(frame, captureSetId)
-    const desktop = proxiedAssetUrl(storyboardUrl, screenshots?.desktop, variantAssetCacheKeys?.desktop)
-    const mobile = proxiedAssetUrl(storyboardUrl, screenshots?.mobile, variantAssetCacheKeys?.mobile)
-    const square = proxiedAssetUrl(storyboardUrl, screenshots?.square, variantAssetCacheKeys?.square)
+    const desktop = proxiedAssetUrl(
+      storyboardUrl,
+      screenshots?.desktop,
+      variantAssetCacheKeys?.desktop,
+    )
+    const mobile = proxiedAssetUrl(
+      storyboardUrl,
+      screenshots?.mobile,
+      variantAssetCacheKeys?.mobile,
+    )
+    const square = proxiedAssetUrl(
+      storyboardUrl,
+      screenshots?.square,
+      variantAssetCacheKeys?.square,
+    )
 
     return (
       <ScreenshotFrameCell
         description={frame.description}
-        desktop={desktop ? <AssetImage alt={`${frame.title} desktop`} src={desktop} /> : undefined}
+        desktop={
+          desktop ? (
+            <AssetImage alt={`${frame.title} desktop`} src={desktop} />
+          ) : undefined
+        }
         desktopAction={runVariantActions?.desktop}
-        mobile={mobile ? <AssetImage alt={`${frame.title} mobile`} src={mobile} /> : undefined}
+        mobile={
+          mobile ? (
+            <AssetImage alt={`${frame.title} mobile`} src={mobile} />
+          ) : undefined
+        }
         mobileAction={runVariantActions?.mobile}
-        square={square ? <AssetImage alt={`${frame.title} square`} src={square} /> : undefined}
+        square={
+          square ? (
+            <AssetImage alt={`${frame.title} square`} src={square} />
+          ) : undefined
+        }
         squareAction={runVariantActions?.square}
         title={frame.title}
       />
     )
   }
 
-  return <TitleOnlyStoryboardFrame frame={frame} height={frameSize} width={frameSize} />
+  return (
+    <TitleOnlyStoryboardFrame
+      frame={frame}
+      height={frameSize}
+      width={frameSize}
+    />
+  )
 }
 
 function storyboardRecordId(prefix: string) {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return `${prefix}-${crypto.randomUUID().slice(0, 8)}`
   }
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`
@@ -1041,14 +1391,18 @@ function initialStoryboardUrlForSource(source: StoryboardEditorSource) {
   if (typeof window === "undefined") {
     return ""
   }
-  const queryStoryboardUrl = readStoryboardEditorQuery(window.location.search).storyboardUrl
+  const queryStoryboardUrl = readStoryboardEditorQuery(
+    window.location.search,
+  ).storyboardUrl
   if (queryStoryboardUrl) {
     return queryStoryboardUrl
   }
   return window.localStorage.getItem(remoteStoryboardUrlStorageKey) ?? ""
 }
 
-function createFallbackStoryboardDocument(storyboardUrl: string): StoryboardDocument {
+function createFallbackStoryboardDocument(
+  storyboardUrl: string,
+): StoryboardDocument {
   const storyboardName = storyboardNameFromUrl(storyboardUrl)
   const storyId = "story-001"
   const firstFrameId = "frame-001"
@@ -1079,7 +1433,8 @@ function createFallbackStoryboardDocument(storyboardUrl: string): StoryboardDocu
           {
             id: secondFrameId,
             title: "Next frame",
-            description: "Describe the resulting state after the first transition.",
+            description:
+              "Describe the resulting state after the first transition.",
             transitions: [],
           },
         ],
@@ -1138,14 +1493,16 @@ function removeTransitionSubtree(
   return {
     ...story,
     frames: story.frames.filter((frame) => !removedFrameIds.has(frame.id)),
-    branches: (story.branches ?? []).filter(
-      (branch) =>
-        !removedFrameIds.has(branch.sourceFrameId ?? "") &&
-        branch.frames.every((frame) => !removedFrameIds.has(frame.id)),
-    ).map((branch) => ({
-      ...branch,
-      frames: branch.frames.filter((frame) => !removedFrameIds.has(frame.id)),
-    })),
+    branches: (story.branches ?? [])
+      .filter(
+        (branch) =>
+          !removedFrameIds.has(branch.sourceFrameId ?? "") &&
+          branch.frames.every((frame) => !removedFrameIds.has(frame.id)),
+      )
+      .map((branch) => ({
+        ...branch,
+        frames: branch.frames.filter((frame) => !removedFrameIds.has(frame.id)),
+      })),
   }
 }
 
@@ -1169,33 +1526,56 @@ bun scripts/storyboard-access-server.ts --root /absolute/path/to/<storyboard-nam
 Then reply with only:
 Storyboard URL: http://<worker-host>:<port>/<storyboard-name>`
 
-function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource }) {
+function StoryboardEditorFixture({
+  source,
+}: {
+  source: StoryboardEditorSource
+}) {
   const initialStoryboardUrl = initialStoryboardUrlForSource(source)
   const [path, setPath] = useState("")
   const [document, setDocument] = useState<StoryboardDocument | null>(null)
   const [status, setStatus] = useState("Loading storyboard…")
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle")
+  const [saveState, setSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle")
   const [snapshotJob, setSnapshotJob] = useState<SnapshotJob | null>(null)
   const [missingStoryboard, setMissingStoryboard] = useState(false)
   const [selected, setSelected] = useState<SelectedTarget | null>(null)
   const [storySearch, setStorySearch] = useState("")
-  const [draftStoryboardUrl, setDraftStoryboardUrl] = useState(initialStoryboardUrl)
-  const [connectedStoryboardUrl, setConnectedStoryboardUrl] = useState(initialStoryboardUrl)
+  const [draftStoryboardUrl, setDraftStoryboardUrl] =
+    useState(initialStoryboardUrl)
+  const [connectedStoryboardUrl, setConnectedStoryboardUrl] =
+    useState(initialStoryboardUrl)
   const [pendingDeleteStory, setPendingDeleteStory] = useState<null | {
     storyId: string
     anchorKey: string
   }>(null)
-  const [pendingDeleteTransition, setPendingDeleteTransition] = useState<null | {
-    transitionId: string
-    anchorKey: string
-  }>(null)
-  const [focusedTransitionId, setFocusedTransitionId] = useState<string | null>(null)
-  const [workerPromptCopyState, setWorkerPromptCopyState] = useState<"idle" | "copied" | "failed">("idle")
-  const [markdownImportError, setMarkdownImportError] = useState<string | null>(null)
-  const [markdownImportCopyState, setMarkdownImportCopyState] = useState<"idle" | "copied" | "failed">("idle")
-  const [storyboardList, setStoryboardList] = useState<StoryboardListEntry[]>([])
-  const [storyboardListRootDir, setStoryboardListRootDir] = useState<string | null>(null)
-  const [storyboardListError, setStoryboardListError] = useState<string | null>(null)
+  const [pendingDeleteTransition, setPendingDeleteTransition] =
+    useState<null | {
+      transitionId: string
+      anchorKey: string
+    }>(null)
+  const [focusedTransitionId, setFocusedTransitionId] = useState<string | null>(
+    null,
+  )
+  const [workerPromptCopyState, setWorkerPromptCopyState] = useState<
+    "idle" | "copied" | "failed"
+  >("idle")
+  const [markdownImportError, setMarkdownImportError] = useState<string | null>(
+    null,
+  )
+  const [markdownImportCopyState, setMarkdownImportCopyState] = useState<
+    "idle" | "copied" | "failed"
+  >("idle")
+  const [storyboardList, setStoryboardList] = useState<StoryboardListEntry[]>(
+    [],
+  )
+  const [storyboardListRootDir, setStoryboardListRootDir] = useState<
+    string | null
+  >(null)
+  const [storyboardListError, setStoryboardListError] = useState<string | null>(
+    null,
+  )
   const panZoomRef = useRef<PanZoomContainerHandle>(null)
   const saveTimeoutRef = useRef<number | undefined>(undefined)
   const skipAutosaveRef = useRef(true)
@@ -1204,22 +1584,31 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   const lastSavedRef = useRef("")
   const transitionRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [activeCaptureSetId, setActiveCaptureSetId] = useState("default")
-  const [variantRunStates, setVariantRunStates] = useState<Record<string, VariantRunState>>(() => loadPersistedVariantRunStates())
-  const [variantAssetCacheKeys, setVariantAssetCacheKeys] = useState<Record<string, string>>({})
-  const [runQueue, setRunQueue] = useState<StoryboardRunStateDto["queue"] | null>(null)
-  const [runTargetHealth, setRunTargetHealth] = useState<RunTargetHealthPanelState>(emptyRunTargetHealthState)
-  const [storyboardHealthBadge, setStoryboardHealthBadge] = useState<StoryboardHealthBadgeState>({
-    status: "UNKNOWN",
-    loading: false,
-    profileId: "storyboard_source_health",
-  })
+  const [variantRunStates, setVariantRunStates] = useState<
+    Record<string, VariantRunState>
+  >(() => loadPersistedVariantRunStates())
+  const [variantAssetCacheKeys, setVariantAssetCacheKeys] = useState<
+    Record<string, string>
+  >({})
+  const [runQueue, setRunQueue] = useState<
+    StoryboardRunStateDto["queue"] | null
+  >(null)
+  const [runTargetHealth, setRunTargetHealth] =
+    useState<RunTargetHealthPanelState>(emptyRunTargetHealthState)
+  const [storyboardHealthBadge, setStoryboardHealthBadge] =
+    useState<StoryboardHealthBadgeState>({
+      status: "UNKNOWN",
+      loading: false,
+      profileId: "storyboard_source_health",
+    })
   const isConnected = connectedStoryboardUrl.trim().length > 0
   const isAccessServerRootMode = useMemo(
     () => isConnected && isAccessServerRootUrl(connectedStoryboardUrl),
     [connectedStoryboardUrl, isConnected],
   )
   const sourceQuery = useMemo(
-    () => (isConnected ? storyboardUrlToDocumentQuery(connectedStoryboardUrl) : ""),
+    () =>
+      isConnected ? storyboardUrlToDocumentQuery(connectedStoryboardUrl) : "",
     [connectedStoryboardUrl, isConnected],
   )
 
@@ -1324,7 +1713,10 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       window.localStorage.removeItem(remoteStoryboardUrlStorageKey)
       return
     }
-    window.localStorage.setItem(remoteStoryboardUrlStorageKey, trimmedStoryboardUrl)
+    window.localStorage.setItem(
+      remoteStoryboardUrlStorageKey,
+      trimmedStoryboardUrl,
+    )
   }, [connectedStoryboardUrl, source.storyboardUrl])
 
   async function persistDocument(nextDocument: StoryboardDocument) {
@@ -1342,12 +1734,12 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     saveInFlightRef.current = true
     setSaveState("saving")
     const response = await fetch(`${apiRoot}/document?${sourceQuery}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: serialized,
-      })
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: serialized,
+    })
     if (!response.ok) {
       saveInFlightRef.current = false
       setSaveState("error")
@@ -1427,15 +1819,22 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   async function refreshRunState() {
     if (!document || !isConnected || isAccessServerRootMode) return
     const variantPayloads = await Promise.all(
-      (["desktop", "mobile", "square"] as OutputVariantId[]).map(async (outputVariantId) => {
-        const response = await fetch(
-          `${apiRoot}/run-state?${sourceQuery}&captureSetId=${encodeURIComponent(activeCaptureSetId)}&outputVariantId=${encodeURIComponent(outputVariantId)}`,
-        )
-        if (!response.ok) return null
-        return { outputVariantId, payload: (await response.json()) as StoryboardRunStateDto }
-      }),
+      (["desktop", "mobile", "square"] as OutputVariantId[]).map(
+        async (outputVariantId) => {
+          const response = await fetch(
+            `${apiRoot}/run-state?${sourceQuery}&captureSetId=${encodeURIComponent(activeCaptureSetId)}&outputVariantId=${encodeURIComponent(outputVariantId)}`,
+          )
+          if (!response.ok) return null
+          return {
+            outputVariantId,
+            payload: (await response.json()) as StoryboardRunStateDto,
+          }
+        },
+      ),
     )
-    const firstQueue = variantPayloads.find((entry) => entry?.payload.queue)?.payload.queue ?? null
+    const firstQueue =
+      variantPayloads.find((entry) => entry?.payload.queue)?.payload.queue ??
+      null
     setRunQueue(firstQueue)
     const runStateUpdates: VariantRunState[] = []
     const nextCacheKeys: Record<string, string> = {}
@@ -1512,7 +1911,12 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       const next = { ...current }
       for (const update of runStateUpdates) {
         const existing = next[update.key]
-        if (existing?.jobId && existing.jobId !== update.jobId && !isTerminalRunStatus(existing.status)) continue
+        if (
+          existing?.jobId &&
+          existing.jobId !== update.jobId &&
+          !isTerminalRunStatus(existing.status)
+        )
+          continue
         next[update.key] = update
       }
       return next
@@ -1524,10 +1928,18 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
 
   async function refreshStoryboardHealthBadge() {
     if (!isConnected || isAccessServerRootMode) {
-      setStoryboardHealthBadge({ status: "UNKNOWN", loading: false, profileId: "storyboard_source_health" })
+      setStoryboardHealthBadge({
+        status: "UNKNOWN",
+        loading: false,
+        profileId: "storyboard_source_health",
+      })
       return
     }
-    setStoryboardHealthBadge((current) => ({ ...current, loading: true, error: null }))
+    setStoryboardHealthBadge((current) => ({
+      ...current,
+      loading: true,
+      error: null,
+    }))
     try {
       const response = await fetch("/api/health/run", {
         method: "POST",
@@ -1538,9 +1950,19 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           params: { storyboardUrl: connectedStoryboardUrl },
         }),
       })
-      const payload = (await response.json()) as { ok?: boolean; result?: { finishedAt?: string; checks?: Array<{ status?: string }>; status?: string }; error?: string }
+      const payload = (await response.json()) as {
+        ok?: boolean
+        result?: {
+          finishedAt?: string
+          checks?: Array<{ status?: string }>
+          status?: string
+        }
+        error?: string
+      }
       if (!response.ok || !payload.ok || !payload.result) {
-        throw new Error(payload.error ?? `Health API returned HTTP ${response.status}`)
+        throw new Error(
+          payload.error ?? `Health API returned HTTP ${response.status}`,
+        )
       }
       setStoryboardHealthBadge({
         status: storyboardHealthStatusFromRun(payload.result),
@@ -1563,27 +1985,45 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     void refreshStoryboardHealthBadge()
   }, [isConnected, isAccessServerRootMode, connectedStoryboardUrl])
 
-  async function requestRunTargetHealth(runTargetId: string, action: "list" | "check" | "check-all" = "list", key?: string) {
+  async function requestRunTargetHealth(
+    runTargetId: string,
+    action: "list" | "check" | "check-all" = "list",
+    key?: string,
+  ) {
     if (!isConnected || !runTargetId) return
     setRunTargetHealth((current) => ({
       ...current,
       open: true,
       loading: true,
-      runningKey: action === "check-all" ? "*" : action === "check" ? key : undefined,
+      runningKey:
+        action === "check-all" ? "*" : action === "check" ? key : undefined,
       error: null,
     }))
     try {
       const params = new URLSearchParams(sourceQuery)
       params.set("runTargetId", runTargetId)
-      const init: RequestInit = action === "list"
-        ? { method: "GET" }
-        : {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ storyboardUrl: connectedStoryboardUrl, runTargetId, ...(key ? { key } : {}) }),
-          }
-      const path = action === "list" ? "run-target-health" : action === "check" ? "run-target-health/check" : "run-target-health/check-all"
-      const response = await fetch(`${apiRoot}/${path}?${params.toString()}`, init)
+      const init: RequestInit =
+        action === "list"
+          ? { method: "GET" }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                storyboardUrl: connectedStoryboardUrl,
+                runTargetId,
+                ...(key ? { key } : {}),
+              }),
+            }
+      const path =
+        action === "list"
+          ? "run-target-health"
+          : action === "check"
+            ? "run-target-health/check"
+            : "run-target-health/check-all"
+      const response = await fetch(
+        `${apiRoot}/${path}?${params.toString()}`,
+        init,
+      )
       if (!response.ok) throw new Error(await response.text())
       const payload = normalizeRunTargetHealthPayload(await response.json())
       setRunTargetHealth((current) => ({
@@ -1596,7 +2036,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
         error: null,
         updatedAt: new Date().toISOString(),
       }))
-      setStatus(`Loaded ${payload.checks.length} provider health checks for ${runTargetId}`)
+      setStatus(
+        `Loaded ${payload.checks.length} provider health checks for ${runTargetId}`,
+      )
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setRunTargetHealth((current) => ({
@@ -1611,7 +2053,11 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }
   }
 
-  function openRunTargetHealth(runTargetId: string, runTargetLabel: string, runTargetUrl?: string) {
+  function openRunTargetHealth(
+    runTargetId: string,
+    runTargetLabel: string,
+    runTargetUrl?: string,
+  ) {
     setRunTargetHealth({
       open: true,
       runTargetId,
@@ -1624,11 +2070,24 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     void requestRunTargetHealth(runTargetId)
   }
 
-  async function requestFrameRun(storyId: string, frameKey: string, outputVariantId: OutputVariantId) {
+  async function requestFrameRun(
+    storyId: string,
+    frameKey: string,
+    outputVariantId: OutputVariantId,
+  ) {
     if (!document || !isConnected) return
     const mode: RunMode = "run-and-capture"
-    const key = variantRunKey(document.id, storyId, frameKey, activeCaptureSetId, outputVariantId, mode)
-    const manifestEntryId = variantRunStates[key]?.manifestEntryIds?.[0] ?? runManifestEntryId(storyId, frameKey)
+    const key = variantRunKey(
+      document.id,
+      storyId,
+      frameKey,
+      activeCaptureSetId,
+      outputVariantId,
+      mode,
+    )
+    const manifestEntryId =
+      variantRunStates[key]?.manifestEntryIds?.[0] ??
+      runManifestEntryId(storyId, frameKey)
     const now = new Date().toISOString()
     upsertVariantRunState({
       key,
@@ -1651,7 +2110,12 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           storyboardUrl: connectedStoryboardUrl,
           scope: "frame",
           mode,
-          target: { storyboardId: document.id, storyId, frameKey, outputVariantId },
+          target: {
+            storyboardId: document.id,
+            storyId,
+            frameKey,
+            outputVariantId,
+          },
           manifestEntryId,
           captureSetId: activeCaptureSetId,
           outputVariantId,
@@ -1675,7 +2139,13 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
         setStatus(`Failed to queue ${outputVariantId} run: ${message}`)
         return
       }
-      const payload = (await response.json()) as { ok?: true; job?: StoryboardRunJob; jobId?: string; status?: RunLifecycleStatus; queuePosition?: number }
+      const payload = (await response.json()) as {
+        ok?: true
+        job?: StoryboardRunJob
+        jobId?: string
+        status?: RunLifecycleStatus
+        queuePosition?: number
+      }
       const jobId = payload.job?.jobId ?? payload.jobId
       const jobStatus = payload.job?.status ?? payload.status ?? "queued"
       upsertVariantRunState({
@@ -1710,10 +2180,21 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }
   }
 
-  function renderRunVariantAction(storyId: string | undefined, frameKey: string, outputVariantId: OutputVariantId) {
+  function renderRunVariantAction(
+    storyId: string | undefined,
+    frameKey: string,
+    outputVariantId: OutputVariantId,
+  ) {
     if (!document || !storyId) return null
     const mode: RunMode = "run-and-capture"
-    const key = variantRunKey(document.id, storyId, frameKey, activeCaptureSetId, outputVariantId, mode)
+    const key = variantRunKey(
+      document.id,
+      storyId,
+      frameKey,
+      activeCaptureSetId,
+      outputVariantId,
+      mode,
+    )
     const state = variantRunStates[key]
     const busy = state && !isTerminalRunStatus(state.status)
     const disabled = state?.status === "disabled"
@@ -1724,8 +2205,8 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
             disabled
               ? "border-slate-300/35 bg-slate-300/10 text-slate-200"
               : busy
-              ? "border-amber-200/60 bg-amber-300/20 text-amber-50"
-              : "border-cyan-200/50 bg-cyan-300/15 text-cyan-50 hover:border-cyan-100 hover:bg-cyan-300/25"
+                ? "border-amber-200/60 bg-amber-300/20 text-amber-50"
+                : "border-cyan-200/50 bg-cyan-300/15 text-cyan-50 hover:border-cyan-100 hover:bg-cyan-300/25"
           }`}
           disabled={!!busy || disabled}
           onClick={(event) => {
@@ -1733,50 +2214,90 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
             event.stopPropagation()
             void requestFrameRun(storyId, frameKey, outputVariantId)
           }}
-          title={disabled ? state?.disabledReason ?? state?.message ?? `Run disabled for ${frameKey}` : `Run ${frameKey} ${outputVariantId}`}
+          title={
+            disabled
+              ? (state?.disabledReason ??
+                state?.message ??
+                `Run disabled for ${frameKey}`)
+              : `Run ${frameKey} ${outputVariantId}`
+          }
           type="button"
         >
-          {disabled ? "Run disabled" : busy ? `${humanRunStatus(state.status)}…` : `Run ${outputVariantId}`}
+          {disabled
+            ? "Run disabled"
+            : busy
+              ? `${humanRunStatus(state.status)}…`
+              : `Run ${outputVariantId}`}
         </button>
         {state ? (
           <div
             className={`rounded border px-2 py-1 text-[10px] leading-4 shadow ${
               state.status === "succeeded"
                 ? "border-emerald-300/45 bg-emerald-300/15 text-emerald-50"
-                : state.status === "failed" || state.status === "failed-to-queue"
+                : state.status === "failed" ||
+                    state.status === "failed-to-queue"
                   ? "border-rose-300/45 bg-rose-300/15 text-rose-50"
                   : "border-amber-200/45 bg-amber-300/15 text-amber-50"
             }`}
             data-run-state-key={key}
           >
-            <div className="font-semibold uppercase tracking-[0.12em]">{humanRunStatus(state.status)}</div>
-            {state.jobId ? <div className="font-mono">{state.jobId}</div> : null}
-            {state.completedAt ? <div title={state.completedAt}>Captured {new Date(state.completedAt).toLocaleTimeString()}</div> : null}
+            <div className="font-semibold uppercase tracking-[0.12em]">
+              {humanRunStatus(state.status)}
+            </div>
+            {state.jobId ? (
+              <div className="font-mono">{state.jobId}</div>
+            ) : null}
+            {state.completedAt ? (
+              <div title={state.completedAt}>
+                Captured {new Date(state.completedAt).toLocaleTimeString()}
+              </div>
+            ) : null}
             {state.outputAssetHash ? (
               <div className="font-mono" title={state.outputAssetHash}>
                 {state.outputAssetHash.replace(/^sha256:/u, "").slice(0, 12)}
               </div>
             ) : null}
-            {state.outputAsset ? <div className="max-w-[10rem] truncate" title={state.outputAsset}>{state.outputAsset.split("/").at(-1)}</div> : null}
+            {state.outputAsset ? (
+              <div className="max-w-[10rem] truncate" title={state.outputAsset}>
+                {state.outputAsset.split("/").at(-1)}
+              </div>
+            ) : null}
             {state.runtimeTarget ? (
-              <div className="max-w-[10rem] truncate" title={`${state.runtimeTarget.appUrl}${state.runtimeTarget.apiRoot ? ` | API ${state.runtimeTarget.apiRoot}` : ""}${state.runtimeTarget.apiMode ? ` | ${state.runtimeTarget.apiMode}` : ""}`}>
+              <div
+                className="max-w-[10rem] truncate"
+                title={`${state.runtimeTarget.appUrl}${state.runtimeTarget.apiRoot ? ` | API ${state.runtimeTarget.apiRoot}` : ""}${state.runtimeTarget.apiMode ? ` | ${state.runtimeTarget.apiMode}` : ""}`}
+              >
                 {state.runtimeTarget.id}
               </div>
             ) : null}
             {state.automationDriver ? (
-              <div className="max-w-[10rem] truncate" title={`${state.automationDriver.command} | ${state.automationDriver.stepId}`}>
-                {state.automationDriver.fullyAutomated ? "auto" : "missing auto"}: {state.automationDriver.scriptId}
+              <div
+                className="max-w-[10rem] truncate"
+                title={`${state.automationDriver.command} | ${state.automationDriver.stepId}`}
+              >
+                {state.automationDriver.fullyAutomated
+                  ? "auto"
+                  : "missing auto"}
+                : {state.automationDriver.scriptId}
               </div>
             ) : null}
-            {state.queuePosition !== undefined ? <div>Queue #{state.queuePosition + 1}</div> : null}
-            {state.message ? <div className="max-w-[10rem] truncate" title={state.message}>{state.message}</div> : null}
+            {state.queuePosition !== undefined ? (
+              <div>Queue #{state.queuePosition + 1}</div>
+            ) : null}
+            {state.message ? (
+              <div className="max-w-[10rem] truncate" title={state.message}>
+                {state.message}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
     )
   }
 
-  function runVariantActionsForFrame(frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>) {
+  function runVariantActionsForFrame(
+    frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>,
+  ) {
     const storyId = findStoryIdForFrame(document, frame.id)
     return {
       desktop: renderRunVariantAction(storyId, frame.id, "desktop"),
@@ -1785,16 +2306,27 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }
   }
 
-  function runVariantAssetCacheKeysForFrame(frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>) {
+  function runVariantAssetCacheKeysForFrame(
+    frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>,
+  ) {
     if (!document) return {}
     const storyId = findStoryIdForFrame(document, frame.id)
     if (!storyId) return {}
     const keys: Partial<Record<OutputVariantId, string>> = {}
-    ;(["desktop", "mobile", "square"] as OutputVariantId[]).forEach((outputVariantId) => {
-      const key = variantRunKey(document.id, storyId, frame.id, activeCaptureSetId, outputVariantId, "run-and-capture")
-      const cacheKey = variantAssetCacheKeys[key]
-      if (cacheKey) keys[outputVariantId] = cacheKey
-    })
+    ;(["desktop", "mobile", "square"] as OutputVariantId[]).forEach(
+      (outputVariantId) => {
+        const key = variantRunKey(
+          document.id,
+          storyId,
+          frame.id,
+          activeCaptureSetId,
+          outputVariantId,
+          "run-and-capture",
+        )
+        const cacheKey = variantAssetCacheKeys[key]
+        if (cacheKey) keys[outputVariantId] = cacheKey
+      },
+    )
     return keys
   }
 
@@ -1821,7 +2353,11 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     setMissingStoryboard(false)
     setDocument(payload.document)
     const firstStoryId = payload.document.stories[0]?.id ?? null
-    setSelected(firstStoryId ? { kind: "story", storyId: firstStoryId } : { kind: "storyboard" })
+    setSelected(
+      firstStoryId
+        ? { kind: "story", storyId: firstStoryId }
+        : { kind: "storyboard" },
+    )
     setStatus("")
   }
 
@@ -1915,45 +2451,66 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    window.localStorage.setItem(runStateStorageKey, JSON.stringify(variantRunStates))
+    window.localStorage.setItem(
+      runStateStorageKey,
+      JSON.stringify(variantRunStates),
+    )
   }, [variantRunStates])
 
   useEffect(() => {
-    const jobsToPoll = Object.values(variantRunStates).filter((state) => state.jobId && !isTerminalRunStatus(state.status))
+    const jobsToPoll = Object.values(variantRunStates).filter(
+      (state) => state.jobId && !isTerminalRunStatus(state.status),
+    )
     if (jobsToPoll.length === 0 || !isConnected) return
     const timer = window.setInterval(async () => {
-      await Promise.all(jobsToPoll.map(async (state) => {
-        if (!state.jobId) return
-        const response = await fetch(`${apiRoot}/runs/${state.jobId}?${sourceQuery}`)
-        if (!response.ok) return
-        const payload = (await response.json()) as { ok: true; job: StoryboardRunJob }
-        const job = payload.job
-        upsertVariantRunState({
-          ...state,
-          status: job.status,
-          jobId: job.jobId,
-          queuePosition: job.queuePosition,
-          updatedAt: job.updatedAt ?? new Date().toISOString(),
-          completedAt: job.completedAt,
-          message: job.error?.message,
-        })
-        if (isTerminalRunStatus(job.status)) {
-          if (job.status === "succeeded") {
-            const cacheKey = buildRunAssetCacheKey({
-              jobId: job.jobId,
-              completedAt: job.completedAt,
-              updatedAt: job.updatedAt,
-            })
-            if (cacheKey) {
-              setVariantAssetCacheKeys((current) => ({
-                ...current,
-                [variantRunKey(state.storyboardId, state.storyId, state.frameKey, state.captureSetId, state.outputVariantId, state.mode)]: cacheKey,
-              }))
-            }
+      await Promise.all(
+        jobsToPoll.map(async (state) => {
+          if (!state.jobId) return
+          const response = await fetch(
+            `${apiRoot}/runs/${state.jobId}?${sourceQuery}`,
+          )
+          if (!response.ok) return
+          const payload = (await response.json()) as {
+            ok: true
+            job: StoryboardRunJob
           }
-          setStatus(`${state.outputVariantId} run ${job.jobId} ${humanRunStatus(job.status).toLowerCase()}`)
-        }
-      }))
+          const job = payload.job
+          upsertVariantRunState({
+            ...state,
+            status: job.status,
+            jobId: job.jobId,
+            queuePosition: job.queuePosition,
+            updatedAt: job.updatedAt ?? new Date().toISOString(),
+            completedAt: job.completedAt,
+            message: job.error?.message,
+          })
+          if (isTerminalRunStatus(job.status)) {
+            if (job.status === "succeeded") {
+              const cacheKey = buildRunAssetCacheKey({
+                jobId: job.jobId,
+                completedAt: job.completedAt,
+                updatedAt: job.updatedAt,
+              })
+              if (cacheKey) {
+                setVariantAssetCacheKeys((current) => ({
+                  ...current,
+                  [variantRunKey(
+                    state.storyboardId,
+                    state.storyId,
+                    state.frameKey,
+                    state.captureSetId,
+                    state.outputVariantId,
+                    state.mode,
+                  )]: cacheKey,
+                }))
+              }
+            }
+            setStatus(
+              `${state.outputVariantId} run ${job.jobId} ${humanRunStatus(job.status).toLowerCase()}`,
+            )
+          }
+        }),
+      )
       void refreshRunState()
     }, 900)
     return () => window.clearInterval(timer)
@@ -1964,7 +2521,13 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     void refreshRunState()
     const timer = window.setInterval(() => void refreshRunState(), 5000)
     return () => window.clearInterval(timer)
-  }, [document?.id, isConnected, isAccessServerRootMode, sourceQuery, activeCaptureSetId])
+  }, [
+    document?.id,
+    isConnected,
+    isAccessServerRootMode,
+    sourceQuery,
+    activeCaptureSetId,
+  ])
 
   const storyCount = document?.stories.length ?? 0
   const frameCount =
@@ -1976,7 +2539,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       return total + story.frames.length + branchFrames
     }, 0) ?? 0
   const isRemoteScenario = source.storyboardUrl === ""
-  const isEmptyStoryboard = isConnected && (missingStoryboard || (!!document && document.stories.length === 0))
+  const isEmptyStoryboard =
+    isConnected &&
+    (missingStoryboard || (!!document && document.stories.length === 0))
   const headerStatus =
     saveState === "error"
       ? "Save failed"
@@ -2010,19 +2575,31 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }
     if (!availableCaptureSetIds.includes(activeCaptureSetId)) {
       setActiveCaptureSetId(
-        availableCaptureSetIds.includes("default") ? "default" : availableCaptureSetIds[0],
+        availableCaptureSetIds.includes("default")
+          ? "default"
+          : availableCaptureSetIds[0],
       )
     }
   }, [activeCaptureSetId, availableCaptureSetIds])
   const usesScreenshotFrames = useMemo(
-    () => sequences.some((sequence) => sequence.frames.some((frame) => hasFrameScreenshots(frame as Partial<StoryboardFrameRecord>))),
+    () =>
+      sequences.some((sequence) =>
+        sequence.frames.some((frame) =>
+          hasFrameScreenshots(frame as Partial<StoryboardFrameRecord>),
+        ),
+      ),
     [sequences],
   )
-  const editorFrameWidth = usesScreenshotFrames ? screenshotFrameWidth : frameSize
-  const editorFrameHeight = usesScreenshotFrames ? screenshotFrameHeight : frameSize
+  const editorFrameWidth = usesScreenshotFrames
+    ? screenshotFrameWidth
+    : frameSize
+  const editorFrameHeight = usesScreenshotFrames
+    ? screenshotFrameHeight
+    : frameSize
   const editorActionWidth = usesScreenshotFrames ? screenshotActionWidth : 72
   const editorNextHeight = usesScreenshotFrames ? screenshotNextHeight : 96
-  const selectedFrameId = selected?.kind === "frame" ? selected.frameId : undefined
+  const selectedFrameId =
+    selected?.kind === "frame" ? selected.frameId : undefined
   const selectedStory =
     selected?.kind === "story"
       ? findStory(document, selected.storyId)
@@ -2036,23 +2613,44 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   const selectedFrameTransitions = selectedFrame?.transitions ?? []
   const documentCaptureSetIds = Object.keys(document?.captureSets ?? {})
   const storyboardInspectorCaptureSetIds =
-    documentCaptureSetIds.length > 0 ? documentCaptureSetIds : [activeCaptureSetId]
-  const selectedFrameCaptureSetIds = Array.from(new Set([
-    ...documentCaptureSetIds,
-    ...frameCaptureSetIds(selectedFrame ?? {}),
-  ]))
-  const selectedFrameCapture = frameCaptureSet(selectedFrame ?? {}, activeCaptureSetId)
+    documentCaptureSetIds.length > 0
+      ? documentCaptureSetIds
+      : [activeCaptureSetId]
+  const selectedFrameCaptureSetIds = Array.from(
+    new Set([
+      ...documentCaptureSetIds,
+      ...frameCaptureSetIds(selectedFrame ?? {}),
+    ]),
+  )
+  const selectedFrameCapture = frameCaptureSet(
+    selectedFrame ?? {},
+    activeCaptureSetId,
+  )
   const selectedDocumentCaptureSet = document?.captureSets?.[activeCaptureSetId]
   const selectedCaptureSizes = selectedDocumentCaptureSet?.sizes ?? {}
-  const storyboardDefaultRunUrl = normalizeWebRunTargetUrl(document?.runTarget?.kind === "web" ? document.runTarget.url : "")
+  const storyboardDefaultRunUrl = normalizeWebRunTargetUrl(
+    document?.runTarget?.kind === "web" ? document.runTarget.url : "",
+  )
   const selectedFrameScreenshotUrls = {
-    desktop: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.desktop),
-    mobile: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.mobile),
-    square: proxiedAssetUrl(connectedStoryboardUrl, selectedFrameCapture.screenshots?.square),
+    desktop: proxiedAssetUrl(
+      connectedStoryboardUrl,
+      selectedFrameCapture.screenshots?.desktop,
+    ),
+    mobile: proxiedAssetUrl(
+      connectedStoryboardUrl,
+      selectedFrameCapture.screenshots?.mobile,
+    ),
+    square: proxiedAssetUrl(
+      connectedStoryboardUrl,
+      selectedFrameCapture.screenshots?.square,
+    ),
   }
   const storyFrameOptions = selectedStory
     ? [
-        ...selectedStory.frames.map((frame) => ({ id: frame.id, title: frame.title })),
+        ...selectedStory.frames.map((frame) => ({
+          id: frame.id,
+          title: frame.title,
+        })),
         ...(selectedStory.branches ?? []).flatMap((branch) =>
           branch.frames.map((frame) => ({ id: frame.id, title: frame.title })),
         ),
@@ -2063,17 +2661,22 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     if (!query) {
       return document?.stories ?? []
     }
-    return (document?.stories ?? []).filter((story) => story.title.toLowerCase().includes(query))
+    return (document?.stories ?? []).filter((story) =>
+      story.title.toLowerCase().includes(query),
+    )
   }, [document?.stories, storySearch])
 
-  const visibleVariantRunStates = useMemo(() =>
-    Object.values(variantRunStates)
-      .filter((state) => state.storyboardId === document?.id)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, 6),
+  const visibleVariantRunStates = useMemo(
+    () =>
+      Object.values(variantRunStates)
+        .filter((state) => state.storyboardId === document?.id)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 6),
     [variantRunStates, document?.id],
   )
-  const activeVariantRunStates = visibleVariantRunStates.filter((state) => !isTerminalRunStatus(state.status))
+  const activeVariantRunStates = visibleVariantRunStates.filter(
+    (state) => !isTerminalRunStatus(state.status),
+  )
 
   useEffect(() => {
     if (!selectedFrameId || sequences.length === 0) {
@@ -2090,7 +2693,10 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       let left = element.offsetLeft
       let top = element.offsetTop
       let parent = element.offsetParent
-      while (parent instanceof HTMLElement && !parent.hasAttribute("data-panzoom-content")) {
+      while (
+        parent instanceof HTMLElement &&
+        !parent.hasAttribute("data-panzoom-content")
+      ) {
         left += parent.offsetLeft
         top += parent.offsetTop
         parent = parent.offsetParent
@@ -2158,10 +2764,15 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                     >
                       <div className="font-medium">{story.title}</div>
                       <div className="mt-1 text-white/45">
-                        {story.frames.length} main frames, {(story.branches ?? []).length} branches
+                        {story.frames.length} main frames,{" "}
+                        {(story.branches ?? []).length} branches
                       </div>
                     </button>
-                    {renderStoryDeleteButton(story.id, story.title, `navigator:${story.id}`)}
+                    {renderStoryDeleteButton(
+                      story.id,
+                      story.title,
+                      `navigator:${story.id}`,
+                    )}
                   </div>
                 </div>
               ))}
@@ -2199,138 +2810,113 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       content: (
         <div className="flex h-full min-h-0 flex-col bg-zinc-950">
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
-              Inspector
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
-              <button
-                className={`rounded border px-2 py-1 transition ${
-                  selected?.kind === "storyboard"
-                    ? "border-cyan-300/40 bg-cyan-200/10 text-cyan-100"
-                    : "border-white/10 bg-black/30 hover:border-cyan-300/40 hover:text-cyan-100"
-                }`}
-                onClick={() => {
-                  setFocusedTransitionId(null)
-                  setSelected({ kind: "storyboard" })
-                }}
-                type="button"
-              >
-                Storyboard
-              </button>
-              {selectedStory ? (
-                <>
-                  <span className="text-white/30">&gt;</span>
-                  <button
-                    className={`rounded border px-2 py-1 transition ${
-                      selected?.kind === "story"
-                        ? "border-cyan-300/40 bg-cyan-200/10 text-cyan-100"
-                        : "border-white/10 bg-black/30 hover:border-cyan-300/40 hover:text-cyan-100"
-                    }`}
-                    onClick={() => {
-                      setFocusedTransitionId(null)
-                      setSelected({ kind: "story", storyId: selectedStory.id })
-                    }}
-                    type="button"
-                  >
-                    {selectedStory.title}
-                  </button>
-                </>
-              ) : null}
-              {selected?.kind === "frame" && selectedFrame ? (
-                <>
-                  <span className="text-white/30">&gt;</span>
-                  <button
-                    className="rounded border border-cyan-300/40 bg-cyan-200/10 px-2 py-1 text-cyan-100 transition"
-                    onClick={() => {
-                      setFocusedTransitionId(null)
-                      setSelected({
-                        kind: "frame",
-                        storyId: selected.storyId,
-                        frameId: selected.frameId,
-                        branchId: selected.branchId,
-                      })
-                    }}
-                    type="button"
-                  >
-                    {selectedFrame.title}
-                  </button>
-                </>
-              ) : null}
-            </div>
-            <div className="mt-2 text-sm text-white/55">
-              {selected?.kind === "story"
-                ? "Editing story metadata"
-                : selected?.kind === "storyboard"
-                  ? "Editing storyboard metadata"
-                : selected?.kind === "frame"
-                  ? "Editing frame content"
-                  : "Select a story or frame"}
-            </div>
-          </div>
-
-          {runTargetHealth.open ? (
-            <RunTargetHealthPanel
-              onClose={() => setRunTargetHealth(emptyRunTargetHealthState)}
-              onRefresh={() => void requestRunTargetHealth(runTargetHealth.runTargetId)}
-              onRunAll={() => void requestRunTargetHealth(runTargetHealth.runTargetId, "check-all")}
-              onRunOne={(key) => void requestRunTargetHealth(runTargetHealth.runTargetId, "check", key)}
-              state={runTargetHealth}
-            />
-          ) : null}
-
-          {selected?.kind === "storyboard" && document ? (
-            <div className="space-y-4">
-              <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
-                <div>{document.stories.length} stories</div>
-                <div>{frameCount} frames total</div>
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
+                Inspector
               </div>
-              <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs uppercase tracking-[0.14em] text-white/45">
-                    User stories
-                  </div>
-                  <button
-                    aria-label="Add story"
-                    className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
-                    onClick={addStory}
-                    title="Add story"
-                    type="button"
-                  >
-                    <PlusIcon />
-                  </button>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
+                <button
+                  className={`rounded border px-2 py-1 transition ${
+                    selected?.kind === "storyboard"
+                      ? "border-cyan-300/40 bg-cyan-200/10 text-cyan-100"
+                      : "border-white/10 bg-black/30 hover:border-cyan-300/40 hover:text-cyan-100"
+                  }`}
+                  onClick={() => {
+                    setFocusedTransitionId(null)
+                    setSelected({ kind: "storyboard" })
+                  }}
+                  type="button"
+                >
+                  Storyboard
+                </button>
+                {selectedStory ? (
+                  <>
+                    <span className="text-white/30">&gt;</span>
+                    <button
+                      className={`rounded border px-2 py-1 transition ${
+                        selected?.kind === "story"
+                          ? "border-cyan-300/40 bg-cyan-200/10 text-cyan-100"
+                          : "border-white/10 bg-black/30 hover:border-cyan-300/40 hover:text-cyan-100"
+                      }`}
+                      onClick={() => {
+                        setFocusedTransitionId(null)
+                        setSelected({
+                          kind: "story",
+                          storyId: selectedStory.id,
+                        })
+                      }}
+                      type="button"
+                    >
+                      {selectedStory.title}
+                    </button>
+                  </>
+                ) : null}
+                {selected?.kind === "frame" && selectedFrame ? (
+                  <>
+                    <span className="text-white/30">&gt;</span>
+                    <button
+                      className="rounded border border-cyan-300/40 bg-cyan-200/10 px-2 py-1 text-cyan-100 transition"
+                      onClick={() => {
+                        setFocusedTransitionId(null)
+                        setSelected({
+                          kind: "frame",
+                          storyId: selected.storyId,
+                          frameId: selected.frameId,
+                          branchId: selected.branchId,
+                        })
+                      }}
+                      type="button"
+                    >
+                      {selectedFrame.title}
+                    </button>
+                  </>
+                ) : null}
+              </div>
+              <div className="mt-2 text-sm text-white/55">
+                {selected?.kind === "story"
+                  ? "Editing story metadata"
+                  : selected?.kind === "storyboard"
+                    ? "Editing storyboard metadata"
+                    : selected?.kind === "frame"
+                      ? "Editing frame content"
+                      : "Select a story or frame"}
+              </div>
+            </div>
+
+            {runTargetHealth.open ? (
+              <RunTargetHealthPanel
+                onClose={() => setRunTargetHealth(emptyRunTargetHealthState)}
+                onRefresh={() =>
+                  void requestRunTargetHealth(runTargetHealth.runTargetId)
+                }
+                onRunAll={() =>
+                  void requestRunTargetHealth(
+                    runTargetHealth.runTargetId,
+                    "check-all",
+                  )
+                }
+                onRunOne={(key) =>
+                  void requestRunTargetHealth(
+                    runTargetHealth.runTargetId,
+                    "check",
+                    key,
+                  )
+                }
+                state={runTargetHealth}
+              />
+            ) : null}
+
+            {selected?.kind === "storyboard" && document ? (
+              <div className="space-y-4">
+                <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+                  <div>{document.stories.length} stories</div>
+                  <div>{frameCount} frames total</div>
                 </div>
-                <input
-                  className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                  onChange={(event) => setStorySearch(event.currentTarget.value)}
-                  placeholder="Search stories"
-                  value={storySearch}
-                />
-                <div className="space-y-2">
-                  {filteredStories.map((story) => (
-                    <div className="flex items-start gap-2 rounded border border-white/10 bg-black/20 p-3" key={story.id}>
-                      <button
-                        className="min-w-0 flex-1 text-left"
-                        onClick={() => {
-                          setFocusedTransitionId(null)
-                          setSelected({ kind: "story", storyId: story.id })
-                        }}
-                        type="button"
-                      >
-                        <div className="text-sm font-medium text-white">{story.title}</div>
-                        <div className="mt-1 text-xs text-white/45">
-                          {story.frames.length} main frames, {(story.branches ?? []).length} branches
-                        </div>
-                      </button>
-                      {renderStoryDeleteButton(story.id, story.title, `storyboard-inspector:${story.id}`)}
+                <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs uppercase tracking-[0.14em] text-white/45">
+                      User stories
                     </div>
-                  ))}
-                  {filteredStories.length === 0 ? (
-                    <div className="rounded border border-dashed border-white/10 px-3 py-4 text-sm text-white/40">
-                      No matching stories.
-                    </div>
-                  ) : null}
-                  <div className="flex justify-end pt-1">
                     <button
                       aria-label="Add story"
                       className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
@@ -2341,589 +2927,784 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                       <PlusIcon />
                     </button>
                   </div>
-                </div>
-              </div>
-              <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">
-                    Default run target
-                  </div>
-                  <div className="mt-1 text-xs text-white/45">
-                    Stored as storyboard.runTarget. All capture sizes use this web URL unless a size sets its own override.
-                  </div>
-                </div>
-                <label className="block">
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                    Web URL
-                  </div>
                   <input
                     className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                    onChange={(event) => updateStoryboardDefaultRunTarget(event.currentTarget.value)}
-                    placeholder={storyboardDefaultRunUrl || "https://app.example.test/path"}
-                    value={storyboardDefaultRunUrl}
+                    onChange={(event) =>
+                      setStorySearch(event.currentTarget.value)
+                    }
+                    placeholder="Search stories"
+                    value={storySearch}
                   />
-                </label>
-                <button
-                  className="rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:opacity-50"
-                  disabled={!isConnected || !storyboardDefaultRunUrl}
-                  onClick={() => openRunTargetHealth("storyboard:default", "Storyboard default run target", storyboardDefaultRunUrl)}
-                  type="button"
-                >
-                  Run Target Health
-                </button>
-              </div>
-              <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">
-                    Run targets
-                  </div>
-                  <div className="mt-1 text-xs text-white/45">
-                    Optional per-size overrides. Leave these blank to use the storyboard default target.
-                  </div>
-                </div>
-                <label className="block">
-                  <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                    Capture set
-                  </div>
-                  <select
-                    className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                    onChange={(event) => setActiveCaptureSetId(event.currentTarget.value)}
-                    value={activeCaptureSetId}
-                  >
-                    {storyboardInspectorCaptureSetIds.map((captureSetId) => (
-                      <option key={captureSetId} value={captureSetId}>
-                        {document.captureSets?.[captureSetId]?.label ?? captureSetId}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {(["desktop", "mobile", "square"] as OutputVariantId[]).map((outputVariantId) => {
-                  const size = selectedCaptureSizes[outputVariantId]
-                  const runUrl = normalizeWebRunTargetUrl(size?.runTarget?.kind === "web" ? size.runTarget.url : "")
-                  const dimensions = size?.width && size?.height ? `${size.width} × ${size.height}` : outputVariantId === "desktop" ? "1440 × 900" : outputVariantId === "mobile" ? "390 × 844" : "1024 × 1024"
-                  return (
-                    <div className="rounded border border-white/10 bg-black/25 p-3" key={outputVariantId}>
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">
-                            {outputVariantId}
+                  <div className="space-y-2">
+                    {filteredStories.map((story) => (
+                      <div
+                        className="flex items-start gap-2 rounded border border-white/10 bg-black/20 p-3"
+                        key={story.id}
+                      >
+                        <button
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => {
+                            setFocusedTransitionId(null)
+                            setSelected({ kind: "story", storyId: story.id })
+                          }}
+                          type="button"
+                        >
+                          <div className="text-sm font-medium text-white">
+                            {story.title}
                           </div>
-                          <div className="mt-1 text-[11px] text-white/40">{dimensions}</div>
-                        </div>
-                        {runUrl ? (
-                          <div className="rounded border border-emerald-300/30 bg-emerald-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-emerald-100">
-                            web
+                          <div className="mt-1 text-xs text-white/45">
+                            {story.frames.length} main frames,{" "}
+                            {(story.branches ?? []).length} branches
                           </div>
-                        ) : storyboardDefaultRunUrl ? (
-                          <div className="rounded border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100">
-                            default
-                          </div>
-                        ) : (
-                          <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/35">
-                            no target
-                          </div>
+                        </button>
+                        {renderStoryDeleteButton(
+                          story.id,
+                          story.title,
+                          `storyboard-inspector:${story.id}`,
                         )}
                       </div>
-                      <label className="block">
-                        <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                          Web URL
-                        </div>
-                        <input
-                          className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                          onChange={(event) => updateCaptureSizeWebUrl(activeCaptureSetId, outputVariantId, event.currentTarget.value)}
-                          placeholder={storyboardDefaultRunUrl || "https://app.example.test/path"}
-                          value={runUrl}
-                        />
-                      </label>
+                    ))}
+                    {filteredStories.length === 0 ? (
+                      <div className="rounded border border-dashed border-white/10 px-3 py-4 text-sm text-white/40">
+                        No matching stories.
+                      </div>
+                    ) : null}
+                    <div className="flex justify-end pt-1">
                       <button
-                        className="mt-2 rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:opacity-50"
-                        disabled={!isConnected || !(runUrl || storyboardDefaultRunUrl)}
-                        onClick={() => openRunTargetHealth(runUrl ? `storyboard:${activeCaptureSetId}:${outputVariantId}` : "storyboard:default", `${activeCaptureSetId} ${outputVariantId} run target`, runUrl || storyboardDefaultRunUrl)}
+                        aria-label="Add story"
+                        className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                        onClick={addStory}
+                        title="Add story"
                         type="button"
                       >
-                        Run Target Health
+                        <PlusIcon />
                       </button>
                     </div>
-                  )
-                })}
-              </div>
-            </div>
-          ) : null}
-
-          {selected?.kind === "story" && selectedStory ? (
-            <div className="space-y-4">
-              <div className="flex justify-end">
-                {renderStoryDeleteButton(
-                  selectedStory.id,
-                  selectedStory.title,
-                  `story-inspector:${selectedStory.id}`,
-                  "flex h-8 w-8 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100",
-                )}
-              </div>
-              <label className="block">
-                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                  Story title
+                  </div>
                 </div>
-                <input
-                  className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                  onChange={(event) => updateCurrentStoryTitle(event.currentTarget.value)}
-                  value={selectedStory.title}
-                />
-              </label>
-              <label className="block">
-                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                  Notes
-                </div>
-                <textarea
-                  className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                  onChange={(event) =>
-                    updateCurrentStory((story) => ({
-                      ...story,
-                      notes: event.currentTarget.value || undefined,
-                    }))
-                  }
-                  value={selectedStory.notes ?? ""}
-                />
-              </label>
-              <div className="rounded border border-white/10 bg-white/5 p-3">
-                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                  First frame
-                </div>
-                {selectedStory.frames[0] ? (
-                  <button
-                    className="block w-full rounded border border-white/10 bg-black/30 px-3 py-3 text-left transition hover:border-cyan-300/40 hover:bg-cyan-200/5"
-                    onClick={() => {
-                      setFocusedTransitionId(null)
-                      setSelected({
-                        kind: "frame",
-                        storyId: selectedStory.id,
-                        frameId: selectedStory.frames[0].id,
-                      })
-                    }}
-                    type="button"
-                  >
-                    <div className="text-sm font-medium text-white">
-                      {selectedStory.frames[0].title}
+                <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">
+                      Default run target
                     </div>
                     <div className="mt-1 text-xs text-white/45">
-                      Open the first frame in the frame inspector.
+                      Stored as storyboard.runTarget. All capture sizes use this
+                      web URL unless a size sets its own override.
                     </div>
-                  </button>
-                ) : (
-                  <div className="rounded border border-white/10 bg-black/30 px-3 py-3 text-sm text-white/45">
-                    No first frame yet.
                   </div>
-                )}
-              </div>
-              <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
-                {selectedStory.frames.length} main frames, {(selectedStory.branches ?? []).length} branch rows
-              </div>
-            </div>
-          ) : null}
-
-          {selected?.kind === "frame" && selectedFrame ? (
-            <div className="space-y-4">
-              <label className="block">
-                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                  Frame title
-                </div>
-                <textarea
-                  className="min-h-[96px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                  onChange={(event) =>
-                    updateCurrentFrame((frame) => ({
-                      ...frame,
-                      title: event.currentTarget.value,
-                    }))
-                  }
-                  value={selectedFrame.title}
-                />
-              </label>
-
-              <label className="block">
-                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                  Visual description
-                </div>
-                <textarea
-                  className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                  onChange={(event) =>
-                    updateCurrentFrame((frame) => ({
-                      ...frame,
-                      description: event.currentTarget.value || undefined,
-                    }))
-                  }
-                  value={selectedFrame.description ?? ""}
-                />
-              </label>
-
-              <label className="block">
-                <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                  Notes
-                </div>
-                <textarea
-                  className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                  onChange={(event) =>
-                    updateCurrentFrame((frame) => ({
-                      ...frame,
-                      notes: event.currentTarget.value || undefined,
-                    }))
-                  }
-                  value={selectedFrame.notes ?? ""}
-                />
-              </label>
-
-              <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs uppercase tracking-[0.14em] text-white/45">
-                    Capture sets
-                  </div>
+                  <label className="block">
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                      Web URL
+                    </div>
+                    <input
+                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                      onChange={(event) =>
+                        updateStoryboardDefaultRunTarget(
+                          event.currentTarget.value,
+                        )
+                      }
+                      placeholder={
+                        storyboardDefaultRunUrl ||
+                        "https://app.example.test/path"
+                      }
+                      value={storyboardDefaultRunUrl}
+                    />
+                  </label>
                   <button
-                    aria-label="Add capture set"
-                    className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
-                    onClick={addCaptureSet}
-                    title="Add capture set"
+                    className="rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:opacity-50"
+                    disabled={!isConnected || !storyboardDefaultRunUrl}
+                    onClick={() =>
+                      openRunTargetHealth(
+                        "storyboard:default",
+                        "Storyboard default run target",
+                        storyboardDefaultRunUrl,
+                      )
+                    }
                     type="button"
                   >
-                    <PlusIcon />
+                    Run Target Health
                   </button>
                 </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {selectedFrameCaptureSetIds.map((captureSetId) => (
-                    <button
-                      className={
-                        captureSetId === activeCaptureSetId
-                          ? "rounded border border-cyan-300/40 bg-cyan-300/10 px-2 py-1 text-xs uppercase tracking-[0.14em] text-cyan-100"
-                          : "rounded border border-white/10 bg-black/30 px-2 py-1 text-xs uppercase tracking-[0.14em] text-white/55 transition hover:border-cyan-300/30 hover:text-cyan-100"
-                      }
-                      key={captureSetId}
-                      onClick={() => setActiveCaptureSetId(captureSetId)}
-                      type="button"
-                    >
-                      {captureSetId}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="flex items-end gap-3">
-                  <label className="block min-w-0 flex-1">
-                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                      Capture set name
+                <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">
+                      Run targets
                     </div>
-                    <input
+                    <div className="mt-1 text-xs text-white/45">
+                      Optional per-size overrides. Leave these blank to use the
+                      storyboard default target.
+                    </div>
+                  </div>
+                  <label className="block">
+                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                      Capture set
+                    </div>
+                    <select
                       className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                      onChange={(event) => renameActiveCaptureSet(event.currentTarget.value)}
+                      onChange={(event) =>
+                        setActiveCaptureSetId(event.currentTarget.value)
+                      }
                       value={activeCaptureSetId}
-                    />
-                  </label>
-                  {selectedFrameCaptureSetIds.length > 1 ? (
-                    <button
-                      aria-label="Remove capture set"
-                      className="flex h-9 w-9 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100"
-                      onClick={removeActiveCaptureSet}
-                      title="Remove capture set"
-                      type="button"
                     >
-                      <TrashIcon />
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className="grid gap-3 xl:grid-cols-3">
-                  <label className="block">
-                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                      Desktop
-                    </div>
-                    <input
-                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                      onChange={(event) =>
-                        updateCurrentFrame((frame) => ({
-                          ...frame,
-                          captureSets: {
-                            ...(frame.captureSets ?? {}),
-                            [activeCaptureSetId]: {
-                              ...(frame.captureSets?.[activeCaptureSetId] ?? {}),
-                              screenshots: {
-                                ...(frame.captureSets?.[activeCaptureSetId]?.screenshots ?? {}),
-                                desktop: event.currentTarget.value || undefined,
-                              },
-                            },
-                          },
-                          screenshots: undefined,
-                        }))
-                      }
-                      placeholder="./assets/frame-001.desktop.png"
-                      value={selectedFrameCapture.screenshots?.desktop ?? ""}
-                    />
-                    <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
-                      <AssetPreview alt={selectedFrame.title + " desktop preview"} src={selectedFrameScreenshotUrls.desktop} />
-                    </div>
+                      {storyboardInspectorCaptureSetIds.map((captureSetId) => (
+                        <option key={captureSetId} value={captureSetId}>
+                          {document.captureSets?.[captureSetId]?.label ??
+                            captureSetId}
+                        </option>
+                      ))}
+                    </select>
                   </label>
-
-                  <label className="block">
-                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                      Mobile
-                    </div>
-                    <input
-                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                      onChange={(event) =>
-                        updateCurrentFrame((frame) => ({
-                          ...frame,
-                          captureSets: {
-                            ...(frame.captureSets ?? {}),
-                            [activeCaptureSetId]: {
-                              ...(frame.captureSets?.[activeCaptureSetId] ?? {}),
-                              screenshots: {
-                                ...(frame.captureSets?.[activeCaptureSetId]?.screenshots ?? {}),
-                                mobile: event.currentTarget.value || undefined,
-                              },
-                            },
-                          },
-                          screenshots: undefined,
-                        }))
-                      }
-                      placeholder="./assets/frame-001.mobile.png"
-                      value={selectedFrameCapture.screenshots?.mobile ?? ""}
-                    />
-                    <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
-                      <AssetPreview alt={selectedFrame.title + " mobile preview"} src={selectedFrameScreenshotUrls.mobile} />
-                    </div>
-                  </label>
-
-                  <label className="block">
-                    <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                      Square
-                    </div>
-                    <input
-                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                      onChange={(event) =>
-                        updateCurrentFrame((frame) => ({
-                          ...frame,
-                          captureSets: {
-                            ...(frame.captureSets ?? {}),
-                            [activeCaptureSetId]: {
-                              ...(frame.captureSets?.[activeCaptureSetId] ?? {}),
-                              screenshots: {
-                                ...(frame.captureSets?.[activeCaptureSetId]?.screenshots ?? {}),
-                                square: event.currentTarget.value || undefined,
-                              },
-                            },
-                          },
-                          screenshots: undefined,
-                        }))
-                      }
-                      placeholder="./assets/frame-001.square.png"
-                      value={selectedFrameCapture.screenshots?.square ?? ""}
-                    />
-                    <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
-                      <AssetPreview alt={selectedFrame.title + " square preview"} src={selectedFrameScreenshotUrls.square} />
-                    </div>
-                  </label>
+                  {(["desktop", "mobile", "square"] as OutputVariantId[]).map(
+                    (outputVariantId) => {
+                      const size = selectedCaptureSizes[outputVariantId]
+                      const runUrl = normalizeWebRunTargetUrl(
+                        size?.runTarget?.kind === "web"
+                          ? size.runTarget.url
+                          : "",
+                      )
+                      const dimensions =
+                        size?.width && size?.height
+                          ? `${size.width} × ${size.height}`
+                          : outputVariantId === "desktop"
+                            ? "1440 × 900"
+                            : outputVariantId === "mobile"
+                              ? "390 × 844"
+                              : "1024 × 1024"
+                      return (
+                        <div
+                          className="rounded border border-white/10 bg-black/25 p-3"
+                          key={outputVariantId}
+                        >
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">
+                                {outputVariantId}
+                              </div>
+                              <div className="mt-1 text-[11px] text-white/40">
+                                {dimensions}
+                              </div>
+                            </div>
+                            {runUrl ? (
+                              <div className="rounded border border-emerald-300/30 bg-emerald-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-emerald-100">
+                                web
+                              </div>
+                            ) : storyboardDefaultRunUrl ? (
+                              <div className="rounded border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100">
+                                default
+                              </div>
+                            ) : (
+                              <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/35">
+                                no target
+                              </div>
+                            )}
+                          </div>
+                          <label className="block">
+                            <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                              Web URL
+                            </div>
+                            <input
+                              className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                              onChange={(event) =>
+                                updateCaptureSizeWebUrl(
+                                  activeCaptureSetId,
+                                  outputVariantId,
+                                  event.currentTarget.value,
+                                )
+                              }
+                              placeholder={
+                                storyboardDefaultRunUrl ||
+                                "https://app.example.test/path"
+                              }
+                              value={runUrl}
+                            />
+                          </label>
+                          <button
+                            className="mt-2 rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:opacity-50"
+                            disabled={
+                              !isConnected ||
+                              !(runUrl || storyboardDefaultRunUrl)
+                            }
+                            onClick={() =>
+                              openRunTargetHealth(
+                                runUrl
+                                  ? `storyboard:${activeCaptureSetId}:${outputVariantId}`
+                                  : "storyboard:default",
+                                `${activeCaptureSetId} ${outputVariantId} run target`,
+                                runUrl || storyboardDefaultRunUrl,
+                              )
+                            }
+                            type="button"
+                          >
+                            Run Target Health
+                          </button>
+                        </div>
+                      )
+                    },
+                  )}
                 </div>
               </div>
+            ) : null}
 
-              <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
-                <div>
-                  <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">
-                    Run targets
-                  </div>
-                  <div className="mt-1 text-xs text-white/45">
-                    Optional per-size overrides. Leave these blank to use the storyboard default target.
-                  </div>
+            {selected?.kind === "story" && selectedStory ? (
+              <div className="space-y-4">
+                <div className="flex justify-end">
+                  {renderStoryDeleteButton(
+                    selectedStory.id,
+                    selectedStory.title,
+                    `story-inspector:${selectedStory.id}`,
+                    "flex h-8 w-8 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100",
+                  )}
                 </div>
-                {(["desktop", "mobile", "square"] as OutputVariantId[]).map((outputVariantId) => {
-                  const size = selectedCaptureSizes[outputVariantId]
-                  const runUrl = normalizeWebRunTargetUrl(size?.runTarget?.kind === "web" ? size.runTarget.url : "")
-                  const dimensions = size?.width && size?.height ? `${size.width} × ${size.height}` : outputVariantId === "desktop" ? "1440 × 900" : outputVariantId === "mobile" ? "390 × 844" : "1024 × 1024"
-                  return (
-                    <div className="rounded border border-white/10 bg-black/25 p-3" key={outputVariantId}>
-                      <div className="mb-2 flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">
-                            {outputVariantId}
-                          </div>
-                          <div className="mt-1 text-[11px] text-white/40">{dimensions}</div>
-                        </div>
-                        {runUrl ? (
-                          <div className="rounded border border-emerald-300/30 bg-emerald-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-emerald-100">
-                            web
-                          </div>
-                        ) : storyboardDefaultRunUrl ? (
-                          <div className="rounded border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100">
-                            default
-                          </div>
-                        ) : (
-                          <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/35">
-                            no target
-                          </div>
-                        )}
-                      </div>
-                      <label className="block">
-                        <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                          Web URL
-                        </div>
-                        <input
-                          className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                          onChange={(event) => updateCaptureSizeWebUrl(activeCaptureSetId, outputVariantId, event.currentTarget.value)}
-                          placeholder={storyboardDefaultRunUrl || "https://app.example.test/path"}
-                          value={runUrl}
-                        />
-                      </label>
-                      <button
-                        className="mt-2 rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:opacity-50"
-                        disabled={!isConnected || !(runUrl || storyboardDefaultRunUrl)}
-                        onClick={() => openRunTargetHealth(runUrl ? `storyboard:${activeCaptureSetId}:${outputVariantId}` : "storyboard:default", `${activeCaptureSetId} ${outputVariantId} run target`, runUrl || storyboardDefaultRunUrl)}
-                        type="button"
-                      >
-                        Run Target Health
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-              {selectedBranch ? (
                 <label className="block">
                   <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
-                    Branch label
+                    Story title
                   </div>
                   <input
                     className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                    onChange={(event) => updateCurrentBranchLabel(event.currentTarget.value)}
-                    value={selectedBranch.label}
+                    onChange={(event) =>
+                      updateCurrentStoryTitle(event.currentTarget.value)
+                    }
+                    value={selectedStory.title}
                   />
                 </label>
-              ) : null}
-
-              <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs uppercase tracking-[0.14em] text-white/45">
-                    Transitions
+                <label className="block">
+                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                    Notes
                   </div>
+                  <textarea
+                    className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                    onChange={(event) =>
+                      updateCurrentStory((story) => ({
+                        ...story,
+                        notes: event.currentTarget.value || undefined,
+                      }))
+                    }
+                    value={selectedStory.notes ?? ""}
+                  />
+                </label>
+                <div className="rounded border border-white/10 bg-white/5 p-3">
+                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                    First frame
+                  </div>
+                  {selectedStory.frames[0] ? (
+                    <button
+                      className="block w-full rounded border border-white/10 bg-black/30 px-3 py-3 text-left transition hover:border-cyan-300/40 hover:bg-cyan-200/5"
+                      onClick={() => {
+                        setFocusedTransitionId(null)
+                        setSelected({
+                          kind: "frame",
+                          storyId: selectedStory.id,
+                          frameId: selectedStory.frames[0].id,
+                        })
+                      }}
+                      type="button"
+                    >
+                      <div className="text-sm font-medium text-white">
+                        {selectedStory.frames[0].title}
+                      </div>
+                      <div className="mt-1 text-xs text-white/45">
+                        Open the first frame in the frame inspector.
+                      </div>
+                    </button>
+                  ) : (
+                    <div className="rounded border border-white/10 bg-black/30 px-3 py-3 text-sm text-white/45">
+                      No first frame yet.
+                    </div>
+                  )}
+                </div>
+                <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+                  {selectedStory.frames.length} main frames,{" "}
+                  {(selectedStory.branches ?? []).length} branch rows
+                </div>
+              </div>
+            ) : null}
+
+            {selected?.kind === "frame" && selectedFrame ? (
+              <div className="space-y-4">
+                <label className="block">
+                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                    Frame title
+                  </div>
+                  <textarea
+                    className="min-h-[96px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                    onChange={(event) =>
+                      updateCurrentFrame((frame) => ({
+                        ...frame,
+                        title: event.currentTarget.value,
+                      }))
+                    }
+                    value={selectedFrame.title}
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                    Visual description
+                  </div>
+                  <textarea
+                    className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                    onChange={(event) =>
+                      updateCurrentFrame((frame) => ({
+                        ...frame,
+                        description: event.currentTarget.value || undefined,
+                      }))
+                    }
+                    value={selectedFrame.description ?? ""}
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                    Notes
+                  </div>
+                  <textarea
+                    className="min-h-[140px] w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                    onChange={(event) =>
+                      updateCurrentFrame((frame) => ({
+                        ...frame,
+                        notes: event.currentTarget.value || undefined,
+                      }))
+                    }
+                    value={selectedFrame.notes ?? ""}
+                  />
+                </label>
+
+                <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs uppercase tracking-[0.14em] text-white/45">
+                      Capture sets
+                    </div>
+                    <button
+                      aria-label="Add capture set"
+                      className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                      onClick={addCaptureSet}
+                      title="Add capture set"
+                      type="button"
+                    >
+                      <PlusIcon />
+                    </button>
+                  </div>
+
                   <div className="flex flex-wrap gap-2">
+                    {selectedFrameCaptureSetIds.map((captureSetId) => (
+                      <button
+                        className={
+                          captureSetId === activeCaptureSetId
+                            ? "rounded border border-cyan-300/40 bg-cyan-300/10 px-2 py-1 text-xs uppercase tracking-[0.14em] text-cyan-100"
+                            : "rounded border border-white/10 bg-black/30 px-2 py-1 text-xs uppercase tracking-[0.14em] text-white/55 transition hover:border-cyan-300/30 hover:text-cyan-100"
+                        }
+                        key={captureSetId}
+                        onClick={() => setActiveCaptureSetId(captureSetId)}
+                        type="button"
+                      >
+                        {captureSetId}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-end gap-3">
+                    <label className="block min-w-0 flex-1">
+                      <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                        Capture set name
+                      </div>
+                      <input
+                        className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                        onChange={(event) =>
+                          renameActiveCaptureSet(event.currentTarget.value)
+                        }
+                        value={activeCaptureSetId}
+                      />
+                    </label>
+                    {selectedFrameCaptureSetIds.length > 1 ? (
+                      <button
+                        aria-label="Remove capture set"
+                        className="flex h-9 w-9 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100"
+                        onClick={removeActiveCaptureSet}
+                        title="Remove capture set"
+                        type="button"
+                      >
+                        <TrashIcon />
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="grid gap-3 xl:grid-cols-3">
+                    <label className="block">
+                      <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                        Desktop
+                      </div>
+                      <input
+                        className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                        onChange={(event) =>
+                          updateCurrentFrame((frame) => ({
+                            ...frame,
+                            captureSets: {
+                              ...(frame.captureSets ?? {}),
+                              [activeCaptureSetId]: {
+                                ...(frame.captureSets?.[activeCaptureSetId] ??
+                                  {}),
+                                screenshots: {
+                                  ...(frame.captureSets?.[activeCaptureSetId]
+                                    ?.screenshots ?? {}),
+                                  desktop:
+                                    event.currentTarget.value || undefined,
+                                },
+                              },
+                            },
+                            screenshots: undefined,
+                          }))
+                        }
+                        placeholder="./assets/frame-001.desktop.png"
+                        value={selectedFrameCapture.screenshots?.desktop ?? ""}
+                      />
+                      <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
+                        <AssetPreview
+                          alt={selectedFrame.title + " desktop preview"}
+                          src={selectedFrameScreenshotUrls.desktop}
+                        />
+                      </div>
+                    </label>
+
+                    <label className="block">
+                      <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                        Mobile
+                      </div>
+                      <input
+                        className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                        onChange={(event) =>
+                          updateCurrentFrame((frame) => ({
+                            ...frame,
+                            captureSets: {
+                              ...(frame.captureSets ?? {}),
+                              [activeCaptureSetId]: {
+                                ...(frame.captureSets?.[activeCaptureSetId] ??
+                                  {}),
+                                screenshots: {
+                                  ...(frame.captureSets?.[activeCaptureSetId]
+                                    ?.screenshots ?? {}),
+                                  mobile:
+                                    event.currentTarget.value || undefined,
+                                },
+                              },
+                            },
+                            screenshots: undefined,
+                          }))
+                        }
+                        placeholder="./assets/frame-001.mobile.png"
+                        value={selectedFrameCapture.screenshots?.mobile ?? ""}
+                      />
+                      <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
+                        <AssetPreview
+                          alt={selectedFrame.title + " mobile preview"}
+                          src={selectedFrameScreenshotUrls.mobile}
+                        />
+                      </div>
+                    </label>
+
+                    <label className="block">
+                      <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                        Square
+                      </div>
+                      <input
+                        className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                        onChange={(event) =>
+                          updateCurrentFrame((frame) => ({
+                            ...frame,
+                            captureSets: {
+                              ...(frame.captureSets ?? {}),
+                              [activeCaptureSetId]: {
+                                ...(frame.captureSets?.[activeCaptureSetId] ??
+                                  {}),
+                                screenshots: {
+                                  ...(frame.captureSets?.[activeCaptureSetId]
+                                    ?.screenshots ?? {}),
+                                  square:
+                                    event.currentTarget.value || undefined,
+                                },
+                              },
+                            },
+                            screenshots: undefined,
+                          }))
+                        }
+                        placeholder="./assets/frame-001.square.png"
+                        value={selectedFrameCapture.screenshots?.square ?? ""}
+                      />
+                      <div className="mt-2 h-28 overflow-hidden rounded border border-white/10 bg-black/20">
+                        <AssetPreview
+                          alt={selectedFrame.title + " square preview"}
+                          src={selectedFrameScreenshotUrls.square}
+                        />
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded border border-cyan-300/15 bg-cyan-300/5 p-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-cyan-100/70">
+                      Run targets
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Optional per-size overrides. Leave these blank to use the
+                      storyboard default target.
+                    </div>
+                  </div>
+                  {(["desktop", "mobile", "square"] as OutputVariantId[]).map(
+                    (outputVariantId) => {
+                      const size = selectedCaptureSizes[outputVariantId]
+                      const runUrl = normalizeWebRunTargetUrl(
+                        size?.runTarget?.kind === "web"
+                          ? size.runTarget.url
+                          : "",
+                      )
+                      const dimensions =
+                        size?.width && size?.height
+                          ? `${size.width} × ${size.height}`
+                          : outputVariantId === "desktop"
+                            ? "1440 × 900"
+                            : outputVariantId === "mobile"
+                              ? "390 × 844"
+                              : "1024 × 1024"
+                      return (
+                        <div
+                          className="rounded border border-white/10 bg-black/25 p-3"
+                          key={outputVariantId}
+                        >
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-white/70">
+                                {outputVariantId}
+                              </div>
+                              <div className="mt-1 text-[11px] text-white/40">
+                                {dimensions}
+                              </div>
+                            </div>
+                            {runUrl ? (
+                              <div className="rounded border border-emerald-300/30 bg-emerald-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-emerald-100">
+                                web
+                              </div>
+                            ) : storyboardDefaultRunUrl ? (
+                              <div className="rounded border border-cyan-300/30 bg-cyan-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100">
+                                default
+                              </div>
+                            ) : (
+                              <div className="rounded border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/35">
+                                no target
+                              </div>
+                            )}
+                          </div>
+                          <label className="block">
+                            <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                              Web URL
+                            </div>
+                            <input
+                              className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                              onChange={(event) =>
+                                updateCaptureSizeWebUrl(
+                                  activeCaptureSetId,
+                                  outputVariantId,
+                                  event.currentTarget.value,
+                                )
+                              }
+                              placeholder={
+                                storyboardDefaultRunUrl ||
+                                "https://app.example.test/path"
+                              }
+                              value={runUrl}
+                            />
+                          </label>
+                          <button
+                            className="mt-2 rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-200 disabled:opacity-50"
+                            disabled={
+                              !isConnected ||
+                              !(runUrl || storyboardDefaultRunUrl)
+                            }
+                            onClick={() =>
+                              openRunTargetHealth(
+                                runUrl
+                                  ? `storyboard:${activeCaptureSetId}:${outputVariantId}`
+                                  : "storyboard:default",
+                                `${activeCaptureSetId} ${outputVariantId} run target`,
+                                runUrl || storyboardDefaultRunUrl,
+                              )
+                            }
+                            type="button"
+                          >
+                            Run Target Health
+                          </button>
+                        </div>
+                      )
+                    },
+                  )}
+                </div>
+                {selectedBranch ? (
+                  <label className="block">
+                    <div className="mb-2 text-xs uppercase tracking-[0.14em] text-white/45">
+                      Branch label
+                    </div>
+                    <input
+                      className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                      onChange={(event) =>
+                        updateCurrentBranchLabel(event.currentTarget.value)
+                      }
+                      value={selectedBranch.label}
+                    />
+                  </label>
+                ) : null}
+
+                <div className="space-y-3 rounded border border-white/10 bg-white/5 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs uppercase tracking-[0.14em] text-white/45">
+                      Transitions
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        aria-label="Add transition"
+                        className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
+                        onClick={addTransition}
+                        title={
+                          selectedFrameTransitions.length === 0
+                            ? "Add next transition"
+                            : "Add transition"
+                        }
+                        type="button"
+                      >
+                        <PlusIcon />
+                      </button>
+                    </div>
+                  </div>
+                  {selectedFrameTransitions.length > 0 ? (
+                    selectedFrameTransitions.map((transition, index) => (
+                      <div
+                        className={`space-y-2 rounded border bg-black/20 p-3 ${
+                          focusedTransitionId === transition.id
+                            ? "border-cyan-300/50 shadow-[0_0_0_1px_rgba(103,232,249,0.35)]"
+                            : "border-white/10"
+                        }`}
+                        data-transition-editor={transition.id}
+                        key={transition.id}
+                        ref={(node) => {
+                          transitionRefs.current[transition.id] = node
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[11px] uppercase tracking-[0.14em] text-white/35">
+                            {index === 0
+                              ? "Primary transition"
+                              : `Side transition ${index}`}
+                          </div>
+                          {renderTransitionDeleteButton(
+                            transition.id,
+                            `transition:${selectedFrame.id}:${transition.id}`,
+                            index === 0 && selectedFrameTransitions.length > 1,
+                            "Delete side transitions first so the main path stays coherent",
+                          )}
+                        </div>
+                        <label className="block">
+                          <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                            Label
+                          </div>
+                          <input
+                            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                            onChange={(event) =>
+                              updateCurrentTransition(
+                                transition.id,
+                                (current) => ({
+                                  ...current,
+                                  label: event.currentTarget.value,
+                                }),
+                              )
+                            }
+                            value={transition.label}
+                          />
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="block">
+                            <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                              Kind
+                            </div>
+                            <select
+                              className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                              onChange={(event) =>
+                                updateCurrentTransition(
+                                  transition.id,
+                                  (current) => ({
+                                    ...current,
+                                    kind: event.currentTarget
+                                      .value as StoryboardTransitionRecord["kind"],
+                                  }),
+                                )
+                              }
+                              value={transition.kind}
+                            >
+                              <option value="user">user</option>
+                              <option value="system">system</option>
+                            </select>
+                          </label>
+                          <label className="block">
+                            <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
+                              Target frame
+                            </div>
+                            <select
+                              className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
+                              onChange={(event) =>
+                                updateCurrentTransition(
+                                  transition.id,
+                                  (current) => ({
+                                    ...current,
+                                    targetFrameId: event.currentTarget.value,
+                                  }),
+                                )
+                              }
+                              value={transition.targetFrameId}
+                            >
+                              {storyFrameOptions.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.title}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-sm text-white/45">
+                      No transitions yet for this frame.
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2 border-t border-white/10 pt-3">
                     <button
                       aria-label="Add transition"
                       className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
                       onClick={addTransition}
-                      title={selectedFrameTransitions.length === 0 ? "Add next transition" : "Add transition"}
+                      title={
+                        selectedFrameTransitions.length === 0
+                          ? "Add next transition"
+                          : "Add transition"
+                      }
                       type="button"
                     >
                       <PlusIcon />
                     </button>
                   </div>
                 </div>
-                {selectedFrameTransitions.length > 0 ? (
-                  selectedFrameTransitions.map((transition, index) => (
-                    <div
-                      className={`space-y-2 rounded border bg-black/20 p-3 ${
-                        focusedTransitionId === transition.id
-                          ? "border-cyan-300/50 shadow-[0_0_0_1px_rgba(103,232,249,0.35)]"
-                          : "border-white/10"
-                      }`}
-                      data-transition-editor={transition.id}
-                      key={transition.id}
-                      ref={(node) => {
-                        transitionRefs.current[transition.id] = node
-                      }}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-[11px] uppercase tracking-[0.14em] text-white/35">
-                          {index === 0 ? "Primary transition" : `Side transition ${index}`}
-                        </div>
-                        {renderTransitionDeleteButton(
-                          transition.id,
-                          `transition:${selectedFrame.id}:${transition.id}`,
-                          index === 0 && selectedFrameTransitions.length > 1,
-                          "Delete side transitions first so the main path stays coherent",
-                        )}
-                      </div>
-                      <label className="block">
-                        <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                          Label
-                        </div>
-                        <input
-                          className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                          onChange={(event) =>
-                            updateCurrentTransition(transition.id, (current) => ({
-                              ...current,
-                              label: event.currentTarget.value,
-                            }))
-                          }
-                          value={transition.label}
-                        />
-                      </label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <label className="block">
-                          <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                            Kind
-                          </div>
-                          <select
-                            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                            onChange={(event) =>
-                              updateCurrentTransition(transition.id, (current) => ({
-                                ...current,
-                                kind: event.currentTarget.value as StoryboardTransitionRecord["kind"],
-                              }))
-                            }
-                            value={transition.kind}
-                          >
-                            <option value="user">user</option>
-                            <option value="system">system</option>
-                          </select>
-                        </label>
-                        <label className="block">
-                          <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-white/40">
-                            Target frame
-                          </div>
-                          <select
-                            className="w-full rounded border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-cyan-400"
-                            onChange={(event) =>
-                              updateCurrentTransition(transition.id, (current) => ({
-                                ...current,
-                                targetFrameId: event.currentTarget.value,
-                              }))
-                            }
-                            value={transition.targetFrameId}
-                          >
-                            {storyFrameOptions.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {option.title}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-sm text-white/45">No transitions yet for this frame.</div>
-                )}
-                <div className="flex justify-end gap-2 border-t border-white/10 pt-3">
-                  <button
-                    aria-label="Add transition"
-                    className="flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100"
-                    onClick={addTransition}
-                    title={selectedFrameTransitions.length === 0 ? "Add next transition" : "Add transition"}
-                    type="button"
-                  >
-                    <PlusIcon />
-                  </button>
+
+                <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
+                  <div>Story: {selectedStory?.title ?? "-"}</div>
+                  <div>Frame id: {selectedFrame.id}</div>
+                  {selectedBranch?.sourceFrameId ? (
+                    <div>Branch source: {selectedBranch.sourceFrameId}</div>
+                  ) : null}
                 </div>
               </div>
+            ) : null}
 
+            {snapshotJob ? (
               <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
-                <div>Story: {selectedStory?.title ?? "-"}</div>
-                <div>Frame id: {selectedFrame.id}</div>
-                {selectedBranch?.sourceFrameId ? (
-                  <div>Branch source: {selectedBranch.sourceFrameId}</div>
-                ) : null}
+                Snapshot job: {snapshotJob.status}
               </div>
-            </div>
-          ) : null}
-
-          {snapshotJob ? (
-            <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/55">
-              Snapshot job: {snapshotJob.status}
-            </div>
-          ) : null}
+            ) : null}
           </div>
         </div>
       ),
@@ -2960,9 +3741,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     if (!document || !selected || selected.kind !== "story") {
       return
     }
-    setDocument(
-      updateStory(document, selected.storyId, updater),
-    )
+    setDocument(updateStory(document, selected.storyId, updater))
   }
 
   function updateCurrentStoryTitle(value: string) {
@@ -3022,7 +3801,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       if (!current) {
         return current
       }
-      const nextStories = current.stories.filter((story) => story.id !== storyId)
+      const nextStories = current.stories.filter(
+        (story) => story.id !== storyId,
+      )
       if (nextStories.length === current.stories.length) {
         return current
       }
@@ -3048,8 +3829,15 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     })
   }
 
-  function renderStoryDeleteButton(storyId: string, storyTitle: string, anchorKey: string, buttonClassName = "flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100") {
-    const confirming = pendingDeleteStory?.storyId === storyId && pendingDeleteStory.anchorKey === anchorKey
+  function renderStoryDeleteButton(
+    storyId: string,
+    storyTitle: string,
+    anchorKey: string,
+    buttonClassName = "flex h-7 w-7 items-center justify-center rounded border border-white/10 text-white/60 transition hover:border-rose-300/40 hover:text-rose-100",
+  ) {
+    const confirming =
+      pendingDeleteStory?.storyId === storyId &&
+      pendingDeleteStory.anchorKey === anchorKey
 
     return (
       <div className="relative flex-none">
@@ -3089,7 +3877,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
 
   function requestDeleteTransition(transitionId: string, anchorKey: string) {
     setPendingDeleteTransition((current) =>
-      current && current.transitionId === transitionId && current.anchorKey === anchorKey
+      current &&
+      current.transitionId === transitionId &&
+      current.anchorKey === anchorKey
         ? null
         : { transitionId, anchorKey },
     )
@@ -3182,7 +3972,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
 
   function updateCurrentTransition(
     transitionId: string,
-    updater: (transition: StoryboardTransitionRecord) => StoryboardTransitionRecord,
+    updater: (
+      transition: StoryboardTransitionRecord,
+    ) => StoryboardTransitionRecord,
   ) {
     updateCurrentFrame((frame) => ({
       ...frame,
@@ -3200,12 +3992,18 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       }
       return {
         ...current,
-        runTarget: url ? ({ kind: "web", url } satisfies StoryboardRunTargetWeb) : undefined,
+        runTarget: url
+          ? ({ kind: "web", url } satisfies StoryboardRunTargetWeb)
+          : undefined,
       }
     })
   }
 
-  function updateCaptureSizeWebUrl(captureSetId: string, outputVariantId: OutputVariantId, rawUrl: string) {
+  function updateCaptureSizeWebUrl(
+    captureSetId: string,
+    outputVariantId: OutputVariantId,
+    rawUrl: string,
+  ) {
     if (!document) {
       return
     }
@@ -3247,24 +4045,26 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     const nextId = nextCaptureSetId(selectedFrame)
     setDocument({
       ...updateStory(document, selected.storyId, (story) => {
-        const updateFrame = (frame: StoryboardFrameRecord) => frame.id === selected.frameId
-          ? {
-              ...frame,
-              captureSets: {
-                ...(frame.captureSets ?? {}),
-                [nextId]: {
-                  screenshots: {},
+        const updateFrame = (frame: StoryboardFrameRecord) =>
+          frame.id === selected.frameId
+            ? {
+                ...frame,
+                captureSets: {
+                  ...(frame.captureSets ?? {}),
+                  [nextId]: {
+                    screenshots: {},
+                  },
                 },
-              },
-              screenshots: undefined,
-            }
-          : frame
+                screenshots: undefined,
+              }
+            : frame
         if (selected.branchId) {
           return {
             ...story,
-            branches: (story.branches ?? []).map((branch) => branch.id === selected.branchId
-              ? { ...branch, frames: branch.frames.map(updateFrame) }
-              : branch,
+            branches: (story.branches ?? []).map((branch) =>
+              branch.id === selected.branchId
+                ? { ...branch, frames: branch.frames.map(updateFrame) }
+                : branch,
             ),
           }
         }
@@ -3285,7 +4085,11 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     if (!selectedFrame) {
       return
     }
-    const nextId = nextIdRaw.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "")
+    const nextId = nextIdRaw
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
     if (!nextId || nextId === activeCaptureSetId) {
       return
     }
@@ -3299,7 +4103,10 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
         return frame
       }
       delete captureSets[activeCaptureSetId]
-      const reordered = Object.fromEntries([...Object.entries(captureSets), [nextId, current]])
+      const reordered = Object.fromEntries([
+        ...Object.entries(captureSets),
+        [nextId, current],
+      ])
       return {
         ...frame,
         captureSets: reordered,
@@ -3313,7 +4120,10 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       delete captureSets[activeCaptureSetId]
       return {
         ...current,
-        captureSets: Object.fromEntries([...Object.entries(captureSets), [nextId, currentCaptureSet]]),
+        captureSets: Object.fromEntries([
+          ...Object.entries(captureSets),
+          [nextId, currentCaptureSet],
+        ]),
       }
     })
     setActiveCaptureSetId(nextId)
@@ -3323,7 +4133,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     if (!selectedFrame || selectedFrameCaptureSetIds.length <= 1) {
       return
     }
-    const remainingIds = selectedFrameCaptureSetIds.filter((id) => id !== activeCaptureSetId)
+    const remainingIds = selectedFrameCaptureSetIds.filter(
+      (id) => id !== activeCaptureSetId,
+    )
     updateCurrentFrame((frame) => {
       const captureSets = { ...(frame.captureSets ?? {}) }
       delete captureSets[activeCaptureSetId]
@@ -3342,18 +4154,29 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
         captureSets,
       }
     })
-    setActiveCaptureSetId(remainingIds.includes("default") ? "default" : remainingIds[0] ?? "default")
+    setActiveCaptureSetId(
+      remainingIds.includes("default")
+        ? "default"
+        : (remainingIds[0] ?? "default"),
+    )
   }
 
   function updateCurrentBranchLabel(value: string) {
-    if (!document || !selected || selected.kind !== "frame" || !selected.branchId) {
+    if (
+      !document ||
+      !selected ||
+      selected.kind !== "frame" ||
+      !selected.branchId
+    ) {
       return
     }
     setDocument(
       updateStory(document, selected.storyId, (story) => ({
         ...story,
         branches: (story.branches ?? []).map((branch) =>
-          branch.id === selected.branchId ? { ...branch, label: value } : branch,
+          branch.id === selected.branchId
+            ? { ...branch, label: value }
+            : branch,
         ),
       })),
     )
@@ -3364,14 +4187,16 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       return
     }
 
-    const currentRowFrames = selectedBranch?.frames ?? selectedStory?.frames ?? []
+    const currentRowFrames =
+      selectedBranch?.frames ?? selectedStory?.frames ?? []
     const sourceIndex = currentRowFrames.findIndex(
       (frame) => frame.id === selected.frameId,
     )
     const inlineNextFrameId =
       sourceIndex >= 0 ? currentRowFrames[sourceIndex + 1]?.id : undefined
     const primaryTargetFrameId = selectedFrameTransitions[0]?.targetFrameId
-    const hasInlineNext = !!inlineNextFrameId && primaryTargetFrameId === inlineNextFrameId
+    const hasInlineNext =
+      !!inlineNextFrameId && primaryTargetFrameId === inlineNextFrameId
 
     if (!hasInlineNext) {
       const targetFrameId = storyboardRecordId(`${selectedFrame.id}-next-frame`)
@@ -3393,7 +4218,8 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                 nextFrames.splice(sourceIndex + 1, 0, {
                   id: targetFrameId,
                   title: "New next frame",
-                  description: "Describe the resulting state for this transition.",
+                  description:
+                    "Describe the resulting state for this transition.",
                   transitions: [],
                 })
 
@@ -3570,7 +4396,7 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                       ),
                     }
                   : frame,
-                ),
+              ),
             }
 
         return removeTransitionSubtree(nextStory, transition.targetFrameId)
@@ -3582,9 +4408,14 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
     }
   }
 
-  function resolveTransitionSelection(sourceFrameId: string, label: string): TransitionSelection | null {
+  function resolveTransitionSelection(
+    sourceFrameId: string,
+    label: string,
+  ): TransitionSelection | null {
     for (const story of document?.stories ?? []) {
-      const storyFrame = story.frames.find((frame) => frame.id === sourceFrameId)
+      const storyFrame = story.frames.find(
+        (frame) => frame.id === sourceFrameId,
+      )
       if (storyFrame) {
         const transitions = storyFrame.transitions ?? []
         const transition =
@@ -3592,13 +4423,19 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
         return transition
           ? {
               transitionId: transition.id,
-              selected: { kind: "frame", storyId: story.id, frameId: storyFrame.id },
+              selected: {
+                kind: "frame",
+                storyId: story.id,
+                frameId: storyFrame.id,
+              },
             }
           : null
       }
 
       for (const branch of story.branches ?? []) {
-        const branchFrame = branch.frames.find((frame) => frame.id === sourceFrameId)
+        const branchFrame = branch.frames.find(
+          (frame) => frame.id === sourceFrameId,
+        )
         if (!branchFrame) {
           continue
         }
@@ -3649,14 +4486,20 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           </div>
           <input
             className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-cyan-100 outline-none focus:border-cyan-400"
-            onChange={(event) => setDraftStoryboardUrl(event.currentTarget.value)}
+            onChange={(event) =>
+              setDraftStoryboardUrl(event.currentTarget.value)
+            }
             placeholder="Storyboard URL"
             value={draftStoryboardUrl}
           />
           <button
             aria-label="Connect storyboard URL"
             className="flex h-8 w-8 items-center justify-center rounded border border-white/15 text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100"
-            onClick={() => setConnectedStoryboardUrl(draftStoryboardUrl.trim() || source.storyboardUrl)}
+            onClick={() =>
+              setConnectedStoryboardUrl(
+                draftStoryboardUrl.trim() || source.storyboardUrl,
+              )
+            }
             title="Connect storyboard URL"
             type="button"
           >
@@ -3675,26 +4518,52 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                   : `${storyCount} stories · ${frameCount} frames`}
               </div>
               {headerStatus ? (
-                <div className="text-[11px] text-amber-200/80">{headerStatus}</div>
+                <div className="text-[11px] text-amber-200/80">
+                  {headerStatus}
+                </div>
               ) : null}
-              <div className="rounded border border-amber-200/20 bg-amber-300/10 px-2 py-1 text-[11px] text-amber-100" data-run-queue-indicator="true">
-                Run queue: {runQueue ? `${runQueue.active} running · ${runQueue.queued} queued` : `${activeVariantRunStates.length} pending`}
+              <div
+                className="rounded border border-amber-200/20 bg-amber-300/10 px-2 py-1 text-[11px] text-amber-100"
+                data-run-queue-indicator="true"
+              >
+                Run queue:{" "}
+                {runQueue
+                  ? `${runQueue.active} running · ${runQueue.queued} queued`
+                  : `${activeVariantRunStates.length} pending`}
               </div>
               {!isAccessServerRootMode ? (
                 <a
                   className={`rounded border px-2 py-1 text-[11px] ${storyboardHealthStatusClass(storyboardHealthBadge.status)}`}
                   data-storyboard-health-badge="true"
                   href={storyboardHealthViewHref(connectedStoryboardUrl)}
-                  title={storyboardHealthBadge.error ?? `Last checked ${storyboardHealthBadge.checkedAt ?? "never"}`}
+                  title={
+                    storyboardHealthBadge.error ??
+                    `Last checked ${storyboardHealthBadge.checkedAt ?? "never"}`
+                  }
                 >
-                  Health: {storyboardHealthBadge.loading ? "checking…" : storyboardHealthBadge.status} · {storyboardHealthCheckedLabel(storyboardHealthBadge.checkedAt)} · View in Health
+                  Health:{" "}
+                  {storyboardHealthBadge.loading
+                    ? "checking…"
+                    : storyboardHealthBadge.status}{" "}
+                  ·{" "}
+                  {storyboardHealthCheckedLabel(
+                    storyboardHealthBadge.checkedAt,
+                  )}{" "}
+                  · View in Health
                 </a>
               ) : null}
               {visibleVariantRunStates.length > 0 ? (
-                <div className="flex max-w-full flex-wrap gap-1" data-run-queue-list="true">
+                <div
+                  className="flex max-w-full flex-wrap gap-1"
+                  data-run-queue-list="true"
+                >
                   {visibleVariantRunStates.map((state) => (
-                    <span className="rounded border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/65" key={state.key}>
-                      {state.outputVariantId} {humanRunStatus(state.status)} {state.jobId ? state.jobId : "pending"}
+                    <span
+                      className="rounded border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/65"
+                      key={state.key}
+                    >
+                      {state.outputVariantId} {humanRunStatus(state.status)}{" "}
+                      {state.jobId ? state.jobId : "pending"}
                     </span>
                   ))}
                 </div>
@@ -3705,7 +4574,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                 <button
                   className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100"
                   onClick={() => {
-                    const accessServerUrl = storyboardAccessServerUrl(connectedStoryboardUrl)
+                    const accessServerUrl = storyboardAccessServerUrl(
+                      connectedStoryboardUrl,
+                    )
                     if (!accessServerUrl) {
                       return
                     }
@@ -3738,7 +4609,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                   <button
                     className="rounded border border-white/15 px-2.5 py-1.5 text-xs text-white/80 transition hover:border-cyan-300/70 hover:text-cyan-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-white/30"
                     disabled={!document || !isConnected}
-                    onClick={() => (document ? void persistDocument(document) : undefined)}
+                    onClick={() =>
+                      document ? void persistDocument(document) : undefined
+                    }
                     type="button"
                   >
                     {saveState === "saving"
@@ -3764,7 +4637,9 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
 
       {markdownImportError ? (
         <div className="flex items-start justify-between gap-3 border-b border-rose-300/20 bg-rose-300/10 px-4 py-3 text-sm text-rose-100">
-          <div className="min-w-0 whitespace-pre-wrap">{markdownImportError}</div>
+          <div className="min-w-0 whitespace-pre-wrap">
+            {markdownImportError}
+          </div>
           <button
             aria-label="Copy markdown import error"
             className={
@@ -3791,15 +4666,23 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
           <div className="h-full w-full overflow-auto bg-zinc-950 p-6">
             <div className="mx-auto w-full max-w-5xl space-y-4 text-sm text-white/80">
               <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
-                {isRemoteScenario ? "Remote storyboard" : "Storyboard connection"}
+                {isRemoteScenario
+                  ? "Remote storyboard"
+                  : "Storyboard connection"}
               </div>
-              <div className="text-lg text-cyan-100">Connect a storyboard access server</div>
+              <div className="text-lg text-cyan-100">
+                Connect a storyboard access server
+              </div>
               <p className="leading-6 text-white/65">
-                Start the Bun storyboard access server on a worker machine, then paste the returned storyboard URL above and click <span className="text-white">Connect</span>.
+                Start the Bun storyboard access server on a worker machine, then
+                paste the returned storyboard URL above and click{" "}
+                <span className="text-white">Connect</span>.
               </p>
               <div className="rounded border border-white/10 bg-black/30 p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Paste into worker agent chat</div>
+                  <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">
+                    Paste into worker agent chat
+                  </div>
                   <button
                     aria-label="Copy worker agent prompt"
                     className={`flex h-8 w-8 items-center justify-center rounded border transition ${
@@ -3819,18 +4702,34 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                     }
                     type="button"
                   >
-                    {workerPromptCopyState === "copied" ? <CheckIcon /> : <CopyIcon />}
+                    {workerPromptCopyState === "copied" ? (
+                      <CheckIcon />
+                    ) : (
+                      <CopyIcon />
+                    )}
                   </button>
                 </div>
-                <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-cyan-100">{remoteStoryboardWorkerPrompt}</pre>
+                <pre className="mt-3 whitespace-pre-wrap text-sm leading-7 text-cyan-100">
+                  {remoteStoryboardWorkerPrompt}
+                </pre>
               </div>
               <div className="rounded border border-white/10 bg-black/30 p-4">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Server command</div>
-                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">bun scripts/storyboard-access-server.ts --root /absolute/path/to/&lt;storyboard-name&gt; --port 8798</pre>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">
+                  Server command
+                </div>
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">
+                  bun scripts/storyboard-access-server.ts --root
+                  /absolute/path/to/&lt;storyboard-name&gt; --port 8798
+                </pre>
               </div>
               <div className="rounded border border-white/10 bg-black/30 p-4">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Expected reply</div>
-                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">Storyboard URL: http://&lt;worker-host&gt;:8798/&lt;storyboard-name&gt;</pre>
+                <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">
+                  Expected reply
+                </div>
+                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap text-sm leading-7 text-cyan-100">
+                  Storyboard URL:
+                  http://&lt;worker-host&gt;:8798/&lt;storyboard-name&gt;
+                </pre>
               </div>
             </div>
           </div>
@@ -3839,11 +4738,17 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
             <div className="mx-auto w-full max-w-5xl space-y-4 text-sm text-white/80">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">Storyboard access server</div>
-                  <div className="mt-1 text-lg text-cyan-100">Available storyboards</div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
+                    Storyboard access server
+                  </div>
+                  <div className="mt-1 text-lg text-cyan-100">
+                    Available storyboards
+                  </div>
                 </div>
                 {storyboardListRootDir ? (
-                  <div className="max-w-[32rem] text-right text-xs leading-5 text-white/45">{storyboardListRootDir}</div>
+                  <div className="max-w-[32rem] text-right text-xs leading-5 text-white/45">
+                    {storyboardListRootDir}
+                  </div>
                 ) : null}
               </div>
               {storyboardListError ? (
@@ -3867,12 +4772,34 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
                       }}
                       type="button"
                     >
-                      <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Storyboard</div>
-                      <div className="mt-2 text-base text-cyan-100">{storyboard.name}</div>
-                      <div className="mt-3 text-xs leading-5 text-white/45">{storyboard.storyboardUrl}</div>
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">
+                        Storyboard
+                      </div>
+                      <div className="mt-2 text-base text-cyan-100">
+                        {storyboard.name}
+                      </div>
+                      <div className="mt-3 text-xs leading-5 text-white/45">
+                        {storyboard.storyboardUrl}
+                      </div>
                       <div className="mt-auto flex flex-wrap gap-2 pt-4 text-[11px] uppercase tracking-[0.14em] text-white/45">
-                        <span className={storyboard.hasStoryboardJson ? "text-emerald-200/80" : "text-white/30"}>json</span>
-                        <span className={storyboard.hasStoryboardMarkdown ? "text-emerald-200/80" : "text-white/30"}>md</span>
+                        <span
+                          className={
+                            storyboard.hasStoryboardJson
+                              ? "text-emerald-200/80"
+                              : "text-white/30"
+                          }
+                        >
+                          json
+                        </span>
+                        <span
+                          className={
+                            storyboard.hasStoryboardMarkdown
+                              ? "text-emerald-200/80"
+                              : "text-white/30"
+                          }
+                        >
+                          md
+                        </span>
                       </div>
                     </button>
                   ))}
@@ -3881,134 +4808,180 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
             </div>
           </div>
         ) : (
-        <PanelLayout
-          className="h-full bg-zinc-950"
-          contentClassName="p-4"
-          panelClassName="bg-zinc-950"
-          panels={[navigatorPanel, inspectorPanel]}
-          storageKeyPrefix="storyboard.debug.editor"
-        >
-          {isEmptyStoryboard ? (
-            <div className="flex h-full w-full items-center justify-center bg-zinc-950 p-8">
-              <div className="w-full max-w-2xl rounded border border-white/10 bg-black/30 p-6 text-center">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">Empty storyboard</div>
-                <div className="mt-3 text-lg text-cyan-100">This storyboard URL is connected but not initialized</div>
-                <p className="mt-3 text-sm leading-6 text-white/65">
-                  Create a starter storyboard document in this remote location so you can begin editing stories, frames, and transitions.
-                </p>
-                <div className="mt-6 flex justify-center">
-                  <button
-                    className="rounded border border-cyan-300/40 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/70 hover:bg-cyan-300/15"
-                    onClick={() => void initializeStoryboard()}
-                    type="button"
-                  >
-                    Initialize storyboard
-                  </button>
+          <PanelLayout
+            className="h-full bg-zinc-950"
+            contentClassName="p-4"
+            panelClassName="bg-zinc-950"
+            panels={[navigatorPanel, inspectorPanel]}
+            storageKeyPrefix="storyboard.debug.editor"
+          >
+            {isEmptyStoryboard ? (
+              <div className="flex h-full w-full items-center justify-center bg-zinc-950 p-8">
+                <div className="w-full max-w-2xl rounded border border-white/10 bg-black/30 p-6 text-center">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
+                    Empty storyboard
+                  </div>
+                  <div className="mt-3 text-lg text-cyan-100">
+                    This storyboard URL is connected but not initialized
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-white/65">
+                    Create a starter storyboard document in this remote location
+                    so you can begin editing stories, frames, and transitions.
+                  </p>
+                  <div className="mt-6 flex justify-center">
+                    <button
+                      className="rounded border border-cyan-300/40 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-100 transition hover:border-cyan-300/70 hover:bg-cyan-300/15"
+                      onClick={() => void initializeStoryboard()}
+                      type="button"
+                    >
+                      Initialize storyboard
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div
-              className="h-full w-full"
-              onClick={(event) => {
-                const target = event.target
-                const interactiveStoryboardElement =
-                  target instanceof Element
-                    ? target.closest(
-                        "[data-storyboard-frame-shell],[data-storyboard-next],[data-storyboard-transition],[data-storyboard-sequence-title],button,input,textarea,select,[role=button]",
-                      )
-                    : null
-                if (!interactiveStoryboardElement) {
-                  setFocusedTransitionId(null)
-                  setSelected({ kind: "storyboard" })
-                }
-              }}
-            >
-              <PanZoomContainer
-                className="h-full"
-                fitKey={`${sourceQuery}:${path || "loading"}`}
-                ref={panZoomRef}
+            ) : (
+              <div
+                className="h-full w-full"
+                onClick={(event) => {
+                  const target = event.target
+                  const interactiveStoryboardElement =
+                    target instanceof Element
+                      ? target.closest(
+                          "[data-storyboard-frame-shell],[data-storyboard-next],[data-storyboard-transition],[data-storyboard-sequence-title],button,input,textarea,select,[role=button]",
+                        )
+                      : null
+                  if (!interactiveStoryboardElement) {
+                    setFocusedTransitionId(null)
+                    setSelected({ kind: "storyboard" })
+                  }
+                }}
               >
-                <div className="min-w-max bg-[#546072] p-8" style={{ width: estimateGridWidth(sequences, editorFrameWidth, editorActionWidth), height: estimateGridHeight(sequences, editorFrameHeight, editorNextHeight) }}>
-                <StoryboardGrid
-                  actionColumnWidth={editorActionWidth}
-                  onSequenceTitleClick={(sequence) => {
-                      const story = (document?.stories ?? []).find((entry) => entry.id === sequence.id)
-                      if (story) {
-                        setFocusedTransitionId(null)
-                        setSelected({ kind: "story", storyId: story.id })
-                      }
+                <PanZoomContainer
+                  className="h-full"
+                  fitKey={`${sourceQuery}:${path || "loading"}`}
+                  ref={panZoomRef}
+                >
+                  <div
+                    className="min-w-max bg-[#546072] p-8"
+                    style={{
+                      width: estimateGridWidth(
+                        sequences,
+                        editorFrameWidth,
+                        editorActionWidth,
+                      ),
+                      height: estimateGridHeight(
+                        sequences,
+                        editorFrameHeight,
+                        editorNextHeight,
+                      ),
                     }}
-                    onTransitionClick={(transition) => {
-                      const resolved = resolveTransitionSelection(
-                        transition.sourceFrameId,
-                        transition.label,
-                      )
-                      if (!resolved) {
-                        return
-                      }
-                      setSelected(resolved.selected)
-                      setFocusedTransitionId(resolved.transitionId)
-                    }}
-                    onFrameClick={(frame) => {
-                      for (const story of document?.stories ?? []) {
-                        if (story.frames.some((entry) => entry.id === frame.id)) {
+                  >
+                    <StoryboardGrid
+                      actionColumnWidth={editorActionWidth}
+                      onSequenceTitleClick={(sequence) => {
+                        const story = (document?.stories ?? []).find(
+                          (entry) => entry.id === sequence.id,
+                        )
+                        if (story) {
                           setFocusedTransitionId(null)
-                          setSelected({ kind: "frame", storyId: story.id, frameId: frame.id })
+                          setSelected({ kind: "story", storyId: story.id })
+                        }
+                      }}
+                      onTransitionClick={(transition) => {
+                        const resolved = resolveTransitionSelection(
+                          transition.sourceFrameId,
+                          transition.label,
+                        )
+                        if (!resolved) {
                           return
                         }
-                        for (const branch of story.branches ?? []) {
-                          if (branch.frames.some((entry) => entry.id === frame.id)) {
+                        setSelected(resolved.selected)
+                        setFocusedTransitionId(resolved.transitionId)
+                      }}
+                      onFrameClick={(frame) => {
+                        for (const story of document?.stories ?? []) {
+                          if (
+                            story.frames.some((entry) => entry.id === frame.id)
+                          ) {
                             setFocusedTransitionId(null)
                             setSelected({
                               kind: "frame",
                               storyId: story.id,
                               frameId: frame.id,
-                              branchId: branch.id,
                             })
                             return
                           }
+                          for (const branch of story.branches ?? []) {
+                            if (
+                              branch.frames.some(
+                                (entry) => entry.id === frame.id,
+                              )
+                            ) {
+                              setFocusedTransitionId(null)
+                              setSelected({
+                                kind: "frame",
+                                storyId: story.id,
+                                frameId: frame.id,
+                                branchId: branch.id,
+                              })
+                              return
+                            }
+                          }
                         }
+                      }}
+                      renderFrame={(frame) =>
+                        renderEditorFrame(
+                          frame as StoryboardGridFrame &
+                            Partial<StoryboardFrameRecord>,
+                          connectedStoryboardUrl,
+                          activeCaptureSetId,
+                          runVariantActionsForFrame(
+                            frame as StoryboardGridFrame &
+                              Partial<StoryboardFrameRecord>,
+                          ),
+                          runVariantAssetCacheKeysForFrame(
+                            frame as StoryboardGridFrame &
+                              Partial<StoryboardFrameRecord>,
+                          ),
+                        )
                       }
-                    }}
-                  renderFrame={(frame) => (
-                    renderEditorFrame(
-                      frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>,
-                      connectedStoryboardUrl,
-                      activeCaptureSetId,
-                      runVariantActionsForFrame(frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>),
-                      runVariantAssetCacheKeysForFrame(frame as StoryboardGridFrame & Partial<StoryboardFrameRecord>),
-                    )
-                  )}
-                  renderFrameHeaderControls={() =>
-                    availableCaptureSetIds.length > 1 ? (
-                      <select
-                        aria-label="Capture set"
-                        className="nopan nowheel rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-white/75 outline-none focus:border-cyan-400"
-                        onChange={(event) => setActiveCaptureSetId(event.currentTarget.value)}
-                        value={activeCaptureSetId}
-                      >
-                        {availableCaptureSetIds.map((captureSetId) => (
-                          <option key={captureSetId} value={captureSetId}>
-                            {captureSetId}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null
-                  }
-                  storyboardUrl={connectedStoryboardUrl}
-                  frameHeight={editorFrameHeight}
-                  frameWidth={editorFrameWidth}
-                    nextCellHeight={editorNextHeight}
-                    selectedFrameId={selectedFrameId}
-                    selectedSequenceId={selected?.kind === "story" ? selected.storyId : selected?.kind === "frame" ? selected.storyId : undefined}
-                    sequences={sequences}
-                  />
-                </div>
-              </PanZoomContainer>
-            </div>
-          )}
-        </PanelLayout>
+                      renderFrameHeaderControls={() =>
+                        availableCaptureSetIds.length > 1 ? (
+                          <select
+                            aria-label="Capture set"
+                            className="nopan nowheel rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-white/75 outline-none focus:border-cyan-400"
+                            onChange={(event) =>
+                              setActiveCaptureSetId(event.currentTarget.value)
+                            }
+                            value={activeCaptureSetId}
+                          >
+                            {availableCaptureSetIds.map((captureSetId) => (
+                              <option key={captureSetId} value={captureSetId}>
+                                {captureSetId}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null
+                      }
+                      storyboardUrl={connectedStoryboardUrl}
+                      frameHeight={editorFrameHeight}
+                      frameWidth={editorFrameWidth}
+                      nextCellHeight={editorNextHeight}
+                      selectedFrameId={selectedFrameId}
+                      selectedSequenceId={
+                        selected?.kind === "story"
+                          ? selected.storyId
+                          : selected?.kind === "frame"
+                            ? selected.storyId
+                            : undefined
+                      }
+                      sequences={sequences}
+                    />
+                  </div>
+                </PanZoomContainer>
+              </div>
+            )}
+          </PanelLayout>
         )}
       </div>
     </div>
@@ -4034,16 +5007,24 @@ function StoryboardEditorPreview() {
   )
 }
 
-
-function configDraftFromTarget(target: RunTargetProviderTarget | null | undefined) {
+function configDraftFromTarget(
+  target: RunTargetProviderTarget | null | undefined,
+) {
   const draft: Record<string, string> = {}
   for (const field of target?.configFields ?? []) {
-    draft[field.key] = field.value === undefined || field.value === null ? "" : String(field.value)
+    draft[field.key] =
+      field.value === undefined || field.value === null
+        ? ""
+        : String(field.value)
   }
   return draft
 }
 
-function targetPanelState(target: RunTargetProviderTarget, checks: RunTargetHealthCheck[] = [], owner?: string): RunTargetHealthPanelState {
+function targetPanelState(
+  target: RunTargetProviderTarget,
+  checks: RunTargetHealthCheck[] = [],
+  owner?: string,
+): RunTargetHealthPanelState {
   return {
     open: true,
     runTargetId: target.id,
@@ -4060,48 +5041,83 @@ function targetPanelState(target: RunTargetProviderTarget, checks: RunTargetHeal
 }
 
 export function StoryboardRunTargetHealthScreen() {
-  const initialUrl = typeof window === "undefined" ? "" : readStoryboardEditorQuery(window.location.search).storyboardUrl
+  const initialUrl =
+    typeof window === "undefined"
+      ? ""
+      : readStoryboardEditorQuery(window.location.search).storyboardUrl
   const [draftStoryboardUrl, setDraftStoryboardUrl] = useState(initialUrl)
-  const [connectedStoryboardUrl, setConnectedStoryboardUrl] = useState(initialUrl)
+  const [connectedStoryboardUrl, setConnectedStoryboardUrl] =
+    useState(initialUrl)
   const [targets, setTargets] = useState<RunTargetProviderTarget[]>([])
   const [selectedTargetId, setSelectedTargetId] = useState("")
-  const [panelState, setPanelState] = useState<RunTargetHealthPanelState>(emptyRunTargetHealthState)
+  const [panelState, setPanelState] = useState<RunTargetHealthPanelState>(
+    emptyRunTargetHealthState,
+  )
   const [loadingTargets, setLoadingTargets] = useState(false)
   const [targetError, setTargetError] = useState<string | null>(null)
 
-  const selectedTarget = targets.find((target) => target.id === selectedTargetId) ?? null
+  const selectedTarget =
+    targets.find((target) => target.id === selectedTargetId) ?? null
 
   async function loadRunTargets(storyboardUrl = connectedStoryboardUrl) {
     const normalizedUrl = storyboardUrl.trim()
     if (!normalizedUrl) {
-      setTargetError("Enter a storyboardUrl to load provider-named run targets.")
+      setTargetError(
+        "Enter a storyboardUrl to load provider-named run targets.",
+      )
       return
     }
     setLoadingTargets(true)
     setTargetError(null)
     try {
       const params = new URLSearchParams({ storyboardUrl: normalizedUrl })
-      const response = await fetch(`${apiRoot}/run-targets?${params.toString()}`)
+      const response = await fetch(
+        `${apiRoot}/run-targets?${params.toString()}`,
+      )
       const payload = await response.json().catch(() => null)
-      if (!response.ok || (payload && typeof payload === "object" && (payload as { ok?: boolean }).ok === false)) {
-        const message = payload && typeof payload === "object" && typeof (payload as { message?: unknown }).message === "string"
-          ? (payload as { message: string }).message
-          : `Provider run-target API returned HTTP ${response.status}`
+      if (
+        !response.ok ||
+        (payload &&
+          typeof payload === "object" &&
+          (payload as { ok?: boolean }).ok === false)
+      ) {
+        const message =
+          payload &&
+          typeof payload === "object" &&
+          typeof (payload as { message?: unknown }).message === "string"
+            ? (payload as { message: string }).message
+            : `Provider run-target API returned HTTP ${response.status}`
         throw new Error(message)
       }
       const nextTargets = normalizeRunTargets(payload)
       setTargets(nextTargets)
       const nextSelected = nextTargets[0]?.id ?? ""
       setSelectedTargetId(nextSelected)
-      setPanelState(nextTargets[0] ? targetPanelState(nextTargets[0], [], (payload as { owner?: string } | null)?.owner) : emptyRunTargetHealthState)
+      setPanelState(
+        nextTargets[0]
+          ? targetPanelState(
+              nextTargets[0],
+              [],
+              (payload as { owner?: string } | null)?.owner,
+            )
+          : emptyRunTargetHealthState,
+      )
       if (nextTargets[0]) {
-        void requestRunTargetHealth(nextTargets[0].id, "list", undefined, nextTargets[0], normalizedUrl)
+        void requestRunTargetHealth(
+          nextTargets[0].id,
+          "list",
+          undefined,
+          nextTargets[0],
+          normalizedUrl,
+        )
       }
     } catch (error) {
       setTargets([])
       setSelectedTargetId("")
       setPanelState(emptyRunTargetHealthState)
-      setTargetError(`Provider run-target API unavailable or unsupported: ${error instanceof Error ? error.message : String(error)}`)
+      setTargetError(
+        `Provider run-target API unavailable or unsupported: ${error instanceof Error ? error.message : String(error)}`,
+      )
     } finally {
       setLoadingTargets(false)
     }
@@ -4114,7 +5130,10 @@ export function StoryboardRunTargetHealthScreen() {
     targetOverride?: RunTargetProviderTarget | null,
     storyboardUrl = connectedStoryboardUrl,
   ) {
-    const target = targetOverride ?? targets.find((entry) => entry.id === runTargetId) ?? selectedTarget
+    const target =
+      targetOverride ??
+      targets.find((entry) => entry.id === runTargetId) ??
+      selectedTarget
     if (!storyboardUrl.trim() || !runTargetId) return
     setPanelState((current) => ({
       ...current,
@@ -4122,28 +5141,54 @@ export function StoryboardRunTargetHealthScreen() {
       runTargetId,
       runTargetLabel: target ? runTargetDisplayName(target) : runTargetId,
       target: target ?? current.target,
-      configDraft: current.runTargetId === runTargetId ? current.configDraft : configDraftFromTarget(target),
+      configDraft:
+        current.runTargetId === runTargetId
+          ? current.configDraft
+          : configDraftFromTarget(target),
       loading: true,
-      runningKey: action === "check-all" ? "*" : action === "check" ? key : undefined,
+      runningKey:
+        action === "check-all" ? "*" : action === "check" ? key : undefined,
       error: null,
     }))
     try {
       const params = new URLSearchParams({ storyboardUrl, runTargetId })
-      const init: RequestInit = action === "list"
-        ? { method: "GET" }
-        : {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ storyboardUrl, runTargetId, ...(key ? { key } : {}) }),
-          }
-      const path = action === "list" ? "run-target-health" : action === "check" ? "run-target-health/check" : "run-target-health/check-all"
-      const response = await fetch(`${apiRoot}/${path}?${params.toString()}`, init)
+      const init: RequestInit =
+        action === "list"
+          ? { method: "GET" }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                storyboardUrl,
+                runTargetId,
+                ...(key ? { key } : {}),
+              }),
+            }
+      const path =
+        action === "list"
+          ? "run-target-health"
+          : action === "check"
+            ? "run-target-health/check"
+            : "run-target-health/check-all"
+      const response = await fetch(
+        `${apiRoot}/${path}?${params.toString()}`,
+        init,
+      )
       const payload = await response.json().catch(() => null)
       const payloadChecks = normalizeRunTargetHealthChecks(payload)
-      if (!response.ok || (payloadChecks.length === 0 && payload && typeof payload === "object" && (payload as { ok?: boolean }).ok === false)) {
-        const message = payload && typeof payload === "object" && typeof (payload as { message?: unknown }).message === "string"
-          ? (payload as { message: string }).message
-          : `Provider Run Target Health API returned HTTP ${response.status}`
+      if (
+        !response.ok ||
+        (payloadChecks.length === 0 &&
+          payload &&
+          typeof payload === "object" &&
+          (payload as { ok?: boolean }).ok === false)
+      ) {
+        const message =
+          payload &&
+          typeof payload === "object" &&
+          typeof (payload as { message?: unknown }).message === "string"
+            ? (payload as { message: string }).message
+            : `Provider Run Target Health API returned HTTP ${response.status}`
         throw new Error(message)
       }
       const health = normalizeRunTargetHealthPayload(payload)
@@ -4152,9 +5197,14 @@ export function StoryboardRunTargetHealthScreen() {
         ...current,
         open: true,
         runTargetId,
-        runTargetLabel: nextTarget ? runTargetDisplayName(nextTarget) : runTargetId,
+        runTargetLabel: nextTarget
+          ? runTargetDisplayName(nextTarget)
+          : runTargetId,
         target: nextTarget ?? current.target,
-        configDraft: current.configDraft && current.runTargetId === runTargetId ? current.configDraft : configDraftFromTarget(nextTarget),
+        configDraft:
+          current.configDraft && current.runTargetId === runTargetId
+            ? current.configDraft
+            : configDraftFromTarget(nextTarget),
         checks: health.checks,
         owner: health.owner ?? nextTarget?.owner ?? current.owner,
         loading: false,
@@ -4182,7 +5232,11 @@ export function StoryboardRunTargetHealthScreen() {
 
   async function saveConfig() {
     if (!panelState.runTargetId || !connectedStoryboardUrl.trim()) return
-    setPanelState((current) => ({ ...current, configSaveState: "saving", configSaveMessage: null }))
+    setPanelState((current) => ({
+      ...current,
+      configSaveState: "saving",
+      configSaveMessage: null,
+    }))
     try {
       const response = await fetch(`${apiRoot}/run-targets/config`, {
         method: "PUT",
@@ -4194,11 +5248,22 @@ export function StoryboardRunTargetHealthScreen() {
         }),
       })
       const payload = await response.json().catch(() => null)
-      if (!response.ok || (payload && typeof payload === "object" && (payload as { ok?: boolean }).ok === false)) {
-        const unsupported = payload && typeof payload === "object" && Boolean((payload as { unsupported?: unknown }).unsupported)
-        const message = payload && typeof payload === "object" && typeof (payload as { message?: unknown }).message === "string"
-          ? (payload as { message: string }).message
-          : `Provider config-save API returned HTTP ${response.status}`
+      if (
+        !response.ok ||
+        (payload &&
+          typeof payload === "object" &&
+          (payload as { ok?: boolean }).ok === false)
+      ) {
+        const unsupported =
+          payload &&
+          typeof payload === "object" &&
+          Boolean((payload as { unsupported?: unknown }).unsupported)
+        const message =
+          payload &&
+          typeof payload === "object" &&
+          typeof (payload as { message?: unknown }).message === "string"
+            ? (payload as { message: string }).message
+            : `Provider config-save API returned HTTP ${response.status}`
         setPanelState((current) => ({
           ...current,
           configSaveState: unsupported ? "unsupported" : "error",
@@ -4212,7 +5277,10 @@ export function StoryboardRunTargetHealthScreen() {
       if (nextTargets.length > 0) {
         setTargets(nextTargets)
       }
-      const nextTarget = normalizeRunTarget(payload) ?? nextTargets.find((target) => target.id === panelState.runTargetId) ?? panelState.target
+      const nextTarget =
+        normalizeRunTarget(payload) ??
+        nextTargets.find((target) => target.id === panelState.runTargetId) ??
+        panelState.target
       setPanelState((current) => ({
         ...current,
         target: nextTarget,
@@ -4220,7 +5288,12 @@ export function StoryboardRunTargetHealthScreen() {
         configSaveState: "saved",
         configSaveMessage: "Provider config saved.",
       }))
-      void requestRunTargetHealth(panelState.runTargetId, "list", undefined, nextTarget)
+      void requestRunTargetHealth(
+        panelState.runTargetId,
+        "list",
+        undefined,
+        nextTarget,
+      )
     } catch (error) {
       setPanelState((current) => ({
         ...current,
@@ -4234,21 +5307,35 @@ export function StoryboardRunTargetHealthScreen() {
     if (connectedStoryboardUrl) {
       void loadRunTargets(connectedStoryboardUrl)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-black text-white" data-storyboard-run-target-health-root="true">
+    <div
+      className="flex h-full min-h-0 flex-col bg-black text-white"
+      data-storyboard-run-target-health-root="true"
+    >
       <header className="flex flex-none flex-col gap-3 border-b border-white/10 bg-zinc-950 px-4 py-3">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/60">Standalone Run Target Health</div>
-          <div className="mt-1 text-lg font-semibold text-white">Provider-owned run targets, config, and health checks</div>
-          <p className="mt-1 max-w-4xl text-sm leading-6 text-white/55">Paste a single storyboardUrl. DEV Storyboard lists provider-named run targets, then opens a dedicated Run Target panel for provider-defined config and health checks. Dashboard code renders the contract generically.</p>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/60">
+            Standalone Run Target Health
+          </div>
+          <div className="mt-1 text-lg font-semibold text-white">
+            Provider-owned run targets, config, and health checks
+          </div>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-white/55">
+            Paste a single storyboardUrl. DEV Storyboard lists provider-named
+            run targets, then opens a dedicated Run Target panel for
+            provider-defined config and health checks. Dashboard code renders
+            the contract generically.
+          </p>
         </div>
         <div className="flex min-w-0 gap-2">
           <input
             className="min-w-0 flex-1 rounded border border-white/10 bg-black/40 px-2.5 py-1.5 text-xs text-cyan-100 outline-none focus:border-cyan-400"
-            onChange={(event) => setDraftStoryboardUrl(event.currentTarget.value)}
+            onChange={(event) =>
+              setDraftStoryboardUrl(event.currentTarget.value)
+            }
             placeholder="http://10.0.0.239:8898/onboarding"
             value={draftStoryboardUrl}
           />
@@ -4269,11 +5356,27 @@ export function StoryboardRunTargetHealthScreen() {
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)] bg-zinc-950/70">
         <aside className="min-h-0 overflow-auto border-r border-white/10 p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">Provider-named targets</div>
-            <button className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/55 hover:border-cyan-300/40 hover:text-cyan-100" onClick={() => void loadRunTargets()} type="button">Refresh</button>
+            <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">
+              Provider-named targets
+            </div>
+            <button
+              className="rounded border border-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/55 hover:border-cyan-300/40 hover:text-cyan-100"
+              onClick={() => void loadRunTargets()}
+              type="button"
+            >
+              Refresh
+            </button>
           </div>
-          {targetError ? <div className="rounded border border-amber-300/35 bg-amber-300/10 p-3 text-xs text-amber-100">{targetError}</div> : null}
-          {targets.length === 0 && !targetError ? <div className="rounded border border-dashed border-white/10 p-4 text-sm text-white/40">No run targets loaded yet.</div> : null}
+          {targetError ? (
+            <div className="rounded border border-amber-300/35 bg-amber-300/10 p-3 text-xs text-amber-100">
+              {targetError}
+            </div>
+          ) : null}
+          {targets.length === 0 && !targetError ? (
+            <div className="rounded border border-dashed border-white/10 p-4 text-sm text-white/40">
+              No run targets loaded yet.
+            </div>
+          ) : null}
           <div className="space-y-2">
             {targets.map((target) => (
               <button
@@ -4282,12 +5385,24 @@ export function StoryboardRunTargetHealthScreen() {
                 onClick={() => selectTarget(target)}
                 type="button"
               >
-                <div className="font-semibold text-white">{runTargetDisplayName(target)}</div>
-                <div className="mt-1 break-all font-mono text-[11px] text-white/45">{target.id}</div>
+                <div className="font-semibold text-white">
+                  {runTargetDisplayName(target)}
+                </div>
+                <div className="mt-1 break-all font-mono text-[11px] text-white/45">
+                  {target.id}
+                </div>
                 <div className="mt-2 flex flex-wrap gap-1 text-[10px] uppercase tracking-[0.12em] text-white/45">
-                  {target.kind ? <span className="rounded border border-white/10 px-1.5 py-0.5">{target.kind}</span> : null}
-                  <span className="rounded border border-white/10 px-1.5 py-0.5">{target.configFields.length} config</span>
-                  <span className="rounded border border-white/10 px-1.5 py-0.5">{target.healthCheckKeys.length} checks</span>
+                  {target.kind ? (
+                    <span className="rounded border border-white/10 px-1.5 py-0.5">
+                      {target.kind}
+                    </span>
+                  ) : null}
+                  <span className="rounded border border-white/10 px-1.5 py-0.5">
+                    {target.configFields.length} config
+                  </span>
+                  <span className="rounded border border-white/10 px-1.5 py-0.5">
+                    {target.healthCheckKeys.length} checks
+                  </span>
                 </div>
               </button>
             ))}
@@ -4297,19 +5412,34 @@ export function StoryboardRunTargetHealthScreen() {
           {panelState.open ? (
             <RunTargetHealthPanel
               state={panelState}
-              onConfigValueChange={(key, value) => setPanelState((current) => ({
-                ...current,
-                configDraft: { ...(current.configDraft ?? {}), [key]: value },
-                configSaveState: "idle",
-                configSaveMessage: null,
-              }))}
-              onRefresh={() => void requestRunTargetHealth(panelState.runTargetId)}
-              onRunAll={() => void requestRunTargetHealth(panelState.runTargetId, "check-all")}
-              onRunOne={(key) => void requestRunTargetHealth(panelState.runTargetId, "check", key)}
+              onConfigValueChange={(key, value) =>
+                setPanelState((current) => ({
+                  ...current,
+                  configDraft: { ...(current.configDraft ?? {}), [key]: value },
+                  configSaveState: "idle",
+                  configSaveMessage: null,
+                }))
+              }
+              onRefresh={() =>
+                void requestRunTargetHealth(panelState.runTargetId)
+              }
+              onRunAll={() =>
+                void requestRunTargetHealth(panelState.runTargetId, "check-all")
+              }
+              onRunOne={(key) =>
+                void requestRunTargetHealth(
+                  panelState.runTargetId,
+                  "check",
+                  key,
+                )
+              }
               onSaveConfig={() => void saveConfig()}
             />
           ) : (
-            <div className="rounded border border-dashed border-white/10 p-8 text-sm text-white/45">Select a provider-named run target to open the dedicated Run Target Health panel.</div>
+            <div className="rounded border border-dashed border-white/10 p-8 text-sm text-white/45">
+              Select a provider-named run target to open the dedicated Run
+              Target Health panel.
+            </div>
           )}
         </main>
       </div>
@@ -4317,40 +5447,47 @@ export function StoryboardRunTargetHealthScreen() {
   )
 }
 
-export const storyboardEditorDebugDefinition: StoryboardDebugComponentDefinition = {
-  slug: "storyboardEditor",
-  label: "storyboardEditor",
-  description: "Grid-backed storyboard editor backed by the canonical storyboard server.",
-  defaultScenarioSlug: "default-storyboard",
-  scenarios: [
-    {
-      slug: "default-storyboard",
-      label: "default-storyboard",
-      description: "Edit the bundled default storyboard template through the storyboard access server.",
-      render: () => (
-        <StoryboardEditorFixture
-          source={{ storyboardUrl: bundledDefaultStoryboardUrl }}
-        />
-      ),
-      renderPreview: () => <StoryboardEditorPreview />,
-    },
-    {
-      slug: "test-storyboard-json",
-      label: "test-storyboard-json",
-      description: "Edit the canonical test.storyboard.json fixture through the storyboard server.",
-      render: () => (
-        <StoryboardEditorFixture
-          source={{ storyboardUrl: testFixtureStoryboardUrl }}
-        />
-      ),
-      renderPreview: () => <StoryboardEditorPreview />,
-    },
-    {
-      slug: "remote-storyboard",
-      label: "remote-storyboard",
-      description: "Connect the editor to a storyboard access server running on a remote worker.",
-      render: () => <StoryboardEditorFixture source={{ storyboardUrl: "" }} />,
-      renderPreview: () => <StoryboardEditorPreview />,
-    },
-  ],
-}
+export const storyboardEditorDebugDefinition: StoryboardDebugComponentDefinition =
+  {
+    slug: "storyboardEditor",
+    label: "storyboardEditor",
+    description:
+      "Grid-backed storyboard editor backed by the canonical storyboard server.",
+    defaultScenarioSlug: "default-storyboard",
+    scenarios: [
+      {
+        slug: "default-storyboard",
+        label: "default-storyboard",
+        description:
+          "Edit the bundled default storyboard template through the storyboard access server.",
+        render: () => (
+          <StoryboardEditorFixture
+            source={{ storyboardUrl: bundledDefaultStoryboardUrl }}
+          />
+        ),
+        renderPreview: () => <StoryboardEditorPreview />,
+      },
+      {
+        slug: "test-storyboard-json",
+        label: "test-storyboard-json",
+        description:
+          "Edit the canonical test.storyboard.json fixture through the storyboard server.",
+        render: () => (
+          <StoryboardEditorFixture
+            source={{ storyboardUrl: testFixtureStoryboardUrl }}
+          />
+        ),
+        renderPreview: () => <StoryboardEditorPreview />,
+      },
+      {
+        slug: "remote-storyboard",
+        label: "remote-storyboard",
+        description:
+          "Connect the editor to a storyboard access server running on a remote worker.",
+        render: () => (
+          <StoryboardEditorFixture source={{ storyboardUrl: "" }} />
+        ),
+        renderPreview: () => <StoryboardEditorPreview />,
+      },
+    ],
+  }

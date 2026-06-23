@@ -37,20 +37,25 @@ describe("dashboard health API", () => {
     expect(payload.ok).toBe(true)
     expect(
       payload.profiles.some(
-        (profile) => profile.id === "work_at_dashboard_app_quick_tunnel_surface",
+        (profile) =>
+          profile.id === "work_at_dashboard_app_quick_tunnel_surface",
       ),
     ).toBe(true)
     expect(
       payload.profiles.some(
-        (profile) => profile.id === "bc_storyboard_dev_dashboard_staging_backend",
+        (profile) =>
+          profile.id === "bc_storyboard_dev_dashboard_staging_backend",
       ),
     ).toBe(true)
     expect(
       payload.profiles.some(
-        (profile) => profile.id === "bc_storyboard_dev_dashboard_docker_backend",
+        (profile) =>
+          profile.id === "bc_storyboard_dev_dashboard_docker_backend",
       ),
     ).toBe(true)
-    expect(payload.profiles.every((profile) => profile.checkCount > 0)).toBe(true)
+    expect(payload.profiles.every((profile) => profile.checkCount > 0)).toBe(
+      true,
+    )
   })
 
   test("runs staging and docker storyboard profiles through the shared cold-start template", async () => {
@@ -79,10 +84,26 @@ describe("dashboard health API", () => {
       return (await response?.json()) as {
         result: {
           profileId: string
+          runId: string
           checks: Array<{
             status: string
-            evidence: { backendMode: string; profileComposition: { template: string }; children: Array<{ title: string }> }
-            children: Array<{ title: string; children?: Array<{ title: string }> }>
+            contractVersion?: string
+            nodeKind?: string
+            correlationId?: string
+            dispatchPath?: string[]
+            target?: { profileId?: string }
+            evidence: {
+              backendMode: string
+              profileComposition: { template: string }
+              children: Array<{ title: string }>
+            }
+            children: Array<{
+              title: string
+              templateId?: string
+              instanceId?: string
+              target?: { profileId?: string }
+              children?: Array<{ title: string }>
+            }>
           }>
         }
       }
@@ -93,14 +114,54 @@ describe("dashboard health API", () => {
     const stagingCheck = staging.result.checks[0]
     const dockerCheck = docker.result.checks[0]
 
-    expect(stagingCheck?.evidence.profileComposition.template).toBe("storyboard-cold-start-dev-dashboard-backend.v1")
-    expect(dockerCheck?.evidence.profileComposition.template).toBe("storyboard-cold-start-dev-dashboard-backend.v1")
+    expect(stagingCheck?.evidence.profileComposition.template).toBe(
+      "storyboard-cold-start-dev-dashboard-backend.v1",
+    )
+    expect(dockerCheck?.evidence.profileComposition.template).toBe(
+      "storyboard-cold-start-dev-dashboard-backend.v1",
+    )
     expect(stagingCheck?.evidence.backendMode).toBe("staging")
     expect(dockerCheck?.evidence.backendMode).toBe("docker")
-    expect(stagingCheck?.children.map((child) => child.title)).toContain("bc-frontend staging runtime")
-    expect(dockerCheck?.children.map((child) => child.title)).toContain("bc-frontend docker runtime")
-    expect(stagingCheck?.children.map((child) => child.title)).not.toContain("bc-frontend docker runtime")
-    expect(dockerCheck?.children.map((child) => child.title)).not.toContain("bc-frontend staging runtime")
+    expect(stagingCheck?.children.map((child) => child.title)).toContain(
+      "bc-frontend staging runtime",
+    )
+    expect(dockerCheck?.children.map((child) => child.title)).toContain(
+      "bc-frontend docker runtime",
+    )
+    expect(stagingCheck?.children.map((child) => child.title)).not.toContain(
+      "bc-frontend docker runtime",
+    )
+    expect(dockerCheck?.children.map((child) => child.title)).not.toContain(
+      "bc-frontend staging runtime",
+    )
+    expect(stagingCheck?.contractVersion).toBe("health-node-result.v1")
+    expect(stagingCheck?.nodeKind).toBe("check")
+    expect(stagingCheck?.correlationId).toBe(staging.result.runId)
+    expect(stagingCheck?.target?.profileId).toBe(
+      "bc_storyboard_dev_dashboard_staging_backend",
+    )
+    expect(stagingCheck?.dispatchPath).toContain(
+      "bc_storyboard_dev_dashboard_staging_backend_cold_start",
+    )
+    const stagingSource = stagingCheck?.children.find(
+      (child) => child.title === "bc-storyboard source/provider health",
+    )
+    const dockerSource = dockerCheck?.children.find(
+      (child) => child.title === "bc-storyboard source/provider health",
+    )
+    expect(stagingSource?.templateId).toBe(
+      "storyboard-cold-start-dev-dashboard-backend.v1",
+    )
+    expect(dockerSource?.templateId).toBe(
+      "storyboard-cold-start-dev-dashboard-backend.v1",
+    )
+    expect(stagingSource?.instanceId).not.toBe(dockerSource?.instanceId)
+    expect(stagingSource?.target?.profileId).toBe(
+      "bc_storyboard_dev_dashboard_staging_backend",
+    )
+    expect(dockerSource?.target?.profileId).toBe(
+      "bc_storyboard_dev_dashboard_docker_backend",
+    )
   })
 
   test("runs a profile and persists the latest result", async () => {
@@ -134,11 +195,15 @@ describe("dashboard health API", () => {
       }
     }
     expect(payload.ok).toBe(true)
-    expect(payload.result.profileId).toBe("work_at_dashboard_app_live_dev_surface")
+    expect(payload.result.profileId).toBe(
+      "work_at_dashboard_app_live_dev_surface",
+    )
     expect(payload.result.runId).toStartWith("health_")
     expect(payload.result.checks.length).toBeGreaterThan(0)
     expect(
-      payload.result.checks.some((check) => check.id === "target_live_dev_surface_ok"),
+      payload.result.checks.some(
+        (check) => check.id === "target_live_dev_surface_ok",
+      ),
     ).toBe(true)
 
     const latestResponse = await api.handle(
@@ -147,12 +212,17 @@ describe("dashboard health API", () => {
       ),
     )
     expect(latestResponse?.status).toBe(200)
-    const latest = (await latestResponse?.json()) as { result: { runId: string } }
+    const latest = (await latestResponse?.json()) as {
+      result: { runId: string }
+    }
     expect(latest.result.runId).toBe(payload.result.runId)
 
     const persisted = JSON.parse(
       readFileSync(
-        join(stateRoot, "health/latest/work_at_dashboard_app_live_dev_surface.json"),
+        join(
+          stateRoot,
+          "health/latest/work_at_dashboard_app_live_dev_surface.json",
+        ),
         "utf8",
       ),
     ) as { runId: string }

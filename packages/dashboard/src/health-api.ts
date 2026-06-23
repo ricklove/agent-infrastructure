@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs"
 import { dirname, join, resolve } from "node:path"
 
 export type HealthApiOptions = {
@@ -7,7 +13,19 @@ export type HealthApiOptions = {
 }
 
 type HealthSeverity = "blocking" | "warn" | "info"
-type HealthCheckStatus = "PASS" | "FAIL" | "WARN" | "UNKNOWN"
+type HealthCheckStatus =
+  | "PASS"
+  | "FAIL"
+  | "WARN"
+  | "BLOCKED"
+  | "NOT_RUN"
+  | "STALE"
+  | "UNKNOWN"
+  | "DISPATCH_FAILED"
+  | "UNAUTHORIZED"
+  | "UNSUPPORTED"
+  | "RUNNING"
+  | "INFO"
 type HealthRunStatus = "pass" | "fail" | "unknown"
 
 type HealthRunLocation = {
@@ -19,6 +37,59 @@ type HealthRunLocation = {
   vantagePoint?: string
   command?: string
   providerType?: string
+}
+
+type HealthNodeAction = {
+  id: string
+  label: string
+  owner?: string
+  runLocation?: HealthRunLocation
+  risk: "readonly" | "safe_restart" | "mutating" | "destructive"
+  requiresConfirmation?: boolean
+  scopes?: string[]
+  expectedEffect?: string
+  rerunAfter?: string
+  supported: boolean
+}
+
+type HealthTargetMetadata = {
+  id?: string
+  url?: string
+  path?: string
+  backendMode?: string
+  sourceUrl?: string
+  profileId?: string
+}
+
+type HealthNodeContract = {
+  contractVersion?: "health-node-result.v1"
+  runId?: string
+  correlationId?: string
+  targetId?: string
+  nodeId?: string
+  instanceId?: string
+  templateId?: string
+  definitionKey?: string
+  label?: string
+  nodeKind?: string
+  rollupReason?: string | null
+  failureClass?: string | null
+  owner?: string
+  executor?: HealthRunLocation
+  vantagePoint?: HealthRunLocation
+  target?: HealthTargetMetadata
+  dispatchPath?: string[]
+  startedAt?: string
+  checkedAt?: string
+  finishedAt?: string
+  durationMs?: number
+  ttlMs?: number
+  freshness?: "fresh" | "stale" | "unknown"
+  stale?: boolean
+  summary?: string
+  detail?: string
+  actions?: HealthNodeAction[]
+  repairActions?: HealthNodeAction[]
 }
 
 type HealthProfileCheckDefinition = {
@@ -62,7 +133,7 @@ type HealthRunTarget = {
   targetHost: string
 }
 
-export type HealthCheckResult = {
+export type HealthCheckResult = HealthNodeContract & {
   id: string
   title: string
   checkId: string
@@ -156,12 +227,20 @@ function maybeNumber(value: unknown, fallback: number): number {
   return fallback
 }
 
-function renderTemplate(value: unknown, context: Record<string, unknown>): unknown {
+function renderTemplate(
+  value: unknown,
+  context: Record<string, unknown>,
+): unknown {
   if (typeof value === "string") {
-    return value.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/gu, (_, key: string) => {
-      const replacement = context[key]
-      return replacement === undefined || replacement === null ? "" : String(replacement)
-    })
+    return value.replace(
+      /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/gu,
+      (_, key: string) => {
+        const replacement = context[key]
+        return replacement === undefined || replacement === null
+          ? ""
+          : String(replacement)
+      },
+    )
   }
   if (Array.isArray(value)) {
     return value.map((entry) => renderTemplate(entry, context))
@@ -177,7 +256,9 @@ function renderTemplate(value: unknown, context: Record<string, unknown>): unkno
   return value
 }
 
-function profileSummary(profile: HealthProfileDefinition): Record<string, unknown> {
+function profileSummary(
+  profile: HealthProfileDefinition,
+): Record<string, unknown> {
   return {
     id: profile.id,
     title: profile.title,
@@ -188,11 +269,18 @@ function profileSummary(profile: HealthProfileDefinition): Record<string, unknow
   }
 }
 
-function defaultRunLocation(context: Record<string, unknown>, params: Record<string, unknown>): HealthRunLocation {
+function defaultRunLocation(
+  context: Record<string, unknown>,
+  params: Record<string, unknown>,
+): HealthRunLocation {
   return {
     executor: maybeString(params.executor) || "dashboard-health-api",
-    workTarget: maybeString(params.workTarget) || maybeString(context.targetId) || "local",
-    host: maybeString(params.host) || maybeString(context.targetHost) || "local",
+    workTarget:
+      maybeString(params.workTarget) ||
+      maybeString(context.targetId) ||
+      "local",
+    host:
+      maybeString(params.host) || maybeString(context.targetHost) || "local",
     source: maybeString(params.source) || "dashboard-server",
     vantagePoint: maybeString(params.vantagePoint) || "dashboard-server",
     providerType: maybeString(params.providerType) || "dashboard-builtin",
@@ -218,7 +306,9 @@ function loadProfiles(state: HealthApiState): HealthProfileDefinition[] {
   return readdirSync(state.profilesDir)
     .filter((file) => file.endsWith(".health-profile.json"))
     .sort((left, right) => left.localeCompare(right))
-    .map((file) => readJsonFile<HealthProfileDefinition>(join(state.profilesDir, file)))
+    .map((file) =>
+      readJsonFile<HealthProfileDefinition>(join(state.profilesDir, file)),
+    )
 }
 
 function loadProfile(
@@ -232,7 +322,9 @@ function loadProfile(
   return loadProfiles(state).find((profile) => profile.id === safeId) ?? null
 }
 
-function readWorkAtRegistry(state: HealthApiState): Record<string, WorkAtTarget> {
+function readWorkAtRegistry(
+  state: HealthApiState,
+): Record<string, WorkAtTarget> {
   if (!existsSync(state.workAtRegistryPath)) {
     return {}
   }
@@ -266,7 +358,12 @@ function resolveTarget(
 async function runCommand(
   command: string[],
   options: { cwd?: string; timeoutMs?: number } = {},
-): Promise<{ exitCode: number; stdout: string; stderr: string; timedOut: boolean }> {
+): Promise<{
+  exitCode: number
+  stdout: string
+  stderr: string
+  timedOut: boolean
+}> {
   const processHandle = Bun.spawn(command, {
     cwd: options.cwd,
     stdout: "pipe",
@@ -327,50 +424,198 @@ async function fetchJsonWithTimeout(
   }
 }
 
-function storyboardProviderUrl(storyboardUrl: string, path: string): string | null {
+function storyboardProviderUrl(
+  storyboardUrl: string,
+  path: string,
+): string | null {
   if (!/^https?:\/\//u.test(storyboardUrl)) {
     return null
   }
   try {
-    return new URL(path.replace(/^\/+/, ""), `${storyboardUrl.replace(/\/+$/u, "")}/`).toString()
+    return new URL(
+      path.replace(/^\/+/, ""),
+      `${storyboardUrl.replace(/\/+$/u, "")}/`,
+    ).toString()
   } catch {
     return null
   }
 }
 
-function statusFromProviderRows(rows: unknown[]): HealthCheckStatus {
-  const statuses = rows.map((row) => {
-    if (!row || typeof row !== "object") return "unknown"
-    const value = (row as Record<string, unknown>).status
-    return typeof value === "string" ? value.toLowerCase() : "unknown"
-  })
-  if (statuses.includes("fail")) return "FAIL"
-  if (statuses.includes("warn")) return "WARN"
-  if (statuses.length === 0 || statuses.includes("unknown")) return "UNKNOWN"
+const failLikeHealthStatuses: HealthCheckStatus[] = [
+  "FAIL",
+  "DISPATCH_FAILED",
+  "UNAUTHORIZED",
+]
+const warnLikeHealthStatuses: HealthCheckStatus[] = ["WARN", "BLOCKED", "STALE"]
+const unknownLikeHealthStatuses: HealthCheckStatus[] = [
+  "UNKNOWN",
+  "NOT_RUN",
+  "UNSUPPORTED",
+  "RUNNING",
+]
+
+function rollupStatus(statuses: HealthCheckStatus[]): HealthCheckStatus {
+  if (statuses.some((status) => failLikeHealthStatuses.includes(status)))
+    return "FAIL"
+  if (statuses.some((status) => warnLikeHealthStatuses.includes(status)))
+    return "WARN"
+  if (
+    statuses.length === 0 ||
+    statuses.some((status) => unknownLikeHealthStatuses.includes(status))
+  )
+    return "UNKNOWN"
   return "PASS"
 }
 
-function statusFromStringRows(rows: Array<{ status: string }>): HealthCheckStatus {
-  return statusFromProviderRows(rows)
+function statusFromProviderRows(rows: unknown[]): HealthCheckStatus {
+  return rollupStatus(
+    rows.map((row) => {
+      if (!row || typeof row !== "object") return "UNKNOWN"
+      return healthStatusFromProviderStatus(
+        (row as Record<string, unknown>).status,
+      )
+    }),
+  )
+}
+
+function statusFromStringRows(
+  rows: Array<{ status: string }>,
+): HealthCheckStatus {
+  return rollupStatus(
+    rows.map((row) => healthStatusFromProviderStatus(row.status)),
+  )
 }
 
 function healthStatusFromProviderStatus(status: unknown): HealthCheckStatus {
   const normalized = maybeString(status).toLowerCase()
-  if (normalized === "pass") return "PASS"
-  if (normalized === "warn") return "WARN"
-  if (normalized === "fail") return "FAIL"
+  if (
+    normalized === "pass" ||
+    normalized === "passed" ||
+    normalized === "ok" ||
+    normalized === "success"
+  )
+    return "PASS"
+  if (normalized === "warn" || normalized === "warning") return "WARN"
+  if (
+    normalized === "fail" ||
+    normalized === "failed" ||
+    normalized === "error"
+  )
+    return "FAIL"
+  if (normalized === "blocked" || normalized === "config_missing")
+    return "BLOCKED"
+  if (
+    normalized === "not_run" ||
+    normalized === "not-run" ||
+    normalized === "skipped"
+  )
+    return "NOT_RUN"
+  if (normalized === "stale") return "STALE"
+  if (normalized === "dispatch_failed" || normalized === "dispatch-failed")
+    return "DISPATCH_FAILED"
+  if (
+    normalized === "unauthorized" ||
+    normalized === "auth_failed" ||
+    normalized === "auth-failed"
+  )
+    return "UNAUTHORIZED"
+  if (normalized === "unsupported") return "UNSUPPORTED"
+  if (normalized === "running" || normalized === "pending") return "RUNNING"
+  if (normalized === "info" || normalized === "informational") return "INFO"
   return "UNKNOWN"
 }
 
-function rollupNodeStatus(children: HealthCheckNodeResult[]): HealthCheckStatus {
-  const statuses = children.map((child) => child.status)
-  if (statuses.includes("FAIL")) return "FAIL"
-  if (statuses.includes("WARN")) return "WARN"
-  if (statuses.length === 0 || statuses.includes("UNKNOWN")) return "UNKNOWN"
-  return "PASS"
+function statusReason(
+  status: HealthCheckStatus,
+  children?: Array<{ status: HealthCheckStatus }>,
+): string | null {
+  if (status === "PASS") return "all_children_passed"
+  if (status === "WARN") return "child_warn"
+  if (status === "FAIL")
+    return children?.some((child) => child.status === "FAIL")
+      ? "child_failed"
+      : "assertion_failed"
+  if (status === "BLOCKED") return "upstream_blocked"
+  if (status === "NOT_RUN") return "not_run"
+  if (status === "STALE") return "stale_result"
+  if (status === "DISPATCH_FAILED") return "dispatch_error"
+  if (status === "UNAUTHORIZED") return "auth_failed"
+  if (status === "UNSUPPORTED") return "unsupported"
+  if (status === "RUNNING") return "running"
+  if (status === "INFO") return "informational"
+  return "unknown"
 }
 
-function providerRowsToChildTree(rows: Array<Record<string, unknown>>): HealthCheckNodeResult[] {
+function nodeContract(args: {
+  id: string
+  title: string
+  kind: string
+  status: HealthCheckStatus
+  runLocation?: HealthRunLocation
+  dispatchPath: string[]
+  owner?: string
+  definitionKey?: string
+  templateId?: string
+  target?: HealthTargetMetadata
+  durationMs?: number
+  detail?: string
+  children?: Array<{ status: HealthCheckStatus }>
+  context?: Record<string, unknown>
+}): HealthNodeContract {
+  const now = new Date().toISOString()
+  const correlationId =
+    maybeString(args.context?.correlationId) || maybeString(args.context?.runId)
+  const targetId =
+    maybeString(args.context?.healthTargetId) ||
+    maybeString(args.context?.targetId)
+  const instanceId = `${targetId || "health-target"}:${args.dispatchPath.join("/")}:${args.id}`
+  return {
+    contractVersion: "health-node-result.v1",
+    runId: maybeString(args.context?.runId) || undefined,
+    correlationId: correlationId || undefined,
+    targetId: targetId || undefined,
+    nodeId: args.id,
+    instanceId,
+    templateId: args.templateId,
+    definitionKey: args.definitionKey ?? args.id,
+    label: args.title,
+    nodeKind: args.kind,
+    rollupReason: statusReason(args.status, args.children),
+    failureClass:
+      args.status === "PASS" || args.status === "INFO"
+        ? null
+        : statusReason(args.status, args.children),
+    owner: args.owner ?? "ddev-storyboard",
+    executor: args.runLocation,
+    vantagePoint: args.runLocation,
+    target: args.target ?? {
+      id: targetId || undefined,
+      profileId: targetId || undefined,
+    },
+    dispatchPath: args.dispatchPath,
+    checkedAt: now,
+    finishedAt: now,
+    durationMs: args.durationMs,
+    ttlMs: 60_000,
+    freshness: "fresh",
+    stale: false,
+    summary: args.detail ?? args.title,
+    detail: args.detail,
+    actions: [],
+    repairActions: [],
+  }
+}
+
+function rollupNodeStatus(
+  children: HealthCheckNodeResult[],
+): HealthCheckStatus {
+  return rollupStatus(children.map((child) => child.status))
+}
+
+function providerRowsToChildTree(
+  rows: Array<Record<string, unknown>>,
+  context: Record<string, unknown> = {},
+): HealthCheckNodeResult[] {
   const groups = rows.reduce((acc, row) => {
     const group = String(row.group ?? row.component ?? "provider row details")
     const existing = acc.get(group) ?? []
@@ -382,37 +627,123 @@ function providerRowsToChildTree(rows: Array<Record<string, unknown>>): HealthCh
   return Array.from(groups.entries()).map(([group, groupRows]) => {
     const children = groupRows.map((row): HealthCheckNodeResult => {
       const status = healthStatusFromProviderStatus(row.status)
+      const id = String(row.key ?? row.id ?? row.label ?? group)
+      const title = String(row.label ?? row.key ?? row.id ?? group)
+      const runLocation =
+        row.runLocation && typeof row.runLocation === "object"
+          ? (row.runLocation as HealthRunLocation)
+          : coldStartRunLocation(group)
+      const detail = String(row.detail ?? row.label ?? row.key ?? "")
       return {
-        id: String(row.key ?? row.id ?? row.label ?? group),
-        title: String(row.label ?? row.key ?? row.id ?? group),
-        kind: "provider-row",
+        ...nodeContract({
+          id,
+          title,
+          kind: "provider-row",
+          status,
+          runLocation,
+          dispatchPath: [
+            maybeString(context.healthTargetTitle) ||
+              maybeString(context.healthTargetId) ||
+              "health target",
+            group,
+            id,
+          ],
+          owner: maybeString(row.owner) || "ddev-storyboard",
+          definitionKey:
+            maybeString(
+              (row.evidence as Record<string, unknown> | undefined)
+                ?.sharedSubcheckDefinitionId,
+            ) || id,
+          target: {
+            id: maybeString(context.healthTargetId),
+            profileId: maybeString(context.healthTargetId),
+            backendMode: maybeString(context.backendMode),
+            sourceUrl: maybeString(context.storyboardUrl),
+          },
+          detail,
+          context,
+        }),
+        id,
+        title,
+        kind: "provider-row" as const,
         status,
         evidence: {
-          dispatchPath: [group, String(row.key ?? row.id ?? row.label ?? "provider-row")],
+          dispatchPath: [
+            maybeString(context.healthTargetTitle) ||
+              maybeString(context.healthTargetId) ||
+              "health target",
+            group,
+            id,
+          ],
           owner: row.owner ?? null,
           actionTarget: row.action_target ?? row.actionTarget ?? null,
           detail: row.detail ?? null,
-          ...(row.evidence && typeof row.evidence === "object" ? row.evidence as Record<string, unknown> : {}),
+          ...(row.evidence && typeof row.evidence === "object"
+            ? (row.evidence as Record<string, unknown>)
+            : {}),
         },
-        runLocation: row.runLocation && typeof row.runLocation === "object" ? row.runLocation as HealthRunLocation : coldStartRunLocation(group),
-        failure: status === "FAIL" ? failure("child_check_failed", String(row.detail ?? row.label ?? row.key ?? "provider row failed")) : null,
+        runLocation,
+        failure: failLikeHealthStatuses.includes(status)
+          ? failure(
+              "child_check_failed",
+              String(
+                row.detail ?? row.label ?? row.key ?? "provider row failed",
+              ),
+            )
+          : null,
         repairHint: maybeString(row.repairHint) || null,
       }
     })
     const status = rollupNodeStatus(children)
+    const groupRunLocation = coldStartRunLocation(group)
     return {
+      ...nodeContract({
+        id: safeFileIdentifier(group),
+        title: group,
+        kind: "component",
+        status,
+        runLocation: groupRunLocation,
+        dispatchPath: [
+          maybeString(context.healthTargetTitle) ||
+            maybeString(context.healthTargetId) ||
+            "health target",
+          group,
+        ],
+        owner: "ddev-storyboard",
+        definitionKey: safeFileIdentifier(group),
+        templateId:
+          maybeString(context.templateId) ||
+          "storyboard-cold-start-dev-dashboard-backend.v1",
+        target: {
+          id: maybeString(context.healthTargetId),
+          profileId: maybeString(context.healthTargetId),
+          backendMode: maybeString(context.backendMode),
+          sourceUrl: maybeString(context.storyboardUrl),
+        },
+        children,
+        context,
+      }),
       id: safeFileIdentifier(group),
       title: group,
       kind: "component" as const,
       status,
       evidence: {
         dispatchModel: "delegated-parent-dispatch.v1",
-        dispatchPath: [group],
+        dispatchPath: [
+          maybeString(context.healthTargetTitle) ||
+            maybeString(context.healthTargetId) ||
+            "health target",
+          group,
+        ],
         childCount: children.length,
       },
-      runLocation: coldStartRunLocation(group),
-      failure: status === "FAIL" ? failure("child_failure", `${group} has failing children`) : null,
-      repairHint: "Run or repair the failing child checks owned by this component; no generic fake repair action is exposed.",
+      runLocation: groupRunLocation,
+      failure:
+        status === "FAIL"
+          ? failure("child_failure", `${group} has failing children`)
+          : null,
+      repairHint:
+        "Run or repair the failing child checks owned by this component; no generic fake repair action is exposed.",
       children,
     }
   })
@@ -450,19 +781,38 @@ function addProviderRow(
   },
   context: { backendMode?: string; frontendUrl?: string } = {},
 ): void {
-  rows.push({ owner: "ddev-storyboard", kind: "cold-start", runLocation: row.runLocation ?? coldStartRunLocation(row.group, context), ...row })
+  rows.push({
+    owner: "ddev-storyboard",
+    kind: "cold-start",
+    runLocation: row.runLocation ?? coldStartRunLocation(row.group, context),
+    ...row,
+  })
 }
 
-function coldStartRunLocation(group: string, context: { backendMode?: string; frontendUrl?: string } = {}): HealthRunLocation {
+function coldStartRunLocation(
+  group: string,
+  context: { backendMode?: string; frontendUrl?: string } = {},
+): HealthRunLocation {
   const backendMode = context.backendMode === "docker" ? "docker" : "staging"
   if (group === `bc-frontend ${backendMode} runtime`) {
     return {
       executor: "dashboard-health-api",
-      workTarget: backendMode === "docker" ? "bc-fullstack/docker-backend" : "bc-fullstack/frontend",
-      host: context.frontendUrl || (backendMode === "docker" ? "docker/local backend stack" : "10.0.0.239:8086"),
+      workTarget:
+        backendMode === "docker"
+          ? "bc-fullstack/docker-backend"
+          : "bc-fullstack/frontend",
+      host:
+        context.frontendUrl ||
+        (backendMode === "docker"
+          ? "docker/local backend stack"
+          : "10.0.0.239:8086"),
       source: `BaseConnect frontend ${backendMode} runtime`,
-      vantagePoint: backendMode === "docker" ? "ddev worker -> bc-frontend service -> local Docker backend" : "ddev worker -> bc-frontend service",
-      providerType: backendMode === "docker" ? "docker-runtime-http-probe" : "http-probe",
+      vantagePoint:
+        backendMode === "docker"
+          ? "ddev worker -> bc-frontend service -> local Docker backend"
+          : "ddev worker -> bc-frontend service",
+      providerType:
+        backendMode === "docker" ? "docker-runtime-http-probe" : "http-probe",
     }
   }
   if (group === "bc-storyboard source/provider health") {
@@ -506,59 +856,137 @@ function dashboardRuntimeStatePublicUrl(): string {
   }
 }
 
-async function textFromUrl(url: string, timeoutMs: number): Promise<{ status: number | null; text: string; error: string }> {
+async function textFromUrl(
+  url: string,
+  timeoutMs: number,
+): Promise<{ status: number | null; text: string; error: string }> {
   try {
     const response = await fetchWithTimeout(url, timeoutMs)
     return { status: response.status, text: await response.text(), error: "" }
   } catch (error) {
-    return { status: null, text: "", error: error instanceof Error ? error.message : String(error) }
+    return {
+      status: null,
+      text: "",
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 
-async function jsonFromUrl(url: string, timeoutMs: number, init: RequestInit = {}): Promise<{ status: number | null; payload: unknown; error: string }> {
+async function jsonFromUrl(
+  url: string,
+  timeoutMs: number,
+  init: RequestInit = {},
+): Promise<{ status: number | null; payload: unknown; error: string }> {
   try {
-    const { response, payload } = await fetchJsonWithTimeout(url, timeoutMs, init)
+    const { response, payload } = await fetchJsonWithTimeout(
+      url,
+      timeoutMs,
+      init,
+    )
     return { status: response.status, payload, error: "" }
   } catch (error) {
-    return { status: null, payload: null, error: error instanceof Error ? error.message : String(error) }
+    return {
+      status: null,
+      payload: null,
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 
-async function detectBackendMarker(frontendUrl: string, backendMode: string, timeoutMs: number): Promise<{ present: boolean; urls: string[]; marker: string }> {
+async function detectBackendMarker(
+  frontendUrl: string,
+  backendMode: string,
+  timeoutMs: number,
+): Promise<{ present: boolean; urls: string[]; marker: string }> {
   const root = await textFromUrl(frontendUrl, timeoutMs)
-  if (!httpStatusIsOk(root.status)) return { present: false, urls: [], marker: root.error || `HTTP ${root.status}` }
-  const scriptPaths = Array.from(root.text.matchAll(/src="([^"]+\.js)"/gu)).map((match) => match[1]).slice(0, 8)
-  const texts: Array<{ url: string; text: string }> = [{ url: frontendUrl, text: root.text }]
+  if (!httpStatusIsOk(root.status))
+    return {
+      present: false,
+      urls: [],
+      marker: root.error || `HTTP ${root.status}`,
+    }
+  const scriptPaths = Array.from(root.text.matchAll(/src="([^"]+\.js)"/gu))
+    .map((match) => match[1])
+    .slice(0, 8)
+  const texts: Array<{ url: string; text: string }> = [
+    { url: frontendUrl, text: root.text },
+  ]
   for (const scriptPath of scriptPaths) {
-    const scriptUrl = new URL(scriptPath, `${frontendUrl.replace(/\/+$/u, "/")}`).toString()
+    const scriptUrl = new URL(
+      scriptPath,
+      `${frontendUrl.replace(/\/+$/u, "/")}`,
+    ).toString()
     const script = await textFromUrl(scriptUrl, timeoutMs)
-    if (httpStatusIsOk(script.status)) texts.push({ url: scriptUrl, text: script.text })
+    if (httpStatusIsOk(script.status))
+      texts.push({ url: scriptUrl, text: script.text })
   }
-  const stagingHits = texts.filter((entry) => entry.text.includes("api-staging.baseconnect-app.com") || /staging/iu.test(entry.text)).map((entry) => entry.url)
+  const stagingHits = texts
+    .filter(
+      (entry) =>
+        entry.text.includes("api-staging.baseconnect-app.com") ||
+        /staging/iu.test(entry.text),
+    )
+    .map((entry) => entry.url)
   if (backendMode === "docker") {
-    const dockerHints = texts.filter((entry) => /localhost|127\.0\.0\.1|host\.docker\.internal|docker|local backend|VITE_API_URL|EXPO_PUBLIC_API_URL/iu.test(entry.text)).map((entry) => entry.url)
-    if (stagingHits.length > 0) return { present: false, urls: stagingHits, marker: "staging-marker-present" }
-    return { present: dockerHints.length > 0, urls: dockerHints, marker: dockerHints.length > 0 ? "bundle-docker-or-local-backend-marker" : "missing-docker-local-marker" }
+    const dockerHints = texts
+      .filter((entry) =>
+        /localhost|127\.0\.0\.1|host\.docker\.internal|docker|local backend|VITE_API_URL|EXPO_PUBLIC_API_URL/iu.test(
+          entry.text,
+        ),
+      )
+      .map((entry) => entry.url)
+    if (stagingHits.length > 0)
+      return {
+        present: false,
+        urls: stagingHits,
+        marker: "staging-marker-present",
+      }
+    return {
+      present: dockerHints.length > 0,
+      urls: dockerHints,
+      marker:
+        dockerHints.length > 0
+          ? "bundle-docker-or-local-backend-marker"
+          : "missing-docker-local-marker",
+    }
   }
-  return { present: stagingHits.length > 0, urls: stagingHits, marker: stagingHits.length > 0 ? (stagingHits[0] === frontendUrl ? "root-html" : "bundle-staging-marker") : "missing" }
+  return {
+    present: stagingHits.length > 0,
+    urls: stagingHits,
+    marker:
+      stagingHits.length > 0
+        ? stagingHits[0] === frontendUrl
+          ? "root-html"
+          : "bundle-staging-marker"
+        : "missing",
+  }
 }
 
 function providerSummary(payload: unknown): Record<string, unknown> {
-  const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {}
-  const sourceTargets = Array.isArray(record.sourceTargets) ? record.sourceTargets : []
-  const sourceTarget = sourceTargets[0] && typeof sourceTargets[0] === "object"
-    ? (sourceTargets[0] as Record<string, unknown>)
-    : {}
-  const evidence = sourceTarget.evidence && typeof sourceTarget.evidence === "object"
-    ? (sourceTarget.evidence as Record<string, unknown>)
-    : {}
+  const record =
+    payload && typeof payload === "object"
+      ? (payload as Record<string, unknown>)
+      : {}
+  const sourceTargets = Array.isArray(record.sourceTargets)
+    ? record.sourceTargets
+    : []
+  const sourceTarget =
+    sourceTargets[0] && typeof sourceTargets[0] === "object"
+      ? (sourceTargets[0] as Record<string, unknown>)
+      : {}
+  const evidence =
+    sourceTarget.evidence && typeof sourceTarget.evidence === "object"
+      ? (sourceTarget.evidence as Record<string, unknown>)
+      : {}
   return {
     provider: record.provider ?? null,
     storyboard: record.storyboard ?? null,
     sourceTargets,
     runTargets: Array.isArray(record.runTargets) ? record.runTargets : [],
     definitions: Array.isArray(record.definitions) ? record.definitions : [],
-    repairActions: Array.isArray(record.repairActions) ? record.repairActions : [],
+    repairActions: Array.isArray(record.repairActions)
+      ? record.repairActions
+      : [],
     storyCount: evidence.storyCount ?? null,
     frameCount: evidence.frameCount ?? null,
     screenshotAssetRefs: evidence.screenshotAssetRefs ?? null,
@@ -578,7 +1006,12 @@ async function evaluateBuiltinCheck(
   check: HealthProfileCheckDefinition,
   context: Record<string, unknown>,
   params: Record<string, unknown>,
-): Promise<Omit<HealthCheckResult, "id" | "title" | "checkId" | "severity" | "repairHint" | "durationMs">> {
+): Promise<
+  Omit<
+    HealthCheckResult,
+    "id" | "title" | "checkId" | "severity" | "repairHint" | "durationMs"
+  >
+> {
   switch (check.checkId) {
     case "work_at_target_reachable": {
       const targetId = maybeString(context.targetId) || "local"
@@ -609,7 +1042,11 @@ async function evaluateBuiltinCheck(
           }
         : {
             status: "FAIL",
-            evidence: { stdout: result.stdout, stderr: result.stderr, targetId },
+            evidence: {
+              stdout: result.stdout,
+              stderr: result.stderr,
+              targetId,
+            },
             failure: failure(
               result.timedOut ? "target_check_timeout" : "target_unreachable",
               result.stderr || result.stdout || "work-at target check failed",
@@ -656,10 +1093,13 @@ async function evaluateBuiltinCheck(
           failure: failure("invalid_check_params", "commandName is invalid"),
         }
       }
-      const result = await runCommand(["bash", "-lc", `command -v -- ${commandName}`], {
-        cwd: state.repoRoot,
-        timeoutMs: 3000,
-      })
+      const result = await runCommand(
+        ["bash", "-lc", `command -v -- ${commandName}`],
+        {
+          cwd: state.repoRoot,
+          timeoutMs: 3000,
+        },
+      )
       return result.exitCode === 0
         ? {
             status: "PASS",
@@ -669,7 +1109,10 @@ async function evaluateBuiltinCheck(
         : {
             status: "FAIL",
             evidence: { commandName, stderr: result.stderr },
-            failure: failure("command_missing", `${commandName} is not available`),
+            failure: failure(
+              "command_missing",
+              `${commandName} is not available`,
+            ),
           }
     }
 
@@ -713,7 +1156,8 @@ async function evaluateBuiltinCheck(
       const url = maybeString(params.url)
       const timeoutSeconds = maybeNumber(params.timeoutSeconds, 5)
       const method = maybeString(params.method) || "GET"
-      const expectedStatusPrefix = maybeString(params.expectedStatusPrefix) || "2"
+      const expectedStatusPrefix =
+        maybeString(params.expectedStatusPrefix) || "2"
       const mustContain = maybeString(params.mustContain)
       if (!/^https?:\/\//u.test(url) || !/^(GET|HEAD)$/u.test(method)) {
         return {
@@ -723,9 +1167,15 @@ async function evaluateBuiltinCheck(
         }
       }
       try {
-        const response = await fetchWithTimeout(url, timeoutSeconds * 1000, method)
+        const response = await fetchWithTimeout(
+          url,
+          timeoutSeconds * 1000,
+          method,
+        )
         const text = method === "HEAD" ? "" : await response.text()
-        const statusMatches = String(response.status).startsWith(expectedStatusPrefix)
+        const statusMatches = String(response.status).startsWith(
+          expectedStatusPrefix,
+        )
         const bodyMatches = mustContain ? text.includes(mustContain) : true
         return statusMatches && bodyMatches
           ? {
@@ -770,7 +1220,10 @@ async function evaluateBuiltinCheck(
         return {
           status: "UNKNOWN",
           evidence: { processPattern },
-          failure: failure("invalid_check_params", "processPattern is required"),
+          failure: failure(
+            "invalid_check_params",
+            "processPattern is required",
+          ),
         }
       }
       const result = await runCommand(["pgrep", "-af", processPattern], {
@@ -780,72 +1233,125 @@ async function evaluateBuiltinCheck(
       return result.exitCode === 0
         ? {
             status: "PASS",
-            evidence: { processPattern, matches: result.stdout.split(/\r?\n/u).slice(0, 5) },
+            evidence: {
+              processPattern,
+              matches: result.stdout.split(/\r?\n/u).slice(0, 5),
+            },
             failure: null,
           }
         : {
             status: "FAIL",
             evidence: { processPattern, stderr: result.stderr },
-            failure: failure("process_not_found", "matching process is not active"),
+            failure: failure(
+              "process_not_found",
+              "matching process is not active",
+            ),
           }
     }
 
     case "storyboard_health_provider": {
       const storyboardUrl = maybeString(params.storyboardUrl)
-      const providerUrl = storyboardProviderUrl(storyboardUrl, "health-provider")
+      const providerUrl = storyboardProviderUrl(
+        storyboardUrl,
+        "health-provider",
+      )
       const timeoutSeconds = maybeNumber(params.timeoutSeconds, 5)
       if (!providerUrl) {
         return {
           status: "UNKNOWN",
           evidence: { storyboardUrl },
-          failure: failure("invalid_check_params", "storyboardUrl must be an http(s) storyboard access URL"),
+          failure: failure(
+            "invalid_check_params",
+            "storyboardUrl must be an http(s) storyboard access URL",
+          ),
         }
       }
       try {
-        const { response, payload } = await fetchJsonWithTimeout(providerUrl, timeoutSeconds * 1000)
-        const ok = response.status >= 200 && response.status < 400 && !!(payload && typeof payload === "object" && (payload as { ok?: unknown }).ok === true)
+        const { response, payload } = await fetchJsonWithTimeout(
+          providerUrl,
+          timeoutSeconds * 1000,
+        )
+        const ok =
+          response.status >= 200 &&
+          response.status < 400 &&
+          !!(
+            payload &&
+            typeof payload === "object" &&
+            (payload as { ok?: unknown }).ok === true
+          )
         return ok
           ? {
               status: "PASS",
-              evidence: { sourceUrl: storyboardUrl, providerUrl, httpStatus: response.status, ...providerSummary(payload) },
+              evidence: {
+                sourceUrl: storyboardUrl,
+                providerUrl,
+                httpStatus: response.status,
+                ...providerSummary(payload),
+              },
               failure: null,
             }
           : {
               status: "FAIL",
-              evidence: { sourceUrl: storyboardUrl, providerUrl, httpStatus: response.status, payload },
-              failure: failure("storyboard_provider_unhealthy", "Storyboard health provider did not return ok: true"),
+              evidence: {
+                sourceUrl: storyboardUrl,
+                providerUrl,
+                httpStatus: response.status,
+                payload,
+              },
+              failure: failure(
+                "storyboard_provider_unhealthy",
+                "Storyboard health provider did not return ok: true",
+              ),
             }
       } catch (error) {
         return {
           status: "FAIL",
           evidence: { sourceUrl: storyboardUrl, providerUrl },
-          failure: failure("storyboard_provider_request_failed", error instanceof Error ? error.message : String(error)),
+          failure: failure(
+            "storyboard_provider_request_failed",
+            error instanceof Error ? error.message : String(error),
+          ),
         }
       }
     }
 
     case "storyboard_run_target_health_check_all": {
       const storyboardUrl = maybeString(params.storyboardUrl)
-      const runTargetId = maybeString(params.runTargetId) || "baseconnect-frontend-web"
-      const checkAllUrl = storyboardProviderUrl(storyboardUrl, "run-target-health/check-all")
+      const runTargetId =
+        maybeString(params.runTargetId) || "baseconnect-frontend-web"
+      const checkAllUrl = storyboardProviderUrl(
+        storyboardUrl,
+        "run-target-health/check-all",
+      )
       const timeoutSeconds = maybeNumber(params.timeoutSeconds, 20)
       if (!checkAllUrl) {
         return {
           status: "UNKNOWN",
           evidence: { storyboardUrl, runTargetId },
-          failure: failure("invalid_check_params", "storyboardUrl must be an http(s) storyboard access URL"),
+          failure: failure(
+            "invalid_check_params",
+            "storyboardUrl must be an http(s) storyboard access URL",
+          ),
         }
       }
       try {
-        const { response, payload } = await fetchJsonWithTimeout(checkAllUrl, timeoutSeconds * 1000, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ storyboardUrl, runTargetId }),
-        })
-        const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {}
+        const { response, payload } = await fetchJsonWithTimeout(
+          checkAllUrl,
+          timeoutSeconds * 1000,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ storyboardUrl, runTargetId }),
+          },
+        )
+        const record =
+          payload && typeof payload === "object"
+            ? (payload as Record<string, unknown>)
+            : {}
         const rows = Array.isArray(record.checks) ? record.checks : []
         const status = statusFromProviderRows(rows)
-        const ok = response.status >= 200 && response.status < 400 && status !== "FAIL"
+        const ok =
+          response.status >= 200 && response.status < 400 && status !== "FAIL"
         return ok
           ? {
               status,
@@ -856,10 +1362,32 @@ async function evaluateBuiltinCheck(
                 httpStatus: response.status,
                 summary: record.summary ?? null,
                 passFailCounts: {
-                  pass: rows.filter((row) => row && typeof row === "object" && (row as Record<string, unknown>).status === "pass").length,
-                  warn: rows.filter((row) => row && typeof row === "object" && (row as Record<string, unknown>).status === "warn").length,
-                  fail: rows.filter((row) => row && typeof row === "object" && (row as Record<string, unknown>).status === "fail").length,
-                  unknown: rows.filter((row) => !row || typeof row !== "object" || !["pass", "warn", "fail"].includes(String((row as Record<string, unknown>).status))).length,
+                  pass: rows.filter(
+                    (row) =>
+                      row &&
+                      typeof row === "object" &&
+                      (row as Record<string, unknown>).status === "pass",
+                  ).length,
+                  warn: rows.filter(
+                    (row) =>
+                      row &&
+                      typeof row === "object" &&
+                      (row as Record<string, unknown>).status === "warn",
+                  ).length,
+                  fail: rows.filter(
+                    (row) =>
+                      row &&
+                      typeof row === "object" &&
+                      (row as Record<string, unknown>).status === "fail",
+                  ).length,
+                  unknown: rows.filter(
+                    (row) =>
+                      !row ||
+                      typeof row !== "object" ||
+                      !["pass", "warn", "fail"].includes(
+                        String((row as Record<string, unknown>).status),
+                      ),
+                  ).length,
                 },
                 providerRows: rows,
               },
@@ -867,159 +1395,375 @@ async function evaluateBuiltinCheck(
             }
           : {
               status: "FAIL",
-              evidence: { sourceUrl: storyboardUrl, checkAllUrl, runTargetId, httpStatus: response.status, payload },
-              failure: failure("storyboard_provider_rows_failed", "One or more Storyboard provider health rows failed"),
+              evidence: {
+                sourceUrl: storyboardUrl,
+                checkAllUrl,
+                runTargetId,
+                httpStatus: response.status,
+                payload,
+              },
+              failure: failure(
+                "storyboard_provider_rows_failed",
+                "One or more Storyboard provider health rows failed",
+              ),
             }
       } catch (error) {
         return {
           status: "FAIL",
           evidence: { sourceUrl: storyboardUrl, checkAllUrl, runTargetId },
-          failure: failure("storyboard_check_all_request_failed", error instanceof Error ? error.message : String(error)),
+          failure: failure(
+            "storyboard_check_all_request_failed",
+            error instanceof Error ? error.message : String(error),
+          ),
         }
       }
     }
 
     case "storyboard_cold_start_dev_dashboard_backend":
     case "storyboard_cold_start_dev_dashboard_staging_backend": {
-      const backendMode = maybeString(params.backendMode) === "docker" ? "docker" : "staging"
+      const backendMode =
+        maybeString(params.backendMode) === "docker" ? "docker" : "staging"
       const workflowTitle = `bc-storyboard on dev dashboard with ${backendMode} backend`
-      const storyboardUrl = maybeString(params.storyboardUrl) || "http://10.0.0.239:8898/onboarding"
-      const frontendUrl = maybeString(params.frontendUrl) || (backendMode === "docker" ? "http://10.0.0.239:8085" : "http://10.0.0.239:8086")
-      const backendApiUrl = maybeString(params.backendApiUrl) || (backendMode === "docker" ? "http://10.0.0.239:8080" : "https://api-staging.baseconnect-app.com")
-      const localDashboardUrl = maybeString(params.localDashboardUrl) || "http://127.0.0.1:3300"
-      const publicDashboardUrl = maybeString(params.publicDashboardUrl) || localDashboardUrl
+      const storyboardUrl =
+        maybeString(params.storyboardUrl) || "http://10.0.0.239:8898/onboarding"
+      const frontendUrl =
+        maybeString(params.frontendUrl) ||
+        (backendMode === "docker"
+          ? "http://10.0.0.239:8085"
+          : "http://10.0.0.239:8086")
+      const backendApiUrl =
+        maybeString(params.backendApiUrl) ||
+        (backendMode === "docker"
+          ? "http://10.0.0.239:8080"
+          : "https://api-staging.baseconnect-app.com")
+      const localDashboardUrl =
+        maybeString(params.localDashboardUrl) || "http://127.0.0.1:3300"
+      const publicDashboardUrl =
+        maybeString(params.publicDashboardUrl) || localDashboardUrl
       const viteUrl = maybeString(params.viteUrl) || "http://127.0.0.1:5173"
-      const runTargetId = maybeString(params.runTargetId) || "baseconnect-frontend-web"
+      const runTargetId =
+        maybeString(params.runTargetId) || "baseconnect-frontend-web"
       const timeoutSeconds = maybeNumber(params.timeoutSeconds, 8)
       const timeoutMs = timeoutSeconds * 1000
-      const expectedMinimumPassCount = maybeNumber(params.expectedMinimumPassCount, 27)
+      const expectedMinimumPassCount = maybeNumber(
+        params.expectedMinimumPassCount,
+        27,
+      )
       const routePath = "/storyboard/debug/storyboardEditor/remote-storyboard/"
       const encodedSource = new URLSearchParams({ storyboardUrl }).toString()
       const providerRows: Array<Record<string, unknown>> = []
       const providerContext = { backendMode, frontendUrl }
 
-      const sourceMdUrl = storyboardProviderUrl(storyboardUrl, "storyboard.md") ?? ""
-      const sourceJsonUrl = storyboardProviderUrl(storyboardUrl, "storyboard.json") ?? ""
-      const runTargetHealthUrl = storyboardProviderUrl(storyboardUrl, "run-target-health") ?? ""
-      const checkAllUrl = storyboardProviderUrl(storyboardUrl, "run-target-health/check-all") ?? ""
+      const sourceMdUrl =
+        storyboardProviderUrl(storyboardUrl, "storyboard.md") ?? ""
+      const sourceJsonUrl =
+        storyboardProviderUrl(storyboardUrl, "storyboard.json") ?? ""
+      const runTargetHealthUrl =
+        storyboardProviderUrl(storyboardUrl, "run-target-health") ?? ""
+      const checkAllUrl =
+        storyboardProviderUrl(storyboardUrl, "run-target-health/check-all") ??
+        ""
       const localRemoteStoryboardUrl = `${localDashboardUrl.replace(/\/+$/u, "")}${routePath}?${encodedSource}`
       const publicRemoteStoryboardUrl = `${publicDashboardUrl.replace(/\/+$/u, "")}${routePath}?${encodedSource}`
 
-      const sourceMd = sourceMdUrl ? await textFromUrl(sourceMdUrl, timeoutMs) : { status: null, text: "", error: "invalid storyboardUrl" }
-      addProviderRow(providerRows, {
-        key: "source-storyboard-md-200",
-        label: "source storyboard.md 200",
-        group: "bc-storyboard source/provider health",
-        status: httpStatusIsOk(sourceMd.status) ? "pass" : "fail",
-        detail: httpStatusIsOk(sourceMd.status) ? `HTTP ${sourceMd.status}` : sourceMd.error || `HTTP ${sourceMd.status}`,
-        evidence: { url: sourceMdUrl, httpStatus: sourceMd.status, sharedSubcheckDefinitionId: "bc-storyboard-source-storyboard-md" },
-      }, providerContext)
+      const sourceMd = sourceMdUrl
+        ? await textFromUrl(sourceMdUrl, timeoutMs)
+        : { status: null, text: "", error: "invalid storyboardUrl" }
+      addProviderRow(
+        providerRows,
+        {
+          key: "source-storyboard-md-200",
+          label: "source storyboard.md 200",
+          group: "bc-storyboard source/provider health",
+          status: httpStatusIsOk(sourceMd.status) ? "pass" : "fail",
+          detail: httpStatusIsOk(sourceMd.status)
+            ? `HTTP ${sourceMd.status}`
+            : sourceMd.error || `HTTP ${sourceMd.status}`,
+          evidence: {
+            url: sourceMdUrl,
+            httpStatus: sourceMd.status,
+            sharedSubcheckDefinitionId: "bc-storyboard-source-storyboard-md",
+          },
+        },
+        providerContext,
+      )
 
-      const sourceJson = sourceJsonUrl ? await jsonFromUrl(sourceJsonUrl, timeoutMs) : { status: null, payload: null, error: "invalid storyboardUrl" }
-      const document = sourceJson.payload && typeof sourceJson.payload === "object" ? sourceJson.payload as Record<string, unknown> : {}
+      const sourceJson = sourceJsonUrl
+        ? await jsonFromUrl(sourceJsonUrl, timeoutMs)
+        : { status: null, payload: null, error: "invalid storyboardUrl" }
+      const document =
+        sourceJson.payload && typeof sourceJson.payload === "object"
+          ? (sourceJson.payload as Record<string, unknown>)
+          : {}
       const stories = Array.isArray(document.stories) ? document.stories : []
       const storyCount = stories.length
-      const frameCount = stories.reduce((total, story) => total + (story && typeof story === "object" ? countStoryboardFrames(story as Record<string, unknown>) : 0), 0)
-      addProviderRow(providerRows, {
-        key: "source-storyboard-json-200",
-        label: "source storyboard.json 200",
-        group: "bc-storyboard source/provider health",
-        status: httpStatusIsOk(sourceJson.status) ? "pass" : "fail",
-        detail: httpStatusIsOk(sourceJson.status) ? `HTTP ${sourceJson.status}; stories=${storyCount}; frames=${frameCount}` : sourceJson.error || `HTTP ${sourceJson.status}`,
-        evidence: { url: sourceJsonUrl, httpStatus: sourceJson.status, storyCount, frameCount, sharedSubcheckDefinitionId: "bc-storyboard-source-storyboard-json" },
-      }, providerContext)
+      const frameCount = stories.reduce(
+        (total, story) =>
+          total +
+          (story && typeof story === "object"
+            ? countStoryboardFrames(story as Record<string, unknown>)
+            : 0),
+        0,
+      )
+      addProviderRow(
+        providerRows,
+        {
+          key: "source-storyboard-json-200",
+          label: "source storyboard.json 200",
+          group: "bc-storyboard source/provider health",
+          status: httpStatusIsOk(sourceJson.status) ? "pass" : "fail",
+          detail: httpStatusIsOk(sourceJson.status)
+            ? `HTTP ${sourceJson.status}; stories=${storyCount}; frames=${frameCount}`
+            : sourceJson.error || `HTTP ${sourceJson.status}`,
+          evidence: {
+            url: sourceJsonUrl,
+            httpStatus: sourceJson.status,
+            storyCount,
+            frameCount,
+            sharedSubcheckDefinitionId: "bc-storyboard-source-storyboard-json",
+          },
+        },
+        providerContext,
+      )
 
-      const healthPayload = runTargetHealthUrl ? await jsonFromUrl(runTargetHealthUrl, timeoutMs) : { status: null, payload: null, error: "invalid storyboardUrl" }
-      addProviderRow(providerRows, {
-        key: "run-target-health-200",
-        label: "run-target-health 200",
-        group: "fast health/check-all summary",
-        status: httpStatusIsOk(healthPayload.status) ? "pass" : "fail",
-        detail: httpStatusIsOk(healthPayload.status) ? `HTTP ${healthPayload.status}` : healthPayload.error || `HTTP ${healthPayload.status}`,
-        evidence: { url: runTargetHealthUrl, httpStatus: healthPayload.status, sharedSubcheckDefinitionId: "bc-storyboard-run-target-health-endpoint" },
-      }, providerContext)
+      const healthPayload = runTargetHealthUrl
+        ? await jsonFromUrl(runTargetHealthUrl, timeoutMs)
+        : { status: null, payload: null, error: "invalid storyboardUrl" }
+      addProviderRow(
+        providerRows,
+        {
+          key: "run-target-health-200",
+          label: "run-target-health 200",
+          group: "fast health/check-all summary",
+          status: httpStatusIsOk(healthPayload.status) ? "pass" : "fail",
+          detail: httpStatusIsOk(healthPayload.status)
+            ? `HTTP ${healthPayload.status}`
+            : healthPayload.error || `HTTP ${healthPayload.status}`,
+          evidence: {
+            url: runTargetHealthUrl,
+            httpStatus: healthPayload.status,
+            sharedSubcheckDefinitionId:
+              "bc-storyboard-run-target-health-endpoint",
+          },
+        },
+        providerContext,
+      )
 
-      const checkAllPayload = checkAllUrl ? await jsonFromUrl(checkAllUrl, timeoutMs, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ storyboardUrl, runTargetId }),
-      }) : { status: null, payload: null, error: "invalid storyboardUrl" }
-      const checkAllRecord = checkAllPayload.payload && typeof checkAllPayload.payload === "object" ? checkAllPayload.payload as Record<string, unknown> : {}
-      const checkAllRows = Array.isArray(checkAllRecord.checks) ? checkAllRecord.checks : []
-      const passCount = checkAllRows.filter((row) => row && typeof row === "object" && (row as Record<string, unknown>).status === "pass").length
-      const warnCount = checkAllRows.filter((row) => row && typeof row === "object" && (row as Record<string, unknown>).status === "warn").length
-      const failCount = checkAllRows.filter((row) => row && typeof row === "object" && (row as Record<string, unknown>).status === "fail").length
-      addProviderRow(providerRows, {
-        key: "check-all-pass-fail-summary",
-        label: "check-all pass/fail summary",
-        group: "fast health/check-all summary",
-        status: httpStatusIsOk(checkAllPayload.status) && failCount === 0 && passCount >= expectedMinimumPassCount ? "pass" : "fail",
-        detail: `HTTP ${checkAllPayload.status}; pass=${passCount}; warn=${warnCount}; fail=${failCount}; expected_min_pass=${expectedMinimumPassCount}`,
-        evidence: { url: checkAllUrl, httpStatus: checkAllPayload.status, passCount, warnCount, failCount, expectedMinimumPassCount, summary: checkAllRecord.summary ?? null, sharedSubcheckDefinitionId: "bc-storyboard-check-all-summary" },
-      }, providerContext)
+      const checkAllPayload = checkAllUrl
+        ? await jsonFromUrl(checkAllUrl, timeoutMs, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ storyboardUrl, runTargetId }),
+          })
+        : { status: null, payload: null, error: "invalid storyboardUrl" }
+      const checkAllRecord =
+        checkAllPayload.payload && typeof checkAllPayload.payload === "object"
+          ? (checkAllPayload.payload as Record<string, unknown>)
+          : {}
+      const checkAllRows = Array.isArray(checkAllRecord.checks)
+        ? checkAllRecord.checks
+        : []
+      const passCount = checkAllRows.filter(
+        (row) =>
+          row &&
+          typeof row === "object" &&
+          (row as Record<string, unknown>).status === "pass",
+      ).length
+      const warnCount = checkAllRows.filter(
+        (row) =>
+          row &&
+          typeof row === "object" &&
+          (row as Record<string, unknown>).status === "warn",
+      ).length
+      const failCount = checkAllRows.filter(
+        (row) =>
+          row &&
+          typeof row === "object" &&
+          (row as Record<string, unknown>).status === "fail",
+      ).length
+      addProviderRow(
+        providerRows,
+        {
+          key: "check-all-pass-fail-summary",
+          label: "check-all pass/fail summary",
+          group: "fast health/check-all summary",
+          status:
+            httpStatusIsOk(checkAllPayload.status) &&
+            failCount === 0 &&
+            passCount >= expectedMinimumPassCount
+              ? "pass"
+              : "fail",
+          detail: `HTTP ${checkAllPayload.status}; pass=${passCount}; warn=${warnCount}; fail=${failCount}; expected_min_pass=${expectedMinimumPassCount}`,
+          evidence: {
+            url: checkAllUrl,
+            httpStatus: checkAllPayload.status,
+            passCount,
+            warnCount,
+            failCount,
+            expectedMinimumPassCount,
+            summary: checkAllRecord.summary ?? null,
+            sharedSubcheckDefinitionId: "bc-storyboard-check-all-summary",
+          },
+        },
+        providerContext,
+      )
 
       for (const path of ["/", "/login", "/user-verification"]) {
         const url = `${frontendUrl.replace(/\/+$/u, "")}${path}`
         const response = await textFromUrl(url, timeoutMs)
-        addProviderRow(providerRows, {
-          key: `bc-frontend${path === "/" ? "-root" : path.replace(/\//gu, "-")}-200`,
-          label: `bc-frontend ${path} 200`,
-          group: `bc-frontend ${backendMode} runtime`,
-          status: httpStatusIsOk(response.status) ? "pass" : "fail",
-          detail: httpStatusIsOk(response.status) ? `HTTP ${response.status}` : response.error || `HTTP ${response.status}`,
-          evidence: { url, httpStatus: response.status, sharedSubcheckDefinitionId: "bc-frontend-route-200" },
-        }, providerContext)
+        addProviderRow(
+          providerRows,
+          {
+            key: `bc-frontend${path === "/" ? "-root" : path.replace(/\//gu, "-")}-200`,
+            label: `bc-frontend ${path} 200`,
+            group: `bc-frontend ${backendMode} runtime`,
+            status: httpStatusIsOk(response.status) ? "pass" : "fail",
+            detail: httpStatusIsOk(response.status)
+              ? `HTTP ${response.status}`
+              : response.error || `HTTP ${response.status}`,
+            evidence: {
+              url,
+              httpStatus: response.status,
+              sharedSubcheckDefinitionId: "bc-frontend-route-200",
+            },
+          },
+          providerContext,
+        )
       }
-      const backendMarker = await detectBackendMarker(frontendUrl, backendMode, timeoutMs)
-      addProviderRow(providerRows, {
-        key: `bc-frontend-${backendMode}-backend-marker-present`,
-        label: `${backendMode} backend marker present`,
-        group: `bc-frontend ${backendMode} runtime`,
-        status: backendMarker.present ? "pass" : "fail",
-        detail: backendMarker.present ? backendMarker.marker : (backendMode === "docker" ? "docker/local backend marker missing or staging marker present" : "api-staging/baseconnect staging marker missing from frontend bundle"),
-        evidence: { frontendUrl, backendApiUrl, marker: backendMarker.marker, urls: backendMarker.urls, sharedSubcheckDefinitionId: "bc-frontend-backend-marker" },
-      }, providerContext)
+      const backendMarker = await detectBackendMarker(
+        frontendUrl,
+        backendMode,
+        timeoutMs,
+      )
+      addProviderRow(
+        providerRows,
+        {
+          key: `bc-frontend-${backendMode}-backend-marker-present`,
+          label: `${backendMode} backend marker present`,
+          group: `bc-frontend ${backendMode} runtime`,
+          status: backendMarker.present ? "pass" : "fail",
+          detail: backendMarker.present
+            ? backendMarker.marker
+            : backendMode === "docker"
+              ? "docker/local backend marker missing or staging marker present"
+              : "api-staging/baseconnect staging marker missing from frontend bundle",
+          evidence: {
+            frontendUrl,
+            backendApiUrl,
+            marker: backendMarker.marker,
+            urls: backendMarker.urls,
+            sharedSubcheckDefinitionId: "bc-frontend-backend-marker",
+          },
+        },
+        providerContext,
+      )
 
       if (backendMode === "docker") {
-        const dockerInfo = await runCommand(["bash", "-lc", "command -v docker >/dev/null 2>&1 && docker info --format '{{json .ServerVersion}}'"], { cwd: state.repoRoot, timeoutMs })
-        addProviderRow(providerRows, {
-          key: "docker-daemon-reachable",
-          label: "Docker daemon reachable from Docker-host parent",
-          group: "bc-frontend docker runtime",
-          status: dockerInfo.exitCode === 0 ? "pass" : "fail",
-          detail: dockerInfo.exitCode === 0 ? `docker ${dockerInfo.stdout}` : (dockerInfo.stderr || dockerInfo.stdout || "docker daemon unavailable"),
-          evidence: { exitCode: dockerInfo.exitCode, stdout: dockerInfo.stdout, stderr: dockerInfo.stderr, sharedSubcheckDefinitionId: "docker-daemon-reachable" },
-        }, providerContext)
+        const dockerInfo = await runCommand(
+          [
+            "bash",
+            "-lc",
+            "command -v docker >/dev/null 2>&1 && docker info --format '{{json .ServerVersion}}'",
+          ],
+          { cwd: state.repoRoot, timeoutMs },
+        )
+        addProviderRow(
+          providerRows,
+          {
+            key: "docker-daemon-reachable",
+            label: "Docker daemon reachable from Docker-host parent",
+            group: "bc-frontend docker runtime",
+            status: dockerInfo.exitCode === 0 ? "pass" : "fail",
+            detail:
+              dockerInfo.exitCode === 0
+                ? `docker ${dockerInfo.stdout}`
+                : dockerInfo.stderr ||
+                  dockerInfo.stdout ||
+                  "docker daemon unavailable",
+            evidence: {
+              exitCode: dockerInfo.exitCode,
+              stdout: dockerInfo.stdout,
+              stderr: dockerInfo.stderr,
+              sharedSubcheckDefinitionId: "docker-daemon-reachable",
+            },
+          },
+          providerContext,
+        )
         const backendApi = await textFromUrl(backendApiUrl, timeoutMs)
-        addProviderRow(providerRows, {
-          key: "docker-backend-api-reachable",
-          label: "Docker/local backend API reachable",
-          group: "bc-frontend docker runtime",
-          status: httpStatusIsOk(backendApi.status) ? "pass" : "fail",
-          detail: httpStatusIsOk(backendApi.status) ? `HTTP ${backendApi.status}` : backendApi.error || `HTTP ${backendApi.status}`,
-          evidence: { url: backendApiUrl, httpStatus: backendApi.status, sharedSubcheckDefinitionId: "backend-api-reachable" },
-        }, providerContext)
+        addProviderRow(
+          providerRows,
+          {
+            key: "docker-backend-api-reachable",
+            label: "Docker/local backend API reachable",
+            group: "bc-frontend docker runtime",
+            status: httpStatusIsOk(backendApi.status) ? "pass" : "fail",
+            detail: httpStatusIsOk(backendApi.status)
+              ? `HTTP ${backendApi.status}`
+              : backendApi.error || `HTTP ${backendApi.status}`,
+            evidence: {
+              url: backendApiUrl,
+              httpStatus: backendApi.status,
+              sharedSubcheckDefinitionId: "backend-api-reachable",
+            },
+          },
+          providerContext,
+        )
       }
 
       for (const [key, label, url] of [
-        ["ddev-dashboard-gateway-200", "ddev dashboard gateway 200", localDashboardUrl],
+        [
+          "ddev-dashboard-gateway-200",
+          "ddev dashboard gateway 200",
+          localDashboardUrl,
+        ],
         ["ddev-dashboard-vite-200", "ddev dashboard Vite 200", viteUrl],
-        ["ddev-dashboard-public-route-200", "ddev dashboard public route 200", publicRemoteStoryboardUrl],
-        ["ddev-dashboard-remote-storyboard-route-200", "remote-storyboard route 200", localRemoteStoryboardUrl],
+        [
+          "ddev-dashboard-public-route-200",
+          "ddev dashboard public route 200",
+          publicRemoteStoryboardUrl,
+        ],
+        [
+          "ddev-dashboard-remote-storyboard-route-200",
+          "remote-storyboard route 200",
+          localRemoteStoryboardUrl,
+        ],
       ] as const) {
         const response = await textFromUrl(url, timeoutMs)
-        addProviderRow(providerRows, {
-          key,
-          label,
-          group: "ddev dashboard/tunnel/remote-storyboard route",
-          status: httpStatusIsOk(response.status) ? "pass" : "fail",
-          detail: httpStatusIsOk(response.status) ? `HTTP ${response.status}` : response.error || `HTTP ${response.status}`,
-          evidence: { url, httpStatus: response.status, sharedSubcheckDefinitionId: "ddev-dashboard-route-200" },
-        }, providerContext)
+        addProviderRow(
+          providerRows,
+          {
+            key,
+            label,
+            group: "ddev dashboard/tunnel/remote-storyboard route",
+            status: httpStatusIsOk(response.status) ? "pass" : "fail",
+            detail: httpStatusIsOk(response.status)
+              ? `HTTP ${response.status}`
+              : response.error || `HTTP ${response.status}`,
+            evidence: {
+              url,
+              httpStatus: response.status,
+              sharedSubcheckDefinitionId: "ddev-dashboard-route-200",
+            },
+          },
+          providerContext,
+        )
       }
 
-      const status = statusFromStringRows(providerRows.map((row) => ({ status: maybeString(row.status) || "unknown" })))
-      const children = providerRowsToChildTree(providerRows)
+      const status = statusFromStringRows(
+        providerRows.map((row) => ({
+          status: maybeString(row.status) || "unknown",
+        })),
+      )
+      const children = providerRowsToChildTree(providerRows, {
+        ...context,
+        healthTargetId:
+          maybeString(context.profileId) ||
+          `bc_storyboard_dev_dashboard_${backendMode}_backend`,
+        healthTargetTitle: workflowTitle,
+        backendMode,
+        storyboardUrl,
+        templateId: "storyboard-cold-start-dev-dashboard-backend.v1",
+      })
       return {
         status,
         children,
@@ -1029,11 +1773,20 @@ async function evaluateBuiltinCheck(
           backendApiUrl,
           profileComposition: {
             template: "storyboard-cold-start-dev-dashboard-backend.v1",
-            sharedSubcheckDefinitionIds: ["bc-storyboard-source-storyboard-md", "bc-storyboard-source-storyboard-json", "bc-storyboard-run-target-health-endpoint", "bc-storyboard-check-all-summary", "bc-frontend-route-200", "bc-frontend-backend-marker", "ddev-dashboard-route-200"],
+            sharedSubcheckDefinitionIds: [
+              "bc-storyboard-source-storyboard-md",
+              "bc-storyboard-source-storyboard-json",
+              "bc-storyboard-run-target-health-endpoint",
+              "bc-storyboard-check-all-summary",
+              "bc-frontend-route-200",
+              "bc-frontend-backend-marker",
+              "ddev-dashboard-route-200",
+            ],
             backendSpecificBranch: backendMode,
           },
           dispatchPath: [workflowTitle],
-          childDispatchSemantics: "dashboard health API dispatches only direct component parents; component/provider parents own and return their child rows recursively",
+          childDispatchSemantics:
+            "dashboard health API dispatches only direct component parents; component/provider parents own and return their child rows recursively",
           sourceUrl: storyboardUrl,
           frontendUrl,
           localDashboardUrl,
@@ -1046,13 +1799,26 @@ async function evaluateBuiltinCheck(
             pass: providerRows.filter((row) => row.status === "pass").length,
             warn: providerRows.filter((row) => row.status === "warn").length,
             fail: providerRows.filter((row) => row.status === "fail").length,
-            unknown: providerRows.filter((row) => !["pass", "warn", "fail"].includes(String(row.status))).length,
+            unknown: providerRows.filter(
+              (row) => !["pass", "warn", "fail"].includes(String(row.status)),
+            ).length,
           },
-          checkAllCounts: { pass: passCount, warn: warnCount, fail: failCount, expectedMinimumPassCount },
+          checkAllCounts: {
+            pass: passCount,
+            warn: warnCount,
+            fail: failCount,
+            expectedMinimumPassCount,
+          },
           providerRows,
           children,
         },
-        failure: status === "PASS" ? null : failure("cold_start_health_failed", `One or more DEV Storyboard + BaseConnect onboarding ${backendMode} health children failed`),
+        failure:
+          status === "PASS"
+            ? null
+            : failure(
+                "cold_start_health_failed",
+                `One or more DEV Storyboard + BaseConnect onboarding ${backendMode} health children failed`,
+              ),
       }
     }
 
@@ -1082,28 +1848,74 @@ async function evaluateCheck(
 ): Promise<HealthCheckResult> {
   const started = performance.now()
   const severity = check.severity ?? "warn"
-  const renderedParams = renderTemplate(check.params ?? {}, baseContext) as Record<
-    string,
-    unknown
-  >
+  const renderedParams = renderTemplate(
+    check.params ?? {},
+    baseContext,
+  ) as Record<string, unknown>
   const context = {
     ...baseContext,
     ...renderedParams,
   }
   const runLocation = checkRunLocation(check, context, renderedParams)
   try {
-    const partial = await evaluateBuiltinCheck(state, check, context, renderedParams)
+    const partial = await evaluateBuiltinCheck(
+      state,
+      check,
+      context,
+      renderedParams,
+    )
+    const durationMs = Math.max(0, Math.round(performance.now() - started))
+    const checkStatus = partial.status
+    const children = partial.children ?? []
+    const contract = nodeContract({
+      id: check.id,
+      title: check.title,
+      kind: "check",
+      status: checkStatus,
+      runLocation,
+      dispatchPath: [
+        maybeString(context.healthTargetTitle) ||
+          maybeString(context.profileTitle) ||
+          maybeString(context.profileId) ||
+          "health target",
+        check.component ?? "local checks",
+        check.id,
+      ],
+      owner: "ddev-storyboard",
+      definitionKey: check.checkId,
+      templateId:
+        maybeString(
+          (partial.evidence as Record<string, unknown> | undefined)
+            ?.profileComposition &&
+            (
+              (partial.evidence as Record<string, unknown>)
+                .profileComposition as Record<string, unknown>
+            ).template,
+        ) || check.checkId,
+      target: {
+        id: maybeString(context.profileId) || maybeString(context.targetId),
+        profileId: maybeString(context.profileId),
+        backendMode: maybeString(context.backendMode),
+        sourceUrl: maybeString(context.storyboardUrl),
+      },
+      durationMs,
+      detail: partial.failure?.message ?? check.title,
+      children,
+      context,
+    })
     return {
+      ...contract,
       id: check.id,
       title: check.title,
       checkId: check.checkId,
       component: check.component,
       severity,
-      durationMs: Math.max(0, Math.round(performance.now() - started)),
+      durationMs,
       repairHint: check.repairHint ?? null,
       runLocation,
       ...partial,
       evidence: {
+        ...contract,
         runLocation,
         ...partial.evidence,
       },
@@ -1129,13 +1941,27 @@ async function evaluateCheck(
 }
 
 function runStatusFromChecks(checks: HealthCheckResult[]): HealthRunStatus {
-  if (checks.some((check) => check.severity === "blocking" && check.status === "FAIL")) {
+  if (
+    checks.some(
+      (check) =>
+        check.severity === "blocking" &&
+        failLikeHealthStatuses.includes(check.status),
+    )
+  ) {
     return "fail"
   }
-  if (checks.some((check) => check.status === "UNKNOWN")) {
+  if (
+    checks.some((check) => unknownLikeHealthStatuses.includes(check.status))
+  ) {
     return "unknown"
   }
-  if (checks.some((check) => check.status === "FAIL")) {
+  if (
+    checks.some(
+      (check) =>
+        failLikeHealthStatuses.includes(check.status) ||
+        warnLikeHealthStatuses.includes(check.status),
+    )
+  ) {
     return "unknown"
   }
   return "pass"
@@ -1169,17 +1995,26 @@ async function runProfile(
 
   const startedAt = new Date().toISOString()
   const runId = `health_${Date.now()}_${++state.runCounter}`
-  const requestParams = requestBody.params && typeof requestBody.params === "object"
-    ? requestBody.params
-    : {}
+  const requestParams =
+    requestBody.params && typeof requestBody.params === "object"
+      ? requestBody.params
+      : {}
   const target = resolveTarget(
     state,
-    maybeString(requestBody.targetId) || maybeString(requestBody.target) || "local",
+    maybeString(requestBody.targetId) ||
+      maybeString(requestBody.target) ||
+      "local",
     requestParams,
   )
   const baseContext = {
     ...(profile.params ?? {}),
     ...requestParams,
+    profileId: profile.id,
+    healthTargetId: profile.id,
+    profileTitle: profile.title,
+    healthTargetTitle: profile.title,
+    runId,
+    correlationId: runId,
     targetId: target.targetId,
     workTarget: target.targetId,
     targetPath: target.targetPath,
@@ -1187,10 +2022,10 @@ async function runProfile(
     repoRoot: state.repoRoot,
     stateRoot: dirname(state.stateDir),
   }
-  const renderedBaseContext = renderTemplate(baseContext, baseContext) as Record<
-    string,
-    unknown
-  >
+  const renderedBaseContext = renderTemplate(
+    baseContext,
+    baseContext,
+  ) as Record<string, unknown>
 
   const checks: HealthCheckResult[] = []
   for (const check of profile.checks ?? []) {
@@ -1211,7 +2046,9 @@ async function runProfile(
   return result
 }
 
-async function parseRequestBody(request: Request): Promise<HealthRunRequest | null> {
+async function parseRequestBody(
+  request: Request,
+): Promise<HealthRunRequest | null> {
   try {
     return (await request.json()) as HealthRunRequest
   } catch {
@@ -1236,10 +2073,15 @@ export function createHealthApi(options: HealthApiOptions): {
       const url = new URL(request.url)
       if (url.pathname === "/api/health/profiles" && request.method === "GET") {
         const profiles = loadProfiles(state)
-        return jsonResponse({ ok: true, profiles: profiles.map(profileSummary) })
+        return jsonResponse({
+          ok: true,
+          profiles: profiles.map(profileSummary),
+        })
       }
 
-      const profileMatch = /^\/api\/health\/profiles\/([^/]+)$/u.exec(url.pathname)
+      const profileMatch = /^\/api\/health\/profiles\/([^/]+)$/u.exec(
+        url.pathname,
+      )
       if (profileMatch && request.method === "GET") {
         const profile = loadProfile(state, decodeURIComponent(profileMatch[1]))
         if (!profile) {
@@ -1251,22 +2093,36 @@ export function createHealthApi(options: HealthApiOptions): {
       if (url.pathname === "/api/health/run" && request.method === "POST") {
         const body = await parseRequestBody(request)
         if (!body || typeof body.profileId !== "string") {
-          return jsonResponse({ ok: false, error: "profileId is required" }, 400)
+          return jsonResponse(
+            { ok: false, error: "profileId is required" },
+            400,
+          )
         }
         const result = await runProfile(state, body)
-        return result instanceof Response ? result : jsonResponse({ ok: true, result }, 202)
+        return result instanceof Response
+          ? result
+          : jsonResponse({ ok: true, result }, 202)
       }
 
       if (url.pathname === "/api/health/latest" && request.method === "GET") {
         const profileId = url.searchParams.get("profileId")?.trim() ?? ""
         if (!profileId) {
-          return jsonResponse({ ok: false, error: "profileId is required" }, 400)
+          return jsonResponse(
+            { ok: false, error: "profileId is required" },
+            400,
+          )
         }
         const path = latestPath(state, profileId)
         if (!existsSync(path)) {
-          return jsonResponse({ ok: false, error: "no result for profileId" }, 404)
+          return jsonResponse(
+            { ok: false, error: "no result for profileId" },
+            404,
+          )
         }
-        return jsonResponse({ ok: true, result: readJsonFile<HealthRunResult>(path) })
+        return jsonResponse({
+          ok: true,
+          result: readJsonFile<HealthRunResult>(path),
+        })
       }
 
       if (url.pathname === "/api/health/runs" && request.method === "GET") {
