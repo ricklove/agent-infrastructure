@@ -27,6 +27,7 @@ type LoadState =
 
 const statusOrder = { FAIL: 0, WARN: 1, UNKNOWN: 2, PASS: 3 } as const
 const statusGlyph = { PASS: "●", WARN: "▲", FAIL: "■", UNKNOWN: "○" } as const
+const childStatusGlyph = { pass: "●", warn: "▲", fail: "■", unknown: "○" } as const
 
 function queryParam(name: string) {
   if (typeof window === "undefined") return ""
@@ -62,6 +63,19 @@ function runStatusClassName(status: HealthRunStatus | "none") {
   if (status === "fail") return "border-rose-200 bg-rose-50 text-rose-800"
   if (status === "unknown") return "border-slate-200 bg-slate-50 text-slate-700"
   return "border-slate-200 bg-white text-slate-500"
+}
+
+function childStatusClassName(status: string) {
+  if (status === "pass") return "border-emerald-200 bg-emerald-50 text-emerald-800"
+  if (status === "warn") return "border-amber-200 bg-amber-50 text-amber-900"
+  if (status === "fail") return "border-rose-200 bg-rose-50 text-rose-800"
+  return "border-slate-200 bg-slate-50 text-slate-600"
+}
+
+function runStatusToTreeStatus(status?: HealthRunStatus | "none") {
+  if (status === "pass") return "PASS" as const
+  if (status === "fail") return "FAIL" as const
+  return "UNKNOWN" as const
 }
 
 function compactTime(value?: string) {
@@ -119,21 +133,57 @@ function ProviderRows({ evidence }: { evidence: Record<string, unknown> }) {
   )
 }
 
+function ProviderTreeChildren({ evidence }: { evidence: Record<string, unknown> }) {
+  const rows = Array.isArray(evidence.providerRows) ? evidence.providerRows : []
+  if (rows.length === 0) return null
+  return (
+    <div className="border-t border-slate-100 bg-white">
+      {rows.map((row, index) => {
+        const record = row && typeof row === "object" ? row as Record<string, unknown> : {}
+        const rawStatus = String(record.status ?? "unknown").toLowerCase()
+        const status = rawStatus === "pass" || rawStatus === "warn" || rawStatus === "fail" ? rawStatus : "unknown"
+        return (
+          <div className="grid w-full grid-cols-[1.6rem_7rem_1fr_7rem_6rem] items-center gap-2 border-b border-slate-100 px-2 py-1 text-[11px] last:border-b-0" key={`${record.key ?? index}`}>
+            <span className="flex items-center justify-center text-slate-400"><span className="mr-1 h-4 border-l border-slate-200" />↳</span>
+            <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${childStatusClassName(status)}`}>{childStatusGlyph[status]} {status.toUpperCase()}</span>
+            <span className="min-w-0 truncate font-mono text-slate-700" title={String(record.key ?? index)}>{String(record.key ?? index)}</span>
+            <span className="truncate text-slate-500">{String(record.owner ?? "provider")}</span>
+            <span className="truncate text-right text-slate-500">{String(record.kind ?? record.type ?? "row")}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function TreeRollupRow({ status, title, meta, depth, count, last }: { status: keyof typeof statusGlyph; title: string; meta?: string; depth: 0 | 1; count?: string | number; last?: string }) {
+  return (
+    <div className={`grid grid-cols-[1.6rem_7rem_1fr_7rem_6rem] items-center gap-2 border-b border-slate-100 px-2 py-1 text-xs ${depth === 0 ? "bg-slate-100 font-semibold" : "bg-slate-50"}`}>
+      <span className={`text-center ${status === "PASS" ? "text-emerald-600" : status === "FAIL" ? "text-rose-600" : status === "WARN" ? "text-amber-600" : "text-slate-500"}`}>{depth === 0 ? statusGlyph[status] : "└"}</span>
+      <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName(status)}`}>{status}</span>
+      <span className="min-w-0 truncate" title={title}><span>{title}</span>{meta ? <span className="ml-1 font-mono text-[10px] font-normal text-slate-500">{meta}</span> : null}</span>
+      <span className="truncate text-slate-500">{count ?? ""}</span>
+      <span className="truncate text-right text-slate-500">{last ?? ""}</span>
+    </div>
+  )
+}
+
 function CheckResultRow({ check }: { check: HealthCheckResult }) {
   const [open, setOpen] = useState(check.status !== "PASS")
   return (
     <div className="border-t border-slate-100 first:border-t-0">
       <button
-        className="grid w-full grid-cols-[1.6rem_8rem_1fr_7rem_6rem] items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-slate-50"
+        className="grid w-full grid-cols-[1.6rem_7rem_1fr_7rem_6rem] items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-slate-50"
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
-        <span className={`text-center ${check.status === "PASS" ? "text-emerald-600" : check.status === "FAIL" ? "text-rose-600" : check.status === "WARN" ? "text-amber-600" : "text-slate-500"}`}>{statusGlyph[check.status]}</span>
+        <span className={`text-center ${check.status === "PASS" ? "text-emerald-600" : check.status === "FAIL" ? "text-rose-600" : check.status === "WARN" ? "text-amber-600" : "text-slate-500"}`}>├ {statusGlyph[check.status]}</span>
         <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName(check.status)}`}>{check.status}</span>
         <span className="min-w-0 truncate font-medium text-slate-800" title={check.title}>{check.title}</span>
         <span className="truncate text-[11px] text-slate-500">{check.severity}</span>
         <span className="text-right text-[11px] text-slate-500">{check.durationMs} ms</span>
       </button>
+      <ProviderTreeChildren evidence={check.evidence} />
       {open ? (
         <div className="space-y-2 bg-slate-50 px-3 py-2 text-xs text-slate-700">
           {check.failure ? <div className="rounded border border-rose-200 bg-rose-50 p-2 text-rose-800">{check.failure.class}: {check.failure.message}</div> : null}
@@ -212,13 +262,13 @@ export function HealthDashboardScreen({ apiRootUrl = "/api/health" }: HealthDash
     return state.profiles.find((entry) => entry.profile.id === selectedProfileId) ?? state.profiles[0] ?? null
   }, [selectedProfileId, state])
 
-  if (state.status === "loading") return <main className="min-h-full bg-slate-50 p-4 text-slate-800">Loading health dashboard…</main>
-  if (state.status === "error") return <main className="min-h-full bg-slate-50 p-4 text-rose-800">Health Dashboard failed: {state.message}</main>
+  if (state.status === "loading") return <main className="h-full min-h-0 overflow-y-auto bg-slate-50 p-4 text-slate-800">Loading health dashboard…</main>
+  if (state.status === "error") return <main className="h-full min-h-0 overflow-y-auto bg-slate-50 p-4 text-rose-800">Health Dashboard failed: {state.message}</main>
 
   const sortedProfiles = [...state.profiles].sort((left, right) => statusOrder[resultStatus(left.latest)] - statusOrder[resultStatus(right.latest)] || left.profile.id.localeCompare(right.profile.id))
 
   return (
-    <main className="min-h-full bg-slate-50 p-3 text-slate-900">
+    <main className="h-full min-h-0 overflow-y-auto bg-slate-50 p-3 text-slate-900" data-health-dashboard-scroll-root="true">
       <header className="mb-2 flex flex-wrap items-end justify-between gap-2 border-b border-slate-200 pb-2">
         <div>
           <p className="m-0 text-[10px] font-bold uppercase tracking-[0.16em] text-blue-700">Dashboard feature plugin</p>
@@ -278,10 +328,29 @@ export function HealthDashboardScreen({ apiRootUrl = "/api/health" }: HealthDash
                 <div><span className="text-slate-500">Source URL</span><div className="truncate font-mono text-[11px]" title={String(selected.latest?.params.storyboardUrl ?? selected.profile.params?.storyboardUrl ?? "")}>{String(selected.latest?.params.storyboardUrl ?? selected.profile.params?.storyboardUrl ?? "—")}</div></div>
                 <div><span className="text-slate-500">Rows</span><div>{selected.latest?.checks.length ?? selected.profile.checks.length}</div></div>
               </div>
-              <div className="divide-y divide-slate-100">
+              <div className="grid grid-cols-[1.6rem_7rem_1fr_7rem_6rem] gap-2 border-b border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                <span></span><span>Status</span><span>Health tree</span><span>Owner/type</span><span>Last/ms</span>
+              </div>
+              <div className="divide-y divide-slate-100" data-health-tree="profile-target-check-provider">
+                <TreeRollupRow
+                  count={`${selected.latest?.checks.length ?? selected.profile.checks.length} checks`}
+                  depth={0}
+                  last={compactTime(selected.latest?.finishedAt)}
+                  meta={selected.profile.id}
+                  status={resultStatus(selected.latest)}
+                  title={`Profile: ${selected.profile.title}`}
+                />
+                <TreeRollupRow
+                  count="target"
+                  depth={1}
+                  last={selected.latest?.targetId ?? "local"}
+                  meta={String(selected.latest?.params.storyboardUrl ?? selected.profile.params?.storyboardUrl ?? selected.profile.sourcePath ?? "")}
+                  status={runStatusToTreeStatus(selected.latest?.status ?? "none")}
+                  title={`Target/group: ${selected.latest?.targetId ?? "local"}`}
+                />
                 {selected.latest ? selected.latest.checks.map((check) => <CheckResultRow check={check} key={check.id} />) : selected.profile.checks.map((check) => (
-                  <div className="grid grid-cols-[1.6rem_8rem_1fr_7rem_6rem] items-center gap-2 px-2 py-1.5 text-xs" key={check.id}>
-                    <span className="text-center text-slate-400">○</span><span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">PENDING</span><span>{check.title}</span><span className="text-slate-500">{check.severity}</span><span />
+                  <div className="grid grid-cols-[1.6rem_7rem_1fr_7rem_6rem] items-center gap-2 px-2 py-1.5 text-xs" key={check.id}>
+                    <span className="text-center text-slate-400">├ ○</span><span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">PENDING</span><span>{check.title}</span><span className="text-slate-500">{check.severity}</span><span />
                   </div>
                 ))}
               </div>

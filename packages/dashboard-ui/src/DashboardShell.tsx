@@ -1003,7 +1003,7 @@ export function DashboardShell({
           </nav>
         </aside>
 
-        <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="absolute left-3 top-3 z-20 md:hidden">
             <button
               type="button"
