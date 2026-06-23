@@ -46,6 +46,7 @@ export const dashboardBasicFeatureIds = [
   "content",
   "content-creation",
   "swarm",
+  "health",
   "projects",
   "settings",
 ] as const
@@ -56,6 +57,7 @@ export const dashboardFeatureOrder = [
   "content",
   "content-creation",
   "swarm",
+  "health",
   "workbench",
   "design",
   "debug",

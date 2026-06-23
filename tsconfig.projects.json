@@ -21,6 +21,7 @@
     { "path": "./packages/dashboard-settings-ui/tsconfig.json" },
     { "path": "./packages/dashboard-terminal-server/tsconfig.json" },
     { "path": "./packages/dashboard-terminal-ui/tsconfig.json" },
+    { "path": "./packages/health-ui/tsconfig.json" },
     { "path": "./packages/dashboard-ui/tsconfig.json" },
     { "path": "./packages/dashboard/tsconfig.json" },
     { "path": "./packages/floating-window-debug-ui/tsconfig.json" },

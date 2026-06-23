@@ -9,6 +9,7 @@ export type DashboardFeatureId =
   | "graph"
   | "terminal"
   | "projects"
+  | "health"
   | "storyboard"
   | "design"
   | "debug"
