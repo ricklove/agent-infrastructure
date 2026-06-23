@@ -128,6 +128,39 @@ describe("RunTargetHealthPanel", () => {
     expect(html).toContain("Suggested action: Restart the provider-owned backend.")
   })
 
+  test("renders failing story-a screenshot health check red with diagnostics export", () => {
+    const html = renderToStaticMarkup(
+      createElement(RunTargetHealthPanel, {
+        state: {
+          open: true,
+          runTargetId: "storyboard:default",
+          runTargetLabel: "Storyboard default run target",
+          runTargetUrl: "http://10.0.0.239:8086/user-verification",
+          owner: "bc-storyboard",
+          loading: false,
+          error: null,
+          checks: [
+            {
+              key: "story-a-01-account-email-screenshot-semantic",
+              status: "fail",
+              label: "Blank canonical screenshot",
+              detail: "Canonical PNG is blank and cannot prove the real app frame.",
+              evidence: { bytes: 6490, sha256: "938030cfd33887f6b73b7cca2f54c4534e044c0f7efdcac37b4bbbb629d22b91" },
+              remediation: "Regenerate the real-browser capture before running user-story frames.",
+              checkedAt: "2026-06-11T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(html).toContain("story-a-01-account-email-screenshot-semantic")
+    expect(html).toContain("fail: 1")
+    expect(html).toContain("Copy diagnostics JSON")
+    expect(html).toContain("Remediation: Regenerate the real-browser capture")
+    expect(html).not.toContain("pass: 1")
+  })
+
   test("renders unsupported health API state distinctly from run failure", () => {
     const html = renderToStaticMarkup(
       createElement(RunTargetHealthPanel, {

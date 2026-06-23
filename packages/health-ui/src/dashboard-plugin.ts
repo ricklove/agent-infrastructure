@@ -8,7 +8,7 @@ export const healthDashboardPlugin: DashboardFeaturePlugin = {
   icon: "graph",
   screen: {
     getProps: ({ windowOrigin }) => ({
-      apiRootUrl: `${windowOrigin}/api/health-dashboard`,
+      apiRootUrl: `${windowOrigin}/api/health`,
     }),
   },
   backend: {

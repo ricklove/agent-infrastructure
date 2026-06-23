@@ -54,7 +54,11 @@ export type RunTargetHealthCheck = {
   detail?: string
   owner?: string
   evidence?: unknown
+  remediation?: string
   suggestedAction?: string
+  checkedAt?: string
+  group?: string
+  groupLabel?: string
 }
 
 export type RunTargetHealthPayload = {
@@ -162,10 +166,17 @@ function normalizeCheck(input: unknown): RunTargetHealthCheck | null {
   const label = typeof record.label === "string" && record.label.trim() ? record.label.trim() : undefined
   const detail = typeof record.detail === "string" && record.detail.trim() ? record.detail.trim() : undefined
   const owner = typeof record.owner === "string" && record.owner.trim() ? record.owner.trim() : undefined
+  const remediation =
+    typeof record.remediation === "string" && record.remediation.trim()
+      ? record.remediation.trim()
+      : undefined
   const suggestedAction =
     typeof record.suggestedAction === "string" && record.suggestedAction.trim()
       ? record.suggestedAction.trim()
       : undefined
+  const checkedAt = typeof record.checkedAt === "string" && record.checkedAt.trim() ? record.checkedAt.trim() : undefined
+  const group = typeof record.group === "string" && record.group.trim() ? record.group.trim() : undefined
+  const groupLabel = typeof record.groupLabel === "string" && record.groupLabel.trim() ? record.groupLabel.trim() : undefined
   return {
     key,
     status: parseStatus(record.status),
@@ -173,7 +184,11 @@ function normalizeCheck(input: unknown): RunTargetHealthCheck | null {
     ...(detail ? { detail } : {}),
     ...(owner ? { owner } : {}),
     ...("evidence" in record ? { evidence: record.evidence } : {}),
+    ...(remediation ? { remediation } : {}),
     ...(suggestedAction ? { suggestedAction } : {}),
+    ...(checkedAt ? { checkedAt } : {}),
+    ...(group ? { group } : {}),
+    ...(groupLabel ? { groupLabel } : {}),
   }
 }
 
@@ -199,6 +214,18 @@ export function runTargetHealthSummary(checks: RunTargetHealthCheck[]) {
     counts[check.status] += 1
   }
   return counts
+}
+
+export function runTargetHealthHasBlockingFailure(checks: RunTargetHealthCheck[]) {
+  return checks.some((check) => check.status === "fail")
+}
+
+export function runTargetHealthAggregateOk(payload: unknown) {
+  if (!payload || typeof payload !== "object") return false
+  const record = payload as RunTargetHealthPayload
+  const checks = normalizeRunTargetHealthChecks(payload)
+  if (checks.length > 0) return !runTargetHealthHasBlockingFailure(checks)
+  return record.ok === true
 }
 
 export function runTargetProviderApiPath(storyboardUrl: string, path: string) {

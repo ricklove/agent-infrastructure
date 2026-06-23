@@ -1,0 +1,6 @@
+{
+  "id": "storyboard-run-target-health-check-all",
+  "title": "Storyboard run target health check-all",
+  "description": "Runs the Storyboard provider's typed check-all action and exposes provider row details, pass/warn/fail counts, source URL, and run target evidence through the generic Health API result model.",
+  "timeoutMs": 20000
+}

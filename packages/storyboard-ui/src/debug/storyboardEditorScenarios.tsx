@@ -129,6 +129,48 @@ export type RunTargetHealthPanelState = {
   updatedAt?: string
 }
 
+type StoryboardHealthBadgeState = {
+  status: "PASS" | "WARN" | "FAIL" | "UNKNOWN"
+  loading: boolean
+  checkedAt?: string
+  error?: string | null
+  profileId: string
+}
+
+function storyboardHealthStatusClass(status: StoryboardHealthBadgeState["status"]) {
+  switch (status) {
+    case "PASS":
+      return "border-emerald-300/40 bg-emerald-300/10 text-emerald-100"
+    case "WARN":
+      return "border-amber-300/40 bg-amber-300/10 text-amber-100"
+    case "FAIL":
+      return "border-rose-300/40 bg-rose-300/10 text-rose-100"
+    default:
+      return "border-white/15 bg-white/5 text-white/60"
+  }
+}
+
+function storyboardHealthStatusFromRun(result: { checks?: Array<{ status?: string }>; status?: string } | null | undefined): StoryboardHealthBadgeState["status"] {
+  const checks = Array.isArray(result?.checks) ? result.checks : []
+  if (checks.some((check) => check.status === "FAIL")) return "FAIL"
+  if (checks.some((check) => check.status === "WARN")) return "WARN"
+  if (checks.some((check) => check.status === "UNKNOWN")) return "UNKNOWN"
+  if (checks.length > 0) return "PASS"
+  return result?.status === "pass" ? "PASS" : result?.status === "fail" ? "FAIL" : "UNKNOWN"
+}
+
+function storyboardHealthViewHref(storyboardUrl: string) {
+  const params = new URLSearchParams({ profileId: "storyboard_source_health", storyboardUrl })
+  return `/health?${params.toString()}`
+}
+
+function storyboardHealthCheckedLabel(value?: string) {
+  if (!value) return "not checked"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleTimeString()
+}
+
 type AutomationDriverDto = {
   runnerId: string
   runnerKind: string
@@ -758,6 +800,66 @@ export function RunTargetHealthPanel({
 }) {
   const statusCounts = runTargetHealthSummary(state.checks)
   const configFields = state.target?.configFields ?? []
+  const diagnosticsJson = JSON.stringify(
+    {
+      runTargetId: state.runTargetId,
+      runTargetLabel: state.runTargetLabel,
+      runTargetUrl: state.runTargetUrl,
+      owner: state.owner ?? state.target?.owner,
+      target: state.target ?? null,
+      checks: state.checks,
+      summary: statusCounts,
+      ok: statusCounts.fail === 0,
+      updatedAt: state.updatedAt ?? null,
+      error: state.error ?? null,
+    },
+    null,
+    2,
+  )
+  const groupedChecks = useMemo(() => {
+    const groups: { key: string; label?: string; checks: RunTargetHealthCheck[] }[] = []
+    const groupIndex = new Map<string, { key: string; label?: string; checks: RunTargetHealthCheck[] }>()
+    for (const check of state.checks) {
+      const groupKey = check.group?.trim()
+      if (!groupKey) {
+        groups.push({ key: check.key, checks: [check] })
+        continue
+      }
+      let group = groupIndex.get(groupKey)
+      if (!group) {
+        group = { key: groupKey, label: check.groupLabel, checks: [] }
+        groupIndex.set(groupKey, group)
+        groups.push(group)
+      }
+      group.checks.push(check)
+    }
+    return groups
+  }, [state.checks])
+  const renderCheck = (check: RunTargetHealthCheck) => {
+    const evidence = compactEvidence(check.evidence)
+    return (
+      <div className={`rounded border p-3 ${runTargetHealthStatusClass(check.status)}`} key={check.key}>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded bg-black/25 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em]">{check.status}</span>
+              <span className="font-semibold text-white">{check.label ?? check.key}</span>
+            </div>
+            <div className="mt-1 break-all font-mono text-[11px] text-white/45">{check.key}</div>
+          </div>
+          <button className="rounded border border-white/15 bg-black/25 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/70 transition hover:border-cyan-200/60 hover:text-cyan-50" disabled={state.loading} onClick={() => onRunOne?.(check.key)} type="button">
+            {state.runningKey === check.key ? "Running…" : "Run check"}
+          </button>
+        </div>
+        {check.detail ? <div className="mt-2 text-white/70">{check.detail}</div> : null}
+        {check.owner ? <div className="mt-2 text-[11px] text-white/45">Owner: <span className="font-mono">{check.owner}</span></div> : null}
+        {check.checkedAt ? <div className="mt-2 text-[11px] text-white/45">Checked: <span className="font-mono">{check.checkedAt}</span></div> : null}
+        {evidence ? <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-[10px] text-white/60">{evidence}</pre> : null}
+        {check.remediation ? <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-white/70">Remediation: {check.remediation}</div> : null}
+        {check.suggestedAction ? <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-white/70">Suggested action: {check.suggestedAction}</div> : null}
+      </div>
+    )
+  }
   return (
     <div className="space-y-3 rounded border border-cyan-300/20 bg-cyan-300/5 p-3 text-xs text-white/65" data-run-target-health-panel="true">
       <div className="flex items-start justify-between gap-3">
@@ -852,6 +954,9 @@ export function RunTargetHealthPanel({
         <button className="rounded border border-cyan-300/35 bg-cyan-300/10 px-2 py-1 text-cyan-100 transition hover:border-cyan-200" disabled={state.loading} onClick={onRunAll} type="button">
           {state.runningKey === "*" ? "Running all…" : "Run all checks"}
         </button>
+        <button className="rounded border border-white/10 bg-black/30 px-2 py-1 text-white/70 transition hover:border-cyan-300/40 hover:text-cyan-100" onClick={() => void copyTextToClipboard(diagnosticsJson)} type="button">
+          Copy diagnostics JSON
+        </button>
         <div className="ml-auto flex flex-wrap gap-1 text-[10px] uppercase tracking-[0.12em]">
           {(["pass", "warn", "fail", "unknown"] as RunTargetHealthStatus[]).map((status) => (
             <span className={`rounded border px-2 py-1 ${runTargetHealthStatusClass(status)}`} key={status}>{status}: {statusCounts[status]}</span>
@@ -867,27 +972,13 @@ export function RunTargetHealthPanel({
         <div className="rounded border border-dashed border-white/10 p-3 text-white/40">No provider health checks returned yet. Refresh status to load the provider-owned check list.</div>
       ) : null}
       <div className="space-y-2">
-        {state.checks.map((check) => {
-          const evidence = compactEvidence(check.evidence)
+        {groupedChecks.map((group) => {
+          if (group.checks.length === 1 && !group.checks[0]?.group) return renderCheck(group.checks[0])
           return (
-            <div className={`rounded border p-3 ${runTargetHealthStatusClass(check.status)}`} key={check.key}>
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded bg-black/25 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em]">{check.status}</span>
-                    <span className="font-semibold text-white">{check.label ?? check.key}</span>
-                  </div>
-                  <div className="mt-1 break-all font-mono text-[11px] text-white/45">{check.key}</div>
-                </div>
-                <button className="rounded border border-white/15 bg-black/25 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white/70 transition hover:border-cyan-200/60 hover:text-cyan-50" disabled={state.loading} onClick={() => onRunOne?.(check.key)} type="button">
-                  {state.runningKey === check.key ? "Running…" : "Run check"}
-                </button>
-              </div>
-              {check.detail ? <div className="mt-2 text-white/70">{check.detail}</div> : null}
-              {check.owner ? <div className="mt-2 text-[11px] text-white/45">Owner: <span className="font-mono">{check.owner}</span></div> : null}
-              {evidence ? <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2 text-[10px] text-white/60">{evidence}</pre> : null}
-              {check.suggestedAction ? <div className="mt-2 rounded border border-white/10 bg-black/20 p-2 text-white/70">Suggested action: {check.suggestedAction}</div> : null}
-            </div>
+            <section className="space-y-2 rounded border border-white/10 bg-black/20 p-2" key={group.key}>
+              <div className="px-1 text-[10px] uppercase tracking-[0.16em] text-white/45">{group.label ?? group.key}</div>
+              {group.checks.map(renderCheck)}
+            </section>
           )
         })}
       </div>
@@ -1117,6 +1208,11 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
   const [variantAssetCacheKeys, setVariantAssetCacheKeys] = useState<Record<string, string>>({})
   const [runQueue, setRunQueue] = useState<StoryboardRunStateDto["queue"] | null>(null)
   const [runTargetHealth, setRunTargetHealth] = useState<RunTargetHealthPanelState>(emptyRunTargetHealthState)
+  const [storyboardHealthBadge, setStoryboardHealthBadge] = useState<StoryboardHealthBadgeState>({
+    status: "UNKNOWN",
+    loading: false,
+    profileId: "storyboard_source_health",
+  })
   const isConnected = connectedStoryboardUrl.trim().length > 0
   const isAccessServerRootMode = useMemo(
     () => isConnected && isAccessServerRootUrl(connectedStoryboardUrl),
@@ -1425,6 +1521,47 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
       setVariantAssetCacheKeys((current) => ({ ...current, ...nextCacheKeys }))
     }
   }
+
+  async function refreshStoryboardHealthBadge() {
+    if (!isConnected || isAccessServerRootMode) {
+      setStoryboardHealthBadge({ status: "UNKNOWN", loading: false, profileId: "storyboard_source_health" })
+      return
+    }
+    setStoryboardHealthBadge((current) => ({ ...current, loading: true, error: null }))
+    try {
+      const response = await fetch("/api/health/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileId: "storyboard_source_health",
+          targetId: "local",
+          params: { storyboardUrl: connectedStoryboardUrl },
+        }),
+      })
+      const payload = (await response.json()) as { ok?: boolean; result?: { finishedAt?: string; checks?: Array<{ status?: string }>; status?: string }; error?: string }
+      if (!response.ok || !payload.ok || !payload.result) {
+        throw new Error(payload.error ?? `Health API returned HTTP ${response.status}`)
+      }
+      setStoryboardHealthBadge({
+        status: storyboardHealthStatusFromRun(payload.result),
+        loading: false,
+        checkedAt: payload.result.finishedAt ?? new Date().toISOString(),
+        profileId: "storyboard_source_health",
+      })
+    } catch (error) {
+      setStoryboardHealthBadge({
+        status: "UNKNOWN",
+        loading: false,
+        checkedAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+        profileId: "storyboard_source_health",
+      })
+    }
+  }
+
+  useEffect(() => {
+    void refreshStoryboardHealthBadge()
+  }, [isConnected, isAccessServerRootMode, connectedStoryboardUrl])
 
   async function requestRunTargetHealth(runTargetId: string, action: "list" | "check" | "check-all" = "list", key?: string) {
     if (!isConnected || !runTargetId) return
@@ -3543,6 +3680,16 @@ function StoryboardEditorFixture({ source }: { source: StoryboardEditorSource })
               <div className="rounded border border-amber-200/20 bg-amber-300/10 px-2 py-1 text-[11px] text-amber-100" data-run-queue-indicator="true">
                 Run queue: {runQueue ? `${runQueue.active} running · ${runQueue.queued} queued` : `${activeVariantRunStates.length} pending`}
               </div>
+              {!isAccessServerRootMode ? (
+                <a
+                  className={`rounded border px-2 py-1 text-[11px] ${storyboardHealthStatusClass(storyboardHealthBadge.status)}`}
+                  data-storyboard-health-badge="true"
+                  href={storyboardHealthViewHref(connectedStoryboardUrl)}
+                  title={storyboardHealthBadge.error ?? `Last checked ${storyboardHealthBadge.checkedAt ?? "never"}`}
+                >
+                  Health: {storyboardHealthBadge.loading ? "checking…" : storyboardHealthBadge.status} · {storyboardHealthCheckedLabel(storyboardHealthBadge.checkedAt)} · View in Health
+                </a>
+              ) : null}
               {visibleVariantRunStates.length > 0 ? (
                 <div className="flex max-w-full flex-wrap gap-1" data-run-queue-list="true">
                   {visibleVariantRunStates.map((state) => (
@@ -3992,7 +4139,8 @@ export function StoryboardRunTargetHealthScreen() {
       const path = action === "list" ? "run-target-health" : action === "check" ? "run-target-health/check" : "run-target-health/check-all"
       const response = await fetch(`${apiRoot}/${path}?${params.toString()}`, init)
       const payload = await response.json().catch(() => null)
-      if (!response.ok || (payload && typeof payload === "object" && (payload as { ok?: boolean }).ok === false)) {
+      const payloadChecks = normalizeRunTargetHealthChecks(payload)
+      if (!response.ok || (payloadChecks.length === 0 && payload && typeof payload === "object" && (payload as { ok?: boolean }).ok === false)) {
         const message = payload && typeof payload === "object" && typeof (payload as { message?: unknown }).message === "string"
           ? (payload as { message: string }).message
           : `Provider Run Target Health API returned HTTP ${response.status}`

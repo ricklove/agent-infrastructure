@@ -3,7 +3,7 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path
 import { createHash, randomUUID } from "node:crypto"
 import { formatStoryboardDocument, frameCaptureSet, normalizeStoryboardDocument, isStoryboardDocument, type StoryboardDocument, type StoryboardFrameRecord, type StoryboardStoryRecord, type StoryboardTransitionRecord } from "./storyboard-document.js"
 import { parseNumericStoryboardHeader, shouldRefreshRunMirrorAsset } from "./run-mirror.js"
-import { normalizeWebRunTargetUrl, runTargetHealthApiPath, runTargetProviderApiPath } from "./run-target-health.js"
+import { normalizeRunTargetHealthChecks, normalizeWebRunTargetUrl, runTargetHealthAggregateOk, runTargetHealthApiPath, runTargetProviderApiPath } from "./run-target-health.js"
 
 const port = Number.parseInt(process.env.STORYBOARD_PORT ?? "8797", 10)
 const workspaceRoot = process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace"
@@ -417,6 +417,11 @@ async function proxyRunTargetHealthJson(storyboardUrl: string, path: string, run
             : `Provider Run Target Health API returned HTTP ${response.status}`,
       },
     }
+  }
+  const checks = normalizeRunTargetHealthChecks(payload)
+  if (payload && typeof payload === "object") {
+    const normalizedOk = checks.length > 0 ? runTargetHealthAggregateOk(payload) : (payload as { ok?: unknown }).ok === true
+    return { status: response.status, payload: { ...(payload as Record<string, unknown>), ok: normalizedOk } }
   }
   return { status: response.status, payload }
 }

@@ -4,6 +4,7 @@ import {
   normalizeRunTargetHealthChecks,
   normalizeRunTargets,
   normalizeWebRunTargetUrl,
+  runTargetHealthAggregateOk,
   runTargetHealthApiPath,
   runTargetHealthSummary,
 } from "./run-target-health"
@@ -101,6 +102,28 @@ describe("run target health provider payload parsing", () => {
     expect(targets[0]?.configFields[0]?.key).toBe("frontendWebUrl")
     expect(targets[0]?.configFields[0]?.status).toBe("configured")
     expect(targets[0]?.healthCheckKeys).toEqual(["frontend-web-configured", "app-root-reachable"])
+  })
+
+  test("treats provider ok=true as not ready when any provider check fails", () => {
+    const payload = {
+      ok: true,
+      checks: [
+        { key: "app-entrypoint", status: "pass" },
+        {
+          key: "story-a-01-account-email-screenshot-semantic",
+          status: "fail",
+          label: "Blank canonical screenshot",
+          detail: "The provider rejected the current PNG as blank/synthetic.",
+          evidence: { sha256: "938030cfd33887f6b73b7cca2f54c4534e044c0f7efdcac37b4bbbb629d22b91", bytes: 6490 },
+          remediation: "Regenerate the real-browser capture before advertising Run readiness.",
+          checkedAt: "2026-06-11T00:00:00.000Z",
+        },
+      ],
+    }
+
+    const checks = normalizeRunTargetHealthChecks(payload)
+    expect(runTargetHealthSummary(checks)).toEqual({ pass: 1, warn: 0, fail: 1, unknown: 0 })
+    expect(runTargetHealthAggregateOk(payload)).toBe(false)
   })
 
   test("builds provider health URLs under the storyboard source URL", () => {

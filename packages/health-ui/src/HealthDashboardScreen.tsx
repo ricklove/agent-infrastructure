@@ -1,295 +1,294 @@
 import { useEffect, useMemo, useState } from "react"
 import type {
-  HealthCheckDefinition,
-  HealthDashboardPayload,
+  HealthCheckResult,
   HealthProfile,
-  HealthProfileCheck,
+  HealthProfileSummary,
+  HealthRunResult,
+  HealthRunStatus,
 } from "./types.js"
 
 type HealthDashboardScreenProps = {
   apiRootUrl?: string
 }
 
+type ProfileState = {
+  profile: HealthProfile
+  summary: HealthProfileSummary
+  latest?: HealthRunResult | null
+  loadingLatest?: boolean
+  running?: boolean
+  error?: string | null
+}
+
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; payload: HealthDashboardPayload }
+  | { status: "ready"; profiles: ProfileState[] }
   | { status: "error"; message: string }
 
-const severityStyles: Record<string, { background: string; color: string }> = {
-  blocking: { background: "#fee2e2", color: "#991b1b" },
-  warn: { background: "#fef3c7", color: "#92400e" },
-  info: { background: "#dbeafe", color: "#1e40af" },
+const statusOrder = { FAIL: 0, WARN: 1, UNKNOWN: 2, PASS: 3 } as const
+const statusGlyph = { PASS: "●", WARN: "▲", FAIL: "■", UNKNOWN: "○" } as const
+
+function queryParam(name: string) {
+  if (typeof window === "undefined") return ""
+  return new URLSearchParams(window.location.search).get(name)?.trim() ?? ""
 }
 
-function stylesForSeverity(severity: string) {
-  return severityStyles[severity] ?? { background: "#e5e7eb", color: "#374151" }
-}
-
-function ProfileList({
-  profiles,
-  selectedProfileId,
-  onSelect,
-}: {
-  profiles: HealthProfile[]
-  selectedProfileId: string | null
-  onSelect: (profileId: string) => void
-}) {
-  return (
-    <nav style={{ display: "grid", gap: 8 }} aria-label="Health profiles">
-      {profiles.map((profile) => {
-        const selected = profile.id === selectedProfileId
-        return (
-          <button
-            key={profile.id}
-            type="button"
-            onClick={() => onSelect(profile.id)}
-            style={{
-              textAlign: "left",
-              border: selected ? "1px solid #2563eb" : "1px solid #d1d5db",
-              background: selected ? "#eff6ff" : "#fff",
-              borderRadius: 10,
-              padding: "10px 12px",
-              cursor: "pointer",
-            }}
-          >
-            <strong style={{ display: "block", color: "#111827" }}>{profile.title}</strong>
-            <span style={{ color: "#6b7280", fontSize: 12 }}>{profile.id}</span>
-            <span style={{ color: "#4b5563", fontSize: 12, display: "block", marginTop: 4 }}>
-              {profile.checks.length} checks
-            </span>
-          </button>
-        )
-      })}
-    </nav>
-  )
-}
-
-function DefinitionSummary({ definitions }: { definitions: HealthCheckDefinition[] }) {
-  return (
-    <section style={panelStyle}>
-      <h2 style={sectionHeadingStyle}>Check definitions</h2>
-      <p style={mutedStyle}>
-        {definitions.length} reusable check definitions loaded from workspace/health/checks.
-      </p>
-      <div style={{ display: "grid", gap: 8 }}>
-        {definitions.map((definition) => (
-          <div key={definition.id} style={definitionCardStyle}>
-            <strong>{definition.title}</strong>
-            <code style={codeStyle}>{definition.id}</code>
-            {definition.description ? <p style={mutedStyle}>{definition.description}</p> : null}
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function ParamsTable({ params }: { params?: Record<string, string> }) {
-  const entries = Object.entries(params ?? {})
-  if (entries.length === 0) {
-    return <p style={mutedStyle}>No default params declared.</p>
+function profileParams(profile: HealthProfile, overrides: Record<string, string>) {
+  return {
+    ...(profile.params ?? {}),
+    ...Object.fromEntries(Object.entries(overrides).filter(([, value]) => value.trim())),
   }
+}
+
+function resultStatus(result?: HealthRunResult | null) {
+  if (!result) return "UNKNOWN" as const
+  if (result.checks.some((check) => check.status === "FAIL")) return "FAIL" as const
+  if (result.checks.some((check) => check.status === "WARN")) return "WARN" as const
+  if (result.checks.some((check) => check.status === "UNKNOWN")) return "UNKNOWN" as const
+  return "PASS" as const
+}
+
+function statusClassName(status: keyof typeof statusGlyph) {
+  switch (status) {
+    case "PASS": return "border-emerald-200 bg-emerald-50 text-emerald-800"
+    case "WARN": return "border-amber-200 bg-amber-50 text-amber-900"
+    case "FAIL": return "border-rose-200 bg-rose-50 text-rose-800"
+    default: return "border-slate-200 bg-slate-50 text-slate-600"
+  }
+}
+
+function runStatusClassName(status: HealthRunStatus | "none") {
+  if (status === "pass") return "border-emerald-200 bg-emerald-50 text-emerald-800"
+  if (status === "fail") return "border-rose-200 bg-rose-50 text-rose-800"
+  if (status === "unknown") return "border-slate-200 bg-slate-50 text-slate-700"
+  return "border-slate-200 bg-white text-slate-500"
+}
+
+function compactTime(value?: string) {
+  if (!value) return "never"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleTimeString()
+}
+
+function healthViewHref(profileId: string, params: Record<string, unknown>) {
+  const search = new URLSearchParams({ profileId })
+  const storyboardUrl = typeof params.storyboardUrl === "string" ? params.storyboardUrl : ""
+  if (storyboardUrl) search.set("storyboardUrl", storyboardUrl)
+  return `/health?${search.toString()}`
+}
+
+function EvidencePreview({ value }: { value: unknown }) {
   return (
-    <table style={tableStyle}>
-      <tbody>
-        {entries.map(([key, value]) => (
-          <tr key={key}>
-            <th style={paramKeyStyle}>{key}</th>
-            <td style={cellStyle}><code style={codeStyle}>{value}</code></td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <pre className="max-h-72 overflow-auto rounded border border-slate-200 bg-slate-950 p-3 text-[11px] leading-4 text-slate-100">
+      {JSON.stringify(value, null, 2)}
+    </pre>
   )
 }
 
-function groupChecksBySeverity(checks: HealthProfileCheck[]) {
-  return checks.reduce<Record<string, HealthProfileCheck[]>>((groups, check) => {
-    groups[check.severity] = [...(groups[check.severity] ?? []), check]
-    return groups
-  }, {})
-}
-
-function CheckTable({ checks }: { checks: HealthProfileCheck[] }) {
-  const groupedChecks = groupChecksBySeverity(checks)
-  const severities = Object.keys(groupedChecks).sort((a, b) => {
-    const order = ["blocking", "warn", "info"]
-    const aIndex = order.indexOf(a)
-    const bIndex = order.indexOf(b)
-    return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex) || a.localeCompare(b)
-  })
-
+function ProviderRows({ evidence }: { evidence: Record<string, unknown> }) {
+  const rows = Array.isArray(evidence.providerRows) ? evidence.providerRows : []
+  if (rows.length === 0) return null
   return (
-    <div style={{ display: "grid", gap: 18 }}>
-      {severities.map((severity) => (
-        <section key={severity}>
-          <h3 style={groupHeadingStyle}>{severity} checks</h3>
-          <div style={{ overflowX: "auto" }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={headerCellStyle}>ID</th>
-                  <th style={headerCellStyle}>Title</th>
-                  <th style={headerCellStyle}>Severity</th>
-                  <th style={headerCellStyle}>Check ID</th>
-                  <th style={headerCellStyle}>Repair hint</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groupedChecks[severity].map((check) => {
-                  const severityStyle = stylesForSeverity(check.severity)
-                  return (
-                    <tr key={check.id}>
-                      <td style={cellStyle}><code style={codeStyle}>{check.id}</code></td>
-                      <td style={cellStyle}>{check.title}</td>
-                      <td style={cellStyle}>
-                        <span style={{ ...pillStyle, ...severityStyle }}>{check.severity}</span>
-                      </td>
-                      <td style={cellStyle}><code style={codeStyle}>{check.checkId}</code></td>
-                      <td style={{ ...cellStyle, minWidth: 260 }}>{check.repairHint ?? "—"}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
+    <div className="mt-2 overflow-auto rounded border border-slate-200">
+      <table className="w-full border-collapse text-[11px]">
+        <thead className="bg-slate-50 text-slate-500">
+          <tr>
+            <th className="px-2 py-1 text-left">Provider row</th>
+            <th className="px-2 py-1 text-left">Status</th>
+            <th className="px-2 py-1 text-left">Detail</th>
+            <th className="px-2 py-1 text-left">Owner</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            const record = row && typeof row === "object" ? row as Record<string, unknown> : {}
+            const status = String(record.status ?? "unknown").toUpperCase() as keyof typeof statusGlyph
+            return (
+              <tr className="border-t border-slate-100" key={`${record.key ?? index}`}>
+                <td className="px-2 py-1 font-mono text-slate-700">{String(record.key ?? index)}</td>
+                <td className="px-2 py-1"><span className={`rounded border px-1.5 py-0.5 ${statusClassName(statusGlyph[status] ? status : "UNKNOWN")}`}>{String(record.status ?? "unknown")}</span></td>
+                <td className="px-2 py-1 text-slate-600">{String(record.detail ?? record.label ?? "")}</td>
+                <td className="px-2 py-1 text-slate-500">{String(record.owner ?? "")}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }
 
-export function HealthDashboardScreen({ apiRootUrl = "/api/health-dashboard" }: HealthDashboardScreenProps) {
+function CheckResultRow({ check }: { check: HealthCheckResult }) {
+  const [open, setOpen] = useState(check.status !== "PASS")
+  return (
+    <div className="border-t border-slate-100 first:border-t-0">
+      <button
+        className="grid w-full grid-cols-[1.6rem_8rem_1fr_7rem_6rem] items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-slate-50"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <span className={`text-center ${check.status === "PASS" ? "text-emerald-600" : check.status === "FAIL" ? "text-rose-600" : check.status === "WARN" ? "text-amber-600" : "text-slate-500"}`}>{statusGlyph[check.status]}</span>
+        <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName(check.status)}`}>{check.status}</span>
+        <span className="min-w-0 truncate font-medium text-slate-800" title={check.title}>{check.title}</span>
+        <span className="truncate text-[11px] text-slate-500">{check.severity}</span>
+        <span className="text-right text-[11px] text-slate-500">{check.durationMs} ms</span>
+      </button>
+      {open ? (
+        <div className="space-y-2 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+          {check.failure ? <div className="rounded border border-rose-200 bg-rose-50 p-2 text-rose-800">{check.failure.class}: {check.failure.message}</div> : null}
+          {check.repairHint ? <div className="rounded border border-amber-200 bg-amber-50 p-2 text-amber-900">Repair hint: {check.repairHint}</div> : null}
+          <ProviderRows evidence={check.evidence} />
+          <EvidencePreview value={check.evidence} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export function HealthDashboardScreen({ apiRootUrl = "/api/health" }: HealthDashboardScreenProps) {
   const [state, setState] = useState<LoadState>({ status: "loading" })
-  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null)
+  const [selectedProfileId, setSelectedProfileId] = useState(queryParam("profileId"))
+  const storyboardUrl = queryParam("storyboardUrl")
+
+  async function loadProfiles() {
+    setState({ status: "loading" })
+    try {
+      const response = await fetch(`${apiRootUrl}/profiles`)
+      if (!response.ok) throw new Error(`Health API returned HTTP ${response.status}`)
+      const payload = await response.json() as { ok: boolean; profiles: HealthProfileSummary[] }
+      if (!payload.ok) throw new Error("Health API returned ok=false")
+      const profiles = await Promise.all(payload.profiles.map(async (summary) => {
+        const definitionResponse = await fetch(`${apiRootUrl}/profiles/${encodeURIComponent(summary.id)}`)
+        if (!definitionResponse.ok) throw new Error(`Profile ${summary.id} returned HTTP ${definitionResponse.status}`)
+        const definitionPayload = await definitionResponse.json() as { ok: boolean; profile: HealthProfile }
+        let latest: HealthRunResult | null = null
+        const latestResponse = await fetch(`${apiRootUrl}/latest?profileId=${encodeURIComponent(summary.id)}`)
+        if (latestResponse.ok) {
+          const latestPayload = await latestResponse.json() as { ok: boolean; result: HealthRunResult }
+          latest = latestPayload.ok ? latestPayload.result : null
+        }
+        return { summary, profile: definitionPayload.profile, latest }
+      }))
+      setState({ status: "ready", profiles })
+      setSelectedProfileId((current) => current || profiles[0]?.profile.id || "")
+    } catch (error) {
+      setState({ status: "error", message: error instanceof Error ? error.message : String(error) })
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false
-    setState({ status: "loading" })
-    fetch(`${apiRootUrl}/profiles`)
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Health API returned HTTP ${response.status}`)
-        }
-        return (await response.json()) as HealthDashboardPayload
-      })
-      .then((payload) => {
-        if (cancelled) return
-        setState({ status: "ready", payload })
-        setSelectedProfileId((current) => current ?? payload.profiles[0]?.id ?? null)
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return
-        setState({
-          status: "error",
-          message: error instanceof Error ? error.message : "Failed to load health profiles",
-        })
-      })
-    return () => {
-      cancelled = true
-    }
+    void loadProfiles()
   }, [apiRootUrl])
 
-  const selectedProfile = useMemo(() => {
+  async function runProfile(profileId: string) {
+    if (state.status !== "ready") return
+    const item = state.profiles.find((entry) => entry.profile.id === profileId)
+    if (!item) return
+    const overrides: Record<string, string> = profileId === "storyboard_source_health" ? { storyboardUrl } : {}
+    setState({ status: "ready", profiles: state.profiles.map((entry) => entry.profile.id === profileId ? { ...entry, running: true, error: null } : entry) })
+    try {
+      const response = await fetch(`${apiRootUrl}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId, targetId: "local", params: profileParams(item.profile, overrides) }),
+      })
+      const payload = await response.json() as { ok: boolean; result?: HealthRunResult; error?: string }
+      if (!response.ok || !payload.ok || !payload.result) throw new Error(payload.error ?? `Health run returned HTTP ${response.status}`)
+      setState((current) => current.status === "ready" ? {
+        status: "ready",
+        profiles: current.profiles.map((entry) => entry.profile.id === profileId ? { ...entry, latest: payload.result, running: false } : entry),
+      } : current)
+    } catch (error) {
+      setState((current) => current.status === "ready" ? {
+        status: "ready",
+        profiles: current.profiles.map((entry) => entry.profile.id === profileId ? { ...entry, running: false, error: error instanceof Error ? error.message : String(error) } : entry),
+      } : current)
+    }
+  }
+
+  const selected = useMemo(() => {
     if (state.status !== "ready") return null
-    return state.payload.profiles.find((profile) => profile.id === selectedProfileId) ?? state.payload.profiles[0] ?? null
+    return state.profiles.find((entry) => entry.profile.id === selectedProfileId) ?? state.profiles[0] ?? null
   }, [selectedProfileId, state])
 
-  if (state.status === "loading") {
-    return <main style={screenStyle}>Loading health profiles…</main>
-  }
+  if (state.status === "loading") return <main className="min-h-full bg-slate-50 p-4 text-slate-800">Loading health dashboard…</main>
+  if (state.status === "error") return <main className="min-h-full bg-slate-50 p-4 text-rose-800">Health Dashboard failed: {state.message}</main>
 
-  if (state.status === "error") {
-    return (
-      <main style={screenStyle}>
-        <section style={panelStyle}>
-          <h1 style={titleStyle}>Health Dashboard</h1>
-          <p style={{ color: "#991b1b" }}>{state.message}</p>
-          <p style={mutedStyle}>Expected API root: <code style={codeStyle}>{apiRootUrl}</code></p>
-        </section>
-      </main>
-    )
-  }
+  const sortedProfiles = [...state.profiles].sort((left, right) => statusOrder[resultStatus(left.latest)] - statusOrder[resultStatus(right.latest)] || left.profile.id.localeCompare(right.profile.id))
 
   return (
-    <main style={screenStyle}>
-      <header style={{ marginBottom: 20 }}>
-        <p style={eyebrowStyle}>Dashboard feature plugin</p>
-        <h1 style={titleStyle}>Health Dashboard</h1>
-        <p style={mutedStyle}>
-          Universal health profile browser for worker surface checks. Target execution and profile run controls are intentionally represented as placeholders for the next API milestone.
-        </p>
+    <main className="min-h-full bg-slate-50 p-3 text-slate-900">
+      <header className="mb-2 flex flex-wrap items-end justify-between gap-2 border-b border-slate-200 pb-2">
+        <div>
+          <p className="m-0 text-[10px] font-bold uppercase tracking-[0.16em] text-blue-700">Dashboard feature plugin</p>
+          <h1 className="m-0 text-xl font-semibold">Health Dashboard</h1>
+        </div>
+        <div className="text-right text-[11px] text-slate-500">Dense profile → target → check hierarchy. Expand one row for evidence and repair hints.</div>
       </header>
 
-      <section style={contextPanelStyle}>
-        <div>
-          <strong>Target context</strong>
-          <p style={mutedStyle}>Future run API: choose work target, resolve profile params, execute selected profile, stream machine-readable results.</p>
-        </div>
-        <div><code style={codeStyle}>{state.payload.context.profilesRoot}</code></div>
-      </section>
-
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(240px, 320px) 1fr", gap: 20, alignItems: "start" }}>
-        <section style={panelStyle}>
-          <h2 style={sectionHeadingStyle}>Profiles</h2>
-          <ProfileList profiles={state.payload.profiles} selectedProfileId={selectedProfile?.id ?? null} onSelect={setSelectedProfileId} />
+      <div className="grid grid-cols-[minmax(22rem,30rem)_1fr] gap-3">
+        <section className="overflow-hidden rounded border border-slate-200 bg-white">
+          <div className="grid grid-cols-[1.5rem_5rem_1fr_4rem_5rem] gap-1 border-b border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            <span></span><span>Status</span><span>Profile / target</span><span>Checks</span><span>Last</span>
+          </div>
+          {sortedProfiles.map((entry) => {
+            const status = resultStatus(entry.latest)
+            const selectedRow = entry.profile.id === selected?.profile.id
+            return (
+              <button
+                className={`grid w-full grid-cols-[1.5rem_5rem_1fr_4rem_5rem] items-center gap-1 border-b border-slate-100 px-2 py-1 text-left text-xs hover:bg-blue-50 ${selectedRow ? "bg-blue-50" : "bg-white"}`}
+                key={entry.profile.id}
+                onClick={() => setSelectedProfileId(entry.profile.id)}
+                type="button"
+              >
+                <span className={status === "PASS" ? "text-emerald-600" : status === "FAIL" ? "text-rose-600" : status === "WARN" ? "text-amber-600" : "text-slate-500"}>{statusGlyph[status]}</span>
+                <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName(status)}`}>{status}</span>
+                <span className="min-w-0 truncate"><span className="font-semibold">{entry.profile.title}</span><span className="ml-1 font-mono text-[10px] text-slate-500">{entry.profile.id}</span></span>
+                <span className="text-slate-500">{entry.summary.checkCount}</span>
+                <span className="truncate text-slate-500">{compactTime(entry.latest?.finishedAt)}</span>
+              </button>
+            )
+          })}
         </section>
 
-        <div style={{ display: "grid", gap: 20 }}>
-          {selectedProfile ? (
-            <section style={panelStyle}>
-              <p style={eyebrowStyle}>{selectedProfile.id}</p>
-              <h2 style={sectionHeadingStyle}>{selectedProfile.title}</h2>
-              {selectedProfile.description ? <p style={mutedStyle}>{selectedProfile.description}</p> : null}
-              <h3 style={groupHeadingStyle}>Profile params</h3>
-              <ParamsTable params={selectedProfile.params} />
-              <h3 style={groupHeadingStyle}>Grouped checks</h3>
-              <CheckTable checks={selectedProfile.checks} />
-            </section>
-          ) : (
-            <section style={panelStyle}>No health profiles found.</section>
-          )}
-          <DefinitionSummary definitions={state.payload.checkDefinitions} />
-        </div>
+        <section className="min-w-0 rounded border border-slate-200 bg-white">
+          {selected ? (
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded border px-2 py-1 text-xs font-bold ${runStatusClassName(selected.latest?.status ?? "none")}`}>{selected.latest?.status ?? "not run"}</span>
+                    <h2 className="m-0 truncate text-base font-semibold">{selected.profile.title}</h2>
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">{selected.profile.id}</code>
+                  </div>
+                  {selected.profile.description ? <p className="m-0 mt-1 text-xs text-slate-500">{selected.profile.description}</p> : null}
+                </div>
+                <div className="flex items-center gap-2">
+                  <a className="rounded border border-slate-200 px-2 py-1 text-xs text-blue-700" href={healthViewHref(selected.profile.id, selected.latest?.params ?? selected.profile.params ?? {})}>Filtered link</a>
+                  <button className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800 disabled:opacity-50" disabled={!!selected.running} onClick={() => void runProfile(selected.profile.id)} type="button">
+                    {selected.running ? "Running…" : "Run profile"}
+                  </button>
+                </div>
+              </div>
+              {selected.error ? <div className="border-b border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{selected.error}</div> : null}
+              <div className="grid grid-cols-4 gap-2 border-b border-slate-100 px-3 py-2 text-xs">
+                <div><span className="text-slate-500">Target</span><div className="font-mono text-[11px]">{selected.latest?.targetId ?? "local"}</div></div>
+                <div><span className="text-slate-500">Last checked</span><div>{selected.latest?.finishedAt ?? "never"}</div></div>
+                <div><span className="text-slate-500">Source URL</span><div className="truncate font-mono text-[11px]" title={String(selected.latest?.params.storyboardUrl ?? selected.profile.params?.storyboardUrl ?? "")}>{String(selected.latest?.params.storyboardUrl ?? selected.profile.params?.storyboardUrl ?? "—")}</div></div>
+                <div><span className="text-slate-500">Rows</span><div>{selected.latest?.checks.length ?? selected.profile.checks.length}</div></div>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {selected.latest ? selected.latest.checks.map((check) => <CheckResultRow check={check} key={check.id} />) : selected.profile.checks.map((check) => (
+                  <div className="grid grid-cols-[1.6rem_8rem_1fr_7rem_6rem] items-center gap-2 px-2 py-1.5 text-xs" key={check.id}>
+                    <span className="text-center text-slate-400">○</span><span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">PENDING</span><span>{check.title}</span><span className="text-slate-500">{check.severity}</span><span />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : <div className="p-4 text-sm text-slate-500">No health profiles found.</div>}
+        </section>
       </div>
     </main>
   )
 }
-
-const screenStyle: React.CSSProperties = {
-  minHeight: "100%",
-  background: "#f8fafc",
-  color: "#111827",
-  padding: 24,
-  boxSizing: "border-box",
-}
-
-const panelStyle: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 16,
-  padding: 18,
-  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
-}
-
-const contextPanelStyle: React.CSSProperties = {
-  ...panelStyle,
-  display: "grid",
-  gridTemplateColumns: "1fr auto",
-  gap: 16,
-  alignItems: "center",
-  marginBottom: 20,
-}
-
-const titleStyle: React.CSSProperties = { fontSize: 34, margin: "0 0 8px" }
-const sectionHeadingStyle: React.CSSProperties = { fontSize: 22, margin: "0 0 12px" }
-const groupHeadingStyle: React.CSSProperties = { fontSize: 15, margin: "18px 0 8px", color: "#374151", textTransform: "uppercase", letterSpacing: "0.04em" }
-const eyebrowStyle: React.CSSProperties = { color: "#2563eb", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: 0 }
-const mutedStyle: React.CSSProperties = { color: "#6b7280", lineHeight: 1.5, margin: "6px 0" }
-const codeStyle: React.CSSProperties = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 12, background: "#f3f4f6", padding: "2px 5px", borderRadius: 6 }
-const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: 13 }
-const headerCellStyle: React.CSSProperties = { textAlign: "left", borderBottom: "1px solid #d1d5db", padding: "8px 10px", color: "#4b5563" }
-const cellStyle: React.CSSProperties = { borderBottom: "1px solid #f3f4f6", padding: "9px 10px", verticalAlign: "top" }
-const paramKeyStyle: React.CSSProperties = { ...cellStyle, textAlign: "left", width: 180, color: "#374151" }
-const pillStyle: React.CSSProperties = { borderRadius: 999, padding: "3px 8px", fontSize: 12, fontWeight: 700 }
-const definitionCardStyle: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, display: "grid", gap: 4 }

@@ -249,6 +249,72 @@ async function fetchWithTimeout(
   }
 }
 
+async function fetchJsonWithTimeout(
+  url: string,
+  timeoutMs: number,
+  init: RequestInit = {},
+): Promise<{ response: Response; payload: unknown }> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal })
+    const text = await response.text()
+    let payload: unknown = null
+    if (text.trim()) {
+      payload = JSON.parse(text)
+    }
+    return { response, payload }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function storyboardProviderUrl(storyboardUrl: string, path: string): string | null {
+  if (!/^https?:\/\//u.test(storyboardUrl)) {
+    return null
+  }
+  try {
+    return new URL(path.replace(/^\/+/, ""), `${storyboardUrl.replace(/\/+$/u, "")}/`).toString()
+  } catch {
+    return null
+  }
+}
+
+function statusFromProviderRows(rows: unknown[]): HealthCheckStatus {
+  const statuses = rows.map((row) => {
+    if (!row || typeof row !== "object") return "unknown"
+    const value = (row as Record<string, unknown>).status
+    return typeof value === "string" ? value.toLowerCase() : "unknown"
+  })
+  if (statuses.includes("fail")) return "FAIL"
+  if (statuses.includes("warn")) return "WARN"
+  if (statuses.length === 0 || statuses.includes("unknown")) return "UNKNOWN"
+  return "PASS"
+}
+
+function providerSummary(payload: unknown): Record<string, unknown> {
+  const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {}
+  const sourceTargets = Array.isArray(record.sourceTargets) ? record.sourceTargets : []
+  const sourceTarget = sourceTargets[0] && typeof sourceTargets[0] === "object"
+    ? (sourceTargets[0] as Record<string, unknown>)
+    : {}
+  const evidence = sourceTarget.evidence && typeof sourceTarget.evidence === "object"
+    ? (sourceTarget.evidence as Record<string, unknown>)
+    : {}
+  return {
+    provider: record.provider ?? null,
+    storyboard: record.storyboard ?? null,
+    sourceTargets,
+    runTargets: Array.isArray(record.runTargets) ? record.runTargets : [],
+    definitions: Array.isArray(record.definitions) ? record.definitions : [],
+    repairActions: Array.isArray(record.repairActions) ? record.repairActions : [],
+    storyCount: evidence.storyCount ?? null,
+    frameCount: evidence.frameCount ?? null,
+    screenshotAssetRefs: evidence.screenshotAssetRefs ?? null,
+    evidenceAssetRefs: evidence.evidenceAssetRefs ?? null,
+  }
+}
+
 function failure(
   failureClass: string,
   message: string,
@@ -471,6 +537,95 @@ async function evaluateBuiltinCheck(
             evidence: { processPattern, stderr: result.stderr },
             failure: failure("process_not_found", "matching process is not active"),
           }
+    }
+
+    case "storyboard_health_provider": {
+      const storyboardUrl = maybeString(params.storyboardUrl)
+      const providerUrl = storyboardProviderUrl(storyboardUrl, "health-provider")
+      const timeoutSeconds = maybeNumber(params.timeoutSeconds, 5)
+      if (!providerUrl) {
+        return {
+          status: "UNKNOWN",
+          evidence: { storyboardUrl },
+          failure: failure("invalid_check_params", "storyboardUrl must be an http(s) storyboard access URL"),
+        }
+      }
+      try {
+        const { response, payload } = await fetchJsonWithTimeout(providerUrl, timeoutSeconds * 1000)
+        const ok = response.status >= 200 && response.status < 400 && !!(payload && typeof payload === "object" && (payload as { ok?: unknown }).ok === true)
+        return ok
+          ? {
+              status: "PASS",
+              evidence: { sourceUrl: storyboardUrl, providerUrl, httpStatus: response.status, ...providerSummary(payload) },
+              failure: null,
+            }
+          : {
+              status: "FAIL",
+              evidence: { sourceUrl: storyboardUrl, providerUrl, httpStatus: response.status, payload },
+              failure: failure("storyboard_provider_unhealthy", "Storyboard health provider did not return ok: true"),
+            }
+      } catch (error) {
+        return {
+          status: "FAIL",
+          evidence: { sourceUrl: storyboardUrl, providerUrl },
+          failure: failure("storyboard_provider_request_failed", error instanceof Error ? error.message : String(error)),
+        }
+      }
+    }
+
+    case "storyboard_run_target_health_check_all": {
+      const storyboardUrl = maybeString(params.storyboardUrl)
+      const runTargetId = maybeString(params.runTargetId) || "baseconnect-frontend-web"
+      const checkAllUrl = storyboardProviderUrl(storyboardUrl, "run-target-health/check-all")
+      const timeoutSeconds = maybeNumber(params.timeoutSeconds, 20)
+      if (!checkAllUrl) {
+        return {
+          status: "UNKNOWN",
+          evidence: { storyboardUrl, runTargetId },
+          failure: failure("invalid_check_params", "storyboardUrl must be an http(s) storyboard access URL"),
+        }
+      }
+      try {
+        const { response, payload } = await fetchJsonWithTimeout(checkAllUrl, timeoutSeconds * 1000, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ storyboardUrl, runTargetId }),
+        })
+        const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {}
+        const rows = Array.isArray(record.checks) ? record.checks : []
+        const status = statusFromProviderRows(rows)
+        const ok = response.status >= 200 && response.status < 400 && status !== "FAIL"
+        return ok
+          ? {
+              status,
+              evidence: {
+                sourceUrl: storyboardUrl,
+                checkAllUrl,
+                runTargetId,
+                httpStatus: response.status,
+                summary: record.summary ?? null,
+                passFailCounts: {
+                  pass: rows.filter((row) => row && typeof row === "object" && (row as Record<string, unknown>).status === "pass").length,
+                  warn: rows.filter((row) => row && typeof row === "object" && (row as Record<string, unknown>).status === "warn").length,
+                  fail: rows.filter((row) => row && typeof row === "object" && (row as Record<string, unknown>).status === "fail").length,
+                  unknown: rows.filter((row) => !row || typeof row !== "object" || !["pass", "warn", "fail"].includes(String((row as Record<string, unknown>).status))).length,
+                },
+                providerRows: rows,
+              },
+              failure: null,
+            }
+          : {
+              status: "FAIL",
+              evidence: { sourceUrl: storyboardUrl, checkAllUrl, runTargetId, httpStatus: response.status, payload },
+              failure: failure("storyboard_provider_rows_failed", "One or more Storyboard provider health rows failed"),
+            }
+      } catch (error) {
+        return {
+          status: "FAIL",
+          evidence: { sourceUrl: storyboardUrl, checkAllUrl, runTargetId },
+          failure: failure("storyboard_check_all_request_failed", error instanceof Error ? error.message : String(error)),
+        }
+      }
     }
 
     default: {

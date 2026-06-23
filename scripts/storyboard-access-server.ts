@@ -21,6 +21,7 @@ import {
   sep,
 } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
+import { inflateSync } from "node:zlib";
 import {
   StoryboardRunManifestError,
   augmentManifestWithStoryboardDocumentRuntimeTargets,
@@ -472,6 +473,27 @@ function automationIdentityText(frame: { notes?: unknown }) {
   return (match?.[1] ?? "").trim();
 }
 
+function frameAutomationText(frame: Record<string, unknown>) {
+  return [
+    automationIdentityText(frame),
+    typeof frame.id === "string" ? frame.id : "",
+    typeof frame.title === "string" ? frame.title : "",
+    typeof frame.description === "string" ? frame.description : "",
+    typeof frame.notes === "string" ? frame.notes : "",
+  ].filter(Boolean).join("\n");
+}
+
+function isAccountVerificationFrame(frame: Record<string, unknown>) {
+  const text = frameAutomationText(frame);
+  return /account-verification-entry|account-email-step|Military Verification|user-verification|\.mil email address/iu.test(text);
+}
+
+function isInitialAccountEmailFrame(frame: Record<string, unknown>) {
+  const text = frameAutomationText(frame);
+  return /account-email-step|Military Verification|Send Verification Code/iu.test(text)
+    && !/sms-program|Complete Your Profile|invalid-email-validation|checked-enabled|unchecked-disabled/iu.test(text);
+}
+
 function extractOpenUrl(action: string) {
   return action.match(/\bopen\s+(https?:\/\/\S+)/iu)?.[1]?.replace(/[).,]+$/u, "") ?? null;
 }
@@ -520,14 +542,19 @@ async function captureAgentBrowserVariant(
   }
   const { clean, fullPath } = safeStoryboardAssetPath(assetPath);
   mkdirSync(dirname(fullPath), { recursive: true });
+  await waitForBrowserPaint(jobId, frame);
   const screenshot = await runAgentBrowser(["screenshot", fullPath], 20_000);
+  const paintStats = screenshot.exitCode === 0 ? truecolorPngPaintStats(fullPath) : null;
   runStorage.appendLog(jobId, {
     level: screenshot.exitCode === 0 ? "info" : "error",
     event: "agent_browser_capture",
-    context: { outputAsset: clean, ...screenshot },
+    context: { outputAsset: clean, paintStats, ...screenshot },
   });
   if (screenshot.exitCode !== 0) {
     throw new Error(`agent-browser capture failed: ${screenshot.stderr || screenshot.stdout || screenshot.exitCode}`);
+  }
+  if (paintStats && (paintStats.distinctSampleColors <= 1 || paintStats.lumaStddev < 1 || paintStats.nonBackgroundSampleRatio < 0.001)) {
+    throw new Error(`agent-browser capture produced blank paint: ${JSON.stringify(paintStats)}`);
   }
   return clean;
 }
@@ -596,6 +623,123 @@ async function openRuntimeTargetWithRetry(url: string) {
     await sleep(attempt * 1500);
   }
   return lastResult ?? runAgentBrowser(["open", url], 35_000);
+}
+
+async function waitForBrowserPaint(jobId: string, frame: Record<string, unknown>) {
+  const expectedText = isAccountVerificationFrame(frame) ? "Military Verification" : String(frame.title ?? "").trim();
+  const script = `async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    if (document.fonts?.ready) await document.fonts.ready.catch(() => null);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const start = Date.now();
+    const expected = ${JSON.stringify(expectedText)};
+    while (expected && Date.now() - start < 5000) {
+      if ((document.body?.innerText || "").includes(expected)) break;
+      await sleep(250);
+    }
+    await sleep(500);
+    const root = document.querySelector('#root') || document.body;
+    const rect = root?.getBoundingClientRect?.();
+    return {
+      url: location.href,
+      readyState: document.readyState,
+      expectedText: expected,
+      hasExpectedText: expected ? (document.body?.innerText || "").includes(expected) : null,
+      bodyText: (document.body?.innerText || "").slice(0, 500),
+      rootRect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
+    };
+  }`;
+  const result = await runAgentBrowser(["eval", `(${script})()`], 12_000);
+  runStorage.appendLog(jobId, {
+    level: result.exitCode === 0 ? "info" : "warn",
+    event: "agent_browser_paint_wait",
+    context: { frameKey: frame.id, stdout: result.stdout.slice(0, 2000), stderr: result.stderr, exitCode: result.exitCode, timedOut: result.timedOut },
+  });
+  return result;
+}
+
+function paethPredictor(a: number, b: number, c: number) {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  if (pa <= pb && pa <= pc) return a;
+  if (pb <= pc) return b;
+  return c;
+}
+
+function truecolorPngPaintStats(path: string) {
+  const bytes = readFileSync(path);
+  if (bytes.length < 33 || bytes.toString("ascii", 1, 4) !== "PNG") return null;
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  const idat: Buffer[] = [];
+  while (offset + 12 <= bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    const type = bytes.toString("ascii", offset + 4, offset + 8);
+    const dataStart = offset + 8;
+    const dataEnd = dataStart + length;
+    if (dataEnd > bytes.length) break;
+    const data = bytes.subarray(dataStart, dataEnd);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+    } else if (type === "IDAT") {
+      idat.push(data);
+    }
+    offset = dataEnd + 4;
+  }
+  const channels = colorType === 2 ? 3 : colorType === 6 ? 4 : 0;
+  if (!width || !height || bitDepth !== 8 || !channels || idat.length === 0) return null;
+  const raw = inflateSync(Buffer.concat(idat));
+  const stride = width * channels;
+  let previous = Buffer.alloc(stride);
+  const colors = new Set<string>();
+  let sum = 0;
+  let sumSquares = 0;
+  let samples = 0;
+  let nonBackgroundSamples = 0;
+  let rawOffset = 0;
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[rawOffset++];
+    const line = Buffer.from(raw.subarray(rawOffset, rawOffset + stride));
+    rawOffset += stride;
+    for (let index = 0; index < stride; index += 1) {
+      let predictor = 0;
+      if (filter === 1) predictor = index >= channels ? line[index - channels] : 0;
+      else if (filter === 2) predictor = previous[index];
+      else if (filter === 3) predictor = Math.floor(((index >= channels ? line[index - channels] : 0) + previous[index]) / 2);
+      else if (filter === 4) predictor = paethPredictor(index >= channels ? line[index - channels] : 0, previous[index], index >= channels ? previous[index - channels] : 0);
+      line[index] = (line[index] + predictor) & 255;
+    }
+    for (let x = 0; x < width; x += 1) {
+      const index = x * channels;
+      const r = line[index];
+      const g = line[index + 1];
+      const b = line[index + 2];
+      colors.add(`${r},${g},${b}`);
+      const luma = (r + g + b) / 3;
+      sum += luma;
+      sumSquares += luma * luma;
+      samples += 1;
+      if (Math.abs(r - 240) + Math.abs(g - 240) + Math.abs(b - 240) > 6) nonBackgroundSamples += 1;
+    }
+    previous = line;
+  }
+  const lumaMean = samples ? sum / samples : 0;
+  return {
+    bytes: bytes.length,
+    width,
+    height,
+    distinctSampleColors: colors.size,
+    lumaStddev: Math.sqrt(Math.max(0, samples ? sumSquares / samples - lumaMean * lumaMean : 0)),
+    nonBackgroundSampleRatio: samples ? nonBackgroundSamples / samples : 0,
+  };
 }
 
 async function applyAgentBrowserAction(action: string) {
@@ -721,10 +865,10 @@ function accountVerificationScript(options: { checkRequiredSmsBoxes: boolean }) 
 }
 
 async function applyKnownFrameAutomation(frame: Record<string, unknown>, runtimeTarget: { appOrigin?: string; appUrl?: string } | null) {
-  const identity = automationIdentityText(frame);
+  const identity = frameAutomationText(frame);
   const frameId = String(frame.id ?? "");
   const title = typeof frame.title === "string" ? frame.title : "";
-  if (!/account-verification-entry/iu.test(identity)) return null;
+  if (!isAccountVerificationFrame(frame)) return null;
   const appBase = runtimeTarget?.appOrigin || runtimeTarget?.appUrl;
   if (appBase) {
     const verificationUrl = new URL("/user-verification", appBase).toString();
@@ -732,6 +876,22 @@ async function applyKnownFrameAutomation(frame: Record<string, unknown>, runtime
     if (open.exitCode !== 0) {
       return { ...open, rewrittenAction: `known automation open: ${verificationUrl}`, knownAutomation: true };
     }
+  }
+  if (isInitialAccountEmailFrame(frame)) {
+    const result = await runAgentBrowser(["eval", `async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const start = Date.now();
+      while (Date.now() - start < 15000) {
+        const text = document.body?.innerText || "";
+        if (text.includes('Military Verification') && text.includes('Send Verification Code')) {
+          await sleep(500);
+          return { url: location.href, bodyText: text.slice(0, 500), inputs: document.querySelectorAll('input').length };
+        }
+        await sleep(250);
+      }
+      throw new Error('Military Verification email step did not render');
+    }`], 18_000);
+    return { ...result, rewrittenAction: "known automation: open Military Verification email step", knownAutomation: true };
   }
   const shouldCheckSmsBoxes = /checked-enabled|checked:\s*continue is enabled/iu.test(`${frameId}\n${title}`) || /actions\s+4,\s*5,\s*and\s*7/iu.test(identity);
   const result = await runAgentBrowser(["eval", `(${accountVerificationScript({ checkRequiredSmsBoxes: shouldCheckSmsBoxes })})()`], 45_000);
@@ -778,7 +938,7 @@ async function executeRunJob(jobId: string) {
     runStorage.appendLog(jobId, { level: viewportResult.exitCode === 0 ? "info" : "warn", event: "agent_browser_viewport", context: viewportResult });
   }
 
-  const accountVerificationRuntimeUrl = /account-verification-entry/iu.test(automationIdentityText(frameMatch.frame))
+  const accountVerificationRuntimeUrl = isAccountVerificationFrame(frameMatch.frame)
     ? new URL("/user-verification", runtimeTarget.appUrl).toString()
     : runtimeTarget.appUrl;
   const runtimeOpen = await openRuntimeTargetWithRetry(accountVerificationRuntimeUrl);
