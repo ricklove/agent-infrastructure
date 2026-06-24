@@ -2,10 +2,21 @@
   "id": "work_at_dashboard_app_live_dev_surface",
   "title": "work-at Dashboard App Live Dev Surface",
   "description": "Readonly health profile for a dashboard app surface where the live dev URL is the primary gate. The target must provide liveDevUrl, and may override appPath, localDevUrl, and liveDevMustContain through work-at health params.",
+  "runLocation": {
+    "executor": "dashboard-health-api",
+    "workTarget": "agent-infra-dev/ddev-dashboard",
+    "host": "agent-swarm-worker-i-0b48c8cbd72379b7a",
+    "source": "worker Bun dashboard gateway :3300 with managed Vite :5173",
+    "vantagePoint": "ddev worker dashboard API",
+    "providerType": "dashboard-builtin"
+  },
   "params": {
-    "appPath": "{{targetPath}}",
+    "appPath": "{{targetPath}}/apps/dashboard-app",
     "localDevUrl": "http://127.0.0.1:5173/storyboard/debug/",
-    "liveDevMustContain": "@vite/client"
+    "liveDevUrl": "https://ecommerce-followed-sandwich-heroes.trycloudflare.com/health?profileId=work_at_dashboard_app_live_dev_surface",
+    "liveDevMustContain": "@vite/client",
+    "servedBranch": "feature/content-creation-storyboards",
+    "servedCommit": "87358635448e97dc0ad8e33b2d0c6cf367416f45"
   },
   "checks": [
     {
@@ -65,6 +76,22 @@
       "params": {
         "url": "{{localDevUrl}}",
         "timeoutSeconds": "2"
+      }
+    },
+    {
+      "id": "persistent_quicktunnel_contract",
+      "checkId": "dashboard_persistent_quicktunnel_contract",
+      "title": "persistent quicktunnel runtime state is live and stable",
+      "severity": "blocking",
+      "repairHint": "Do not restart/churn cloudflared for code updates. Keep the existing quicktunnel publicUrl in runtime-state.json, restart only the dashboard gateway or Vite behind port 3300/5173, and run scripts/ddev-dashboard-dev-surface.sh status before/after repairs.",
+      "params": {
+        "runtimeStatePath": "/home/ec2-user/state/dashboard/runtime-state.json",
+        "expectedPublicUrl": "https://ecommerce-followed-sandwich-heroes.trycloudflare.com",
+        "localUrl": "http://127.0.0.1:3300",
+        "localPort": "3300",
+        "probePath": "/health?profileId=work_at_dashboard_app_live_dev_surface",
+        "timeoutSeconds": "5",
+        "mustContain": "@vite/client"
       }
     },
     {

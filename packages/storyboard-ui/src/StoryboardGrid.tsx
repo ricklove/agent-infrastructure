@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react"
+import { Fragment, useRef, useState, type ReactNode } from "react"
 
 export type StoryboardGridFrame = {
   id: string
@@ -277,10 +277,12 @@ export function StoryboardGrid({
               const frame = frameIndex >= 0 ? sequence.frames[frameIndex] : undefined
               const shouldRenderStartLabel =
                 !!sequence.startLabel && index === (sequence.startColumn ?? 0) - 1
+              const shouldRenderNextCell =
+                !!frame && frameIndex < sequence.frames.length - 1
 
               return (
-                <>
-                  <div key={`${sequence.id}-frame-${index}`}>
+                <Fragment key={`${sequence.id}-cells-${index}`}>
+                  <div>
                     {frame ? (
                       <StoryboardGridFrameShell
                         frame={frame}
@@ -319,23 +321,27 @@ export function StoryboardGrid({
                               : undefined
                           }
                         />
-                      ) : frame && frameIndex < sequence.frames.length - 1 ? (
-                        <StoryboardNextCell
-                          actionColumnWidth={actionColumnWidth}
-                          frame={frame}
-                          nextCellHeight={nextCellHeight}
-                          onClick={() =>
-                            onTransitionClick?.({
-                              sourceFrameId: frame.id,
-                              label: frame.nextLabel ?? "Next",
-                              sequenceId: sequence.id,
-                            })
-                          }
-                        />
+                      ) : shouldRenderNextCell ? (
+                        <div className="flex flex-col items-center gap-2">
+                          {shouldRenderNextCell && frame ? (
+                            <StoryboardNextCell
+                              actionColumnWidth={actionColumnWidth}
+                              frame={frame}
+                              nextCellHeight={nextCellHeight}
+                              onClick={() =>
+                                onTransitionClick?.({
+                                  sourceFrameId: frame.id,
+                                  label: frame.nextLabel ?? "Next",
+                                  sequenceId: sequence.id,
+                                })
+                              }
+                            />
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}
-                </>
+                </Fragment>
               )
             })}
           </div>
