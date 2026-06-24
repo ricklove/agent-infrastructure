@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -13,6 +13,85 @@ function tempStateRoot(): string {
   return path
 }
 
+function writeJson(path: string, value: unknown): void {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}
+`)
+}
+
+function tempHealthRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "dashboard-health-definitions-"))
+  stateRoots.push(root)
+  mkdirSync(join(root, "profiles"), { recursive: true })
+  mkdirSync(join(root, "checks"), { recursive: true })
+  writeJson(join(root, "profiles/work-at-dashboard-app-quick-tunnel-surface.health-profile.json"), {
+    id: "work_at_dashboard_app_quick_tunnel_surface",
+    title: "Dashboard app quick tunnel surface",
+    description: "Test profile loaded from a workspace health root.",
+    checks: [{ id: "target_reachable", checkId: "work_at_target_reachable", title: "Target is reachable", severity: "blocking", params: {} }],
+  })
+  writeJson(join(root, "profiles/work-at-dashboard-app-live-dev-surface.health-profile.json"), {
+    id: "work_at_dashboard_app_live_dev_surface",
+    title: "Health Dashboard live dev surface",
+    description: "Test profile loaded from a workspace health root.",
+    params: { appPath: "{{repoRoot}}/apps/dashboard-app", managerDashboardUrl: "{{requestOrigin}}", liveDevMustContain: "Agent Dashboard" },
+    checks: [
+      { id: "target_reachable", checkId: "work_at_target_reachable", title: "Manager dashboard worker is reachable", severity: "blocking", params: {} },
+      { id: "manager_health_route_ok", checkId: "work_at_http_status_prefix_contains", title: "Manager Health Dashboard route is reachable", severity: "blocking", params: { url: "{{managerDashboardUrl}}/health", timeoutSeconds: "1", method: "GET", expectedStatusPrefix: "2", mustContain: "{{liveDevMustContain}}" } },
+    ],
+  })
+  for (const backendMode of ["staging", "docker"] as const) {
+    const profileId = `bc_storyboard_dev_dashboard_${backendMode}_backend`
+    writeJson(join(root, `profiles/bc-storyboard-dev-dashboard-${backendMode}-backend.health-profile.json`), {
+      id: profileId,
+      title: `BaseConnect onboarding storyboard health — ${backendMode} backend`,
+      description: "Test cold-start profile loaded from a workspace health root.",
+      params: {
+        backendMode,
+        storyboardUrl: "http://127.0.0.1:1/onboarding",
+        runTargetId: "baseconnect-frontend-web",
+        frontendUrl: "http://127.0.0.1:1",
+        localDashboardUrl: "{{requestOrigin}}",
+        publicDashboardUrl: "{{requestOrigin}}",
+        viteUrl: "",
+        expectedMinimumPassCount: "27",
+        bcFrontendQuickTunnelUrl: "",
+        bcFrontendQuickTunnelStateUrl: "",
+        timeoutSeconds: "1",
+        requireDdevDashboardRoutes: "false",
+      },
+      checks: [{
+        id: `${profileId}_cold_start`,
+        checkId: "storyboard_cold_start_dev_dashboard_backend",
+        title: "BaseConnect onboarding storyboard can recover from cold start",
+        severity: "blocking",
+        params: {
+          backendMode: "{{backendMode}}",
+          storyboardUrl: "{{storyboardUrl}}",
+          runTargetId: "{{runTargetId}}",
+          frontendUrl: "{{frontendUrl}}",
+          localDashboardUrl: "{{localDashboardUrl}}",
+          publicDashboardUrl: "{{publicDashboardUrl}}",
+          viteUrl: "{{viteUrl}}",
+          expectedMinimumPassCount: "{{expectedMinimumPassCount}}",
+          bcFrontendQuickTunnelUrl: "{{bcFrontendQuickTunnelUrl}}",
+          bcFrontendQuickTunnelStateUrl: "{{bcFrontendQuickTunnelStateUrl}}",
+          timeoutSeconds: "{{timeoutSeconds}}",
+          requireDdevDashboardRoutes: "{{requireDdevDashboardRoutes}}",
+        },
+      }],
+    })
+  }
+  return root
+}
+
+function createTestHealthApi(stateRoot = tempStateRoot()) {
+  return createHealthApi({
+    repoRoot,
+    stateRoot,
+    workspaceHealthRoot: tempHealthRoot(),
+  })
+}
+
 afterEach(() => {
   while (stateRoots.length > 0) {
     const path = stateRoots.pop()
@@ -24,7 +103,7 @@ afterEach(() => {
 
 describe("dashboard health API", () => {
   test("lists health profiles from workspace definitions", async () => {
-    const api = createHealthApi({ repoRoot, stateRoot: tempStateRoot() })
+    const api = createTestHealthApi()
     const response = await api.handle(
       new Request("http://dashboard.local/api/health/profiles"),
     )
@@ -59,7 +138,7 @@ describe("dashboard health API", () => {
   })
 
   test("runs staging and docker storyboard profiles through the shared cold-start template", async () => {
-    const api = createHealthApi({ repoRoot, stateRoot: tempStateRoot() })
+    const api = createTestHealthApi()
     async function run(profileId: string) {
       const response = await api.handle(
         new Request("http://dashboard.local/api/health/run", {
@@ -238,7 +317,7 @@ describe("dashboard health API", () => {
 
   test("runs a profile and persists the latest result", async () => {
     const stateRoot = tempStateRoot()
-    const api = createHealthApi({ repoRoot, stateRoot })
+    const api = createTestHealthApi(stateRoot)
     const response = await api.handle(
       new Request("http://dashboard.local/api/health/run", {
         method: "POST",

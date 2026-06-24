@@ -1,6 +1,0 @@
-{
-  "id": "storyboard_health_provider",
-  "title": "Storyboard health provider reachable",
-  "description": "Reads a Storyboard access server health-provider endpoint and exposes source URL, story/frame counts, asset references, provider metadata, source targets, run targets, definitions, and typed repair metadata through the generic Health API result evidence.",
-  "timeoutMs": 5000
-}
