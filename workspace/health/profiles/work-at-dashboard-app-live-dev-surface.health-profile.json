@@ -1,12 +1,12 @@
 {
   "id": "work_at_dashboard_app_live_dev_surface",
-  "title": "work-at Dashboard App Live Dev Surface",
-  "description": "Readonly health profile for a dashboard app surface where the live dev URL is the primary gate. The target must provide liveDevUrl, and may override appPath, localDevUrl, and liveDevMustContain through work-at health params.",
+  "title": "Health Dashboard live dev surface",
+  "description": "Readonly health profile for the public Health Dashboard development surface. The target provides the current live dashboard URL and local worker URLs through health params/runtime state; resolved hostnames and ports are evidence, not user-facing labels.",
   "runLocation": {
     "executor": "dashboard-health-api",
     "workTarget": "agent-infra-dev/ddev-dashboard",
-    "host": "agent-swarm-worker-i-0b48c8cbd72379b7a",
-    "source": "worker Bun dashboard gateway :3300 with managed Vite :5173",
+    "host": "Health Dashboard worker",
+    "source": "worker Bun dashboard gateway with managed Vite dev server",
     "vantagePoint": "ddev worker dashboard API",
     "providerType": "dashboard-builtin"
   },
@@ -22,17 +22,17 @@
     {
       "id": "target_reachable",
       "checkId": "work_at_target_reachable",
-      "title": "work-at target is reachable",
+      "title": "Dashboard worker is reachable",
       "severity": "blocking",
-      "repairHint": "Restore worker connectivity or re-register the live dev target before continuing.",
+      "repairHint": "Restore dashboard worker connectivity or refresh the current worker registration before continuing.",
       "params": {}
     },
     {
       "id": "target_path_exists",
       "checkId": "work_at_path_exists",
-      "title": "target path exists",
+      "title": "Dashboard app directory exists",
       "severity": "blocking",
-      "repairHint": "Restore or re-register the target path on the worker before continuing.",
+      "repairHint": "Restore the dashboard app checkout on the current worker or refresh the worker registration before continuing.",
       "params": {
         "path": "{{targetPath}}"
       }
@@ -40,9 +40,9 @@
     {
       "id": "target_bun_available",
       "checkId": "work_at_command_available",
-      "title": "Bun is available on target",
+      "title": "Dashboard runtime dependency is available",
       "severity": "blocking",
-      "repairHint": "Install Bun on the worker before running the dashboard app dev server.",
+      "repairHint": "Make the dashboard runtime dependency available on the current worker before running the dev server.",
       "params": {
         "commandName": "bun"
       }
@@ -50,9 +50,9 @@
     {
       "id": "target_package_json_exists",
       "checkId": "work_at_path_exists",
-      "title": "dashboard app package.json exists",
+      "title": "Dashboard app package is present",
       "severity": "blocking",
-      "repairHint": "Restore package.json in the dashboard app surface before continuing.",
+      "repairHint": "Restore the dashboard app package metadata in the current checkout before continuing.",
       "params": {
         "path": "{{appPath}}/package.json"
       }
@@ -60,9 +60,9 @@
     {
       "id": "target_vite_config_exists",
       "checkId": "work_at_path_exists",
-      "title": "dashboard app vite config exists",
+      "title": "Dashboard dev server config is present",
       "severity": "blocking",
-      "repairHint": "Restore vite.config.ts in the dashboard app surface before continuing.",
+      "repairHint": "Restore the dashboard dev server config in the current checkout before continuing.",
       "params": {
         "path": "{{appPath}}/vite.config.ts"
       }
@@ -70,9 +70,9 @@
     {
       "id": "target_local_dev_frontend_reachable",
       "checkId": "work_at_http_ok",
-      "title": "dashboard app local dev frontend is reachable",
+      "title": "Dashboard local dev server is responding",
       "severity": "warn",
-      "repairHint": "If local worker dev access is expected for this surface, restore the local dev frontend. The live dev URL remains the primary gate.",
+      "repairHint": "Restore the dashboard local dev server behind the worker gateway. The public dashboard tunnel remains the primary user-facing gate.",
       "params": {
         "url": "{{localDevUrl}}",
         "timeoutSeconds": "2"
@@ -81,12 +81,11 @@
     {
       "id": "persistent_quicktunnel_contract",
       "checkId": "dashboard_persistent_quicktunnel_contract",
-      "title": "persistent quicktunnel runtime state is live and stable",
+      "title": "Public dashboard tunnel is running",
       "severity": "blocking",
-      "repairHint": "Do not restart/churn cloudflared for code updates. Keep the existing quicktunnel publicUrl in runtime-state.json, restart only the dashboard gateway or Vite behind port 3300/5173, and run scripts/ddev-dashboard-dev-surface.sh status before/after repairs.",
+      "repairHint": "Keep the current dev dashboard public tunnel stable; repair the dashboard gateway or dev server behind it rather than replacing the tunnel hostname.",
       "params": {
         "runtimeStatePath": "/home/ec2-user/state/dashboard/runtime-state.json",
-        "expectedPublicUrl": "https://ecommerce-followed-sandwich-heroes.trycloudflare.com",
         "localUrl": "http://127.0.0.1:3300",
         "localPort": "3300",
         "probePath": "/health?profileId=work_at_dashboard_app_live_dev_surface",
@@ -97,9 +96,9 @@
     {
       "id": "target_live_dev_surface_ok",
       "checkId": "work_at_http_status_prefix_contains",
-      "title": "live dev surface responds with the expected dev marker",
+      "title": "Public dashboard is serving the current app",
       "severity": "blocking",
-      "repairHint": "The live dev URL is the primary gate for this surface. Repair the worker-served live URL until it responds successfully and contains the expected dev marker before treating any code change as real.",
+      "repairHint": "Repair the current worker-served public dashboard URL until it responds successfully and serves the current dashboard app.",
       "params": {
         "url": "{{liveDevUrl}}",
         "timeoutSeconds": "5",
