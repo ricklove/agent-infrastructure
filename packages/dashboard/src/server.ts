@@ -20,6 +20,7 @@ import {
   type DashboardHostRole,
   getDashboardFeaturePlugins,
 } from "./feature-plugins.js"
+import { createHealthApi } from "./health-api.js"
 
 type ManagerHealthResponse = {
   ok: boolean
@@ -560,6 +561,7 @@ function createGatewayBackend(
 const gatewayBackends = getDashboardFeaturePlugins(dashboardHostRole).flatMap(
   (plugin) => (plugin.backend ? [createGatewayBackend(plugin.backend)] : []),
 )
+const healthApi = createHealthApi({ repoRoot, stateRoot })
 const viteDevFrontendEnsurePromises = new Map<string, Promise<void>>()
 
 function dashboardStatusPayload() {
@@ -1858,6 +1860,11 @@ async function handleApi(request: Request): Promise<Response> {
   const unauthorized = requireDashboardSession(request)
   if (unauthorized) {
     return unauthorized
+  }
+
+  const healthApiResponse = await healthApi.handle(request)
+  if (healthApiResponse) {
+    return healthApiResponse
   }
 
   if (swarmApiAliases.health.has(url.pathname)) {

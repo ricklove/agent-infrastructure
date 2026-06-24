@@ -78,11 +78,41 @@ function scenarioPreview(componentSlug: string, scenarioSlug: string) {
   )
 }
 
+function runTargetHealthHref() {
+  if (typeof window === "undefined") {
+    return "/storyboard/debug/storyboardRunTargetHealth/"
+  }
+
+  const storyboardUrl = new URLSearchParams(window.location.search).get("storyboardUrl")
+  if (!storyboardUrl) {
+    return "/storyboard/debug/storyboardRunTargetHealth/"
+  }
+
+  return `/storyboard/debug/storyboardRunTargetHealth/?storyboardUrl=${encodeURIComponent(storyboardUrl)}`
+}
+
+function runTargetHealthPreview() {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center bg-cyan-950/60 p-3 text-center">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/70">run target</div>
+      <div className="mt-2 text-xs font-semibold text-white">Health</div>
+      <div className="mt-1 text-[10px] text-cyan-100/65">config + checks</div>
+    </div>
+  )
+}
+
 export function StoryboardDebugIndexScreen() {
   return (
     <div className="flex h-full min-h-0 flex-col bg-black text-white">
       {thinHeader([{ label: "components" }])}
       <div className="flex min-h-0 flex-1 flex-wrap content-start items-start gap-4 overflow-auto p-4">
+        <DebugImageCard
+          fallback={runTargetHealthPreview()}
+          href={runTargetHealthHref()}
+          key="storyboardRunTargetHealth"
+          subtitle="Standalone provider-named run target config and health check tool. Accepts storyboardUrl."
+          title="Run Target Health"
+        />
         {storyboardDebugComponents.map((component) => (
           <DebugImageCard
             fallback={componentPreview(component)}

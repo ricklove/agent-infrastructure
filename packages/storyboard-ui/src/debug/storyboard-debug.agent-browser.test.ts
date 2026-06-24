@@ -131,7 +131,7 @@ async function createBrowser() {
         newPage(options: {
           viewport: { width: number; height: number }
         }): Promise<{
-          goto(url: string, options: { waitUntil: "networkidle" }): Promise<void>
+          goto(url: string, options: { waitUntil: "domcontentloaded" | "networkidle" }): Promise<void>
           waitForTimeout(ms: number): Promise<void>
           evaluate<T, A>(
             fn: (arg: A) => T | Promise<T>,
@@ -201,7 +201,7 @@ async function captureDebugScenarioArtifact(
   try {
     await page.goto(
       `${baseUrl}/storyboard/debug/${componentSlug}/${scenarioSlug}/`,
-      { waitUntil: "networkidle" },
+      { waitUntil: "domcontentloaded" },
     )
     await page.waitForTimeout(180)
 
@@ -561,6 +561,102 @@ async function verifyPanZoomInteraction() {
   }
 }
 
+async function verifyStoryboardBranchTransitionLayout() {
+  const browser = await createBrowser()
+  try {
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 1024 },
+    })
+    try {
+      await page.goto(
+        `${baseUrl}/storyboard/debug/storyboardEditor/test-storyboard-json/`,
+        { waitUntil: "domcontentloaded" },
+      )
+      await page.waitForTimeout(180)
+
+      let layout: {
+        primary: { left: number; top: number; bottom: number }
+        branch: { left: number; top: number; right: number; centerY: number }
+        branchTarget: { left: number; top: number; centerY: number }
+      } | null = null
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        layout = await page.evaluate(() => {
+        const primary = document.querySelector(
+          '[data-storyboard-next="start-a-voice-call-from-chat-step-3-next-frame-a951c1ce"]',
+        )
+        const branchSequence = document.querySelector(
+          '[data-storyboard-sequence="start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-9b71a832"]',
+        )
+        const branch = branchSequence?.querySelector('[data-storyboard-transition="Branch 2"]')
+        const branchTarget = branchSequence?.querySelector(
+          '[data-storyboard-frame-shell="start-a-voice-call-from-chat-step-3-next-frame-a951c1ce-branch-frame-34b918d7"]',
+        )
+        if (
+          !(primary instanceof HTMLElement) ||
+          !(branch instanceof HTMLElement) ||
+          !(branchTarget instanceof HTMLElement)
+        ) {
+          return null
+        }
+
+        const primaryRect = primary.getBoundingClientRect()
+        const branchRect = branch.getBoundingClientRect()
+        const branchTargetRect = branchTarget.getBoundingClientRect()
+        return {
+          primary: {
+            left: primaryRect.left,
+            top: primaryRect.top,
+            bottom: primaryRect.bottom,
+          },
+          branch: {
+            left: branchRect.left,
+            top: branchRect.top,
+            right: branchRect.right,
+            centerY: branchRect.top + branchRect.height / 2,
+          },
+          branchTarget: {
+            left: branchTargetRect.left,
+            top: branchTargetRect.top,
+            centerY: branchTargetRect.top + branchTargetRect.height / 2,
+          },
+        }
+      }, undefined)
+        if (layout) break
+        await page.waitForTimeout(100)
+      }
+
+      if (!layout) {
+        throw new Error("missing branch transition row layout")
+      }
+
+      if (layout.branch.top <= layout.primary.bottom) {
+        throw new Error(
+          `branch transition should be vertically stacked below the primary row: primary bottom ${layout.primary.bottom}, branch top ${layout.branch.top}`,
+        )
+      }
+      if (Math.abs(layout.branch.left - layout.primary.left) > 4) {
+        throw new Error(
+          `branch transition should remain in the same action column as its source transition: primary left ${layout.primary.left}, branch left ${layout.branch.left}`,
+        )
+      }
+      if (layout.branch.right > layout.branchTarget.left) {
+        throw new Error(
+          `branch transition should render to the left of its target frame: branch right ${layout.branch.right}, target left ${layout.branchTarget.left}`,
+        )
+      }
+      if (Math.abs(layout.branch.centerY - layout.branchTarget.centerY) > 4) {
+        throw new Error(
+          `branch transition should align vertically with its target frame: branch center ${layout.branch.centerY}, target center ${layout.branchTarget.centerY}`,
+        )
+      }
+    } finally {
+      await page.close()
+    }
+  } finally {
+    await browser.close()
+  }
+}
+
 async function main() {
   ensureDir(publicArtifactRoot)
   ensureDir(htmlArtifactRoot)
@@ -568,6 +664,7 @@ async function main() {
   try {
     await writeArtifacts()
     await verifyPanZoomInteraction()
+    await verifyStoryboardBranchTransitionLayout()
     for (const component of storyboardDebugComponents) {
       console.log(
         `${component.slug}: ${storyboardDebugComponentArtifactPath(component.slug)}`,

@@ -1,0 +1,29 @@
+{
+  "id": "storyboard_cold_start_dev_dashboard_backend",
+  "title": "Storyboard cold-start DEV dashboard + backend mode",
+  "description": "Reusable fast cold-start health contract for bc-storyboard onboarding through the ddev dashboard remote-storyboard route and a parameterized BaseConnect frontend backend mode (staging or docker). Emits recursive grouped health nodes with shared subcheck definition ids and backend-specific branches.",
+  "execution": {
+    "kind": "dashboard-builtin",
+    "checkId": "storyboard_cold_start_dev_dashboard_backend",
+    "executor": "dashboard-health-api",
+    "workTarget": "agent-infra-dev/ddev-dashboard",
+    "host": "agent-swarm-worker-i-0b48c8cbd72379b7a",
+    "source": "dashboard server initiating delegated cross-surface probes",
+    "vantagePoint": "ddev worker dashboard API",
+    "providerType": "workflow-rollup-template"
+  },
+  "template": {
+    "id": "storyboard-cold-start-dev-dashboard-backend.v1",
+    "sharedSubcheckDefinitionIds": [
+      "bc-storyboard-source-storyboard-md",
+      "bc-storyboard-source-storyboard-json",
+      "bc-storyboard-run-target-health-endpoint",
+      "bc-storyboard-check-all-summary",
+      "bc-frontend-route-200",
+      "bc-frontend-backend-marker",
+      "ddev-dashboard-route-200"
+    ],
+    "backendSpecificBranches": ["staging", "docker"]
+  },
+  "timeoutMs": 30000
+}

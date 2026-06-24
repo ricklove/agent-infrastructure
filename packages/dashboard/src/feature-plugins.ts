@@ -7,6 +7,7 @@ import { dashboardSettingsDashboardPlugin } from "@agent-infrastructure/dashboar
 import { dashboardTerminalPlugin } from "@agent-infrastructure/dashboard-terminal-ui/plugin"
 import { facebookContentDashboardPlugin } from "@agent-infrastructure/facebook-content-dashboard-server/plugin"
 import { floatingWindowDebugDashboardPlugin } from "@agent-infrastructure/floating-window-debug-ui/plugin"
+import { healthDashboardPlugin } from "@agent-infrastructure/health-ui/plugin"
 import { projectsDashboardPlugin } from "@agent-infrastructure/projects-server/plugin"
 import { stackAdminDashboardPlugin } from "@agent-infrastructure/stack-admin-server/plugin"
 import { storyboardDashboardPlugin } from "@agent-infrastructure/storyboard-ui/plugin"
@@ -18,6 +19,7 @@ const managerDashboardFeaturePlugins: DashboardFeaturePlugin[] = [
   agentChatDashboardPlugin,
   facebookContentDashboardPlugin,
   storyboardDashboardPlugin,
+  healthDashboardPlugin,
   agentSwarmDashboardPlugin,
   agentWorkbenchDashboardPlugin,
   uiDesignCanvasDashboardPlugin,

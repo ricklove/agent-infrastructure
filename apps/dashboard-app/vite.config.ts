@@ -23,6 +23,7 @@ const frontendRoots = [
   resolve(__dirname, "../../packages/agent-swarm-ui/src"),
   resolve(__dirname, "../../packages/agent-chat-ui/src"),
   resolve(__dirname, "../../packages/agent-graph-ui/src"),
+  resolve(__dirname, "../../packages/health-ui/src"),
   resolve(__dirname, "../../packages/storyboard-ui/src"),
 ]
 
