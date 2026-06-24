@@ -31,9 +31,9 @@ const statusOrder = {
   FAIL: 0,
   DISPATCH_FAILED: 0,
   UNAUTHORIZED: 0,
+  STALE: 0,
   BLOCKED: 1,
   WARN: 2,
-  STALE: 2,
   UNKNOWN: 3,
   NOT_RUN: 3,
   UNSUPPORTED: 3,
@@ -89,15 +89,8 @@ function profileParams(
 
 function resultStatus(result?: HealthRunResult | null) {
   if (!result) return "UNKNOWN" as const
-  if (result.checks.some((check) => check.status === "RUNNING"))
-    return "RUNNING" as const
-  if (
-    result.checks.some(
-      (check) =>
-        check.status !== "PASS" &&
-        check.status !== "INFO",
-    )
-  )
+  if (result.checks.length === 0) return "UNKNOWN" as const
+  if (result.checks.some((check) => check.status !== "PASS" && check.status !== "INFO"))
     return "FAIL" as const
   return "PASS" as const
 }
@@ -109,7 +102,12 @@ function statusClassName(status: keyof typeof statusGlyph) {
     case "WARN":
       return "border-amber-200 bg-amber-50 text-amber-900"
     case "FAIL":
+    case "STALE":
+    case "DISPATCH_FAILED":
+    case "UNAUTHORIZED":
       return "border-rose-200 bg-rose-50 text-rose-800"
+    case "RUNNING":
+      return "border-blue-200 bg-blue-50 text-blue-800"
     default:
       return "border-slate-200 bg-slate-50 text-slate-600"
   }
@@ -120,18 +118,18 @@ function runStatusClassName(status: HealthRunStatus | "none") {
     return "border-emerald-200 bg-emerald-50 text-emerald-800"
   if (status === "warn") return "border-amber-200 bg-amber-50 text-amber-900"
   if (status === "fail") return "border-rose-200 bg-rose-50 text-rose-800"
-  if (status === "unknown") return "border-slate-200 bg-slate-50 text-slate-700"
+  if (status === "unknown") return "border-blue-200 bg-blue-50 text-blue-800"
   return "border-slate-200 bg-white text-slate-500"
 }
 
 function childStatusClassName(status: string) {
   if (status === "pass" || status === "info")
     return "border-emerald-200 bg-emerald-50 text-emerald-800"
-  if (status === "warn") return "border-amber-200 bg-amber-50 text-amber-900"
+  if (status === "warn" || status === "blocked")
+    return "border-amber-200 bg-amber-50 text-amber-900"
   if (
     status === "fail" ||
     status === "stale" ||
-    status === "blocked" ||
     status === "dispatch_failed" ||
     status === "unauthorized"
   )
@@ -143,7 +141,6 @@ function runStatusToTreeStatus(status?: HealthRunStatus | "none") {
   if (status === "pass") return "PASS" as const
   if (status === "warn") return "FAIL" as const
   if (status === "fail") return "FAIL" as const
-  if (status === "unknown") return "FAIL" as const
   return "UNKNOWN" as const
 }
 
@@ -157,6 +154,15 @@ function compactTime(value?: string) {
 function locationLabel(value: unknown) {
   if (!value || typeof value !== "object") return "—"
   const record = value as Record<string, unknown>
+  const friendlyParts = [
+    friendlyRunLocationPart(record.vantagePoint),
+    friendlyRunLocationPart(record.workTarget),
+    friendlyRunLocationPart(record.host),
+    friendlyRunLocationPart(record.container),
+    friendlyRunLocationPart(record.executor),
+  ].filter(Boolean)
+  const uniqueFriendlyParts = Array.from(new Set(friendlyParts))
+  if (uniqueFriendlyParts.length > 0) return uniqueFriendlyParts.join(" · ")
   const parts = [
     record.vantagePoint,
     record.workTarget,
@@ -167,6 +173,47 @@ function locationLabel(value: unknown) {
     .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter(Boolean)
   return parts.length > 0 ? parts.join(" · ") : "—"
+}
+
+function friendlyRunLocationPart(value: unknown) {
+  if (typeof value !== "string") return ""
+  const text = value.trim()
+  if (!text) return ""
+  if (text === "local") return "Health Dashboard worker"
+  if (text === "dashboard-health-api") return "Health Dashboard runner"
+  if (text === "workflow-rollup") return "Workflow rollup"
+  if (text.includes("agent-infra-dev") || text.includes("ddev-dashboard")) {
+    return "Health Dashboard worker"
+  }
+  if (text.includes("bc-fullstack/frontend") || text.includes("bc-frontend")) {
+    return "bc-frontend staging web app runtime"
+  }
+  if (text.includes("bc-storyboard") || text.includes("access-server")) {
+    return "bc-storyboard access server"
+  }
+  if (/^i-[a-f0-9]+$/u.test(text)) return "Cloud worker"
+  if (/^ip-\d+-\d+-\d+-\d+/u.test(text)) return "Cloud worker"
+  if (/trycloudflare\.com/iu.test(text)) return "public tunnel"
+  return text
+}
+
+function friendlyTargetLabel(targetId: string, profile: HealthProfile) {
+  const text = targetId.trim()
+  if (!text || text === "local") return "Health Dashboard worker"
+  if (text.includes("agent-infra") || text.includes("ddev-dashboard")) {
+    return "Health Dashboard worker"
+  }
+  if (text.includes("bc-frontend") || text.includes("bc-fullstack")) {
+    return "bc-frontend staging web app runtime"
+  }
+  if (text.includes("bc-storyboard")) return "bc-storyboard access server"
+  if (profile.id === "work_at_dashboard_app_live_dev_surface") {
+    return "Health Dashboard worker"
+  }
+  if (profile.id.startsWith("bc_storyboard")) {
+    return "BaseConnect storyboard health workflow"
+  }
+  return text.replace(/[_-]+/gu, " ")
 }
 
 function rowRunLocation(record: Record<string, unknown>) {
@@ -326,26 +373,8 @@ function normalizeHealthStatus(value: unknown) {
 
 function rollupChildStatus(rows: Array<Record<string, unknown>>) {
   const statuses = rows.map((record) => normalizeHealthStatus(record.status))
-  if (
-    statuses.includes("fail") ||
-    statuses.includes("dispatch_failed") ||
-    statuses.includes("unauthorized")
-  )
-    return "fail" as const
-  if (
-    statuses.includes("warn") ||
-    statuses.includes("stale") ||
-    statuses.includes("blocked")
-  )
-    return "warn" as const
-  if (
-    statuses.length === 0 ||
-    statuses.includes("unknown") ||
-    statuses.includes("not_run") ||
-    statuses.includes("unsupported") ||
-    statuses.includes("running")
-  )
-    return "unknown" as const
+  if (statuses.length === 0) return "unknown" as const
+  if (statuses.some((status) => status !== "pass" && status !== "info")) return "fail" as const
   return "pass" as const
 }
 
@@ -601,7 +630,7 @@ function HealthTreeChecks({
                 last="component"
                 meta=""
                 status={groupStatus}
-                title={`Target/group/component: ${group}`}
+                title={`Check group: ${group}`}
               />
               {groupChecks.map((check) => (
                 <CheckResultRow check={check} key={check.id} />
@@ -663,6 +692,17 @@ type HealthTreeNode = {
 
 type NodeRunMode = "node" | "subtree" | "failed_children"
 
+type PendingRunScope = {
+  id: string
+  profileId: string
+  targetId: string
+  nodeId: string
+  nodeIds: Set<string>
+  checkIds: Set<string>
+  requestedAt: string
+  mode: NodeRunMode
+}
+
 function statusFromLower(status: string): keyof typeof statusGlyph {
   switch (normalizeHealthStatus(status)) {
     case "pass":
@@ -695,8 +735,30 @@ function childStatusToTreeStatus(status: string): keyof typeof statusGlyph {
   return statusFromLower(status)
 }
 
+function strictParentStatusFromChildren(
+  children: HealthTreeNode[],
+  fallback: keyof typeof statusGlyph,
+): keyof typeof statusGlyph {
+  if (children.length === 0) return fallback
+  return children.some(
+    (child) => child.status !== "PASS" && child.status !== "INFO",
+  )
+    ? "FAIL"
+    : "PASS"
+}
+
 function descendantNodes(node: HealthTreeNode): HealthTreeNode[] {
   return node.children.flatMap((child) => [child, ...descendantNodes(child)])
+}
+
+function descendantNodesWithDepth(
+  node: HealthTreeNode,
+  startDepth = 1,
+): Array<{ node: HealthTreeNode; depth: number }> {
+  return node.children.flatMap((child) => [
+    { node: child, depth: startDepth },
+    ...descendantNodesWithDepth(child, startDepth + 1),
+  ])
 }
 
 function uniqueCheckIds(nodes: HealthTreeNode[]) {
@@ -718,6 +780,122 @@ function failedCheckIds(node: HealthTreeNode) {
       ].includes(candidate.status),
     ),
   )
+}
+
+function failedLikeTreeStatus(status: keyof typeof statusGlyph) {
+  return [
+    "FAIL",
+    "WARN",
+    "BLOCKED",
+    "STALE",
+    "DISPATCH_FAILED",
+    "UNAUTHORIZED",
+  ].includes(status)
+}
+
+function selectedRunNodes(node: HealthTreeNode, mode: NodeRunMode) {
+  const descendants = descendantNodes(node)
+  if (mode === "node") return node.children.length > 0 ? [node, ...descendants] : [node]
+  if (mode === "failed_children") {
+    const failedIds = new Set(failedCheckIds(node))
+    return [
+      node,
+      ...descendants.filter(
+        (candidate) =>
+          failedLikeTreeStatus(candidate.status) &&
+          candidate.checkIds.some((checkId) => failedIds.has(checkId)),
+      ),
+    ]
+  }
+  return [node, ...descendants]
+}
+
+function applyPendingRunScopeToNode(
+  node: HealthTreeNode,
+  scope: PendingRunScope,
+): { node: HealthTreeNode; affected: boolean } {
+  const children = node.children.map((child) =>
+    applyPendingRunScopeToNode(child, scope),
+  )
+  const descendantAffected = children.some((child) => child.affected)
+  const directlyAffected = scope.nodeIds.has(node.id)
+  if (!directlyAffected && !descendantAffected) return { node, affected: false }
+
+  const isRequestedRoot = node.id === scope.nodeId
+  const status: keyof typeof statusGlyph = directlyAffected
+    ? isRequestedRoot || !node.checkedAt
+      ? "RUNNING"
+      : "STALE"
+    : "RUNNING"
+  const checkedAt = directlyAffected ? node.checkedAt : undefined
+  const freshness = directlyAffected
+    ? node.checkedAt
+      ? `stale — waiting for current run requested ${compactTime(scope.requestedAt)}`
+      : `pending current run requested ${compactTime(scope.requestedAt)}`
+    : `child run pending since ${compactTime(scope.requestedAt)}`
+  const summary = directlyAffected
+    ? `Waiting for fresh ${scope.mode} result from active run ${scope.id}; prior result is stale until replaced.`
+    : `Child nodes are waiting for fresh active-run results from ${scope.id}.`
+
+  return {
+    node: {
+      ...node,
+      status,
+      checkedAt,
+      freshness,
+      summary,
+      children: children.map((child) => child.node),
+    },
+    affected: true,
+  }
+}
+
+function applyPendingRunScopes(
+  node: HealthTreeNode,
+  scopes: PendingRunScope[],
+) {
+  return scopes
+    .filter((scope) => scope.profileId === node.profileId)
+    .reduce(
+      (current, scope) => applyPendingRunScopeToNode(current, scope).node,
+      node,
+    )
+}
+
+function markChildNodeStale(
+  child: HealthCheckNodeResult,
+  runId: string,
+): HealthCheckNodeResult {
+  return {
+    ...child,
+    status: "STALE",
+    runId,
+    freshness: "stale",
+    stale: true,
+    summary:
+      child.summary ??
+      "Previous child result is stale because the active run did not return fresh output for this node.",
+    children: child.children?.map((grandchild) =>
+      markChildNodeStale(grandchild, runId),
+    ),
+  }
+}
+
+function markCheckResultStale(
+  check: HealthCheckResult,
+  runId: string,
+): HealthCheckResult {
+  return {
+    ...check,
+    status: "STALE",
+    runId,
+    freshness: "stale",
+    stale: true,
+    summary:
+      check.summary ??
+      "Previous result is stale because the active run did not return fresh output for this required check.",
+    children: check.children?.map((child) => markChildNodeStale(child, runId)),
+  }
 }
 
 function nodeTooltip(node: HealthTreeNode) {
@@ -745,10 +923,13 @@ function checkNodeFromResult(
     : []
   const childResults =
     check.children && check.children.length > 0 ? check.children : providerRows
+  const children = childResults.map((child) =>
+    childNodeFromResult(child, profileId, targetId, check.id, check.id),
+  )
   return {
     id: `check:${profileId}:${check.id}`,
     title: check.title,
-    status: check.status,
+    status: strictParentStatusFromChildren(children, check.status),
     checkedAt: check.finishedAt ?? check.checkedAt,
     freshness: check.freshness ?? (check.stale ? "stale" : "fresh"),
     summary:
@@ -761,9 +942,7 @@ function checkNodeFromResult(
     profileId,
     targetId,
     checkIds: [check.id],
-    children: childResults.map((child) =>
-      childNodeFromResult(child, profileId, targetId, check.id, check.id),
-    ),
+    children,
   }
 }
 
@@ -774,10 +953,20 @@ function childNodeFromResult(
   parentId: string,
   ownerCheckId: string,
 ): HealthTreeNode {
+  const children = (child.children ?? []).map((grandchild) =>
+    childNodeFromResult(
+      grandchild,
+      profileId,
+      targetId,
+      `${parentId}:${child.id}`,
+      ownerCheckId,
+    ),
+  )
+  const rawStatus = childStatusToTreeStatus(child.status)
   return {
     id: `node:${profileId}:${parentId}:${child.id}`,
     title: child.title,
-    status: childStatusToTreeStatus(child.status),
+    status: strictParentStatusFromChildren(children, rawStatus),
     checkedAt: child.finishedAt ?? child.checkedAt,
     freshness: child.freshness ?? (child.stale ? "stale" : undefined),
     summary:
@@ -791,15 +980,7 @@ function childNodeFromResult(
     targetId,
     checkIds: [ownerCheckId],
     parentOwnedBy: ownerCheckId,
-    children: (child.children ?? []).map((grandchild) =>
-      childNodeFromResult(
-        grandchild,
-        profileId,
-        targetId,
-        `${parentId}:${child.id}`,
-        ownerCheckId,
-      ),
-    ),
+    children,
   }
 }
 
@@ -836,13 +1017,15 @@ function profileTreeNode(entry: ProfileState): HealthTreeNode {
         pendingCheckNode(check, entry.profile.id, targetId),
       )
   const allCheckIds = entry.profile.checks.map((check) => check.id)
-  const targetTitle = targetId === "local" ? "Current health target" : `Health target: ${targetId}`
   const targetNode: HealthTreeNode = {
     id: `target:${entry.profile.id}:${targetId}`,
-    title: targetTitle,
-    status: entry.running ? "RUNNING" : runStatusToTreeStatus(latest?.status ?? "none"),
+    title: `Runs on: ${friendlyTargetLabel(targetId, entry.profile)}`,
+    status: strictParentStatusFromChildren(
+      checkChildren,
+      runStatusToTreeStatus(latest?.status ?? "none"),
+    ),
     checkedAt: latest?.finishedAt,
-    freshness: entry.running ? "waiting for current run" : latest ? "fresh" : "not run",
+    freshness: latest ? "fresh" : "not run",
     summary: `${checkChildren.length} health checks`,
     meta: String(
       latest?.params.storyboardUrl ??
@@ -859,9 +1042,9 @@ function profileTreeNode(entry: ProfileState): HealthTreeNode {
   return {
     id: `profile:${entry.profile.id}`,
     title: entry.profile.title,
-    status: entry.running ? "RUNNING" : resultStatus(latest),
+    status: resultStatus(latest),
     checkedAt: latest?.finishedAt,
-    freshness: entry.running ? "waiting for current run" : latest ? "fresh" : "not run",
+    freshness: latest ? "fresh" : "not run",
     summary: entry.profile.description ?? `${entry.summary.checkCount} checks`,
     meta: entry.profile.id,
     raw: entry.profile,
@@ -1022,12 +1205,12 @@ function HealthTreeNodeRow({
 }) {
   const expanded = expandedIds.has(node.id)
   const descendants = descendantNodes(node)
+  const descendantEntries = descendantNodesWithDepth(node)
   const isLeaf = node.children.length === 0
   return (
     <div
       className="border-b border-slate-100 last:border-b-0"
       data-health-node-id={node.id}
-      style={{ borderTop: depth > 0 ? `${Math.min(depth, 5)}px solid rgba(148, 163, 184, 0.32)` : undefined }}
     >
       <div
         className="block w-full px-2 py-1.5 text-left hover:bg-blue-50"
@@ -1047,7 +1230,7 @@ function HealthTreeNodeRow({
             {isLeaf ? "•" : expanded ? "▾" : "▸"}
           </button>
           <span
-            className={`${node.status === "PASS" ? "text-emerald-600" : node.status === "FAIL" || node.status === "DISPATCH_FAILED" || node.status === "UNAUTHORIZED" ? "text-rose-600" : node.status === "WARN" || node.status === "BLOCKED" || node.status === "STALE" ? "text-amber-600" : "text-slate-500"}`}
+            className={`${node.status === "PASS" ? "text-emerald-600" : node.status === "FAIL" || node.status === "STALE" || node.status === "DISPATCH_FAILED" || node.status === "UNAUTHORIZED" ? "text-rose-600" : node.status === "RUNNING" ? "text-blue-600" : node.status === "WARN" || node.status === "BLOCKED" ? "text-amber-600" : "text-slate-500"}`}
           >
             {statusGlyph[node.status]}
           </span>
@@ -1072,21 +1255,31 @@ function HealthTreeNodeRow({
           />
         </div>
         <div className="mt-1 flex min-h-5 flex-wrap items-center gap-1 pl-6">
-          {descendants.length > 0 ? (
-            descendants.map((descendant) => (
-              <button
-                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-sm border px-1 text-[10px] font-bold ${statusClassName(descendant.status)}`}
+          {descendantEntries.length > 0 ? (
+            descendantEntries.map(({ node: descendant, depth: descendantDepth }) => (
+              <span
+                className="inline-flex items-start"
+                data-health-indicator-depth={descendantDepth}
                 key={descendant.id}
-                style={{ borderTopWidth: `${Math.min(depth + 1, 5)}px` }}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  toggleExpanded(descendant.id)
+                style={{
+                  borderTopColor: "rgba(100, 116, 139, 0.45)",
+                  borderTopStyle: "solid",
+                  borderTopWidth: `${Math.min(descendantDepth, 6)}px`,
+                  paddingTop: "2px",
                 }}
-                title={nodeTooltip(descendant)}
-                type="button"
               >
-                {statusGlyph[descendant.status]}
-              </button>
+                <button
+                  className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full border px-1 text-[10px] font-bold ${statusClassName(descendant.status)}`}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    toggleExpanded(descendant.id)
+                  }}
+                  title={nodeTooltip(descendant)}
+                  type="button"
+                >
+                  {statusGlyph[descendant.status]}
+                </button>
+              </span>
             ))
           ) : (
             <span className="select-text text-[11px] text-slate-400">
@@ -1115,100 +1308,6 @@ function HealthTreeNodeRow({
   )
 }
 
-function pendingNodeResult(
-  node: HealthCheckNodeResult,
-  status: "RUNNING" | "STALE",
-  now: string,
-  previousRunId?: string,
-): HealthCheckNodeResult {
-  const waiting = status === "RUNNING"
-  return {
-    ...node,
-    status,
-    checkedAt: waiting ? now : node.checkedAt,
-    finishedAt: waiting ? undefined : node.finishedAt,
-    durationMs: waiting ? 0 : node.durationMs,
-    freshness: waiting ? "unknown" : "stale",
-    stale: !waiting,
-    summary: waiting
-      ? "Waiting for fresh result from this run"
-      : "Stale previous result; not refreshed by the active run yet",
-    failure: waiting
-      ? null
-      : {
-          class: "stale",
-          message: "Not refreshed by the active run yet",
-        },
-    evidence: {
-      ...(node.evidence ?? {}),
-      ...(waiting
-        ? { pending: true, requestedAt: now }
-        : { stale: true, previousRunId }),
-    },
-    children: (node.children ?? []).map((child) =>
-      pendingNodeResult(child, status, now, previousRunId),
-    ),
-  }
-}
-
-function pendingRunResult(
-  profile: HealthProfile,
-  targetId: string,
-  params: Record<string, unknown>,
-  checkIds: string[],
-  prior?: HealthRunResult | null,
-): HealthRunResult {
-  const requested = new Set(checkIds)
-  const now = new Date().toISOString()
-  const priorById = new Map((prior?.checks ?? []).map((check) => [check.id, check]))
-  const checks = profile.checks.map((check): HealthCheckResult => {
-    const old = priorById.get(check.id)
-    const inScope = requested.has(check.id)
-    const status = inScope ? "RUNNING" : old ? "STALE" : "NOT_RUN"
-    const waiting = status === "RUNNING"
-    return {
-      id: check.id,
-      title: check.title,
-      checkId: check.checkId,
-      component: check.component,
-      severity: check.severity,
-      status,
-      durationMs: 0,
-      evidence: {
-        ...(old?.evidence ?? {}),
-        ...(waiting
-          ? { pending: true, requestedAt: now }
-          : { stale: true, previousRunId: prior?.runId }),
-      },
-      runLocation: check.runLocation ?? check.execution,
-      failure: waiting
-        ? null
-        : { class: "stale", message: "Not refreshed by the active run yet" },
-      repairHint: check.repairHint ?? null,
-      children: old?.children?.map((child) =>
-        pendingNodeResult(child, waiting ? "RUNNING" : "STALE", now, prior?.runId),
-      ),
-      startedAt: now,
-      checkedAt: waiting ? now : old?.checkedAt,
-      freshness: waiting ? "unknown" : "stale",
-      stale: !waiting,
-      summary: waiting
-        ? "Waiting for fresh result from this run"
-        : "Stale previous result; not refreshed by the active run yet",
-    }
-  })
-  return {
-    runId: `pending-${Date.now()}`,
-    profileId: profile.id,
-    targetId,
-    params,
-    startedAt: now,
-    finishedAt: now,
-    status: "unknown",
-    checks,
-  }
-}
-
 export function HealthDashboardScreen({
   apiRootUrl = "/api/health",
 }: HealthDashboardScreenProps) {
@@ -1219,6 +1318,9 @@ export function HealthDashboardScreen({
   )
   const [runningNodeIds, setRunningNodeIds] = useState<Set<string>>(
     () => new Set(),
+  )
+  const [pendingRunScopes, setPendingRunScopes] = useState<PendingRunScope[]>(
+    () => [],
   )
   const storyboardUrl = queryParam("storyboardUrl")
 
@@ -1279,10 +1381,22 @@ export function HealthDashboardScreen({
       (entry) => entry.profile.id === node.profileId,
     )
     if (!item) return
-    const subtreeIds = uniqueCheckIds([node, ...descendantNodes(node)])
+    const selectedNodes = selectedRunNodes(node, mode)
+    const subtreeIds = uniqueCheckIds(selectedNodes)
     const checkIds =
       mode === "failed_children" ? failedCheckIds(node) : subtreeIds
     if (checkIds.length === 0) return
+    const requestedAt = new Date().toISOString()
+    const pendingScope: PendingRunScope = {
+      id: `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      profileId: node.profileId,
+      targetId: node.targetId || "local",
+      nodeId: node.id,
+      nodeIds: new Set(selectedNodes.map((selected) => selected.id)),
+      checkIds: new Set(checkIds),
+      requestedAt,
+      mode,
+    }
     const overrides: Record<string, string> = [
       "storyboard_source_health",
       "bc_storyboard_dev_dashboard_staging_backend",
@@ -1290,24 +1404,17 @@ export function HealthDashboardScreen({
     ].includes(node.profileId)
       ? { storyboardUrl }
       : {}
-    setRunningNodeIds((current) => new Set(current).add(node.id))
-    const runParams = {
-      ...profileParams(item.profile, overrides),
-      requestedNodeId: node.id,
-      requestedActionId: mode,
-    }
-    const optimisticLatest = pendingRunResult(
-      item.profile,
-      node.targetId || "local",
-      runParams,
-      checkIds,
-      item.latest,
-    )
+    setPendingRunScopes((current) => [...current, pendingScope])
+    setRunningNodeIds((current) => {
+      const next = new Set(current)
+      selectedNodes.forEach((selected) => next.add(selected.id))
+      return next
+    })
     setState({
       status: "ready",
       profiles: state.profiles.map((entry) =>
         entry.profile.id === node.profileId
-          ? { ...entry, latest: optimisticLatest, running: true, error: null }
+          ? { ...entry, running: true, error: null }
           : entry,
       ),
     })
@@ -1321,7 +1428,13 @@ export function HealthDashboardScreen({
           checkIds,
           runMode: mode,
           dispatchPath: [node.profileId, node.targetId || "local", node.id],
-          params: runParams,
+          params: {
+            ...profileParams(item.profile, overrides),
+            requestedNodeId: node.id,
+            requestedActionId: mode,
+            requestedAt,
+            clientRunScopeId: pendingScope.id,
+          },
         }),
       })
       const payload = (await response.json()) as {
@@ -1345,18 +1458,39 @@ export function HealthDashboardScreen({
                 )
                 const fullRun = checkIds.length === allProfileChecks.length
                 const prior = entry.latest
+                const incomingCheckIds = new Set(
+                  incoming.checks.map((check) => check.id),
+                )
+                const staleMissingChecks = prior
+                  ? checkIds
+                      .filter((checkId) => !incomingCheckIds.has(checkId))
+                      .map((checkId) =>
+                        prior.checks.find((check) => check.id === checkId),
+                      )
+                      .filter(
+                        (check): check is HealthCheckResult => check !== undefined,
+                      )
+                      .map((check) => markCheckResultStale(check, incoming.runId))
+                  : []
                 const mergedChecks =
                   fullRun || !prior
-                    ? incoming.checks
+                    ? [...incoming.checks, ...staleMissingChecks]
                     : [
                         ...incoming.checks,
+                        ...staleMissingChecks,
                         ...prior.checks.filter(
                           (check) => !checkIds.includes(check.id),
                         ),
                       ]
                 const mergedLatest: HealthRunResult =
                   fullRun || !prior
-                    ? incoming
+                    ? {
+                        ...incoming,
+                        checks: mergedChecks,
+                        status: resultStatus({
+                          checks: mergedChecks,
+                        } as HealthRunResult).toLowerCase() as HealthRunStatus,
+                      }
                     : {
                         ...prior,
                         checks: mergedChecks,
@@ -1390,9 +1524,12 @@ export function HealthDashboardScreen({
           : current,
       )
     } finally {
+      setPendingRunScopes((current) =>
+        current.filter((scope) => scope.id !== pendingScope.id),
+      )
       setRunningNodeIds((current) => {
         const next = new Set(current)
-        next.delete(node.id)
+        selectedNodes.forEach((selected) => next.delete(selected.id))
         return next
       })
     }
@@ -1426,7 +1563,9 @@ export function HealthDashboardScreen({
         statusOrder[resultStatus(right.latest)] ||
       left.profile.id.localeCompare(right.profile.id),
   )
-  const profileNodes = sortedProfiles.map(profileTreeNode)
+  const profileNodes = sortedProfiles.map((entry) =>
+    applyPendingRunScopes(profileTreeNode(entry), pendingRunScopes),
+  )
 
   return (
     <main
