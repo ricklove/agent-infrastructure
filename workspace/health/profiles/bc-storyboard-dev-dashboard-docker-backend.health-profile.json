@@ -1,13 +1,13 @@
 {
   "id": "bc_storyboard_dev_dashboard_docker_backend",
-  "title": "BaseConnect onboarding storyboard health — docker backend",
+  "title": "BaseConnect onboarding storyboard health \u2014 docker backend",
   "description": "Cold-start top-level health profile for the full DEV Storyboard + BaseConnect onboarding path with frontend runtime configured against the Docker/local backend stack. Reuses the shared Storyboard/dashboard cold-start health template while keeping the Docker backend branch independent from staging.",
   "runLocation": {
     "executor": "dashboard-health-api",
-    "workTarget": "agent-infra-dev/ddev-dashboard",
-    "host": "ddev worker dashboard surface",
-    "source": "dashboard server initiating delegated cross-surface probes",
-    "vantagePoint": "ddev worker dashboard API",
+    "workTarget": "manager-dashboard",
+    "host": "manager dashboard surface",
+    "source": "manager dashboard runtime",
+    "vantagePoint": "manager dashboard API",
     "providerType": "workflow-rollup-template"
   },
   "params": {
@@ -16,30 +16,31 @@
     "runTargetId": "baseconnect-frontend-web",
     "frontendUrl": "http://10.0.0.239:8085",
     "backendApiUrl": "http://10.0.0.239:8080",
-    "localDashboardUrl": "http://127.0.0.1:3300",
-    "publicDashboardUrl": "",
-    "viteUrl": "http://127.0.0.1:5173",
+    "localDashboardUrl": "",
+    "publicDashboardUrl": "{{requestOrigin}}",
+    "viteUrl": "",
     "expectedMinimumPassCount": "27",
     "bcFrontendQuickTunnelUrl": "",
     "bcFrontendQuickTunnelStateUrl": "",
-    "timeoutSeconds": "8"
+    "timeoutSeconds": "8",
+    "requireDdevDashboardRoutes": "false"
   },
   "checks": [
     {
       "id": "bc_storyboard_dev_dashboard_docker_backend_cold_start",
       "checkId": "storyboard_cold_start_dev_dashboard_backend",
       "title": "BaseConnect onboarding storyboard can recover from cold start",
-      "component": "bc-storyboard on dev dashboard with docker backend",
+      "component": "bc-storyboard on manager dashboard with docker backend",
       "runLocation": {
         "executor": "dashboard-health-api",
-        "workTarget": "agent-infra-dev/ddev-dashboard",
-        "host": "ddev worker dashboard surface",
-        "source": "dashboard server initiated workflow health",
-        "vantagePoint": "ddev worker dashboard API -> Docker/backend parent",
+        "workTarget": "manager-dashboard",
+        "host": "manager dashboard surface",
+        "source": "manager dashboard initiated workflow health",
+        "vantagePoint": "manager dashboard API",
         "providerType": "workflow-rollup-template"
       },
       "severity": "blocking",
-      "repairHint": "Repair the failing child owner shown in the tree: bc-frontend should start the Docker web app/backend surfaces without falling back to staging; bc-storyboard should restore the storyboard source/check-all endpoint; ddev-storyboard should restore the Health Dashboard or storyboard editor route. Current resolved URLs belong in row details/evidence only; no fake repair button is exposed here.",
+      "repairHint": "Repair the failing child owner shown in the tree: bc-frontend should start the Docker web app/backend surfaces without falling back to staging; bc-storyboard should restore the storyboard source/check-all endpoint; manager-dashboard should serve the Health Dashboard and Storyboard editor routes; ddev-storyboard is not required for this check to pass. Current resolved URLs belong in row details/evidence only; no fake repair button is exposed here.",
       "params": {
         "backendMode": "{{backendMode}}",
         "storyboardUrl": "{{storyboardUrl}}",
@@ -52,7 +53,8 @@
         "expectedMinimumPassCount": "{{expectedMinimumPassCount}}",
         "bcFrontendQuickTunnelUrl": "{{bcFrontendQuickTunnelUrl}}",
         "bcFrontendQuickTunnelStateUrl": "{{bcFrontendQuickTunnelStateUrl}}",
-        "timeoutSeconds": "{{timeoutSeconds}}"
+        "timeoutSeconds": "{{timeoutSeconds}}",
+        "requireDdevDashboardRoutes": "{{requireDdevDashboardRoutes}}"
       }
     }
   ]

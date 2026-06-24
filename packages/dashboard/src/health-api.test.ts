@@ -154,6 +154,21 @@ describe("dashboard health API", () => {
     expect(stagingCheck?.children.map((child) => child.title)).toContain(
       "Public BC web app tunnel is available",
     )
+    expect(
+      stagingCheck?.evidence.providerRows.some(
+        (row) => row.key === "ddev-dashboard-gateway-200",
+      ),
+    ).toBe(false)
+    expect(
+      stagingCheck?.evidence.providerRows.some(
+        (row) => row.key === "ddev-dashboard-vite-200",
+      ),
+    ).toBe(false)
+    expect(
+      stagingCheck?.evidence.providerRows.some(
+        (row) => row.key === "dashboard-public-health-route-200",
+      ),
+    ).toBe(true)
     const quickTunnelRows = stagingCheck?.evidence.providerRows.filter(
       (row) => row.group === "bc-frontend web app quick tunnel",
     )
@@ -233,9 +248,8 @@ describe("dashboard health API", () => {
           targetId: "local",
           params: {
             appPath: `${repoRoot}/apps/dashboard-app`,
-            localDevUrl: "http://127.0.0.1:1/storyboard/debug/",
-            liveDevUrl: "http://127.0.0.1:1/storyboard/debug/",
-            liveDevMustContain: "@vite/client",
+            managerDashboardUrl: "http://127.0.0.1:1",
+            liveDevMustContain: "Agent Dashboard",
           },
         }),
       }),
@@ -259,7 +273,7 @@ describe("dashboard health API", () => {
     expect(payload.result.checks.length).toBeGreaterThan(0)
     expect(
       payload.result.checks.some(
-        (check) => check.id === "target_live_dev_surface_ok",
+        (check) => check.id === "manager_health_route_ok",
       ),
     ).toBe(true)
 
