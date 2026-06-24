@@ -66,7 +66,7 @@ export type HealthCheckStatus =
   | "UNSUPPORTED"
   | "RUNNING"
   | "INFO"
-export type HealthRunStatus = "pass" | "fail" | "unknown"
+export type HealthRunStatus = "pass" | "warn" | "fail" | "unknown"
 
 export type HealthNodeAction = {
   id: string
@@ -79,6 +79,7 @@ export type HealthNodeAction = {
   expectedEffect?: string
   rerunAfter?: string
   supported: boolean
+  unavailableReason?: string
 }
 
 export type HealthTargetMetadata = {
@@ -170,6 +171,7 @@ export type HealthRunResult = {
   finishedAt: string
   status: HealthRunStatus
   checks: HealthCheckResult[]
+  root?: HealthCheckNodeResult
 }
 
 export type HealthDashboardPayload = {

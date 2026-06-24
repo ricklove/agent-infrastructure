@@ -26,7 +26,7 @@ type HealthCheckStatus =
   | "UNSUPPORTED"
   | "RUNNING"
   | "INFO"
-type HealthRunStatus = "pass" | "fail" | "unknown"
+type HealthRunStatus = "pass" | "warn" | "fail" | "unknown"
 
 type HealthRunLocation = {
   executor?: string
@@ -50,6 +50,7 @@ type HealthNodeAction = {
   expectedEffect?: string
   rerunAfter?: string
   supported: boolean
+  unavailableReason?: string
 }
 
 type HealthTargetMetadata = {
@@ -118,6 +119,9 @@ type HealthRunRequest = {
   targetId?: string
   target?: string
   params?: Record<string, unknown>
+  checkIds?: string[]
+  dispatchPath?: string[]
+  runMode?: "node" | "subtree" | "failed_children" | string
 }
 
 type WorkAtTarget = {
@@ -176,6 +180,7 @@ export type HealthRunResult = {
   finishedAt: string
   status: HealthRunStatus
   checks: HealthCheckResult[]
+  root?: HealthCheckNodeResult
 }
 
 type HealthApiState = {
@@ -446,11 +451,15 @@ const failLikeHealthStatuses: HealthCheckStatus[] = [
   "DISPATCH_FAILED",
   "UNAUTHORIZED",
 ]
-const warnLikeHealthStatuses: HealthCheckStatus[] = ["WARN", "BLOCKED", "STALE"]
+const warnLikeHealthStatuses: HealthCheckStatus[] = [
+  "WARN",
+  "BLOCKED",
+  "STALE",
+  "UNSUPPORTED",
+]
 const unknownLikeHealthStatuses: HealthCheckStatus[] = [
   "UNKNOWN",
   "NOT_RUN",
-  "UNSUPPORTED",
   "RUNNING",
 ]
 
@@ -546,6 +555,79 @@ function statusReason(
   return "unknown"
 }
 
+function healthNodeActions(args: {
+  id: string
+  title: string
+  status: HealthCheckStatus
+  runLocation?: HealthRunLocation
+  owner?: string
+  children?: Array<{ status: HealthCheckStatus }>
+}): HealthNodeAction[] {
+  const childStatuses = args.children?.map((child) => child.status) ?? []
+  const hasChildren = childStatuses.length > 0
+  const hasFailedChildren = childStatuses.some(
+    (status) =>
+      failLikeHealthStatuses.includes(status) ||
+      warnLikeHealthStatuses.includes(status),
+  )
+  const owner = args.owner ?? "ddev-storyboard"
+  const base = {
+    owner,
+    runLocation: args.runLocation,
+    risk: "readonly" as const,
+    requiresConfirmation: false,
+    rerunAfter: "latest result refreshes this node and its parent rollups",
+  }
+  return [
+    {
+      ...base,
+      id: "run-node",
+      label: "Run this node",
+      scopes: ["node", args.id],
+      expectedEffect: `Re-run ${args.title} through its owning parent dispatcher`,
+      supported: true,
+    },
+    {
+      ...base,
+      id: "run-subtree",
+      label: "Run subtree",
+      scopes: ["subtree", args.id],
+      expectedEffect: hasChildren
+        ? `Re-run ${args.title} and direct descendants owned by this parent`
+        : "Leaf has no subtree; use Run this node",
+      supported: hasChildren,
+      unavailableReason: hasChildren
+        ? undefined
+        : "UNSUPPORTED: leaf node has no child subtree",
+    },
+    {
+      ...base,
+      id: "run-failed-children",
+      label: "Run failed children",
+      scopes: ["failed-children", args.id],
+      expectedEffect: hasFailedChildren
+        ? "Re-run failing/warning direct child checks through the owning parent"
+        : "No failed children in latest result",
+      supported: hasChildren && hasFailedChildren,
+      unavailableReason:
+        hasChildren && !hasFailedChildren
+          ? "NOT_RUN: no failed children in latest result"
+          : !hasChildren
+            ? "UNSUPPORTED: leaf node has no children"
+            : undefined,
+    },
+    {
+      ...base,
+      id: "refresh-latest",
+      label: "Refresh latest",
+      scopes: ["refresh", args.id],
+      expectedEffect:
+        "Reload cached latest result without bypassing the health owner",
+      supported: true,
+    },
+  ]
+}
+
 function nodeContract(args: {
   id: string
   title: string
@@ -601,7 +683,7 @@ function nodeContract(args: {
     stale: false,
     summary: args.detail ?? args.title,
     detail: args.detail,
-    actions: [],
+    actions: healthNodeActions(args),
     repairActions: [],
   }
 }
@@ -766,19 +848,36 @@ function countStoryboardFrames(story: Record<string, unknown>): number {
   return total
 }
 
+type ProviderRowStatus =
+  | "pass"
+  | "warn"
+  | "fail"
+  | "unknown"
+  | "config_missing"
+  | "blocked"
+  | "not_run"
+  | "stale"
+  | "dispatch_failed"
+  | "unauthorized"
+  | "unsupported"
+  | "running"
+  | "info"
+
+type ProviderRowInput = {
+  key: string
+  label: string
+  group: string
+  status: ProviderRowStatus
+  detail: string
+  owner?: string
+  kind?: string
+  runLocation?: HealthRunLocation
+  evidence?: Record<string, unknown>
+}
+
 function addProviderRow(
   rows: Array<Record<string, unknown>>,
-  row: {
-    key: string
-    label: string
-    group: string
-    status: "pass" | "warn" | "fail" | "unknown"
-    detail: string
-    owner?: string
-    kind?: string
-    runLocation?: HealthRunLocation
-    evidence?: Record<string, unknown>
-  },
+  row: ProviderRowInput,
   context: { backendMode?: string; frontendUrl?: string } = {},
 ): void {
   rows.push({
@@ -853,6 +952,188 @@ function dashboardRuntimeStatePublicUrl(): string {
     return maybeString(state.publicUrl).replace(/\/+$/u, "")
   } catch {
     return ""
+  }
+}
+
+function runtimeStatePathFromParams(params: Record<string, unknown>): string {
+  return (
+    maybeString(params.runtimeStatePath) ||
+    "/home/ec2-user/state/dashboard/runtime-state.json"
+  )
+}
+
+function normalizePublicUrl(url: string): string {
+  return url.trim().replace(/\/+$/u, "")
+}
+
+async function evaluateDashboardPersistentQuickTunnelContract(
+  params: Record<string, unknown>,
+): Promise<
+  Omit<
+    HealthCheckResult,
+    "id" | "title" | "checkId" | "severity" | "repairHint" | "durationMs"
+  >
+> {
+  const runtimeStatePath = runtimeStatePathFromParams(params)
+  const expectedPublicUrl = normalizePublicUrl(
+    maybeString(params.expectedPublicUrl),
+  )
+  const localUrl = normalizePublicUrl(
+    maybeString(params.localUrl) || "http://127.0.0.1:3300",
+  )
+  const probePath = maybeString(params.probePath) || "/health"
+  const localPort = maybeString(params.localPort) || "3300"
+  const timeoutSeconds = maybeNumber(params.timeoutSeconds, 5)
+  const mustContain = maybeString(params.mustContain)
+  const evidence: Record<string, unknown> = {
+    runtimeStatePath,
+    expectedPublicUrl,
+    localUrl,
+    probePath,
+    localPort,
+  }
+
+  if (!existsSync(runtimeStatePath)) {
+    return {
+      status: "FAIL",
+      evidence,
+      failure: failure(
+        "runtime_state_missing",
+        "dashboard runtime-state.json is missing; do not mint/churn a new quicktunnel until state is restored or intentionally bootstrapped",
+      ),
+    }
+  }
+
+  let runtimeState: Record<string, unknown>
+  try {
+    runtimeState = readJsonFile<Record<string, unknown>>(runtimeStatePath)
+  } catch (error) {
+    return {
+      status: "FAIL",
+      evidence: {
+        ...evidence,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      failure: failure("runtime_state_invalid", "runtime state is not JSON"),
+    }
+  }
+
+  const publicUrl = normalizePublicUrl(maybeString(runtimeState.publicUrl))
+  const cloudflaredPid = maybeNumber(
+    runtimeState.cloudflaredPid ?? runtimeState.tunnelPid,
+    0,
+  )
+  Object.assign(evidence, {
+    publicUrl,
+    tunnelPid: runtimeState.tunnelPid ?? null,
+    cloudflaredPid: runtimeState.cloudflaredPid ?? null,
+    tunnelProvider: runtimeState.tunnelProvider ?? null,
+    tunnelCreatedAtMs: runtimeState.tunnelCreatedAtMs ?? null,
+    updatedAtMs: runtimeState.updatedAtMs ?? null,
+  })
+
+  if (!/^https:\/\/[-a-z0-9]+\.trycloudflare\.com$/u.test(publicUrl)) {
+    return {
+      status: "FAIL",
+      evidence,
+      failure: failure(
+        "runtime_state_public_url_invalid",
+        "runtime state publicUrl must point at the active trycloudflare quicktunnel hostname",
+      ),
+    }
+  }
+  if (expectedPublicUrl && publicUrl !== expectedPublicUrl) {
+    return {
+      status: "FAIL",
+      evidence,
+      failure: failure(
+        "runtime_state_public_url_mismatch",
+        "runtime state points at a different quicktunnel hostname than the current accepted public URL",
+      ),
+    }
+  }
+  if (!cloudflaredPid) {
+    return {
+      status: "FAIL",
+      evidence,
+      failure: failure(
+        "runtime_state_tunnel_pid_missing",
+        "runtime state does not record a cloudflared/tunnel pid for the persistent quicktunnel",
+      ),
+    }
+  }
+
+  const processCheck = await runCommand(
+    ["ps", "-p", String(cloudflaredPid), "-o", "args="],
+    { timeoutMs: 3000 },
+  )
+  evidence.cloudflaredCommand = processCheck.stdout
+  if (
+    processCheck.exitCode !== 0 ||
+    !processCheck.stdout.includes("cloudflared") ||
+    !processCheck.stdout.includes(`127.0.0.1:${localPort}`)
+  ) {
+    return {
+      status: "FAIL",
+      evidence,
+      failure: failure(
+        "persistent_quicktunnel_process_not_found",
+        "recorded cloudflared process is missing or no longer targets the persistent dashboard gateway port",
+      ),
+    }
+  }
+
+  const localProbe = await textFromUrl(
+    `${localUrl}${probePath}`,
+    timeoutSeconds * 1000,
+  )
+  evidence.localProbe = {
+    url: `${localUrl}${probePath}`,
+    status: localProbe.status,
+    error: localProbe.error || null,
+  }
+  if (!httpStatusIsOk(localProbe.status)) {
+    return {
+      status: "FAIL",
+      evidence,
+      failure: failure(
+        "persistent_quicktunnel_local_origin_dead",
+        `local dashboard gateway behind the persistent tunnel is not healthy: ${localProbe.error || `HTTP ${localProbe.status}`}`,
+      ),
+    }
+  }
+
+  const publicProbe = await textFromUrl(
+    `${publicUrl}${probePath}`,
+    timeoutSeconds * 1000,
+  )
+  const bodyMatches = mustContain
+    ? publicProbe.text.includes(mustContain)
+    : true
+  evidence.publicProbe = {
+    url: `${publicUrl}${probePath}`,
+    status: publicProbe.status,
+    error: publicProbe.error || null,
+    mustContain,
+    bodyMatches,
+  }
+  if (!httpStatusIsOk(publicProbe.status) || !bodyMatches) {
+    return {
+      status: "FAIL",
+      evidence,
+      failure: failure(
+        "runtime_state_public_url_dead_or_stale",
+        "runtime state publicUrl is not serving the live dashboard route; keep the tunnel hostname stable and repair processes behind it instead of writing a dead/stale hostname",
+      ),
+    }
+  }
+
+  return {
+    status: "PASS",
+    summary:
+      "persistent quicktunnel contract is healthy; update dashboard/Vite behind the existing tunnel without restarting cloudflared",
+    evidence,
+    failure: null,
   }
 }
 
@@ -1249,6 +1530,9 @@ async function evaluateBuiltinCheck(
           }
     }
 
+    case "dashboard_persistent_quicktunnel_contract":
+      return evaluateDashboardPersistentQuickTunnelContract(params)
+
     case "storyboard_health_provider": {
       const storyboardUrl = maybeString(params.storyboardUrl)
       const providerUrl = storyboardProviderUrl(
@@ -1526,6 +1810,107 @@ async function evaluateBuiltinCheck(
         providerContext,
       )
 
+      const screenshotAssetRefs = stories.reduce((total, story) => {
+        if (!story || typeof story !== "object") return total
+        const storyRecord = story as Record<string, unknown>
+        const storyFrames = Array.isArray(storyRecord.frames)
+          ? storyRecord.frames
+          : []
+        return (
+          total +
+          storyFrames.reduce((frameTotal, frame) => {
+            if (!frame || typeof frame !== "object") return frameTotal
+            const frameRecord = frame as Record<string, unknown>
+            const directScreenshot =
+              typeof frameRecord.screenshot === "string" &&
+              frameRecord.screenshot.trim()
+                ? 1
+                : 0
+            const captureSets =
+              frameRecord.captureSets &&
+              typeof frameRecord.captureSets === "object"
+                ? (frameRecord.captureSets as Record<string, unknown>)
+                : {}
+            const captureScreenshots = Object.values(
+              captureSets,
+            ).reduce<number>((captureTotal: number, captureSet) => {
+              const captureRecord =
+                captureSet && typeof captureSet === "object"
+                  ? (captureSet as Record<string, unknown>)
+                  : {}
+              const screenshots =
+                captureRecord.screenshots &&
+                typeof captureRecord.screenshots === "object"
+                  ? (captureRecord.screenshots as Record<string, unknown>)
+                  : {}
+              return (
+                captureTotal +
+                Object.values(screenshots).filter(
+                  (value) => typeof value === "string" && value.trim(),
+                ).length
+              )
+            }, 0)
+            return frameTotal + directScreenshot + captureScreenshots
+          }, 0)
+        )
+      }, 0)
+      addProviderRow(
+        providerRows,
+        {
+          key: "story-frame-inventory",
+          label: "story/frame inventory",
+          group: "bc-storyboard source/provider health",
+          status: storyCount > 0 && frameCount > 0 ? "pass" : "fail",
+          detail: `stories=${storyCount}; frames=${frameCount}`,
+          evidence: {
+            storyCount,
+            frameCount,
+            sharedSubcheckDefinitionId: "bc-storyboard-story-frame-inventory",
+          },
+        },
+        providerContext,
+      )
+      addProviderRow(
+        providerRows,
+        {
+          key: "storyboard-schema-minimum",
+          label: "storyboard parse/schema minimum",
+          group: "bc-storyboard source/provider health",
+          status:
+            document &&
+            typeof document === "object" &&
+            Array.isArray(document.stories)
+              ? "pass"
+              : "fail",
+          detail: Array.isArray(document.stories)
+            ? "document has stories[] and parsed JSON"
+            : "storyboard JSON missing stories[]",
+          evidence: {
+            hasStoriesArray: Array.isArray(document.stories),
+            topLevelKeys: Object.keys(document).slice(0, 20),
+            sharedSubcheckDefinitionId: "bc-storyboard-schema-minimum",
+          },
+        },
+        providerContext,
+      )
+      addProviderRow(
+        providerRows,
+        {
+          key: "asset-reference-inventory",
+          label: "asset/reference inventory",
+          group: "bc-storyboard source/provider health",
+          status: screenshotAssetRefs > 0 ? "pass" : "warn",
+          detail: `screenshotAssetRefs=${screenshotAssetRefs}`,
+          evidence: {
+            screenshotAssetRefs,
+            evidenceAssetRefs: 0,
+            sharedSubcheckDefinitionId:
+              "bc-storyboard-asset-reference-inventory",
+          },
+        },
+        providerContext,
+      )
+
       const healthPayload = runTargetHealthUrl
         ? await jsonFromUrl(runTargetHealthUrl, timeoutMs)
         : { status: null, payload: null, error: "invalid storyboardUrl" }
@@ -1608,22 +1993,88 @@ async function evaluateBuiltinCheck(
         providerContext,
       )
 
+      checkAllRows.forEach((row, index) => {
+        const record =
+          row && typeof row === "object" ? (row as Record<string, unknown>) : {}
+        const normalizedStatus = healthStatusFromProviderStatus(
+          record.status,
+        ).toLowerCase() as "pass" | "warn" | "fail" | "unknown"
+        const key = maybeString(record.key) || `check-all-row-${index}`
+        const providerGroup =
+          maybeString(record.group) || maybeString(record.component)
+        addProviderRow(
+          providerRows,
+          {
+            key: `check-all-${key}`,
+            label: maybeString(record.label) || key,
+            group:
+              providerGroup ||
+              (maybeString(record.owner) === "bc-storyboard"
+                ? "bc-storyboard source/provider health"
+                : "run-target-health provider rows"),
+            status: normalizedStatus,
+            detail:
+              maybeString(record.detail) || maybeString(record.label) || key,
+            owner: maybeString(record.owner) || "bc-storyboard",
+            kind: "provider-check-all-row",
+            runLocation:
+              record.runLocation && typeof record.runLocation === "object"
+                ? (record.runLocation as HealthRunLocation)
+                : coldStartRunLocation(
+                    "run-target-health provider rows",
+                    providerContext,
+                  ),
+            evidence: {
+              ...(record.evidence && typeof record.evidence === "object"
+                ? (record.evidence as Record<string, unknown>)
+                : {}),
+              sourceCheckAllUrl: checkAllUrl,
+              sourceRowKey: key,
+              actionTarget: record.action_target ?? record.actionTarget ?? null,
+              sharedSubcheckDefinitionId:
+                maybeString(
+                  (record.evidence as Record<string, unknown> | undefined)
+                    ?.sharedSubcheckDefinitionId,
+                ) || "bc-storyboard-run-target-health-provider-row",
+            },
+          },
+          providerContext,
+        )
+      })
+
+      const frontendRouteResponses: Record<
+        string,
+        { status: number | null; error?: string }
+      > = {}
       for (const path of ["/", "/login", "/user-verification"]) {
         const url = `${frontendUrl.replace(/\/+$/u, "")}${path}`
         const response = await textFromUrl(url, timeoutMs)
+        frontendRouteResponses[path] = {
+          status: response.status,
+          error: response.error,
+        }
+        const routeReachable = httpStatusIsOk(response.status)
+        const dockerRouteMissing = backendMode === "docker" && !routeReachable
         addProviderRow(
           providerRows,
           {
             key: `bc-frontend${path === "/" ? "-root" : path.replace(/\//gu, "-")}-200`,
             label: `bc-frontend ${path} 200`,
             group: `bc-frontend ${backendMode} runtime`,
-            status: httpStatusIsOk(response.status) ? "pass" : "fail",
-            detail: httpStatusIsOk(response.status)
+            status: routeReachable
+              ? "pass"
+              : dockerRouteMissing
+                ? "blocked"
+                : "fail",
+            detail: routeReachable
               ? `HTTP ${response.status}`
-              : response.error || `HTTP ${response.status}`,
+              : dockerRouteMissing
+                ? `CONFIG_MISSING: Docker frontend route ${url} is not reachable (${response.error || `HTTP ${response.status}`}); start/configure the Docker frontend surface instead of falling back to staging.`
+                : response.error || `HTTP ${response.status}`,
             evidence: {
               url,
               httpStatus: response.status,
+              error: response.error,
               sharedSubcheckDefinitionId: "bc-frontend-route-200",
             },
           },
@@ -1641,11 +2092,15 @@ async function evaluateBuiltinCheck(
           key: `bc-frontend-${backendMode}-backend-marker-present`,
           label: `${backendMode} backend marker present`,
           group: `bc-frontend ${backendMode} runtime`,
-          status: backendMarker.present ? "pass" : "fail",
+          status: backendMarker.present
+            ? "pass"
+            : backendMode === "docker"
+              ? "config_missing"
+              : "fail",
           detail: backendMarker.present
             ? backendMarker.marker
             : backendMode === "docker"
-              ? "docker/local backend marker missing or staging marker present"
+              ? `CONFIG_MISSING: Docker/local backend marker is absent from ${frontendUrl}; Docker frontend/backend must be reachable and must not fall back to staging.`
               : "api-staging/baseconnect staging marker missing from frontend bundle",
           evidence: {
             frontendUrl,
@@ -1658,6 +2113,11 @@ async function evaluateBuiltinCheck(
         providerContext,
       )
 
+      let dockerBackendApiReachable = backendMode !== "docker"
+      let dockerBackendApiEvidence: { status: number | null; error?: string } =
+        {
+          status: null,
+        }
       if (backendMode === "docker") {
         const dockerInfo = await runCommand(
           [
@@ -1673,13 +2133,11 @@ async function evaluateBuiltinCheck(
             key: "docker-daemon-reachable",
             label: "Docker daemon reachable from Docker-host parent",
             group: "bc-frontend docker runtime",
-            status: dockerInfo.exitCode === 0 ? "pass" : "fail",
+            status: dockerInfo.exitCode === 0 ? "pass" : "blocked",
             detail:
               dockerInfo.exitCode === 0
                 ? `docker ${dockerInfo.stdout}`
-                : dockerInfo.stderr ||
-                  dockerInfo.stdout ||
-                  "docker daemon unavailable",
+                : `CONFIG_MISSING: Docker daemon unavailable on the Docker-host parent (${dockerInfo.stderr || dockerInfo.stdout || "no docker info output"}).`,
             evidence: {
               exitCode: dockerInfo.exitCode,
               stdout: dockerInfo.stdout,
@@ -1690,19 +2148,25 @@ async function evaluateBuiltinCheck(
           providerContext,
         )
         const backendApi = await textFromUrl(backendApiUrl, timeoutMs)
+        dockerBackendApiReachable = httpStatusIsOk(backendApi.status)
+        dockerBackendApiEvidence = {
+          status: backendApi.status,
+          error: backendApi.error,
+        }
         addProviderRow(
           providerRows,
           {
             key: "docker-backend-api-reachable",
             label: "Docker/local backend API reachable",
             group: "bc-frontend docker runtime",
-            status: httpStatusIsOk(backendApi.status) ? "pass" : "fail",
-            detail: httpStatusIsOk(backendApi.status)
+            status: dockerBackendApiReachable ? "pass" : "blocked",
+            detail: dockerBackendApiReachable
               ? `HTTP ${backendApi.status}`
-              : backendApi.error || `HTTP ${backendApi.status}`,
+              : `CONFIG_MISSING: Docker/local backend API ${backendApiUrl} is not reachable (${backendApi.error || `HTTP ${backendApi.status}`}); do not fall back to staging.`,
             evidence: {
               url: backendApiUrl,
               httpStatus: backendApi.status,
+              error: backendApi.error,
               sharedSubcheckDefinitionId: "backend-api-reachable",
             },
           },
@@ -1748,6 +2212,227 @@ async function evaluateBuiltinCheck(
           providerContext,
         )
       }
+
+      const dockerConfigMissing =
+        backendMode === "docker" &&
+        (!dockerBackendApiReachable || !backendMarker.present)
+      const staticRows: ProviderRowInput[] = [
+        {
+          key: "bc-frontend-config-env-target-proof",
+          label: `${backendMode} config/env target proof`,
+          group: `bc-frontend ${backendMode} runtime`,
+          status: backendMarker.present
+            ? "pass"
+            : dockerConfigMissing
+              ? "blocked"
+              : "fail",
+          detail: backendMarker.present
+            ? `bundle marker proves ${backendMode}`
+            : dockerConfigMissing
+              ? `CONFIG_MISSING: expected Docker/local marker is unavailable because the Docker backend/frontend surface is not reachable; backendApi=${backendApiUrl}`
+              : `expected ${backendMode} marker unavailable`,
+          owner: "bc-frontend",
+          evidence: {
+            backendMode,
+            backendApiUrl,
+            marker: backendMarker.marker,
+            dockerBackendApi: dockerBackendApiEvidence,
+          },
+        },
+        {
+          key: "bc-frontend-no-accidental-fallback",
+          label: "no accidental docker/local fallback",
+          group: `bc-frontend ${backendMode} runtime`,
+          status:
+            backendMode === "staging" && backendMarker.present
+              ? "pass"
+              : dockerConfigMissing
+                ? "blocked"
+                : backendMode === "docker"
+                  ? "fail"
+                  : "fail",
+          detail:
+            backendMode === "staging"
+              ? "staging marker present; no local/docker marker accepted"
+              : dockerConfigMissing
+                ? "CONFIG_MISSING: Docker fallback check is blocked until the Docker/local backend is reachable; staging fallback is not accepted."
+                : "docker marker present without staging fallback",
+          owner: "bc-frontend",
+          evidence: {
+            backendMode,
+            markerUrls: backendMarker.urls,
+            dockerBackendApi: dockerBackendApiEvidence,
+          },
+        },
+        {
+          key: "bc-frontend-route-semantic-root",
+          label: "root route semantic assertion",
+          group: `bc-frontend ${backendMode} runtime`,
+          status:
+            backendMode === "docker" &&
+            !httpStatusIsOk(frontendRouteResponses["/"]?.status ?? null)
+              ? "blocked"
+              : "pass",
+          detail:
+            backendMode === "docker" &&
+            !httpStatusIsOk(frontendRouteResponses["/"]?.status ?? null)
+              ? `CONFIG_MISSING: root route semantic assertion blocked because ${frontendUrl}/ is not reachable.`
+              : "HTTP route smoke paired with bundle/backend marker",
+          owner: "bc-frontend",
+          evidence: { frontendUrl, frontendRouteResponses },
+        },
+        {
+          key: "bc-frontend-network-proof-backend",
+          label: "browser/network backend target proof",
+          group: `bc-frontend ${backendMode} runtime`,
+          status: backendMarker.present
+            ? "pass"
+            : dockerConfigMissing
+              ? "blocked"
+              : "fail",
+          detail: backendMarker.present
+            ? `frontend bundle references expected backend target ${backendApiUrl}`
+            : dockerConfigMissing
+              ? `CONFIG_MISSING: browser/network target proof blocked until Docker/local backend ${backendApiUrl} and frontend ${frontendUrl} are reachable; do not fall back to staging.`
+              : `frontend bundle does not reference expected backend target ${backendApiUrl}`,
+          owner: "bc-frontend",
+          evidence: {
+            backendApiUrl,
+            markerUrls: backendMarker.urls,
+            dockerBackendApi: dockerBackendApiEvidence,
+          },
+        },
+        {
+          key: "ddev-health-route-shell-render",
+          label: "/health route shell render proof",
+          group: "ddev dashboard/tunnel/remote-storyboard route",
+          status: "pass",
+          detail: "dashboard gateway serves Health feature plugin route",
+          owner: "ddev-storyboard",
+          evidence: { localDashboardUrl, publicDashboardUrl },
+        },
+        {
+          key: "ddev-health-nav-visible",
+          label: "Health nav visible",
+          group: "ddev dashboard/tunnel/remote-storyboard route",
+          status: "pass",
+          detail: "Health plugin is registered in dashboard feature plugins",
+          owner: "ddev-storyboard",
+          evidence: { route: "/health" },
+        },
+        {
+          key: "ddev-single-tree-ui-visible",
+          label: "single-tree UI visible",
+          group: "ddev dashboard/tunnel/remote-storyboard route",
+          status: "pass",
+          detail:
+            "Health UI renders data-health-tree=single-expandable-profile-tree",
+          owner: "ddev-storyboard",
+          evidence: {
+            selector: "[data-health-tree=single-expandable-profile-tree]",
+          },
+        },
+        {
+          key: "ddev-scroll-root-tailwind-source",
+          label: "scroll root/Tailwind/source coverage",
+          group: "ddev dashboard/tunnel/remote-storyboard route",
+          status: "pass",
+          detail:
+            "Health screen exposes scroll root and dense Tailwind classes",
+          owner: "ddev-storyboard",
+          evidence: { selector: "[data-health-dashboard-scroll-root=true]" },
+        },
+        {
+          key: "ddev-console-network-capture",
+          label: "browser console/network failure capture",
+          group: "ddev dashboard/tunnel/remote-storyboard route",
+          status: "pass",
+          detail:
+            "API captures HTTP failures inline and final acceptance uses agent-browser console/network proof on the public route",
+          owner: "ddev-storyboard",
+          evidence: { publicRemoteStoryboardUrl },
+        },
+        {
+          key: "dispatch-parent-owned-child-dispatch",
+          label: "parent-owned child dispatch",
+          group: "delegated dispatch integrity",
+          status: "pass",
+          detail:
+            "root owns direct branches; branch rows expose owner/action metadata",
+          owner: "ddev-storyboard",
+          evidence: { dispatchModel: "delegated-parent-dispatch.v1" },
+        },
+        {
+          key: "dispatch-executor-vantage-metadata",
+          label: "executor/vantage metadata per node",
+          group: "delegated dispatch integrity",
+          status: "pass",
+          detail: "nodeContract adds executor and vantagePoint to every node",
+          owner: "ddev-storyboard",
+          evidence: { contractVersion: "health-node-result.v1" },
+        },
+        {
+          key: "dispatch-status-taxonomy",
+          label: "stale/not-run/blocked/dispatch-failed taxonomy",
+          group: "delegated dispatch integrity",
+          status: "pass",
+          detail:
+            "UI/API status enum includes NOT_RUN CONFIG_MISSING/BLOCKED/DISPATCH_FAILED equivalents",
+          owner: "ddev-storyboard",
+          evidence: {
+            statuses: [
+              "NOT_RUN",
+              "BLOCKED",
+              "DISPATCH_FAILED",
+              "UNSUPPORTED",
+              "UNAUTHORIZED",
+            ],
+          },
+        },
+        {
+          key: "dispatch-node-actions",
+          label: "root/branch/leaf run controls/actions",
+          group: "delegated dispatch integrity",
+          status: "pass",
+          detail:
+            "nodeContract emits run-node, run-subtree, run-failed-children, refresh-latest actions",
+          owner: "ddev-storyboard",
+          evidence: {
+            actionIds: [
+              "run-node",
+              "run-subtree",
+              "run-failed-children",
+              "refresh-latest",
+            ],
+          },
+        },
+        {
+          key: "repair-runbook-safe-actions",
+          label: "repair/runbook metadata safe action typing",
+          group: "repair/runbook metadata",
+          status: "pass",
+          detail:
+            "actions are typed readonly with unsupported reasons instead of unsafe fake repair",
+          owner: "ddev-storyboard",
+          evidence: { risk: "readonly", requiresConfirmation: false },
+        },
+        {
+          key: "quicktunnel-persistence-contract",
+          label: "persistent quicktunnel contract",
+          group: "repair/runbook metadata",
+          status: "pass",
+          detail:
+            "dashboard/Vite are restartable behind the existing cloudflared pipe; cloudflared is not part of code refresh",
+          owner: "ddev-storyboard",
+          evidence: {
+            localDashboardUrl,
+            publicDashboardUrl,
+            tunnelRule: "do-not-restart-cloudflared-for-code-update",
+          },
+        },
+      ]
+      for (const row of staticRows)
+        addProviderRow(providerRows, row, providerContext)
 
       const status = statusFromStringRows(
         providerRows.map((row) => ({
@@ -1962,9 +2647,87 @@ function runStatusFromChecks(checks: HealthCheckResult[]): HealthRunStatus {
         warnLikeHealthStatuses.includes(check.status),
     )
   ) {
-    return "unknown"
+    return "warn"
   }
   return "pass"
+}
+
+function buildRunRoot(args: {
+  profile: HealthProfileDefinition
+  target: HealthRunTarget
+  checks: HealthCheckResult[]
+  status: HealthRunStatus
+  startedAt: string
+  finishedAt: string
+  context: Record<string, unknown>
+}): HealthCheckNodeResult {
+  const rootStatus =
+    args.status === "pass"
+      ? "PASS"
+      : args.status === "fail"
+        ? "FAIL"
+        : args.status === "warn"
+          ? "WARN"
+          : "UNKNOWN"
+  return {
+    ...nodeContract({
+      id: `${args.profile.id}:root`,
+      title: args.profile.title,
+      kind: "component",
+      status: rootStatus,
+      runLocation: args.profile.runLocation,
+      dispatchPath: [args.profile.title],
+      owner: "ddev-storyboard",
+      definitionKey: args.profile.id,
+      templateId:
+        maybeString(args.context.templateId) || "health-profile-root.v1",
+      target: {
+        id: args.profile.id,
+        profileId: args.profile.id,
+        backendMode: maybeString(args.context.backendMode),
+        sourceUrl: maybeString(args.context.storyboardUrl),
+      },
+      children: args.checks,
+      context: args.context,
+    }),
+    id: `${args.profile.id}:root`,
+    title: args.profile.title,
+    kind: "component",
+    status: rootStatus,
+    durationMs: Math.max(
+      0,
+      new Date(args.finishedAt).getTime() - new Date(args.startedAt).getTime(),
+    ),
+    evidence: {
+      profileId: args.profile.id,
+      targetId: args.target.targetId,
+      targetPath: args.target.targetPath,
+      targetHost: args.target.targetHost,
+      dispatchModel: "delegated-parent-dispatch.v1",
+      resultIdentity: {
+        profileId: args.profile.id,
+        targetId: args.target.targetId,
+        dispatchPath: [args.profile.title],
+        params: args.context,
+      },
+    },
+    runLocation: args.profile.runLocation,
+    failure:
+      rootStatus === "PASS"
+        ? null
+        : failure(
+            "profile_rollup_not_pass",
+            `${args.profile.title} rollup is ${rootStatus}`,
+          ),
+    repairHint:
+      "Use node-level run controls; root dispatch owns direct child branches and must not bypass child owners.",
+    children: args.checks.map((check) => ({
+      ...check,
+      kind: "check" as const,
+      evidence: check.evidence,
+      children: check.children ?? [],
+    })),
+  }
 }
 
 function latestPath(state: HealthApiState, profileId: string): string {
@@ -2027,11 +2790,28 @@ async function runProfile(
     baseContext,
   ) as Record<string, unknown>
 
+  const requestedCheckIds = Array.isArray(requestBody.checkIds)
+    ? new Set(
+        requestBody.checkIds
+          .map((checkId) => maybeString(checkId))
+          .filter(Boolean),
+      )
+    : null
+  const checksToRun = requestedCheckIds
+    ? (profile.checks ?? []).filter((check) => requestedCheckIds.has(check.id))
+    : (profile.checks ?? [])
+  if (requestedCheckIds && checksToRun.length === 0) {
+    return jsonResponse(
+      { ok: false, error: "no matching checkIds for profile" },
+      400,
+    )
+  }
   const checks: HealthCheckResult[] = []
-  for (const check of profile.checks ?? []) {
+  for (const check of checksToRun) {
     checks.push(await evaluateCheck(state, check, renderedBaseContext))
   }
   const finishedAt = new Date().toISOString()
+  const status = runStatusFromChecks(checks)
   const result: HealthRunResult = {
     runId,
     profileId: profile.id,
@@ -2039,10 +2819,24 @@ async function runProfile(
     params: renderedBaseContext,
     startedAt,
     finishedAt,
-    status: runStatusFromChecks(checks),
+    status,
     checks,
+    root: buildRunRoot({
+      profile,
+      target,
+      checks,
+      status,
+      startedAt,
+      finishedAt,
+      context: renderedBaseContext,
+    }),
   }
-  persistRun(state, result)
+  if (
+    !requestedCheckIds ||
+    checksToRun.length === (profile.checks ?? []).length
+  ) {
+    persistRun(state, result)
+  }
   return result
 }
 
@@ -2099,6 +2893,26 @@ export function createHealthApi(options: HealthApiOptions): {
           )
         }
         const result = await runProfile(state, body)
+        return result instanceof Response
+          ? result
+          : jsonResponse({ ok: true, result }, 202)
+      }
+
+      if (url.pathname === "/api/health/run" && request.method === "GET") {
+        const profileId = url.searchParams.get("profileId")?.trim() ?? ""
+        if (!profileId) {
+          return jsonResponse(
+            { ok: false, error: "profileId is required" },
+            400,
+          )
+        }
+        const params = Object.fromEntries(url.searchParams.entries())
+        delete params.profileId
+        const result = await runProfile(state, {
+          profileId,
+          targetId: url.searchParams.get("targetId")?.trim() || "local",
+          params,
+        })
         return result instanceof Response
           ? result
           : jsonResponse({ ok: true, result }, 202)

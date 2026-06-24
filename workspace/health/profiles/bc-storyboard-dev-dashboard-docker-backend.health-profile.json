@@ -17,7 +17,7 @@
     "frontendUrl": "http://10.0.0.239:8085",
     "backendApiUrl": "http://10.0.0.239:8080",
     "localDashboardUrl": "http://127.0.0.1:3300",
-    "publicDashboardUrl": "",
+    "publicDashboardUrl": "https://ecommerce-followed-sandwich-heroes.trycloudflare.com",
     "viteUrl": "http://127.0.0.1:5173",
     "expectedMinimumPassCount": "27",
     "timeoutSeconds": "8"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import type {
   HealthCheckNodeResult,
   HealthCheckResult,
@@ -6,6 +6,7 @@ import type {
   HealthProfileSummary,
   HealthRunResult,
   HealthRunStatus,
+  HealthNodeAction,
 } from "./types.js"
 
 type HealthDashboardScreenProps = {
@@ -135,6 +136,7 @@ function statusClassName(status: keyof typeof statusGlyph) {
 function runStatusClassName(status: HealthRunStatus | "none") {
   if (status === "pass")
     return "border-emerald-200 bg-emerald-50 text-emerald-800"
+  if (status === "warn") return "border-amber-200 bg-amber-50 text-amber-900"
   if (status === "fail") return "border-rose-200 bg-rose-50 text-rose-800"
   if (status === "unknown") return "border-slate-200 bg-slate-50 text-slate-700"
   return "border-slate-200 bg-white text-slate-500"
@@ -156,6 +158,7 @@ function childStatusClassName(status: string) {
 
 function runStatusToTreeStatus(status?: HealthRunStatus | "none") {
   if (status === "pass") return "PASS" as const
+  if (status === "warn") return "WARN" as const
   if (status === "fail") return "FAIL" as const
   return "UNKNOWN" as const
 }
@@ -653,12 +656,488 @@ function HealthTreeChecks({
   )
 }
 
+type HealthTreeNode = {
+  id: string
+  title: string
+  status: keyof typeof statusGlyph
+  checkedAt?: string
+  summary?: string
+  freshness?: string
+  meta?: string
+  evidence?: unknown
+  failure?: HealthCheckResult["failure"] | HealthCheckNodeResult["failure"]
+  repairHint?: string | null
+  raw?: HealthCheckResult | HealthCheckNodeResult | HealthProfile
+  actions?: HealthNodeAction[]
+  profileId: string
+  targetId: string
+  checkIds: string[]
+  parentOwnedBy?: string
+  disabledReason?: string
+  children: HealthTreeNode[]
+}
+
+type NodeRunMode = "node" | "subtree" | "failed_children"
+
+function statusFromLower(status: string): keyof typeof statusGlyph {
+  switch (normalizeHealthStatus(status)) {
+    case "pass":
+    case "info":
+      return "PASS"
+    case "warn":
+      return "WARN"
+    case "fail":
+      return "FAIL"
+    case "blocked":
+      return "BLOCKED"
+    case "not_run":
+      return "NOT_RUN"
+    case "stale":
+      return "STALE"
+    case "dispatch_failed":
+      return "DISPATCH_FAILED"
+    case "unauthorized":
+      return "UNAUTHORIZED"
+    case "unsupported":
+      return "UNSUPPORTED"
+    case "running":
+      return "RUNNING"
+    default:
+      return "UNKNOWN"
+  }
+}
+
+function childStatusToTreeStatus(status: string): keyof typeof statusGlyph {
+  return statusFromLower(status)
+}
+
+function descendantNodes(node: HealthTreeNode): HealthTreeNode[] {
+  return node.children.flatMap((child) => [child, ...descendantNodes(child)])
+}
+
+function uniqueCheckIds(nodes: HealthTreeNode[]) {
+  return Array.from(
+    new Set(nodes.flatMap((node) => node.checkIds).filter(Boolean)),
+  )
+}
+
+function failedCheckIds(node: HealthTreeNode) {
+  return uniqueCheckIds(
+    [node, ...descendantNodes(node)].filter((candidate) =>
+      [
+        "FAIL",
+        "WARN",
+        "BLOCKED",
+        "STALE",
+        "DISPATCH_FAILED",
+        "UNAUTHORIZED",
+      ].includes(candidate.status),
+    ),
+  )
+}
+
+function nodeTooltip(node: HealthTreeNode) {
+  return [
+    node.title,
+    `status: ${node.status}`,
+    node.summary ? `summary: ${node.summary}` : "",
+    node.freshness ? `freshness: ${node.freshness}` : "",
+    node.parentOwnedBy
+      ? `dispatch: delegated to parent ${node.parentOwnedBy}`
+      : "",
+    node.checkedAt ? `checked: ${node.checkedAt}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
+function checkNodeFromResult(
+  check: HealthCheckResult,
+  profileId: string,
+  targetId: string,
+): HealthTreeNode {
+  const providerRows = Array.isArray(check.evidence.providerRows)
+    ? providerRowsToNodes(check.evidence.providerRows)
+    : []
+  const childResults =
+    check.children && check.children.length > 0 ? check.children : providerRows
+  return {
+    id: `check:${profileId}:${check.id}`,
+    title: check.title,
+    status: check.status,
+    checkedAt: check.finishedAt ?? check.checkedAt,
+    freshness: check.freshness ?? (check.stale ? "stale" : "fresh"),
+    summary:
+      check.summary ?? check.failure?.message ?? check.repairHint ?? undefined,
+    meta: check.component ?? check.checkId,
+    evidence: check.evidence,
+    failure: check.failure,
+    repairHint: check.repairHint,
+    raw: check,
+    profileId,
+    targetId,
+    checkIds: [check.id],
+    children: childResults.map((child) =>
+      childNodeFromResult(child, profileId, targetId, check.id, check.id),
+    ),
+  }
+}
+
+function childNodeFromResult(
+  child: HealthCheckNodeResult,
+  profileId: string,
+  targetId: string,
+  parentId: string,
+  ownerCheckId: string,
+): HealthTreeNode {
+  return {
+    id: `node:${profileId}:${parentId}:${child.id}`,
+    title: child.title,
+    status: childStatusToTreeStatus(child.status),
+    checkedAt: child.finishedAt ?? child.checkedAt,
+    freshness: child.freshness ?? (child.stale ? "stale" : undefined),
+    summary:
+      child.summary ?? child.failure?.message ?? child.repairHint ?? undefined,
+    meta: child.kind,
+    evidence: child.evidence,
+    failure: child.failure,
+    repairHint: child.repairHint,
+    raw: child,
+    profileId,
+    targetId,
+    checkIds: [ownerCheckId],
+    parentOwnedBy: ownerCheckId,
+    children: (child.children ?? []).map((grandchild) =>
+      childNodeFromResult(
+        grandchild,
+        profileId,
+        targetId,
+        `${parentId}:${child.id}`,
+        ownerCheckId,
+      ),
+    ),
+  }
+}
+
+function pendingCheckNode(
+  check: HealthProfile["checks"][number],
+  profileId: string,
+  targetId: string,
+): HealthTreeNode {
+  return {
+    id: `pending:${profileId}:${check.id}`,
+    title: check.title,
+    status: "NOT_RUN",
+    summary:
+      check.repairHint ??
+      "Pending health check; run the parent profile/check for evidence.",
+    meta: check.component ?? check.checkId,
+    repairHint: check.repairHint,
+    raw: check as unknown as HealthProfile,
+    profileId,
+    targetId,
+    checkIds: [check.id],
+    children: [],
+  }
+}
+
+function profileTreeNode(entry: ProfileState): HealthTreeNode {
+  const latest = entry.latest
+  const targetId = latest?.targetId ?? "local"
+  const checkChildren = latest?.checks.length
+    ? latest.checks.map((check) =>
+        checkNodeFromResult(check, entry.profile.id, targetId),
+      )
+    : entry.profile.checks.map((check) =>
+        pendingCheckNode(check, entry.profile.id, targetId),
+      )
+  const allCheckIds = entry.profile.checks.map((check) => check.id)
+  const targetNode: HealthTreeNode = {
+    id: `target:${entry.profile.id}:${targetId}`,
+    title: `Target: ${targetId}`,
+    status: runStatusToTreeStatus(latest?.status ?? "none"),
+    checkedAt: latest?.finishedAt,
+    freshness: latest ? "fresh" : "not run",
+    summary: `${checkChildren.length} health checks`,
+    meta: String(
+      latest?.params.storyboardUrl ??
+        entry.profile.params?.storyboardUrl ??
+        entry.profile.sourcePath ??
+        "",
+    ),
+    evidence: latest?.params,
+    profileId: entry.profile.id,
+    targetId,
+    checkIds: allCheckIds,
+    children: checkChildren,
+  }
+  return {
+    id: `profile:${entry.profile.id}`,
+    title: entry.profile.title,
+    status: resultStatus(latest),
+    checkedAt: latest?.finishedAt,
+    freshness: latest ? "fresh" : "not run",
+    summary: entry.profile.description ?? `${entry.summary.checkCount} checks`,
+    meta: entry.profile.id,
+    raw: entry.profile,
+    profileId: entry.profile.id,
+    targetId,
+    checkIds: allCheckIds,
+    disabledReason:
+      allCheckIds.length === 0 ? "Profile has no runnable checks" : undefined,
+    children: [targetNode],
+  }
+}
+
+function InlineNodeDetails({ node }: { node: HealthTreeNode }) {
+  const hasDetails =
+    !!node.failure ||
+    !!node.repairHint ||
+    !!node.meta ||
+    node.evidence !== undefined ||
+    !!node.parentOwnedBy
+  if (!hasDetails) return null
+  return (
+    <div className="ml-8 space-y-2 border-l border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+      {node.meta ? (
+        <div className="font-mono text-[11px] text-slate-500">{node.meta}</div>
+      ) : null}
+      {node.parentOwnedBy ? (
+        <div className="rounded border border-blue-200 bg-blue-50 p-2 text-blue-900">
+          Dispatch is parent-owned: this subnode reruns parent check{" "}
+          <code>{node.parentOwnedBy}</code> instead of bypassing the owning
+          health runner.
+        </div>
+      ) : null}
+      {node.failure ? (
+        <div className="rounded border border-rose-200 bg-rose-50 p-2 text-rose-800">
+          {node.failure.class}: {node.failure.message}
+        </div>
+      ) : null}
+      {node.repairHint ? (
+        <div className="rounded border border-amber-200 bg-amber-50 p-2 text-amber-900">
+          Repair hint: {node.repairHint}
+        </div>
+      ) : null}
+      {node.raw && "contractVersion" in node.raw ? (
+        <ContractMetadata
+          node={node.raw as HealthCheckResult | HealthCheckNodeResult}
+        />
+      ) : null}
+      {node.evidence !== undefined ? (
+        <EvidencePreview value={node.evidence} />
+      ) : null}
+    </div>
+  )
+}
+
+function RunControl({
+  label,
+  mode,
+  title,
+  disabledReason,
+  running,
+  onRun,
+}: {
+  label: string
+  mode: NodeRunMode
+  title: string
+  disabledReason?: string
+  running: boolean
+  onRun: () => void
+}) {
+  const disabled = running || !!disabledReason
+  return (
+    <button
+      className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800 hover:bg-blue-100 disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+      data-run-mode={mode}
+      disabled={disabled}
+      onClick={(event) => {
+        event.stopPropagation()
+        if (!disabled) onRun()
+      }}
+      title={running ? "Run in progress" : (disabledReason ?? title)}
+      type="button"
+    >
+      {running ? "Running…" : label}
+    </button>
+  )
+}
+
+function NodeRunControls({
+  node,
+  running,
+  runNode,
+}: {
+  node: HealthTreeNode
+  running: boolean
+  runNode: (node: HealthTreeNode, mode: NodeRunMode) => void
+}) {
+  const descendants = descendantNodes(node)
+  const hasChildren = node.children.length > 0
+  const failedIds = failedCheckIds(node)
+  const disabledReason = node.disabledReason
+  return (
+    <span
+      className="ml-auto flex shrink-0 items-center gap-1"
+      data-health-run-controls={node.id}
+    >
+      <RunControl
+        disabledReason={disabledReason}
+        label="Run"
+        mode="node"
+        onRun={() => runNode(node, "node")}
+        running={running}
+        title="Run this node through its owning parent dispatcher"
+      />
+      <RunControl
+        disabledReason={
+          disabledReason ??
+          (!hasChildren
+            ? "UNSUPPORTED: leaf node has no child subtree"
+            : undefined)
+        }
+        label="Run subtree"
+        mode="subtree"
+        onRun={() => runNode(node, "subtree")}
+        running={running}
+        title={`Run branch/subtree (${descendants.length} descendants) through delegated ownership`}
+      />
+      <RunControl
+        disabledReason={
+          disabledReason ??
+          (failedIds.length === 0
+            ? "NOT_RUN: no failed children in latest result"
+            : undefined)
+        }
+        label="Run failed"
+        mode="failed_children"
+        onRun={() => runNode(node, "failed_children")}
+        running={running}
+        title={`Run failed children (${failedIds.length}) through owning parent dispatch`}
+      />
+    </span>
+  )
+}
+
+function HealthTreeNodeRow({
+  node,
+  depth,
+  expandedIds,
+  toggleExpanded,
+  runningNodeIds,
+  runNode,
+}: {
+  node: HealthTreeNode
+  depth: number
+  expandedIds: Set<string>
+  toggleExpanded: (id: string) => void
+  runningNodeIds: Set<string>
+  runNode: (node: HealthTreeNode, mode: NodeRunMode) => void
+}) {
+  const expanded = expandedIds.has(node.id)
+  const descendants = descendantNodes(node)
+  const isLeaf = node.children.length === 0
+  return (
+    <div
+      className="border-b border-slate-100 last:border-b-0"
+      data-health-node-id={node.id}
+    >
+      <div
+        className="block w-full px-2 py-1.5 text-left hover:bg-blue-50"
+        style={{ paddingLeft: `${Math.min(depth, 8) * 1.15 + 0.5}rem` }}
+        title={nodeTooltip(node)}
+      >
+        <div className="flex min-w-0 items-center gap-2 text-xs">
+          <button
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${node.title}`}
+            className="w-4 shrink-0 rounded text-center text-slate-500 hover:bg-white hover:text-blue-700"
+            onClick={(event) => {
+              event.stopPropagation()
+              toggleExpanded(node.id)
+            }}
+            type="button"
+          >
+            {isLeaf ? "•" : expanded ? "▾" : "▸"}
+          </button>
+          <span
+            className={`${node.status === "PASS" ? "text-emerald-600" : node.status === "FAIL" || node.status === "DISPATCH_FAILED" || node.status === "UNAUTHORIZED" ? "text-rose-600" : node.status === "WARN" || node.status === "BLOCKED" || node.status === "STALE" ? "text-amber-600" : "text-slate-500"}`}
+          >
+            {statusGlyph[node.status]}
+          </span>
+          <span
+            className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName(node.status)}`}
+          >
+            {node.status}
+          </span>
+          <span
+            className="min-w-0 flex-1 select-text truncate font-semibold text-slate-800"
+            title={node.title}
+          >
+            {node.title}
+          </span>
+          <span className="shrink-0 truncate text-[11px] text-slate-500">
+            {compactTime(node.checkedAt)} · {node.freshness ?? "unknown"}
+          </span>
+          <NodeRunControls
+            node={node}
+            running={runningNodeIds.has(node.id)}
+            runNode={runNode}
+          />
+        </div>
+        <div className="mt-1 flex min-h-5 flex-wrap items-center gap-1 pl-6">
+          {descendants.length > 0 ? (
+            descendants.map((descendant) => (
+              <button
+                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full border px-1 text-[10px] font-bold ${statusClassName(descendant.status)}`}
+                key={descendant.id}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  toggleExpanded(descendant.id)
+                }}
+                title={nodeTooltip(descendant)}
+                type="button"
+              >
+                {statusGlyph[descendant.status]}
+              </button>
+            ))
+          ) : (
+            <span className="select-text text-[11px] text-slate-400">
+              leaf — use expander for evidence/log/repair metadata
+            </span>
+          )}
+        </div>
+      </div>
+      {expanded && isLeaf ? <InlineNodeDetails node={node} /> : null}
+      {expanded && !isLeaf ? (
+        <div>
+          {node.children.map((child) => (
+            <HealthTreeNodeRow
+              depth={depth + 1}
+              expandedIds={expandedIds}
+              key={child.id}
+              node={child}
+              runningNodeIds={runningNodeIds}
+              runNode={runNode}
+              toggleExpanded={toggleExpanded}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function HealthDashboardScreen({
   apiRootUrl = "/api/health",
 }: HealthDashboardScreenProps) {
   const [state, setState] = useState<LoadState>({ status: "loading" })
-  const [selectedProfileId, setSelectedProfileId] = useState(
-    queryParam("profileId"),
+  const initialProfileId = queryParam("profileId")
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(
+    () => new Set(initialProfileId ? [`profile:${initialProfileId}`] : []),
+  )
+  const [runningNodeIds, setRunningNodeIds] = useState<Set<string>>(
+    () => new Set(),
   )
   const storyboardUrl = queryParam("storyboardUrl")
 
@@ -701,9 +1180,6 @@ export function HealthDashboardScreen({
         }),
       )
       setState({ status: "ready", profiles })
-      setSelectedProfileId(
-        (current) => current || profiles[0]?.profile.id || "",
-      )
     } catch (error) {
       setState({
         status: "error",
@@ -716,21 +1192,28 @@ export function HealthDashboardScreen({
     void loadProfiles()
   }, [apiRootUrl])
 
-  async function runProfile(profileId: string) {
+  async function runNode(node: HealthTreeNode, mode: NodeRunMode) {
     if (state.status !== "ready") return
-    const item = state.profiles.find((entry) => entry.profile.id === profileId)
+    const item = state.profiles.find(
+      (entry) => entry.profile.id === node.profileId,
+    )
     if (!item) return
+    const subtreeIds = uniqueCheckIds([node, ...descendantNodes(node)])
+    const checkIds =
+      mode === "failed_children" ? failedCheckIds(node) : subtreeIds
+    if (checkIds.length === 0) return
     const overrides: Record<string, string> = [
       "storyboard_source_health",
       "bc_storyboard_dev_dashboard_staging_backend",
       "bc_storyboard_dev_dashboard_docker_backend",
-    ].includes(profileId)
+    ].includes(node.profileId)
       ? { storyboardUrl }
       : {}
+    setRunningNodeIds((current) => new Set(current).add(node.id))
     setState({
       status: "ready",
       profiles: state.profiles.map((entry) =>
-        entry.profile.id === profileId
+        entry.profile.id === node.profileId
           ? { ...entry, running: true, error: null }
           : entry,
       ),
@@ -740,9 +1223,16 @@ export function HealthDashboardScreen({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          profileId,
-          targetId: "local",
-          params: profileParams(item.profile, overrides),
+          profileId: node.profileId,
+          targetId: node.targetId || "local",
+          checkIds,
+          runMode: mode,
+          dispatchPath: [node.profileId, node.targetId || "local", node.id],
+          params: {
+            ...profileParams(item.profile, overrides),
+            requestedNodeId: node.id,
+            requestedActionId: mode,
+          },
         }),
       })
       const payload = (await response.json()) as {
@@ -758,11 +1248,37 @@ export function HealthDashboardScreen({
         current.status === "ready"
           ? {
               status: "ready",
-              profiles: current.profiles.map((entry) =>
-                entry.profile.id === profileId
-                  ? { ...entry, latest: payload.result, running: false }
-                  : entry,
-              ),
+              profiles: current.profiles.map((entry) => {
+                if (entry.profile.id !== node.profileId) return entry
+                const incoming = payload.result as HealthRunResult
+                const allProfileChecks = entry.profile.checks.map(
+                  (check) => check.id,
+                )
+                const fullRun = checkIds.length === allProfileChecks.length
+                const prior = entry.latest
+                const mergedChecks =
+                  fullRun || !prior
+                    ? incoming.checks
+                    : [
+                        ...incoming.checks,
+                        ...prior.checks.filter(
+                          (check) => !checkIds.includes(check.id),
+                        ),
+                      ]
+                const mergedLatest: HealthRunResult =
+                  fullRun || !prior
+                    ? incoming
+                    : {
+                        ...prior,
+                        checks: mergedChecks,
+                        finishedAt: incoming.finishedAt,
+                        startedAt: incoming.startedAt,
+                        status: resultStatus({
+                          checks: mergedChecks,
+                        } as HealthRunResult).toLowerCase() as HealthRunStatus,
+                      }
+                return { ...entry, latest: mergedLatest, running: false }
+              }),
             }
           : current,
       )
@@ -772,7 +1288,7 @@ export function HealthDashboardScreen({
           ? {
               status: "ready",
               profiles: current.profiles.map((entry) =>
-                entry.profile.id === profileId
+                entry.profile.id === node.profileId
                   ? {
                       ...entry,
                       running: false,
@@ -784,17 +1300,23 @@ export function HealthDashboardScreen({
             }
           : current,
       )
+    } finally {
+      setRunningNodeIds((current) => {
+        const next = new Set(current)
+        next.delete(node.id)
+        return next
+      })
     }
   }
 
-  const selected = useMemo(() => {
-    if (state.status !== "ready") return null
-    return (
-      state.profiles.find((entry) => entry.profile.id === selectedProfileId) ??
-      state.profiles[0] ??
-      null
-    )
-  }, [selectedProfileId, state])
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   if (state.status === "loading")
     return (
@@ -815,6 +1337,7 @@ export function HealthDashboardScreen({
         statusOrder[resultStatus(right.latest)] ||
       left.profile.id.localeCompare(right.profile.id),
   )
+  const profileNodes = sortedProfiles.map(profileTreeNode)
 
   return (
     <main
@@ -829,197 +1352,33 @@ export function HealthDashboardScreen({
           <h1 className="m-0 text-xl font-semibold">Health Dashboard</h1>
         </div>
         <div className="text-right text-[11px] text-slate-500">
-          Dense profile → target → check hierarchy. Expand one row for evidence
-          and repair hints.
+          Single expandable health tree. Each row is a compact card with
+          depth-first descendant indicators; hover for summary, click an
+          indicator to expand that subcheck.
         </div>
       </header>
 
-      <div className="grid grid-cols-[minmax(22rem,30rem)_1fr] gap-3">
-        <section className="overflow-hidden rounded border border-slate-200 bg-white">
-          <div className="grid grid-cols-[1.5rem_5rem_1fr_4rem_5rem] gap-1 border-b border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
-            <span></span>
-            <span>Status</span>
-            <span>Profile / target</span>
-            <span>Checks</span>
-            <span>Last</span>
-          </div>
-          {sortedProfiles.map((entry) => {
-            const status = resultStatus(entry.latest)
-            const selectedRow = entry.profile.id === selected?.profile.id
-            return (
-              <button
-                className={`grid w-full grid-cols-[1.5rem_5rem_1fr_4rem_5rem] items-center gap-1 border-b border-slate-100 px-2 py-1 text-left text-xs hover:bg-blue-50 ${selectedRow ? "bg-blue-50" : "bg-white"}`}
-                key={entry.profile.id}
-                onClick={() => setSelectedProfileId(entry.profile.id)}
-                type="button"
-              >
-                <span
-                  className={
-                    status === "PASS"
-                      ? "text-emerald-600"
-                      : status === "FAIL"
-                        ? "text-rose-600"
-                        : status === "WARN"
-                          ? "text-amber-600"
-                          : "text-slate-500"
-                  }
-                >
-                  {statusGlyph[status]}
-                </span>
-                <span
-                  className={`rounded border px-1.5 py-0.5 text-[10px] font-bold ${statusClassName(status)}`}
-                >
-                  {status}
-                </span>
-                <span className="min-w-0 truncate">
-                  <span className="font-semibold">{entry.profile.title}</span>
-                  <span className="ml-1 font-mono text-[10px] text-slate-500">
-                    {entry.profile.id}
-                  </span>
-                </span>
-                <span className="text-slate-500">
-                  {entry.summary.checkCount}
-                </span>
-                <span className="truncate text-slate-500">
-                  {compactTime(entry.latest?.finishedAt)}
-                </span>
-              </button>
-            )
-          })}
-        </section>
-
-        <section className="min-w-0 rounded border border-slate-200 bg-white">
-          {selected ? (
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`rounded border px-2 py-1 text-xs font-bold ${runStatusClassName(selected.latest?.status ?? "none")}`}
-                    >
-                      {selected.latest?.status ?? "not run"}
-                    </span>
-                    <h2 className="m-0 truncate text-base font-semibold">
-                      {selected.profile.title}
-                    </h2>
-                    <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
-                      {selected.profile.id}
-                    </code>
-                  </div>
-                  {selected.profile.description ? (
-                    <p className="m-0 mt-1 text-xs text-slate-500">
-                      {selected.profile.description}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex items-center gap-2">
-                  <a
-                    className="rounded border border-slate-200 px-2 py-1 text-xs text-blue-700"
-                    href={healthViewHref(
-                      selected.profile.id,
-                      selected.latest?.params ?? selected.profile.params ?? {},
-                    )}
-                  >
-                    Filtered link
-                  </a>
-                  <button
-                    className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800 disabled:opacity-50"
-                    disabled={!!selected.running}
-                    onClick={() => void runProfile(selected.profile.id)}
-                    type="button"
-                  >
-                    {selected.running ? "Running…" : "Run profile"}
-                  </button>
-                </div>
-              </div>
-              {selected.error ? (
-                <div className="border-b border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
-                  {selected.error}
-                </div>
-              ) : null}
-              <div className="grid grid-cols-4 gap-2 border-b border-slate-100 px-3 py-2 text-xs">
-                <div>
-                  <span className="text-slate-500">Target</span>
-                  <div className="font-mono text-[11px]">
-                    {selected.latest?.targetId ?? "local"}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-slate-500">Last checked</span>
-                  <div>{selected.latest?.finishedAt ?? "never"}</div>
-                </div>
-                <div>
-                  <span className="text-slate-500">Source URL</span>
-                  <div
-                    className="truncate font-mono text-[11px]"
-                    title={String(
-                      selected.latest?.params.storyboardUrl ??
-                        selected.profile.params?.storyboardUrl ??
-                        "",
-                    )}
-                  >
-                    {String(
-                      selected.latest?.params.storyboardUrl ??
-                        selected.profile.params?.storyboardUrl ??
-                        "—",
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-slate-500">Rows</span>
-                  <div>
-                    {selected.latest?.checks.length ??
-                      selected.profile.checks.length}
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-[1.6rem_7rem_1fr_7rem_6rem] gap-2 border-b border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                <span></span>
-                <span>Status</span>
-                <span>Health tree</span>
-                <span>Vantage</span>
-                <span>Last/ms</span>
-              </div>
-              <div
-                className="divide-y divide-slate-100"
-                data-health-tree="profile-target-check-provider"
-              >
-                <TreeRollupRow
-                  count={`${selected.latest?.checks.length ?? selected.profile.checks.length} checks`}
-                  depth={0}
-                  last={compactTime(selected.latest?.finishedAt)}
-                  meta={selected.profile.id}
-                  status={resultStatus(selected.latest)}
-                  title={`Profile: ${selected.profile.title}`}
-                />
-                <TreeRollupRow
-                  count="target"
-                  depth={1}
-                  last={selected.latest?.targetId ?? "local"}
-                  meta={String(
-                    selected.latest?.params.storyboardUrl ??
-                      selected.profile.params?.storyboardUrl ??
-                      selected.profile.sourcePath ??
-                      "",
-                  )}
-                  status={runStatusToTreeStatus(
-                    selected.latest?.status ?? "none",
-                  )}
-                  title={`Target/group: ${selected.latest?.targetId ?? "local"}`}
-                />
-                <HealthTreeChecks
-                  checks={selected.latest?.checks}
-                  pendingChecks={selected.profile.checks}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="p-4 text-sm text-slate-500">
-              No health profiles found.
-            </div>
-          )}
-        </section>
-      </div>
+      <section className="overflow-hidden rounded border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+          Health profiles / HealthTargets
+        </div>
+        <div
+          className="divide-y divide-slate-100"
+          data-health-tree="single-expandable-profile-tree"
+        >
+          {profileNodes.map((node) => (
+            <HealthTreeNodeRow
+              depth={0}
+              expandedIds={expandedIds}
+              key={node.id}
+              node={node}
+              runningNodeIds={runningNodeIds}
+              runNode={runNode}
+              toggleExpanded={toggleExpanded}
+            />
+          ))}
+        </div>
+      </section>
     </main>
   )
 }
