@@ -92,31 +92,11 @@ function resultStatus(result?: HealthRunResult | null) {
   if (
     result.checks.some(
       (check) =>
-        check.status === "FAIL" ||
-        check.status === "DISPATCH_FAILED" ||
-        check.status === "UNAUTHORIZED",
+        check.status !== "PASS" &&
+        check.status !== "INFO",
     )
   )
     return "FAIL" as const
-  if (
-    result.checks.some(
-      (check) =>
-        check.status === "BLOCKED" ||
-        check.status === "WARN" ||
-        check.status === "STALE",
-    )
-  )
-    return "WARN" as const
-  if (
-    result.checks.some(
-      (check) =>
-        check.status === "UNKNOWN" ||
-        check.status === "NOT_RUN" ||
-        check.status === "UNSUPPORTED" ||
-        check.status === "RUNNING",
-    )
-  )
-    return "UNKNOWN" as const
   return "PASS" as const
 }
 
@@ -145,10 +125,11 @@ function runStatusClassName(status: HealthRunStatus | "none") {
 function childStatusClassName(status: string) {
   if (status === "pass" || status === "info")
     return "border-emerald-200 bg-emerald-50 text-emerald-800"
-  if (status === "warn" || status === "stale" || status === "blocked")
-    return "border-amber-200 bg-amber-50 text-amber-900"
+  if (status === "warn") return "border-amber-200 bg-amber-50 text-amber-900"
   if (
     status === "fail" ||
+    status === "stale" ||
+    status === "blocked" ||
     status === "dispatch_failed" ||
     status === "unauthorized"
   )
@@ -158,8 +139,9 @@ function childStatusClassName(status: string) {
 
 function runStatusToTreeStatus(status?: HealthRunStatus | "none") {
   if (status === "pass") return "PASS" as const
-  if (status === "warn") return "WARN" as const
+  if (status === "warn") return "FAIL" as const
   if (status === "fail") return "FAIL" as const
+  if (status === "unknown") return "FAIL" as const
   return "UNKNOWN" as const
 }
 
@@ -852,9 +834,10 @@ function profileTreeNode(entry: ProfileState): HealthTreeNode {
         pendingCheckNode(check, entry.profile.id, targetId),
       )
   const allCheckIds = entry.profile.checks.map((check) => check.id)
+  const targetTitle = targetId === "local" ? "Current health target" : `Health target: ${targetId}`
   const targetNode: HealthTreeNode = {
     id: `target:${entry.profile.id}:${targetId}`,
-    title: `Target: ${targetId}`,
+    title: targetTitle,
     status: runStatusToTreeStatus(latest?.status ?? "none"),
     checkedAt: latest?.finishedAt,
     freshness: latest ? "fresh" : "not run",
@@ -1042,6 +1025,7 @@ function HealthTreeNodeRow({
     <div
       className="border-b border-slate-100 last:border-b-0"
       data-health-node-id={node.id}
+      style={{ borderTop: depth > 0 ? `${Math.min(depth, 5)}px solid rgba(148, 163, 184, 0.32)` : undefined }}
     >
       <div
         className="block w-full px-2 py-1.5 text-left hover:bg-blue-50"
@@ -1089,8 +1073,9 @@ function HealthTreeNodeRow({
           {descendants.length > 0 ? (
             descendants.map((descendant) => (
               <button
-                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full border px-1 text-[10px] font-bold ${statusClassName(descendant.status)}`}
+                className={`inline-flex h-5 min-w-5 items-center justify-center rounded-sm border px-1 text-[10px] font-bold ${statusClassName(descendant.status)}`}
                 key={descendant.id}
+                style={{ borderTopWidth: `${Math.min(depth + 1, 5)}px` }}
                 onClick={(event) => {
                   event.stopPropagation()
                   toggleExpanded(descendant.id)
@@ -1126,6 +1111,54 @@ function HealthTreeNodeRow({
       ) : null}
     </div>
   )
+}
+
+function pendingRunResult(
+  profile: HealthProfile,
+  targetId: string,
+  params: Record<string, unknown>,
+  checkIds: string[],
+  prior?: HealthRunResult | null,
+): HealthRunResult {
+  const requested = new Set(checkIds)
+  const now = new Date().toISOString()
+  const priorById = new Map((prior?.checks ?? []).map((check) => [check.id, check]))
+  const checks = profile.checks.map((check): HealthCheckResult => {
+    const old = priorById.get(check.id)
+    const inScope = requested.has(check.id)
+    return {
+      id: check.id,
+      title: check.title,
+      checkId: check.checkId,
+      component: check.component,
+      severity: check.severity,
+      status: inScope ? "RUNNING" : old ? "STALE" : "NOT_RUN",
+      durationMs: 0,
+      evidence: inScope
+        ? { pending: true, requestedAt: now }
+        : { stale: true, previousRunId: prior?.runId },
+      runLocation: check.runLocation ?? check.execution,
+      failure: inScope
+        ? null
+        : { class: "stale", message: "Not refreshed by the active run yet" },
+      repairHint: check.repairHint ?? null,
+      startedAt: now,
+      checkedAt: old?.checkedAt,
+      freshness: inScope ? "unknown" : "stale",
+      stale: !inScope,
+      summary: inScope ? "Waiting for fresh result from this run" : "Stale previous result",
+    }
+  })
+  return {
+    runId: `pending-${Date.now()}`,
+    profileId: profile.id,
+    targetId,
+    params,
+    startedAt: now,
+    finishedAt: now,
+    status: "fail",
+    checks,
+  }
 }
 
 export function HealthDashboardScreen({
@@ -1210,11 +1243,23 @@ export function HealthDashboardScreen({
       ? { storyboardUrl }
       : {}
     setRunningNodeIds((current) => new Set(current).add(node.id))
+    const runParams = {
+      ...profileParams(item.profile, overrides),
+      requestedNodeId: node.id,
+      requestedActionId: mode,
+    }
+    const optimisticLatest = pendingRunResult(
+      item.profile,
+      node.targetId || "local",
+      runParams,
+      checkIds,
+      item.latest,
+    )
     setState({
       status: "ready",
       profiles: state.profiles.map((entry) =>
         entry.profile.id === node.profileId
-          ? { ...entry, running: true, error: null }
+          ? { ...entry, latest: optimisticLatest, running: true, error: null }
           : entry,
       ),
     })
@@ -1228,11 +1273,7 @@ export function HealthDashboardScreen({
           checkIds,
           runMode: mode,
           dispatchPath: [node.profileId, node.targetId || "local", node.id],
-          params: {
-            ...profileParams(item.profile, overrides),
-            requestedNodeId: node.id,
-            requestedActionId: mode,
-          },
+          params: runParams,
         }),
       })
       const payload = (await response.json()) as {

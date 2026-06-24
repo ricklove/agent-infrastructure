@@ -1935,7 +1935,7 @@ async function evaluateBuiltinCheck(
       )
 
       const checkAllPayload = checkAllUrl
-        ? await jsonFromUrl(checkAllUrl, timeoutMs, {
+        ? await jsonFromUrl(checkAllUrl, Math.max(timeoutMs, 25000), {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ storyboardUrl, runTargetId }),
