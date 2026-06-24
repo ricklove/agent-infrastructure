@@ -464,15 +464,8 @@ const unknownLikeHealthStatuses: HealthCheckStatus[] = [
 ]
 
 function rollupStatus(statuses: HealthCheckStatus[]): HealthCheckStatus {
-  if (statuses.some((status) => failLikeHealthStatuses.includes(status)))
-    return "FAIL"
-  if (statuses.some((status) => warnLikeHealthStatuses.includes(status)))
-    return "WARN"
-  if (
-    statuses.length === 0 ||
-    statuses.some((status) => unknownLikeHealthStatuses.includes(status))
-  )
-    return "UNKNOWN"
+  if (statuses.length === 0) return "UNKNOWN"
+  if (statuses.some((status) => status !== "PASS" && status !== "INFO")) return "FAIL"
   return "PASS"
 }
 
@@ -694,6 +687,184 @@ function rollupNodeStatus(
   return rollupStatus(children.map((child) => child.status))
 }
 
+function healthGroupDisplayTitle(group: string): string {
+  switch (group) {
+    case "bc-storyboard source/provider health":
+      return "Storyboard source is reachable and valid"
+    case "fast health/check-all summary":
+      return "Storyboard automated health checks are passing"
+    case "run-target-health provider rows":
+      return "Storyboard automated health checks"
+    case "bc-frontend staging runtime":
+      return "BaseConnect web app is running with the staging backend"
+    case "bc-frontend docker runtime":
+      return "BaseConnect web app is running with the Docker backend"
+    case "bc-frontend web app quick tunnel":
+      return "Public BC web app tunnel is available"
+    case "ddev dashboard/tunnel/remote-storyboard route":
+      return "Health Dashboard and storyboard editor are reachable"
+    case "delegated dispatch integrity":
+      return "Health tree can dispatch reruns"
+    case "repair/runbook metadata":
+      return "Repair guidance is safe and actionable"
+    default:
+      return group
+  }
+}
+
+function healthRowDisplayTitle(
+  row: Record<string, unknown>,
+  group: string,
+): string {
+  const key = String(row.key ?? row.id ?? "")
+  const label = String(row.label ?? row.key ?? row.id ?? group)
+  switch (key) {
+    case "source-storyboard-md-200":
+      return "Storyboard markdown is reachable"
+    case "source-storyboard-json-200":
+      return "Storyboard JSON is reachable"
+    case "story-frame-inventory":
+      return "Expected onboarding frames are present"
+    case "storyboard-schema-minimum":
+      return "Storyboard file is valid"
+    case "asset-reference-inventory":
+      return "Storyboard screenshots are referenced"
+    case "run-target-health-200":
+      return "Storyboard health endpoint is reachable"
+    case "check-all-pass-fail-summary":
+      return "Storyboard automated checks meet the pass threshold"
+    case "check-all-source-root-reachable":
+      return "Storyboard source server is reachable"
+    case "check-all-storyboard-json-reachable":
+      return "Storyboard JSON loads and parses"
+    case "check-all-storyboard-md-reachable":
+      return "Storyboard markdown loads"
+    case "check-all-source-slug-listed":
+      return "Storyboard source appears in the access list"
+    case "check-all-run-target-health-endpoint-reachable":
+      return "Storyboard health endpoint is reachable"
+    case "check-all-check-all-runnable":
+      return "Storyboard automated check suite can run"
+    case "check-all-provider-health-rows-pass":
+      return "Storyboard health checks are defined and working"
+    case "check-all-frame-ids-unique":
+      return "Storyboard frame IDs are unique"
+    case "check-all-expected-frames-exist":
+      return "Expected onboarding frames are present"
+    case "check-all-frontend-web-configured":
+      return "BaseConnect web app URL is configured"
+    case "check-all-frontend-web-ready-for-run":
+      return "BaseConnect web app is ready for storyboard runs"
+    case "check-all-frontend-login-route-loads":
+      return "Storyboard login page target loads"
+    case "check-all-app-login-view-loads":
+      return "Login page is ready for automated runs"
+    case "check-all-web-run-target-exists":
+      return "Storyboard has a web app run target"
+    case "check-all-web-run-target-url-valid":
+      return "Storyboard web app run target URL is valid"
+    case "check-all-runnable-frames-inherit-run-target":
+      return "Runnable storyboard frames use the web app target"
+    case "check-all-app-root-reachable":
+      return "BaseConnect web app loads"
+    case "check-all-app-user-verification-route-loads":
+      return "User verification page loads"
+    case "check-all-app-identity-baseconnect":
+      return "App identifies as BaseConnect"
+    case "check-all-app-js-bundle-loads":
+      return "BaseConnect app code loads in the browser"
+    case "check-all-frontend-runtime-staging-backend":
+      return "App is using the staging backend"
+    case "check-all-backend-public-api-reachable":
+      return "Staging backend API is reachable"
+    case "check-all-automation-driver-per-runnable-frame":
+      return "Runnable frames have automation drivers"
+    case "check-all-onboarding-test-email-convention":
+      return "Onboarding test emails use the expected format"
+    case "check-all-sms-checked-driver-contract":
+      return "SMS enabled state is testable"
+    case "check-all-sms-unchecked-driver-contract":
+      return "SMS disabled state is testable"
+    case "check-all-output-paths-writable":
+      return "Storyboard output folders are writable"
+    case "check-all-screenshot-assets-resolve":
+      return "Storyboard screenshots resolve"
+    case "check-all-assets-evidence-references-present":
+      return "Storyboard evidence assets are referenced"
+    case "check-all-canonical-sms-assets-provenance":
+      return "Canonical SMS assets include provenance"
+    case "check-all-story-a-01-account-email-screenshot-semantic":
+      return "Account email screenshot is readable"
+    case "check-all-semantic-frame-state-reportable":
+      return "Storyboard frame state can be reported"
+    case "bc-frontend-root-200":
+      return "BaseConnect web app loads"
+    case "bc-frontend-login-200":
+      return "Login page loads"
+    case "bc-frontend-user-verification-200":
+      return "User verification page loads"
+    case "bc-frontend-public-quick-tunnel-url-present":
+      return "Public BC web app tunnel URL is available"
+    case "bc-frontend-quick-tunnel-root-real-app":
+      return "Public tunnel loads the BaseConnect app"
+    case "bc-frontend-quick-tunnel-login-real-app":
+      return "Public tunnel loads the login page"
+    case "bc-frontend-quick-tunnel-user-verification-real-app":
+      return "Public tunnel loads the user verification page"
+    case "bc-frontend-quick-tunnel-routes-blocked":
+      return "Public tunnel routes can be checked"
+    case "bc-frontend-quick-tunnel-staging-backend-proof":
+      return "Public tunnel uses the staging backend"
+    case "bc-frontend-staging-backend-marker-present":
+    case "bc-frontend-docker-backend-marker-present":
+      return "App bundle points to the expected backend"
+    case "bc-frontend-config-env-target-proof":
+      return "Runtime config points to the expected backend"
+    case "bc-frontend-network-proof-backend":
+      return "Browser-loaded app uses the expected backend"
+    case "bc-frontend-no-accidental-fallback":
+      return "App is not using the wrong backend"
+    case "bc-frontend-route-semantic-root":
+      return "BaseConnect home page looks like the real app"
+    case "docker-daemon-reachable":
+      return "Docker is available for the local backend"
+    case "docker-backend-api-reachable":
+      return "Docker backend API is reachable"
+    case "ddev-dashboard-gateway-200":
+      return "Health Dashboard gateway is reachable"
+    case "ddev-dashboard-vite-200":
+      return "Health Dashboard frontend dev server is reachable"
+    case "ddev-dashboard-public-route-200":
+      return "Public Health Dashboard route is reachable"
+    case "ddev-dashboard-remote-storyboard-route-200":
+      return "Storyboard editor route is reachable"
+    case "ddev-health-route-shell-render":
+      return "Health Dashboard page renders in the dashboard shell"
+    case "ddev-health-nav-visible":
+      return "Health Dashboard appears in navigation"
+    case "ddev-single-tree-ui-visible":
+      return "Health tree is visible"
+    case "ddev-scroll-root-tailwind-source":
+      return "Health tree layout styles are loaded"
+    case "ddev-console-network-capture":
+      return "Browser errors are captured for health failures"
+    case "dispatch-parent-owned-child-dispatch":
+      return "Health tree can rerun child branches"
+    case "dispatch-executor-vantage-metadata":
+      return "Each health row shows where it ran"
+    case "dispatch-status-taxonomy":
+      return "Waiting, stale, and failed states are distinct"
+    case "dispatch-node-actions":
+      return "Run buttons are available for roots, branches, and leaves"
+    case "repair-runbook-safe-actions":
+      return "Repair actions are safe and explicit"
+    case "quicktunnel-persistence-contract":
+      return "Dashboard tunnel can stay up during app restarts"
+    default:
+      return label
+  }
+}
+
 function providerRowsToChildTree(
   rows: Array<Record<string, unknown>>,
   context: Record<string, unknown> = {},
@@ -707,10 +878,11 @@ function providerRowsToChildTree(
   }, new Map<string, Array<Record<string, unknown>>>())
 
   return Array.from(groups.entries()).map(([group, groupRows]) => {
+    const groupTitle = healthGroupDisplayTitle(group)
     const children = groupRows.map((row): HealthCheckNodeResult => {
       const status = healthStatusFromProviderStatus(row.status)
       const id = String(row.key ?? row.id ?? row.label ?? group)
-      const title = String(row.label ?? row.key ?? row.id ?? group)
+      const title = healthRowDisplayTitle(row, group)
       const runLocation =
         row.runLocation && typeof row.runLocation === "object"
           ? (row.runLocation as HealthRunLocation)
@@ -781,7 +953,7 @@ function providerRowsToChildTree(
     return {
       ...nodeContract({
         id: safeFileIdentifier(group),
-        title: group,
+        title: groupTitle,
         kind: "component",
         status,
         runLocation: groupRunLocation,
@@ -806,7 +978,7 @@ function providerRowsToChildTree(
         context,
       }),
       id: safeFileIdentifier(group),
-      title: group,
+      title: groupTitle,
       kind: "component" as const,
       status,
       evidence: {
@@ -848,6 +1020,44 @@ function countStoryboardFrames(story: Record<string, unknown>): number {
   return total
 }
 
+function findStoryboardFrameById(
+  stories: unknown[],
+  frameId: string,
+): { storyId: string; frame: Record<string, unknown> } | null {
+  for (const story of stories) {
+    if (!story || typeof story !== "object") continue
+    const storyRecord = story as Record<string, unknown>
+    const storyId = maybeString(storyRecord.id)
+    const frames = Array.isArray(storyRecord.frames) ? storyRecord.frames : []
+    for (const frame of frames) {
+      if (!frame || typeof frame !== "object") continue
+      const frameRecord = frame as Record<string, unknown>
+      if (maybeString(frameRecord.id) === frameId) {
+        return { storyId, frame: frameRecord }
+      }
+    }
+    const branches = Array.isArray(storyRecord.branches)
+      ? storyRecord.branches
+      : []
+    for (const branch of branches) {
+      if (!branch || typeof branch !== "object") continue
+      const branchFrames = Array.isArray(
+        (branch as Record<string, unknown>).frames,
+      )
+        ? ((branch as Record<string, unknown>).frames as unknown[])
+        : []
+      for (const frame of branchFrames) {
+        if (!frame || typeof frame !== "object") continue
+        const frameRecord = frame as Record<string, unknown>
+        if (maybeString(frameRecord.id) === frameId) {
+          return { storyId, frame: frameRecord }
+        }
+      }
+    }
+  }
+  return null
+}
+
 type ProviderRowStatus =
   | "pass"
   | "warn"
@@ -878,7 +1088,11 @@ type ProviderRowInput = {
 function addProviderRow(
   rows: Array<Record<string, unknown>>,
   row: ProviderRowInput,
-  context: { backendMode?: string; frontendUrl?: string } = {},
+  context: {
+    backendMode?: string
+    frontendUrl?: string
+    storyboardUrl?: string
+  } = {},
 ): void {
   rows.push({
     owner: "ddev-storyboard",
@@ -890,7 +1104,11 @@ function addProviderRow(
 
 function coldStartRunLocation(
   group: string,
-  context: { backendMode?: string; frontendUrl?: string } = {},
+  context: {
+    backendMode?: string
+    frontendUrl?: string
+    storyboardUrl?: string
+  } = {},
 ): HealthRunLocation {
   const backendMode = context.backendMode === "docker" ? "docker" : "staging"
   if (group === `bc-frontend ${backendMode} runtime`) {
@@ -903,8 +1121,8 @@ function coldStartRunLocation(
       host:
         context.frontendUrl ||
         (backendMode === "docker"
-          ? "docker/local backend stack"
-          : "10.0.0.239:8086"),
+          ? "Docker/local backend stack"
+          : "bc-frontend staging web app runtime"),
       source: `BaseConnect frontend ${backendMode} runtime`,
       vantagePoint:
         backendMode === "docker"
@@ -918,7 +1136,7 @@ function coldStartRunLocation(
     return {
       executor: "dashboard-health-api",
       workTarget: "bc-storyboard/access-server",
-      host: "10.0.0.239:8898",
+      host: context.storyboardUrl || "bc-storyboard access server",
       source: "bc-storyboard source owner",
       vantagePoint: "ddev worker -> storyboard access server",
       providerType: "storyboard-provider-http",
@@ -937,7 +1155,7 @@ function coldStartRunLocation(
   return {
     executor: "dashboard-health-api",
     workTarget: "agent-infra-dev/ddev-dashboard",
-    host: "10.0.0.239:8898",
+    host: context.storyboardUrl || "bc-storyboard access server",
     source: "storyboard run-target-health provider",
     vantagePoint: "ddev worker -> storyboard provider",
     providerType: "storyboard-check-all",
@@ -1241,6 +1459,142 @@ async function detectBackendMarker(
           : "bundle-staging-marker"
         : "missing",
   }
+}
+
+function firstStringValue(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = maybeString(record[key])
+    if (value) return value
+  }
+  return ""
+}
+
+function appendPathToUrl(baseUrl: string, path: string): string {
+  try {
+    const url = new URL(baseUrl)
+    url.pathname = `${url.pathname.replace(/\/+$/u, "")}/${path.replace(/^\/+/u, "")}`
+    url.search = ""
+    url.hash = ""
+    return url.toString()
+  } catch {
+    return ""
+  }
+}
+
+async function publicUrlFromQuickTunnelState(
+  stateUrl: string,
+  timeoutMs: number,
+): Promise<{
+  url: string
+  response: { status: number | null; payload?: unknown; error?: string }
+}> {
+  const stateResponse = await jsonFromUrl(stateUrl, timeoutMs)
+  const state =
+    stateResponse.payload && typeof stateResponse.payload === "object"
+      ? (stateResponse.payload as Record<string, unknown>)
+      : {}
+  const statePublicUrl = firstStringValue(state, [
+    "publicUrl",
+    "quickTunnelUrl",
+    "url",
+  ])
+  return { url: normalizePublicUrl(statePublicUrl), response: stateResponse }
+}
+
+async function resolveBcWebAppQuickTunnelUrl(
+  params: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<{ url: string; source: string; evidence: Record<string, unknown> }> {
+  const directUrl = firstStringValue(params, [
+    "bcFrontendQuickTunnelUrl",
+    "bcWebAppQuickTunnelUrl",
+    "quickTunnelUrl",
+  ])
+  if (directUrl) {
+    return {
+      url: normalizePublicUrl(directUrl),
+      source: "health-profile-param",
+      evidence: { configuredUrl: directUrl },
+    }
+  }
+
+  const configuredStateUrl = firstStringValue(params, [
+    "bcFrontendQuickTunnelStateUrl",
+    "bcWebAppQuickTunnelStateUrl",
+    "quickTunnelStateUrl",
+  ])
+  const stateUrlCandidates = [
+    configuredStateUrl,
+    appendPathToUrl(
+      firstStringValue(params, ["storyboardUrl", "storyboardSourceUrl"]),
+      "assets/runtime/bc-frontend-quick-tunnel.json",
+    ),
+  ].filter((value, index, values) => value && values.indexOf(value) === index)
+
+  const attemptedStateUrls: Array<Record<string, unknown>> = []
+  for (const stateUrl of stateUrlCandidates) {
+    const { url, response } = await publicUrlFromQuickTunnelState(
+      stateUrl,
+      timeoutMs,
+    )
+    attemptedStateUrls.push({
+      stateUrl,
+      httpStatus: response.status,
+      error: response.error || null,
+      stateKeys:
+        response.payload && typeof response.payload === "object"
+          ? Object.keys(response.payload as Record<string, unknown>).slice(0, 20)
+          : [],
+    })
+    if (url) {
+      return {
+        url,
+        source: configuredStateUrl === stateUrl
+          ? "owning-runtime-state-url"
+          : "storyboard-runtime-state-discovery",
+        evidence: {
+          stateUrl,
+          httpStatus: response.status,
+          error: response.error || null,
+          stateKeys:
+            response.payload && typeof response.payload === "object"
+              ? Object.keys(response.payload as Record<string, unknown>).slice(
+                  0,
+                  20,
+                )
+              : [],
+        },
+      }
+    }
+  }
+
+  return {
+    url: "",
+    source: stateUrlCandidates.length > 0 ? "state-url-no-public-url" : "missing",
+    evidence: {
+      expectedParams: [
+        "bcFrontendQuickTunnelUrl",
+        "bcFrontendQuickTunnelStateUrl",
+      ],
+      attemptedStateUrls,
+    },
+  }
+}
+
+function routeLooksLikeBaseConnectApp(path: string, text: string): boolean {
+  if (!text.includes("BaseConnect")) return false
+  if (path === "/") return true
+
+  // Expo web production exports commonly serve the same SPA shell for deep links;
+  // the route-specific proof then lives in the downloaded JS bundle, while this
+  // check proves the public quick tunnel/history fallback returns the real app
+  // shell instead of a tunnel error page or dashboard shell.
+  if (/id="root"|_expo\/static\/js\/web|expo-scripts/iu.test(text)) return true
+
+  if (path === "/login") return /login|sign in|sign-in|email|password/iu.test(text)
+  if (path === "/user-verification")
+    return /verification|verify|user-verification|identity|code/iu.test(text)
+  return true
 }
 
 function providerSummary(payload: unknown): Record<string, unknown> {
@@ -1707,26 +2061,25 @@ async function evaluateBuiltinCheck(
     case "storyboard_cold_start_dev_dashboard_staging_backend": {
       const backendMode =
         maybeString(params.backendMode) === "docker" ? "docker" : "staging"
-      const workflowTitle = `bc-storyboard on dev dashboard with ${backendMode} backend`
-      const storyboardUrl =
-        maybeString(params.storyboardUrl) || "http://10.0.0.239:8898/onboarding"
-      const frontendUrl =
-        maybeString(params.frontendUrl) ||
-        (backendMode === "docker"
-          ? "http://10.0.0.239:8085"
-          : "http://10.0.0.239:8086")
+      const workflowTitle = `BaseConnect onboarding storyboard health — ${backendMode} backend`
+      const storyboardUrl = maybeString(params.storyboardUrl)
+      const frontendUrl = maybeString(params.frontendUrl)
       const backendApiUrl =
         maybeString(params.backendApiUrl) ||
-        (backendMode === "docker"
-          ? "http://10.0.0.239:8080"
-          : "https://api-staging.baseconnect-app.com")
+        (backendMode === "staging"
+          ? "https://api-staging.baseconnect-app.com"
+          : "")
       const localDashboardUrl =
         maybeString(params.localDashboardUrl) || "http://127.0.0.1:3300"
       const publicDashboardUrl =
-        maybeString(params.publicDashboardUrl) || localDashboardUrl
+        maybeString(params.publicDashboardUrl) ||
+        dashboardRuntimeStatePublicUrl() ||
+        localDashboardUrl
       const viteUrl = maybeString(params.viteUrl) || "http://127.0.0.1:5173"
       const runTargetId =
         maybeString(params.runTargetId) || "baseconnect-frontend-web"
+      const exactFrameId =
+        maybeString(params.frameId) || "story-c-01-existing-base-selected"
       const timeoutSeconds = maybeNumber(params.timeoutSeconds, 8)
       const timeoutMs = timeoutSeconds * 1000
       const expectedMinimumPassCount = maybeNumber(
@@ -1736,7 +2089,7 @@ async function evaluateBuiltinCheck(
       const routePath = "/storyboard/debug/storyboardEditor/remote-storyboard/"
       const encodedSource = new URLSearchParams({ storyboardUrl }).toString()
       const providerRows: Array<Record<string, unknown>> = []
-      const providerContext = { backendMode, frontendUrl }
+      const providerContext = { backendMode, frontendUrl, storyboardUrl }
 
       const sourceMdUrl =
         storyboardProviderUrl(storyboardUrl, "storyboard.md") ?? ""
@@ -1749,6 +2102,23 @@ async function evaluateBuiltinCheck(
         ""
       const localRemoteStoryboardUrl = `${localDashboardUrl.replace(/\/+$/u, "")}${routePath}?${encodedSource}`
       const publicRemoteStoryboardUrl = `${publicDashboardUrl.replace(/\/+$/u, "")}${routePath}?${encodedSource}`
+      const managerDashboardUrl = publicDashboardUrl || localDashboardUrl
+      const managerStoryboardQuery = new URLSearchParams({
+        storyboardUrl,
+        frameId: exactFrameId,
+      }).toString()
+      const managerStoryboardRouteUrl = `${managerDashboardUrl.replace(/\/+$/u, "")}/storyboard?${managerStoryboardQuery}`
+      const localManagerStoryboardRouteUrl = `${localDashboardUrl.replace(/\/+$/u, "")}/storyboard?${managerStoryboardQuery}`
+      const managerStoryApiQuery = new URLSearchParams({ storyboardUrl }).toString()
+      const managerDocumentApiUrl = `${localDashboardUrl.replace(/\/+$/u, "")}/api/storyboard/document?${managerStoryApiQuery}`
+      const managerRunCapabilitiesApiUrl = `${localDashboardUrl.replace(/\/+$/u, "")}/api/storyboard/run-capabilities?${managerStoryApiQuery}`
+      const managerRunDiscoveryApiUrl = `${localDashboardUrl.replace(/\/+$/u, "")}/api/storyboard/run?${managerStoryApiQuery}`
+      const managerRunStateApiUrl = `${localDashboardUrl.replace(/\/+$/u, "")}/api/storyboard/run-state?${managerStoryApiQuery}&captureSetId=default&outputVariantId=desktop`
+      const bcWebAppQuickTunnel = await resolveBcWebAppQuickTunnelUrl(
+        params,
+        timeoutMs,
+      )
+      const bcWebAppQuickTunnelUrl = bcWebAppQuickTunnel.url
 
       const sourceMd = sourceMdUrl
         ? await textFromUrl(sourceMdUrl, timeoutMs)
@@ -1762,7 +2132,7 @@ async function evaluateBuiltinCheck(
           status: httpStatusIsOk(sourceMd.status) ? "pass" : "fail",
           detail: httpStatusIsOk(sourceMd.status)
             ? `HTTP ${sourceMd.status}`
-            : sourceMd.error || `HTTP ${sourceMd.status}`,
+            : `Ask bc-storyboard to restore the storyboard markdown source for this health profile (${sourceMd.error || `HTTP ${sourceMd.status}`}).`,
           evidence: {
             url: sourceMdUrl,
             httpStatus: sourceMd.status,
@@ -1798,7 +2168,7 @@ async function evaluateBuiltinCheck(
           status: httpStatusIsOk(sourceJson.status) ? "pass" : "fail",
           detail: httpStatusIsOk(sourceJson.status)
             ? `HTTP ${sourceJson.status}; stories=${storyCount}; frames=${frameCount}`
-            : sourceJson.error || `HTTP ${sourceJson.status}`,
+            : `Ask bc-storyboard to restore the storyboard JSON source for this health profile (${sourceJson.error || `HTTP ${sourceJson.status}`}).`,
           evidence: {
             url: sourceJsonUrl,
             httpStatus: sourceJson.status,
@@ -1884,7 +2254,7 @@ async function evaluateBuiltinCheck(
               : "fail",
           detail: Array.isArray(document.stories)
             ? "document has stories[] and parsed JSON"
-            : "storyboard JSON missing stories[]",
+            : "Ask bc-storyboard to repair storyboard.json so it contains a valid stories[] array.",
           evidence: {
             hasStoriesArray: Array.isArray(document.stories),
             topLevelKeys: Object.keys(document).slice(0, 20),
@@ -1906,6 +2276,28 @@ async function evaluateBuiltinCheck(
             evidenceAssetRefs: 0,
             sharedSubcheckDefinitionId:
               "bc-storyboard-asset-reference-inventory",
+          },
+        },
+        providerContext,
+      )
+
+      const exactFrame = findStoryboardFrameById(stories, exactFrameId)
+      addProviderRow(
+        providerRows,
+        {
+          key: "manager-storyboard-target-frame-exists",
+          label: "exact manager Storyboard frame exists",
+          group: "manager Storyboard frame Run API contract",
+          status: exactFrame ? "pass" : "fail",
+          detail: exactFrame
+            ? `frameId=${exactFrameId}; storyId=${exactFrame.storyId}`
+            : `Target frameId ${exactFrameId} is missing from storyboard.json; bc-storyboard must restore the target frame before Run can work.`,
+          evidence: {
+            frameId: exactFrameId,
+            storyId: exactFrame?.storyId ?? null,
+            frameTitle: exactFrame ? maybeString(exactFrame.frame.title) : null,
+            sharedSubcheckDefinitionId:
+              "manager-storyboard-target-frame-exists",
           },
         },
         providerContext,
@@ -1935,7 +2327,7 @@ async function evaluateBuiltinCheck(
       )
 
       const checkAllPayload = checkAllUrl
-        ? await jsonFromUrl(checkAllUrl, timeoutMs, {
+        ? await jsonFromUrl(checkAllUrl, Math.max(timeoutMs, 25000), {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ storyboardUrl, runTargetId }),
@@ -2069,8 +2461,8 @@ async function evaluateBuiltinCheck(
             detail: routeReachable
               ? `HTTP ${response.status}`
               : dockerRouteMissing
-                ? `CONFIG_MISSING: Docker frontend route ${url} is not reachable (${response.error || `HTTP ${response.status}`}); start/configure the Docker frontend surface instead of falling back to staging.`
-                : response.error || `HTTP ${response.status}`,
+                  ? `CONFIG_MISSING: Docker frontend route is not reachable (${response.error || `HTTP ${response.status}`}); start/configure the Docker frontend surface instead of falling back to staging.`
+                  : `Start the bc-frontend staging web app runtime and publish its current URL so ${path} loads (${response.error || `HTTP ${response.status}`}).`,
             evidence: {
               url,
               httpStatus: response.status,
@@ -2081,6 +2473,165 @@ async function evaluateBuiltinCheck(
           providerContext,
         )
       }
+      const quickTunnelValidHttps = /^https:\/\/[-a-z0-9]+\.trycloudflare\.com$/u.test(
+        bcWebAppQuickTunnelUrl,
+      )
+      const quickTunnelDistinctFromDashboard =
+        !bcWebAppQuickTunnelUrl ||
+        bcWebAppQuickTunnelUrl !== publicDashboardUrl.replace(/\/+$/u, "")
+      addProviderRow(
+        providerRows,
+        {
+          key: "bc-frontend-public-quick-tunnel-url-present",
+          label: "BC web app public quick tunnel URL present",
+          group: "bc-frontend web app quick tunnel",
+          status:
+            quickTunnelValidHttps && quickTunnelDistinctFromDashboard
+              ? "pass"
+              : "fail",
+          detail:
+            quickTunnelValidHttps && quickTunnelDistinctFromDashboard
+              ? `public quick tunnel discovered via ${bcWebAppQuickTunnel.source}`
+              : bcWebAppQuickTunnelUrl === publicDashboardUrl.replace(/\/+$/u, "")
+                ? "BC web app quick tunnel must be separate from the dev-dashboard tunnel"
+                : "No current BaseConnect public web app tunnel URL is configured/discoverable; bc-frontend should publish bcFrontendQuickTunnelUrl or bcFrontendQuickTunnelStateUrl for the active runtime.",
+          owner: "bc-frontend",
+          runLocation: {
+            executor: "dashboard-health-api",
+            workTarget: "bc-fullstack/frontend",
+            host:
+              bcWebAppQuickTunnelUrl ||
+              "BaseConnect public web app tunnel metadata",
+            source: "BaseConnect frontend quick tunnel owner",
+            vantagePoint: "ddev worker -> public BC web app quick tunnel",
+            providerType: "bc-frontend-public-quicktunnel-http-probe",
+          },
+          evidence: {
+            quickTunnelUrl: bcWebAppQuickTunnelUrl || null,
+            discoverySource: bcWebAppQuickTunnel.source,
+            quickTunnelValidHttps,
+            quickTunnelDistinctFromDashboard,
+            publicDashboardUrl,
+            ...bcWebAppQuickTunnel.evidence,
+          },
+        },
+        providerContext,
+      )
+
+      const quickTunnelRouteResponses: Record<
+        string,
+        { status: number | null; semanticMatch: boolean; error?: string }
+      > = {}
+      if (quickTunnelValidHttps && quickTunnelDistinctFromDashboard) {
+        for (const path of ["/", "/login", "/user-verification"]) {
+          const url = `${bcWebAppQuickTunnelUrl}${path}`
+          const response = await textFromUrl(url, timeoutMs)
+          const routeReachable = httpStatusIsOk(response.status)
+          const semanticMatch =
+            routeReachable && routeLooksLikeBaseConnectApp(path, response.text)
+          quickTunnelRouteResponses[path] = {
+            status: response.status,
+            semanticMatch,
+            error: response.error,
+          }
+          addProviderRow(
+            providerRows,
+            {
+              key: `bc-frontend-quick-tunnel${path === "/" ? "-root" : path.replace(/\//gu, "-")}-real-app`,
+              label: `BC web app quick tunnel ${path} real app view`,
+              group: "bc-frontend web app quick tunnel",
+              status: semanticMatch ? "pass" : "fail",
+              detail: semanticMatch
+                ? `HTTP ${response.status}; BaseConnect app view detected`
+                : routeReachable
+                  ? `HTTP ${response.status}; response did not prove the real BaseConnect ${path} view`
+                  : response.error || `HTTP ${response.status}`,
+              owner: "bc-frontend",
+              runLocation: {
+                executor: "dashboard-health-api",
+                workTarget: "bc-fullstack/frontend",
+                host: bcWebAppQuickTunnelUrl,
+                source: "BaseConnect frontend quick tunnel owner",
+                vantagePoint: "ddev worker -> public BC web app quick tunnel",
+                providerType: "bc-frontend-public-quicktunnel-http-probe",
+              },
+              evidence: {
+                url,
+                httpStatus: response.status,
+                semanticMatch,
+                requiredMarkers: ["BaseConnect", path],
+                error: response.error,
+                sharedSubcheckDefinitionId:
+                  "bc-frontend-public-quick-tunnel-route-real-app",
+              },
+            },
+            providerContext,
+          )
+        }
+      } else {
+        addProviderRow(
+          providerRows,
+          {
+            key: "bc-frontend-quick-tunnel-routes-blocked",
+            label: "BC web app quick tunnel /login and /user-verification real views",
+            group: "bc-frontend web app quick tunnel",
+            status: "fail",
+            detail:
+              "quick tunnel route proof is unavailable until bc-frontend publishes a distinct public BC web app quick tunnel URL",
+            owner: "bc-frontend",
+            evidence: {
+              quickTunnelUrl: bcWebAppQuickTunnelUrl || null,
+              requiredPaths: ["/", "/login", "/user-verification"],
+              sharedSubcheckDefinitionId:
+                "bc-frontend-public-quick-tunnel-route-real-app",
+            },
+          },
+          providerContext,
+        )
+      }
+
+      const quickTunnelBackendMarker =
+        quickTunnelValidHttps && quickTunnelDistinctFromDashboard
+          ? await detectBackendMarker(
+              bcWebAppQuickTunnelUrl,
+              "staging",
+              timeoutMs,
+            )
+          : { present: false, urls: [], marker: "quick-tunnel-url-missing" }
+      addProviderRow(
+        providerRows,
+        {
+          key: "bc-frontend-quick-tunnel-staging-backend-proof",
+          label: "BC web app quick tunnel staging backend proof",
+          group: "bc-frontend web app quick tunnel",
+          status: quickTunnelBackendMarker.present ? "pass" : "fail",
+          detail: quickTunnelBackendMarker.present
+            ? "public tunnel bundle references the expected staging backend API"
+            : "public BC web app quick tunnel does not prove the expected staging backend target",
+          owner: "bc-frontend",
+          runLocation: {
+            executor: "dashboard-health-api",
+            workTarget: "bc-fullstack/frontend",
+            host:
+              bcWebAppQuickTunnelUrl ||
+              "BaseConnect public web app tunnel metadata",
+            source: "BaseConnect frontend quick tunnel owner",
+            vantagePoint: "ddev worker -> public BC web app quick tunnel bundle",
+            providerType: "bc-frontend-public-quicktunnel-bundle-probe",
+          },
+          evidence: {
+            quickTunnelUrl: bcWebAppQuickTunnelUrl || null,
+            backendApiUrl,
+            marker: quickTunnelBackendMarker.marker,
+            urls: quickTunnelBackendMarker.urls,
+            routeResponses: quickTunnelRouteResponses,
+            sharedSubcheckDefinitionId:
+              "bc-frontend-public-quick-tunnel-staging-backend-proof",
+          },
+        },
+        providerContext,
+      )
+
       const backendMarker = await detectBackendMarker(
         frontendUrl,
         backendMode,
@@ -2100,8 +2651,8 @@ async function evaluateBuiltinCheck(
           detail: backendMarker.present
             ? backendMarker.marker
             : backendMode === "docker"
-              ? `CONFIG_MISSING: Docker/local backend marker is absent from ${frontendUrl}; Docker frontend/backend must be reachable and must not fall back to staging.`
-              : "api-staging/baseconnect staging marker missing from frontend bundle",
+              ? "CONFIG_MISSING: Docker/local backend marker is absent; Docker frontend/backend must be reachable and must not fall back to staging."
+              : "Start/rebuild the bc-frontend staging web app runtime with the staging backend target; the current bundle does not prove the staging API target.",
           evidence: {
             frontendUrl,
             backendApiUrl,
@@ -2162,7 +2713,7 @@ async function evaluateBuiltinCheck(
             status: dockerBackendApiReachable ? "pass" : "blocked",
             detail: dockerBackendApiReachable
               ? `HTTP ${backendApi.status}`
-              : `CONFIG_MISSING: Docker/local backend API ${backendApiUrl} is not reachable (${backendApi.error || `HTTP ${backendApi.status}`}); do not fall back to staging.`,
+              : `CONFIG_MISSING: Docker/local backend API is not reachable (${backendApi.error || `HTTP ${backendApi.status}`}); do not fall back to staging.`,
             evidence: {
               url: backendApiUrl,
               httpStatus: backendApi.status,
@@ -2191,14 +2742,27 @@ async function evaluateBuiltinCheck(
           "remote-storyboard route 200",
           localRemoteStoryboardUrl,
         ],
+        [
+          "manager-storyboard-exact-route-200",
+          "exact manager Storyboard route 200",
+          managerStoryboardRouteUrl,
+        ],
+        [
+          "manager-storyboard-exact-local-route-200",
+          "exact manager Storyboard local route 200",
+          localManagerStoryboardRouteUrl,
+        ],
       ] as const) {
         const response = await textFromUrl(url, timeoutMs)
+        const isManagerRunContract = key.startsWith("manager-storyboard-")
         addProviderRow(
           providerRows,
           {
             key,
             label,
-            group: "ddev dashboard/tunnel/remote-storyboard route",
+            group: isManagerRunContract
+              ? "manager Storyboard frame Run API contract"
+              : "ddev dashboard/tunnel/remote-storyboard route",
             status: httpStatusIsOk(response.status) ? "pass" : "fail",
             detail: httpStatusIsOk(response.status)
               ? `HTTP ${response.status}`
@@ -2206,7 +2770,62 @@ async function evaluateBuiltinCheck(
             evidence: {
               url,
               httpStatus: response.status,
-              sharedSubcheckDefinitionId: "ddev-dashboard-route-200",
+              sharedSubcheckDefinitionId: isManagerRunContract
+                ? "manager-storyboard-exact-route"
+                : "ddev-dashboard-route-200",
+            },
+          },
+          providerContext,
+        )
+      }
+
+      for (const [key, label, url] of [
+        [
+          "manager-storyboard-document-api-loads",
+          "manager Storyboard document API loads target storyboard",
+          managerDocumentApiUrl,
+        ],
+        [
+          "manager-storyboard-run-capabilities-api-present",
+          "manager Storyboard run-capabilities API is present",
+          managerRunCapabilitiesApiUrl,
+        ],
+        [
+          "manager-storyboard-run-api-present",
+          "manager Storyboard run API is present",
+          managerRunDiscoveryApiUrl,
+        ],
+        [
+          "manager-storyboard-run-state-api-loads",
+          "manager Storyboard run-state API reports frame runnable state",
+          managerRunStateApiUrl,
+        ],
+      ] as const) {
+        const response = await jsonFromUrl(url, Math.max(timeoutMs, 10000))
+        const status =
+          response.status !== null &&
+          response.status !== 404 &&
+          response.status !== 405
+            ? "pass"
+            : "fail"
+        addProviderRow(
+          providerRows,
+          {
+            key,
+            label,
+            group: "manager Storyboard frame Run API contract",
+            status,
+            detail:
+              status === "pass"
+                ? `HTTP ${response.status}; endpoint available`
+                : response.error || `HTTP ${response.status}; endpoint missing`,
+            evidence: {
+              url,
+              httpStatus: response.status,
+              endpointAvailable: status === "pass",
+              payloadSummary: providerSummary(response.payload),
+              sharedSubcheckDefinitionId:
+                "manager-storyboard-same-origin-run-api",
             },
           },
           providerContext,
@@ -2229,8 +2848,8 @@ async function evaluateBuiltinCheck(
           detail: backendMarker.present
             ? `bundle marker proves ${backendMode}`
             : dockerConfigMissing
-              ? `CONFIG_MISSING: expected Docker/local marker is unavailable because the Docker backend/frontend surface is not reachable; backendApi=${backendApiUrl}`
-              : `expected ${backendMode} marker unavailable`,
+              ? "CONFIG_MISSING: expected Docker/local marker is unavailable because the Docker backend/frontend surface is not reachable."
+              : "Repair the bc-frontend runtime config so the served bundle targets the expected staging backend API.",
           owner: "bc-frontend",
           evidence: {
             backendMode,
@@ -2276,7 +2895,7 @@ async function evaluateBuiltinCheck(
           detail:
             backendMode === "docker" &&
             !httpStatusIsOk(frontendRouteResponses["/"]?.status ?? null)
-              ? `CONFIG_MISSING: root route semantic assertion blocked because ${frontendUrl}/ is not reachable.`
+              ? "CONFIG_MISSING: Start the bc-frontend Docker web app runtime; the home page is not reachable."
               : "HTTP route smoke paired with bundle/backend marker",
           owner: "bc-frontend",
           evidence: { frontendUrl, frontendRouteResponses },
@@ -2291,10 +2910,10 @@ async function evaluateBuiltinCheck(
               ? "blocked"
               : "fail",
           detail: backendMarker.present
-            ? `frontend bundle references expected backend target ${backendApiUrl}`
+            ? "frontend bundle references the expected backend target"
             : dockerConfigMissing
-              ? `CONFIG_MISSING: browser/network target proof blocked until Docker/local backend ${backendApiUrl} and frontend ${frontendUrl} are reachable; do not fall back to staging.`
-              : `frontend bundle does not reference expected backend target ${backendApiUrl}`,
+              ? "CONFIG_MISSING: browser/network target proof blocked until the Docker/local backend and frontend are reachable; do not fall back to staging."
+              : "Repair the bc-frontend served bundle; it does not reference the expected backend target.",
           owner: "bc-frontend",
           evidence: {
             backendApiUrl,
@@ -2465,6 +3084,8 @@ async function evaluateBuiltinCheck(
               "bc-storyboard-check-all-summary",
               "bc-frontend-route-200",
               "bc-frontend-backend-marker",
+              "bc-frontend-public-quick-tunnel-route-real-app",
+              "bc-frontend-public-quick-tunnel-staging-backend-proof",
               "ddev-dashboard-route-200",
             ],
             backendSpecificBranch: backendMode,
@@ -2626,28 +3247,11 @@ async function evaluateCheck(
 }
 
 function runStatusFromChecks(checks: HealthCheckResult[]): HealthRunStatus {
-  if (
-    checks.some(
-      (check) =>
-        check.severity === "blocking" &&
-        failLikeHealthStatuses.includes(check.status),
-    )
-  ) {
-    return "fail"
-  }
-  if (
-    checks.some((check) => unknownLikeHealthStatuses.includes(check.status))
-  ) {
+  if (checks.length === 0) {
     return "unknown"
   }
-  if (
-    checks.some(
-      (check) =>
-        failLikeHealthStatuses.includes(check.status) ||
-        warnLikeHealthStatuses.includes(check.status),
-    )
-  ) {
-    return "warn"
+  if (checks.some((check) => check.status !== "PASS" && check.status !== "INFO")) {
+    return "fail"
   }
   return "pass"
 }

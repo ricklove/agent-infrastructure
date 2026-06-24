@@ -75,6 +75,8 @@ describe("dashboard health API", () => {
               localDashboardUrl: "http://127.0.0.1:1",
               publicDashboardUrl: "http://127.0.0.1:1",
               viteUrl: "http://127.0.0.1:1",
+              bcFrontendQuickTunnelUrl: "",
+              bcFrontendQuickTunnelStateUrl: "",
               timeoutSeconds: "1",
             },
           }),
@@ -85,6 +87,8 @@ describe("dashboard health API", () => {
         result: {
           profileId: string
           runId: string
+          status: string
+          root?: { status?: string }
           checks: Array<{
             status: string
             contractVersion?: string
@@ -96,6 +100,15 @@ describe("dashboard health API", () => {
               backendMode: string
               profileComposition: { template: string }
               children: Array<{ title: string }>
+              providerRows: Array<{
+                key: string
+                label: string
+                group: string
+                status: string
+                detail?: string
+                owner?: string
+                evidence?: Record<string, unknown>
+              }>
             }
             children: Array<{
               title: string
@@ -114,6 +127,13 @@ describe("dashboard health API", () => {
     const stagingCheck = staging.result.checks[0]
     const dockerCheck = docker.result.checks[0]
 
+    expect(staging.result.status).toBe("fail")
+    expect(staging.result.root?.status).toBe("FAIL")
+    expect(docker.result.status).toBe("fail")
+    expect(docker.result.root?.status).toBe("FAIL")
+    expect(stagingCheck?.status).toBe("FAIL")
+    expect(dockerCheck?.status).toBe("FAIL")
+
     expect(stagingCheck?.evidence.profileComposition.template).toBe(
       "storyboard-cold-start-dev-dashboard-backend.v1",
     )
@@ -123,17 +143,54 @@ describe("dashboard health API", () => {
     expect(stagingCheck?.evidence.backendMode).toBe("staging")
     expect(dockerCheck?.evidence.backendMode).toBe("docker")
     expect(stagingCheck?.children.map((child) => child.title)).toContain(
-      "bc-frontend staging runtime",
+      "BaseConnect web app is running with the staging backend",
     )
     expect(dockerCheck?.children.map((child) => child.title)).toContain(
-      "bc-frontend docker runtime",
+      "BaseConnect web app is running with the Docker backend",
     )
     expect(stagingCheck?.children.map((child) => child.title)).not.toContain(
-      "bc-frontend docker runtime",
+      "BaseConnect web app is running with the Docker backend",
     )
-    expect(dockerCheck?.children.map((child) => child.title)).not.toContain(
-      "bc-frontend staging runtime",
+    expect(stagingCheck?.children.map((child) => child.title)).toContain(
+      "Public BC web app tunnel is available",
     )
+    const quickTunnelRows = stagingCheck?.evidence.providerRows.filter(
+      (row) => row.group === "bc-frontend web app quick tunnel",
+    )
+    expect(quickTunnelRows?.length).toBeGreaterThanOrEqual(3)
+    expect(quickTunnelRows?.some((row) => row.owner === "bc-frontend")).toBe(
+      true,
+    )
+    expect(
+      quickTunnelRows?.some(
+        (row) =>
+          row.key === "bc-frontend-public-quick-tunnel-url-present" &&
+          row.status === "fail" &&
+          row.detail?.includes("bcFrontendQuickTunnelUrl"),
+      ),
+    ).toBe(true)
+    expect(
+      quickTunnelRows?.some(
+        (row) =>
+          row.key === "bc-frontend-quick-tunnel-staging-backend-proof" &&
+          row.status === "fail" &&
+          row.evidence?.backendApiUrl ===
+            "https://api-staging.baseconnect-app.com",
+      ),
+    ).toBe(true)
+    const stagingFailure = stagingCheck as
+      | ({ failure?: { message?: string } } & typeof stagingCheck)
+      | undefined
+    const userFacingText = [
+      stagingFailure?.failure?.message,
+      stagingCheck?.children.map((child) => child.title).join("\n"),
+      stagingCheck?.evidence.providerRows
+        .map((row) => `${row.label}\n${row.group}\n${row.detail ?? ""}`)
+        .join("\n"),
+    ].join("\n")
+    expect(userFacingText).not.toContain("10.0.0.239")
+    expect(userFacingText).not.toContain("printing-nova-schema-parcel")
+    expect(userFacingText).not.toContain("t_913b64c0")
     expect(stagingCheck?.contractVersion).toBe("health-node-result.v1")
     expect(stagingCheck?.nodeKind).toBe("check")
     expect(stagingCheck?.correlationId).toBe(staging.result.runId)
@@ -144,10 +201,10 @@ describe("dashboard health API", () => {
       "bc_storyboard_dev_dashboard_staging_backend_cold_start",
     )
     const stagingSource = stagingCheck?.children.find(
-      (child) => child.title === "bc-storyboard source/provider health",
+      (child) => child.title === "Storyboard source is reachable and valid",
     )
     const dockerSource = dockerCheck?.children.find(
-      (child) => child.title === "bc-storyboard source/provider health",
+      (child) => child.title === "Storyboard source is reachable and valid",
     )
     expect(stagingSource?.templateId).toBe(
       "storyboard-cold-start-dev-dashboard-backend.v1",

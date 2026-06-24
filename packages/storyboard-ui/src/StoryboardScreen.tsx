@@ -5,19 +5,14 @@ import {
   StoryboardDebugPreviewScreen,
   StoryboardDebugScenarioScreen,
 } from "./debug/DebugCatalog"
-import { RemoteStoryboardEditorScreen, StoryboardRunTargetHealthScreen, readStoryboardEditorQuery } from "./debug/storyboardEditorScenarios"
+import { RemoteStoryboardEditorScreen, StoryboardRunTargetHealthScreen } from "./debug/storyboardEditorScenarios"
 import { parseStoryboardDebugRoute } from "./debug/routes"
 
 export function StoryboardScreen() {
   const pathname =
     typeof window === "undefined" ? "/storyboard" : window.location.pathname
   const debugRoute = parseStoryboardDebugRoute(pathname)
-  const query =
-    typeof window === "undefined"
-      ? { storyboardUrl: "", frameId: "" }
-      : readStoryboardEditorQuery(window.location.search)
-
-  if (pathname.replace(/\/+$/, "") === "/storyboard" && (query.storyboardUrl || query.frameId)) {
+  if (pathname.replace(/\/+$/, "") === "/storyboard") {
     return <RemoteStoryboardEditorScreen />
   }
 

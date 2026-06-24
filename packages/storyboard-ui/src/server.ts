@@ -1424,6 +1424,61 @@ Bun.serve({
       }
     }
 
+    if (pathname === "/api/storyboard/run" && request.method === "GET") {
+      try {
+        const storyboardUrl = resolveStoryboardUrl(url, request.url)
+        if (!storyboardUrl) {
+          return textError("missing storyboardUrl", 400)
+        }
+        const capabilities = await proxyStoryboardAccessJsonWithRunMirrorFallback(
+          storyboardUrl,
+          "/api/storyboard-access/capabilities",
+        )
+        return jsonResponse({
+          ok: true,
+          endpoint: "/api/storyboard/runs",
+          method: "POST",
+          aliases: ["/api/storyboard/run"],
+          capabilities,
+        })
+      } catch (error) {
+        return textError(error instanceof Error ? error.message : String(error), 400)
+      }
+    }
+
+    if (pathname === "/api/storyboard/run" && request.method === "POST") {
+      try {
+        const body = ((await request.json().catch(() => ({}))) ?? {}) as { storyboardUrl?: string } & Record<string, unknown>
+        const storyboardUrl = body.storyboardUrl?.trim()
+        if (!storyboardUrl) {
+          return textError("missing storyboardUrl", 400)
+        }
+        const { storyboardUrl: _storyboardUrl, ...runRequest } = body
+        const mirror =
+          runRequest.mode === "run-and-capture" || runRequest.mode === "capture"
+            ? await ensureRunMirror(storyboardUrl)
+            : null
+        const payload = mirror
+          ? await (async () => {
+              const response = await fetch(new URL("/api/storyboard-access/runs", `${mirror.baseUrl}/`), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(runRequest),
+              })
+              if (!response.ok) throw new Error(await response.text())
+              return response.json()
+            })()
+          : await proxyStoryboardAccessJsonWithRunMirrorFallback(storyboardUrl, "/api/storyboard-access/runs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(runRequest),
+            })
+        return jsonResponse(payload, 202)
+      } catch (error) {
+        return textError(error instanceof Error ? error.message : String(error), 400)
+      }
+    }
+
     if (pathname === "/api/storyboard/run-state" && request.method === "GET") {
       try {
         const storyboardUrl = resolveStoryboardUrl(url, request.url)

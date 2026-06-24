@@ -1,11 +1,11 @@
 {
   "id": "bc_storyboard_dev_dashboard_docker_backend",
-  "title": "bc-storyboard on dev dashboard with docker backend",
+  "title": "BaseConnect onboarding storyboard health — docker backend",
   "description": "Cold-start top-level health profile for the full DEV Storyboard + BaseConnect onboarding path with frontend runtime configured against the Docker/local backend stack. Reuses the shared Storyboard/dashboard cold-start health template while keeping the Docker backend branch independent from staging.",
   "runLocation": {
     "executor": "dashboard-health-api",
     "workTarget": "agent-infra-dev/ddev-dashboard",
-    "host": "agent-swarm-worker-i-0b48c8cbd72379b7a",
+    "host": "ddev worker dashboard surface",
     "source": "dashboard server initiating delegated cross-surface probes",
     "vantagePoint": "ddev worker dashboard API",
     "providerType": "workflow-rollup-template"
@@ -17,27 +17,29 @@
     "frontendUrl": "http://10.0.0.239:8085",
     "backendApiUrl": "http://10.0.0.239:8080",
     "localDashboardUrl": "http://127.0.0.1:3300",
-    "publicDashboardUrl": "https://ecommerce-followed-sandwich-heroes.trycloudflare.com",
+    "publicDashboardUrl": "",
     "viteUrl": "http://127.0.0.1:5173",
     "expectedMinimumPassCount": "27",
+    "bcFrontendQuickTunnelUrl": "",
+    "bcFrontendQuickTunnelStateUrl": "",
     "timeoutSeconds": "8"
   },
   "checks": [
     {
       "id": "bc_storyboard_dev_dashboard_docker_backend_cold_start",
       "checkId": "storyboard_cold_start_dev_dashboard_backend",
-      "title": "Cold-start DEV Storyboard + BaseConnect onboarding path (docker backend)",
+      "title": "BaseConnect onboarding storyboard can recover from cold start",
       "component": "bc-storyboard on dev dashboard with docker backend",
       "runLocation": {
         "executor": "dashboard-health-api",
         "workTarget": "agent-infra-dev/ddev-dashboard",
-        "host": "agent-swarm-worker-i-0b48c8cbd72379b7a",
+        "host": "ddev worker dashboard surface",
         "source": "dashboard server initiated workflow health",
         "vantagePoint": "ddev worker dashboard API -> Docker/backend parent",
         "providerType": "workflow-rollup-template"
       },
       "severity": "blocking",
-      "repairHint": "Repair the failing child group owner: bc-frontend docker runtime, bc-storyboard source/provider health, ddev dashboard/tunnel/remote-storyboard route, or fast health/check-all summary. Docker repair actions must declare the Docker host/container affected; no fake repair button is exposed here.",
+      "repairHint": "Repair the failing child owner shown in the tree: bc-frontend should start the Docker web app/backend surfaces without falling back to staging; bc-storyboard should restore the storyboard source/check-all endpoint; ddev-storyboard should restore the Health Dashboard or storyboard editor route. Current resolved URLs belong in row details/evidence only; no fake repair button is exposed here.",
       "params": {
         "backendMode": "{{backendMode}}",
         "storyboardUrl": "{{storyboardUrl}}",
@@ -48,6 +50,8 @@
         "publicDashboardUrl": "{{publicDashboardUrl}}",
         "viteUrl": "{{viteUrl}}",
         "expectedMinimumPassCount": "{{expectedMinimumPassCount}}",
+        "bcFrontendQuickTunnelUrl": "{{bcFrontendQuickTunnelUrl}}",
+        "bcFrontendQuickTunnelStateUrl": "{{bcFrontendQuickTunnelStateUrl}}",
         "timeoutSeconds": "{{timeoutSeconds}}"
       }
     }
