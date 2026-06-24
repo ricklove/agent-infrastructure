@@ -2031,13 +2031,16 @@ async function evaluateBuiltinCheck(
         (backendMode === "staging"
           ? "https://api-staging.baseconnect-app.com"
           : "")
-      const localDashboardUrl =
-        maybeString(params.localDashboardUrl) || "http://127.0.0.1:3300"
+      const requestOrigin = maybeString(params.requestOrigin)
       const publicDashboardUrl =
         maybeString(params.publicDashboardUrl) ||
-        dashboardRuntimeStatePublicUrl() ||
-        localDashboardUrl
-      const viteUrl = maybeString(params.viteUrl) || "http://127.0.0.1:5173"
+        requestOrigin ||
+        dashboardRuntimeStatePublicUrl()
+      const localDashboardUrl =
+        maybeString(params.localDashboardUrl) || publicDashboardUrl
+      const viteUrl = maybeString(params.viteUrl)
+      const requireDdevDashboardRoutes =
+        maybeString(params.requireDdevDashboardRoutes) === "true"
       const runTargetId =
         maybeString(params.runTargetId) || "baseconnect-frontend-web"
       const timeoutSeconds = maybeNumber(params.timeoutSeconds, 8)
@@ -2060,8 +2063,12 @@ async function evaluateBuiltinCheck(
       const checkAllUrl =
         storyboardProviderUrl(storyboardUrl, "run-target-health/check-all") ??
         ""
-      const localRemoteStoryboardUrl = `${localDashboardUrl.replace(/\/+$/u, "")}${routePath}?${encodedSource}`
-      const publicRemoteStoryboardUrl = `${publicDashboardUrl.replace(/\/+$/u, "")}${routePath}?${encodedSource}`
+      const localRemoteStoryboardUrl = localDashboardUrl
+        ? `${localDashboardUrl.replace(/\/+$/u, "")}${routePath}?${encodedSource}`
+        : ""
+      const publicRemoteStoryboardUrl = publicDashboardUrl
+        ? `${publicDashboardUrl.replace(/\/+$/u, "")}${routePath}?${encodedSource}`
+        : ""
       const bcWebAppQuickTunnel = await resolveBcWebAppQuickTunnelUrl(
         params,
         timeoutMs,
@@ -2651,31 +2658,53 @@ async function evaluateBuiltinCheck(
         )
       }
 
-      for (const [key, label, url] of [
-        [
-          "ddev-dashboard-gateway-200",
-          "ddev dashboard gateway 200",
-          localDashboardUrl,
-        ],
-        ["ddev-dashboard-vite-200", "ddev dashboard Vite 200", viteUrl],
-        [
-          "ddev-dashboard-public-route-200",
-          "ddev dashboard public route 200",
+      const dashboardRouteChecks: Array<readonly [string, string, string, string]> =
+        requireDdevDashboardRoutes
+          ? [
+              [
+                "ddev-dashboard-gateway-200",
+                "Health Dashboard gateway 200",
+                localDashboardUrl,
+                "ddev dashboard/tunnel/remote-storyboard route",
+              ],
+              [
+                "ddev-dashboard-vite-200",
+                "Health Dashboard frontend dev server 200",
+                viteUrl,
+                "ddev dashboard/tunnel/remote-storyboard route",
+              ],
+              [
+                "ddev-dashboard-remote-storyboard-route-200",
+                "Storyboard editor route 200",
+                localRemoteStoryboardUrl,
+                "ddev dashboard/tunnel/remote-storyboard route",
+              ],
+            ]
+          : []
+      if (publicDashboardUrl) {
+        dashboardRouteChecks.push([
+          "dashboard-public-health-route-200",
+          "Manager Health Dashboard route is reachable",
+          `${publicDashboardUrl.replace(/\/+$/u, "")}/health`,
+          "manager dashboard route",
+        ])
+        dashboardRouteChecks.push([
+          "dashboard-public-remote-storyboard-route-200",
+          "Manager Storyboard editor route is reachable",
           publicRemoteStoryboardUrl,
-        ],
-        [
-          "ddev-dashboard-remote-storyboard-route-200",
-          "remote-storyboard route 200",
-          localRemoteStoryboardUrl,
-        ],
-      ] as const) {
-        const response = await textFromUrl(url, timeoutMs)
+          "manager dashboard route",
+        ])
+      }
+      for (const [key, label, url, group] of dashboardRouteChecks) {
+        const response = url
+          ? await textFromUrl(url, timeoutMs)
+          : { status: null, text: "", error: "dashboard URL is not configured" }
         addProviderRow(
           providerRows,
           {
             key,
             label,
-            group: "ddev dashboard/tunnel/remote-storyboard route",
+            group,
             status: httpStatusIsOk(response.status) ? "pass" : "fail",
             detail: httpStatusIsOk(response.status)
               ? `HTTP ${response.status}`
@@ -2683,7 +2712,7 @@ async function evaluateBuiltinCheck(
             evidence: {
               url,
               httpStatus: response.status,
-              sharedSubcheckDefinitionId: "ddev-dashboard-route-200",
+              sharedSubcheckDefinitionId: "dashboard-route-200",
             },
           },
           providerContext,
@@ -3211,6 +3240,7 @@ function persistRun(state: HealthApiState, result: HealthRunResult): void {
 async function runProfile(
   state: HealthApiState,
   requestBody: HealthRunRequest,
+  requestOrigin = "",
 ): Promise<HealthRunResult | Response> {
   const profileId = maybeString(requestBody.profileId)
   const profile = loadProfile(state, profileId)
@@ -3246,6 +3276,8 @@ async function runProfile(
     targetHost: target.targetHost,
     repoRoot: state.repoRoot,
     stateRoot: dirname(state.stateDir),
+    requestOrigin,
+    dashboardPublicUrl: requestOrigin,
   }
   const renderedBaseContext = renderTemplate(
     baseContext,
@@ -3354,7 +3386,7 @@ export function createHealthApi(options: HealthApiOptions): {
             400,
           )
         }
-        const result = await runProfile(state, body)
+        const result = await runProfile(state, body, url.origin)
         return result instanceof Response
           ? result
           : jsonResponse({ ok: true, result }, 202)

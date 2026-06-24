@@ -1,111 +1,77 @@
 {
   "id": "work_at_dashboard_app_live_dev_surface",
   "title": "Health Dashboard live dev surface",
-  "description": "Readonly health profile for the public Health Dashboard development surface. The target provides the current live dashboard URL and local worker URLs through health params/runtime state; resolved hostnames and ports are evidence, not user-facing labels.",
+  "description": "Health profile for the manager-served Health Dashboard surface. It verifies the current dashboard build and public route without requiring the separate ddev dashboard instance to be running.",
   "runLocation": {
     "executor": "dashboard-health-api",
-    "workTarget": "agent-infra-dev/ddev-dashboard",
-    "host": "Health Dashboard worker",
-    "source": "worker Bun dashboard gateway with managed Vite dev server",
-    "vantagePoint": "ddev worker dashboard API",
+    "workTarget": "manager-dashboard",
+    "host": "manager dashboard surface",
+    "source": "manager dashboard runtime",
+    "vantagePoint": "manager dashboard API",
     "providerType": "dashboard-builtin"
   },
   "params": {
-    "appPath": "{{targetPath}}/apps/dashboard-app",
-    "localDevUrl": "http://127.0.0.1:5173/storyboard/debug/",
-    "liveDevUrl": "https://ecommerce-followed-sandwich-heroes.trycloudflare.com/health?profileId=work_at_dashboard_app_live_dev_surface",
-    "liveDevMustContain": "@vite/client",
-    "servedBranch": "feature/content-creation-storyboards",
-    "servedCommit": "87358635448e97dc0ad8e33b2d0c6cf367416f45"
+    "appPath": "{{repoRoot}}/apps/dashboard-app",
+    "managerDashboardUrl": "{{requestOrigin}}",
+    "liveDevMustContain": "Agent Dashboard"
   },
   "checks": [
     {
       "id": "target_reachable",
       "checkId": "work_at_target_reachable",
-      "title": "Dashboard worker is reachable",
+      "title": "Manager dashboard worker is reachable",
+      "component": "manager dashboard runtime",
       "severity": "blocking",
-      "repairHint": "Restore dashboard worker connectivity or refresh the current worker registration before continuing.",
       "params": {}
-    },
-    {
-      "id": "target_path_exists",
-      "checkId": "work_at_path_exists",
-      "title": "Dashboard app directory exists",
-      "severity": "blocking",
-      "repairHint": "Restore the dashboard app checkout on the current worker or refresh the worker registration before continuing.",
-      "params": {
-        "path": "{{targetPath}}"
-      }
-    },
-    {
-      "id": "target_bun_available",
-      "checkId": "work_at_command_available",
-      "title": "Dashboard runtime dependency is available",
-      "severity": "blocking",
-      "repairHint": "Make the dashboard runtime dependency available on the current worker before running the dev server.",
-      "params": {
-        "commandName": "bun"
-      }
     },
     {
       "id": "target_package_json_exists",
       "checkId": "work_at_path_exists",
       "title": "Dashboard app package is present",
+      "component": "manager dashboard runtime",
       "severity": "blocking",
-      "repairHint": "Restore the dashboard app package metadata in the current checkout before continuing.",
       "params": {
         "path": "{{appPath}}/package.json"
       }
     },
     {
-      "id": "target_vite_config_exists",
+      "id": "target_build_assets_exist",
       "checkId": "work_at_path_exists",
-      "title": "Dashboard dev server config is present",
+      "title": "Dashboard production build is present",
+      "component": "manager dashboard runtime",
       "severity": "blocking",
-      "repairHint": "Restore the dashboard dev server config in the current checkout before continuing.",
       "params": {
-        "path": "{{appPath}}/vite.config.ts"
+        "path": "{{repoRoot}}/apps/dashboard-app/dist/index.html"
       }
     },
     {
-      "id": "target_local_dev_frontend_reachable",
-      "checkId": "work_at_http_ok",
-      "title": "Dashboard local dev server is responding",
-      "severity": "warn",
-      "repairHint": "Restore the dashboard local dev server behind the worker gateway. The public dashboard tunnel remains the primary user-facing gate.",
-      "params": {
-        "url": "{{localDevUrl}}",
-        "timeoutSeconds": "2"
-      }
-    },
-    {
-      "id": "persistent_quicktunnel_contract",
-      "checkId": "dashboard_persistent_quicktunnel_contract",
-      "title": "Public dashboard tunnel is running",
-      "severity": "blocking",
-      "repairHint": "Keep the current dev dashboard public tunnel stable; repair the dashboard gateway or dev server behind it rather than replacing the tunnel hostname.",
-      "params": {
-        "runtimeStatePath": "/home/ec2-user/state/dashboard/runtime-state.json",
-        "localUrl": "http://127.0.0.1:3300",
-        "localPort": "3300",
-        "probePath": "/health?profileId=work_at_dashboard_app_live_dev_surface",
-        "timeoutSeconds": "5",
-        "mustContain": "@vite/client"
-      }
-    },
-    {
-      "id": "target_live_dev_surface_ok",
+      "id": "manager_health_route_ok",
       "checkId": "work_at_http_status_prefix_contains",
-      "title": "Public dashboard is serving the current app",
+      "title": "Manager Health Dashboard route is reachable",
+      "component": "manager dashboard public route",
       "severity": "blocking",
-      "repairHint": "Repair the current worker-served public dashboard URL until it responds successfully and serves the current dashboard app.",
       "params": {
-        "url": "{{liveDevUrl}}",
+        "url": "{{managerDashboardUrl}}/health",
         "timeoutSeconds": "5",
         "method": "GET",
         "curlArgs": "",
         "expectedStatusPrefix": "2",
         "mustContain": "{{liveDevMustContain}}"
+      }
+    },
+    {
+      "id": "manager_health_api_ok",
+      "checkId": "work_at_http_status_prefix_contains",
+      "title": "Manager Health API is reachable",
+      "component": "manager dashboard API",
+      "severity": "blocking",
+      "params": {
+        "url": "{{managerDashboardUrl}}/api/health",
+        "timeoutSeconds": "5",
+        "method": "GET",
+        "curlArgs": "",
+        "expectedStatusPrefix": "2",
+        "mustContain": "\"ok\":true"
       }
     }
   ]
