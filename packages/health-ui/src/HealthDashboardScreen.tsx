@@ -89,6 +89,8 @@ function profileParams(
 
 function resultStatus(result?: HealthRunResult | null) {
   if (!result) return "UNKNOWN" as const
+  if (result.checks.some((check) => check.status === "RUNNING"))
+    return "RUNNING" as const
   if (
     result.checks.some(
       (check) =>
@@ -838,9 +840,9 @@ function profileTreeNode(entry: ProfileState): HealthTreeNode {
   const targetNode: HealthTreeNode = {
     id: `target:${entry.profile.id}:${targetId}`,
     title: targetTitle,
-    status: runStatusToTreeStatus(latest?.status ?? "none"),
+    status: entry.running ? "RUNNING" : runStatusToTreeStatus(latest?.status ?? "none"),
     checkedAt: latest?.finishedAt,
-    freshness: latest ? "fresh" : "not run",
+    freshness: entry.running ? "waiting for current run" : latest ? "fresh" : "not run",
     summary: `${checkChildren.length} health checks`,
     meta: String(
       latest?.params.storyboardUrl ??
@@ -857,9 +859,9 @@ function profileTreeNode(entry: ProfileState): HealthTreeNode {
   return {
     id: `profile:${entry.profile.id}`,
     title: entry.profile.title,
-    status: resultStatus(latest),
+    status: entry.running ? "RUNNING" : resultStatus(latest),
     checkedAt: latest?.finishedAt,
-    freshness: latest ? "fresh" : "not run",
+    freshness: entry.running ? "waiting for current run" : latest ? "fresh" : "not run",
     summary: entry.profile.description ?? `${entry.summary.checkCount} checks`,
     meta: entry.profile.id,
     raw: entry.profile,
@@ -1113,6 +1115,42 @@ function HealthTreeNodeRow({
   )
 }
 
+function pendingNodeResult(
+  node: HealthCheckNodeResult,
+  status: "RUNNING" | "STALE",
+  now: string,
+  previousRunId?: string,
+): HealthCheckNodeResult {
+  const waiting = status === "RUNNING"
+  return {
+    ...node,
+    status,
+    checkedAt: waiting ? now : node.checkedAt,
+    finishedAt: waiting ? undefined : node.finishedAt,
+    durationMs: waiting ? 0 : node.durationMs,
+    freshness: waiting ? "unknown" : "stale",
+    stale: !waiting,
+    summary: waiting
+      ? "Waiting for fresh result from this run"
+      : "Stale previous result; not refreshed by the active run yet",
+    failure: waiting
+      ? null
+      : {
+          class: "stale",
+          message: "Not refreshed by the active run yet",
+        },
+    evidence: {
+      ...(node.evidence ?? {}),
+      ...(waiting
+        ? { pending: true, requestedAt: now }
+        : { stale: true, previousRunId }),
+    },
+    children: (node.children ?? []).map((child) =>
+      pendingNodeResult(child, status, now, previousRunId),
+    ),
+  }
+}
+
 function pendingRunResult(
   profile: HealthProfile,
   targetId: string,
@@ -1126,27 +1164,37 @@ function pendingRunResult(
   const checks = profile.checks.map((check): HealthCheckResult => {
     const old = priorById.get(check.id)
     const inScope = requested.has(check.id)
+    const status = inScope ? "RUNNING" : old ? "STALE" : "NOT_RUN"
+    const waiting = status === "RUNNING"
     return {
       id: check.id,
       title: check.title,
       checkId: check.checkId,
       component: check.component,
       severity: check.severity,
-      status: inScope ? "RUNNING" : old ? "STALE" : "NOT_RUN",
+      status,
       durationMs: 0,
-      evidence: inScope
-        ? { pending: true, requestedAt: now }
-        : { stale: true, previousRunId: prior?.runId },
+      evidence: {
+        ...(old?.evidence ?? {}),
+        ...(waiting
+          ? { pending: true, requestedAt: now }
+          : { stale: true, previousRunId: prior?.runId }),
+      },
       runLocation: check.runLocation ?? check.execution,
-      failure: inScope
+      failure: waiting
         ? null
         : { class: "stale", message: "Not refreshed by the active run yet" },
       repairHint: check.repairHint ?? null,
+      children: old?.children?.map((child) =>
+        pendingNodeResult(child, waiting ? "RUNNING" : "STALE", now, prior?.runId),
+      ),
       startedAt: now,
-      checkedAt: old?.checkedAt,
-      freshness: inScope ? "unknown" : "stale",
-      stale: !inScope,
-      summary: inScope ? "Waiting for fresh result from this run" : "Stale previous result",
+      checkedAt: waiting ? now : old?.checkedAt,
+      freshness: waiting ? "unknown" : "stale",
+      stale: !waiting,
+      summary: waiting
+        ? "Waiting for fresh result from this run"
+        : "Stale previous result; not refreshed by the active run yet",
     }
   })
   return {
@@ -1156,7 +1204,7 @@ function pendingRunResult(
     params,
     startedAt: now,
     finishedAt: now,
-    status: "fail",
+    status: "unknown",
     checks,
   }
 }
