@@ -180,7 +180,7 @@ restart_gateway() {
   kill_port_listener "$GATEWAY_PORT"
   (
     cd "$REPO_ROOT/packages/dashboard"
-    nohup env DASHBOARD_PORT="$GATEWAY_PORT" DASHBOARD_DEV_FRONTEND=1 DASHBOARD_REPO_ROOT="$REPO_ROOT" bun run src/server.ts >>"$GATEWAY_LOG" 2>&1 &
+    nohup env       DASHBOARD_PORT="$GATEWAY_PORT"       DASHBOARD_DEV_FRONTEND=1       DASHBOARD_REPO_ROOT="$REPO_ROOT"       DASHBOARD_DEV_MAIN_DASHBOARD_PROXY="${DASHBOARD_DEV_MAIN_DASHBOARD_PROXY:-1}"       DASHBOARD_DEV_MAIN_DASHBOARD_URL="${DASHBOARD_DEV_MAIN_DASHBOARD_URL:-https://agent-dashboard-agentswarmawssetup.baseconnect-agents.com}"       bun run src/server.ts >>"$GATEWAY_LOG" 2>&1 &
   )
   for _ in {1..80}; do
     if probe_url "http://127.0.0.1:${GATEWAY_PORT}${HEALTH_PATH}"; then

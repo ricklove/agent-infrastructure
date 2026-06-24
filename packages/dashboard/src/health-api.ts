@@ -10,6 +10,7 @@ import { dirname, join, resolve } from "node:path"
 export type HealthApiOptions = {
   repoRoot: string
   stateRoot: string
+  workspaceHealthRoot?: string
 }
 
 type HealthSeverity = "blocking" | "warn" | "info"
@@ -3347,10 +3348,16 @@ async function parseRequestBody(
 export function createHealthApi(options: HealthApiOptions): {
   handle: (request: Request) => Promise<Response | null>
 } {
+  const workspaceHealthRoot = resolve(
+    options.workspaceHealthRoot?.trim() ||
+      process.env.DASHBOARD_WORKSPACE_HEALTH_ROOT?.trim() ||
+      process.env.WORKSPACE_HEALTH_ROOT?.trim() ||
+      "/home/ec2-user/workspace/workspace/health",
+  )
   const state: HealthApiState = {
     repoRoot: options.repoRoot,
-    profilesDir: resolve(options.repoRoot, "workspace/health/profiles"),
-    checksDir: resolve(options.repoRoot, "workspace/health/checks"),
+    profilesDir: resolve(workspaceHealthRoot, "profiles"),
+    checksDir: resolve(workspaceHealthRoot, "checks"),
     stateDir: resolve(options.stateRoot, "health"),
     workAtRegistryPath: resolve(options.stateRoot, "work-at/registry.json"),
     runCounter: 0,
