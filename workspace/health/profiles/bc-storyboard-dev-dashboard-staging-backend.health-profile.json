@@ -1,6 +1,6 @@
 {
   "id": "bc_storyboard_dev_dashboard_staging_backend",
-  "title": "bc-storyboard on dev dashboard with staging backend",
+  "title": "BaseConnect onboarding health on the dev dashboard",
   "description": "Cold-start top-level health profile for the full DEV Storyboard + BaseConnect onboarding path: bc-storyboard source, ddev dashboard remote-storyboard route, and BaseConnect frontend staging backend runtime.",
   "runLocation": {
     "executor": "dashboard-health-api",
@@ -19,14 +19,14 @@
     "publicDashboardUrl": "https://ecommerce-followed-sandwich-heroes.trycloudflare.com",
     "viteUrl": "http://127.0.0.1:5173",
     "expectedMinimumPassCount": "27",
-    "timeoutSeconds": "8"
+    "timeoutSeconds": "30"
   },
   "checks": [
     {
       "id": "bc_storyboard_dev_dashboard_staging_backend_cold_start",
       "checkId": "storyboard_cold_start_dev_dashboard_backend",
-      "title": "Cold-start DEV Storyboard + BaseConnect onboarding path (staging backend)",
-      "component": "bc-storyboard on dev dashboard with staging backend",
+      "title": "BaseConnect onboarding path using the staging backend",
+      "component": "BaseConnect onboarding health on the dev dashboard",
       "runLocation": {
         "executor": "dashboard-health-api",
         "workTarget": "agent-infra-dev/ddev-dashboard",

@@ -413,6 +413,45 @@ DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
     { mode: 0o600 },
   )
 
+  runChecked([
+    "chown",
+    "-R",
+    "ec2-user:ec2-user",
+    config.runtimeDir,
+    config.stateDir,
+    config.workspaceDir,
+  ])
+  runChecked(["sudo", "systemctl", "daemon-reload"])
+  runChecked([
+    "sudo",
+    "systemctl",
+    "enable",
+    "--now",
+    "agent-swarm-monitor.service",
+  ])
+  runChecked([
+    "sudo",
+    "systemctl",
+    "enable",
+    "--now",
+    "agent-swarm-manager-node.service",
+  ])
+  runChecked([
+    "sudo",
+    "systemctl",
+    "enable",
+    "--now",
+    "agent-manager-controller.service",
+  ])
+  writeResolvedRuntimeState({
+    runtimeDir: config.runtimeDir,
+    stateDir: config.stateDir,
+    requestedRole: "manager",
+    bootstrapContextPath: config.bootstrapContextPath,
+    setupStatus: "succeeded",
+  })
+  logStep("setup.complete")
+
   if (!existsSync(workerRuntimeReleaseManifestPath)) {
     runChecked(
       [
@@ -434,37 +473,6 @@ DASHBOARD_ENROLLMENT_SECRET_PATH=${dashboardEnrollmentSecretPath}
       config.runtimeDir,
     )
   }
-
-  runChecked([
-    "chown",
-    "-R",
-    "ec2-user:ec2-user",
-    config.runtimeDir,
-    config.stateDir,
-    config.workspaceDir,
-  ])
-  runChecked(["systemctl", "daemon-reload"])
-  runChecked(["systemctl", "enable", "--now", "agent-swarm-monitor.service"])
-  runChecked([
-    "systemctl",
-    "enable",
-    "--now",
-    "agent-swarm-manager-node.service",
-  ])
-  runChecked([
-    "systemctl",
-    "enable",
-    "--now",
-    "agent-manager-controller.service",
-  ])
-  writeResolvedRuntimeState({
-    runtimeDir: config.runtimeDir,
-    stateDir: config.stateDir,
-    requestedRole: "manager",
-    bootstrapContextPath: config.bootstrapContextPath,
-    setupStatus: "succeeded",
-  })
-  logStep("setup.complete")
 
   console.log(
     JSON.stringify({
