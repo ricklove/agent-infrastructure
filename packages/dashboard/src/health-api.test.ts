@@ -245,6 +245,11 @@ describe("dashboard health API", () => {
     ).toBe(false)
     expect(
       stagingCheck?.evidence.providerRows.some(
+        (row) => String(row.group).startsWith("ddev dashboard/"),
+      ),
+    ).toBe(false)
+    expect(
+      stagingCheck?.evidence.providerRows.some(
         (row) => row.key === "dashboard-public-health-route-200",
       ),
     ).toBe(true)

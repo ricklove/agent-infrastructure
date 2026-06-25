@@ -2938,7 +2938,14 @@ async function evaluateBuiltinCheck(
           },
         },
       ]
-      for (const row of staticRows)
+      const visibleStaticRows = requireDdevDashboardRoutes
+        ? staticRows
+        : staticRows.filter(
+            (row) =>
+              row.owner !== "ddev-storyboard" &&
+              !row.group.startsWith("ddev dashboard/"),
+          )
+      for (const row of visibleStaticRows)
         addProviderRow(providerRows, row, providerContext)
 
       const status = statusFromStringRows(
