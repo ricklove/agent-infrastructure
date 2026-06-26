@@ -275,6 +275,18 @@ function profileSummary(
   }
 }
 
+type WorkspaceHealthCheckDefinition = {
+  id: string
+  title?: string
+  description?: string
+  execution?: {
+    kind?: string
+    workTargetParam?: string
+  }
+  command?: string[]
+  timeoutMs?: number
+}
+
 function defaultRunLocation(
   context: Record<string, unknown>,
   params: Record<string, unknown>,
@@ -342,6 +354,26 @@ function readWorkAtRegistry(
   } catch {
     return {}
   }
+}
+
+function customCheckPath(state: HealthApiState, checkId: string): string {
+  return resolve(
+    state.checksDir,
+    `${checkId.replace(/_/gu, "-")}.health-check.json`,
+  )
+}
+
+async function runWorkAtCommand(
+  workTarget: string,
+  command: string[],
+  options: { timeoutMs?: number } = {},
+): Promise<{
+  exitCode: number
+  stdout: string
+  stderr: string
+  timedOut: boolean
+}> {
+  return runCommand(["work-at", workTarget, ...command], options)
 }
 
 function resolveTarget(
@@ -466,7 +498,8 @@ const unknownLikeHealthStatuses: HealthCheckStatus[] = [
 
 function rollupStatus(statuses: HealthCheckStatus[]): HealthCheckStatus {
   if (statuses.length === 0) return "UNKNOWN"
-  if (statuses.some((status) => status !== "PASS" && status !== "INFO")) return "FAIL"
+  if (statuses.some((status) => status !== "PASS" && status !== "INFO"))
+    return "FAIL"
   return "PASS"
 }
 
@@ -1424,7 +1457,10 @@ async function detectBackendMarker(
   }
 }
 
-function firstStringValue(record: Record<string, unknown>, keys: string[]): string {
+function firstStringValue(
+  record: Record<string, unknown>,
+  keys: string[],
+): string {
   for (const key of keys) {
     const value = maybeString(record[key])
     if (value) return value
@@ -1506,15 +1542,19 @@ async function resolveBcWebAppQuickTunnelUrl(
       error: response.error || null,
       stateKeys:
         response.payload && typeof response.payload === "object"
-          ? Object.keys(response.payload as Record<string, unknown>).slice(0, 20)
+          ? Object.keys(response.payload as Record<string, unknown>).slice(
+              0,
+              20,
+            )
           : [],
     })
     if (url) {
       return {
         url,
-        source: configuredStateUrl === stateUrl
-          ? "owning-runtime-state-url"
-          : "storyboard-runtime-state-discovery",
+        source:
+          configuredStateUrl === stateUrl
+            ? "owning-runtime-state-url"
+            : "storyboard-runtime-state-discovery",
         evidence: {
           stateUrl,
           httpStatus: response.status,
@@ -1533,7 +1573,8 @@ async function resolveBcWebAppQuickTunnelUrl(
 
   return {
     url: "",
-    source: stateUrlCandidates.length > 0 ? "state-url-no-public-url" : "missing",
+    source:
+      stateUrlCandidates.length > 0 ? "state-url-no-public-url" : "missing",
     evidence: {
       expectedParams: [
         "bcFrontendQuickTunnelUrl",
@@ -1554,7 +1595,8 @@ function routeLooksLikeBaseConnectApp(path: string, text: string): boolean {
   // shell instead of a tunnel error page or dashboard shell.
   if (/id="root"|_expo\/static\/js\/web|expo-scripts/iu.test(text)) return true
 
-  if (path === "/login") return /login|sign in|sign-in|email|password/iu.test(text)
+  if (path === "/login")
+    return /login|sign in|sign-in|email|password/iu.test(text)
   if (path === "/user-verification")
     return /verification|verify|user-verification|identity|code/iu.test(text)
   return true
@@ -1612,7 +1654,10 @@ async function evaluateBuiltinCheck(
 > {
   switch (check.checkId) {
     case "work_at_target_reachable": {
-      const targetId = maybeString(context.targetId) || "local"
+      const targetId =
+        maybeString(context.workTarget) ||
+        maybeString(context.targetId) ||
+        "local"
       if (targetId === "local") {
         return {
           status: "PASS",
@@ -1620,15 +1665,7 @@ async function evaluateBuiltinCheck(
           failure: null,
         }
       }
-      const workAtScript = resolve(state.repoRoot, "scripts/work-at.sh")
-      if (!existsSync(workAtScript)) {
-        return {
-          status: "UNKNOWN",
-          evidence: { workAtScript },
-          failure: failure("runner_unavailable", "work-at.sh is not available"),
-        }
-      }
-      const result = await runCommand([workAtScript, "--check", targetId], {
+      const result = await runCommand(["work-at", "--check", targetId], {
         cwd: state.repoRoot,
         timeoutMs: 10000,
       })
@@ -1691,22 +1728,36 @@ async function evaluateBuiltinCheck(
           failure: failure("invalid_check_params", "commandName is invalid"),
         }
       }
-      const result = await runCommand(
-        ["bash", "-lc", `command -v -- ${commandName}`],
-        {
-          cwd: state.repoRoot,
-          timeoutMs: 3000,
-        },
-      )
+      const workTarget =
+        maybeString(context.workTarget) || maybeString(context.targetId)
+      const result =
+        workTarget && workTarget !== "local"
+          ? await runWorkAtCommand(
+              workTarget,
+              ["bash", "-lc", `command -v -- ${commandName}`],
+              { timeoutMs: 3000 },
+            )
+          : await runCommand(["bash", "-lc", `command -v -- ${commandName}`], {
+              cwd: state.repoRoot,
+              timeoutMs: 3000,
+            })
       return result.exitCode === 0
         ? {
             status: "PASS",
-            evidence: { commandName, path: result.stdout },
+            evidence: {
+              commandName,
+              path: result.stdout,
+              workTarget: workTarget || "local",
+            },
             failure: null,
           }
         : {
             status: "FAIL",
-            evidence: { commandName, stderr: result.stderr },
+            evidence: {
+              commandName,
+              stderr: result.stderr,
+              workTarget: workTarget || "local",
+            },
             failure: failure(
               "command_missing",
               `${commandName} is not available`,
@@ -2395,8 +2446,8 @@ async function evaluateBuiltinCheck(
             detail: routeReachable
               ? `HTTP ${response.status}`
               : dockerRouteMissing
-                  ? `CONFIG_MISSING: Docker frontend route is not reachable (${response.error || `HTTP ${response.status}`}); start/configure the Docker frontend surface instead of falling back to staging.`
-                  : `Start the bc-frontend staging web app runtime and publish its current URL so ${path} loads (${response.error || `HTTP ${response.status}`}).`,
+                ? `CONFIG_MISSING: Docker frontend route is not reachable (${response.error || `HTTP ${response.status}`}); start/configure the Docker frontend surface instead of falling back to staging.`
+                : `Start the bc-frontend staging web app runtime and publish its current URL so ${path} loads (${response.error || `HTTP ${response.status}`}).`,
             evidence: {
               url,
               httpStatus: response.status,
@@ -2407,9 +2458,10 @@ async function evaluateBuiltinCheck(
           providerContext,
         )
       }
-      const quickTunnelValidHttps = /^https:\/\/[-a-z0-9]+\.trycloudflare\.com$/u.test(
-        bcWebAppQuickTunnelUrl,
-      )
+      const quickTunnelValidHttps =
+        /^https:\/\/[-a-z0-9]+\.trycloudflare\.com$/u.test(
+          bcWebAppQuickTunnelUrl,
+        )
       const quickTunnelDistinctFromDashboard =
         !bcWebAppQuickTunnelUrl ||
         bcWebAppQuickTunnelUrl !== publicDashboardUrl.replace(/\/+$/u, "")
@@ -2426,7 +2478,8 @@ async function evaluateBuiltinCheck(
           detail:
             quickTunnelValidHttps && quickTunnelDistinctFromDashboard
               ? `public quick tunnel discovered via ${bcWebAppQuickTunnel.source}`
-              : bcWebAppQuickTunnelUrl === publicDashboardUrl.replace(/\/+$/u, "")
+              : bcWebAppQuickTunnelUrl ===
+                  publicDashboardUrl.replace(/\/+$/u, "")
                 ? "BC web app quick tunnel must be separate from the dev-dashboard tunnel"
                 : "No current BaseConnect public web app tunnel URL is configured/discoverable; bc-frontend should publish bcFrontendQuickTunnelUrl or bcFrontendQuickTunnelStateUrl for the active runtime.",
           owner: "bc-frontend",
@@ -2507,7 +2560,8 @@ async function evaluateBuiltinCheck(
           providerRows,
           {
             key: "bc-frontend-quick-tunnel-routes-blocked",
-            label: "BC web app quick tunnel /login and /user-verification real views",
+            label:
+              "BC web app quick tunnel /login and /user-verification real views",
             group: "bc-frontend web app quick tunnel",
             status: "fail",
             detail:
@@ -2550,7 +2604,8 @@ async function evaluateBuiltinCheck(
               bcWebAppQuickTunnelUrl ||
               "BaseConnect public web app tunnel metadata",
             source: "BaseConnect frontend quick tunnel owner",
-            vantagePoint: "ddev worker -> public BC web app quick tunnel bundle",
+            vantagePoint:
+              "ddev worker -> public BC web app quick tunnel bundle",
             providerType: "bc-frontend-public-quicktunnel-bundle-probe",
           },
           evidence: {
@@ -2659,29 +2714,30 @@ async function evaluateBuiltinCheck(
         )
       }
 
-      const dashboardRouteChecks: Array<readonly [string, string, string, string]> =
-        requireDdevDashboardRoutes
-          ? [
-              [
-                "ddev-dashboard-gateway-200",
-                "Health Dashboard gateway 200",
-                localDashboardUrl,
-                "ddev dashboard/tunnel/remote-storyboard route",
-              ],
-              [
-                "ddev-dashboard-vite-200",
-                "Health Dashboard frontend dev server 200",
-                viteUrl,
-                "ddev dashboard/tunnel/remote-storyboard route",
-              ],
-              [
-                "ddev-dashboard-remote-storyboard-route-200",
-                "Storyboard editor route 200",
-                localRemoteStoryboardUrl,
-                "ddev dashboard/tunnel/remote-storyboard route",
-              ],
-            ]
-          : []
+      const dashboardRouteChecks: Array<
+        readonly [string, string, string, string]
+      > = requireDdevDashboardRoutes
+        ? [
+            [
+              "ddev-dashboard-gateway-200",
+              "Health Dashboard gateway 200",
+              localDashboardUrl,
+              "ddev dashboard/tunnel/remote-storyboard route",
+            ],
+            [
+              "ddev-dashboard-vite-200",
+              "Health Dashboard frontend dev server 200",
+              viteUrl,
+              "ddev dashboard/tunnel/remote-storyboard route",
+            ],
+            [
+              "ddev-dashboard-remote-storyboard-route-200",
+              "Storyboard editor route 200",
+              localRemoteStoryboardUrl,
+              "ddev dashboard/tunnel/remote-storyboard route",
+            ],
+          ]
+        : []
       if (publicDashboardUrl) {
         dashboardRouteChecks.push([
           "dashboard-public-health-route-200",
@@ -3024,18 +3080,111 @@ async function evaluateBuiltinCheck(
     }
 
     default: {
-      const customCheckPath = resolve(
-        state.checksDir,
-        `${check.checkId.replace(/_/gu, "-")}.health-check.json`,
-      )
+      const path = customCheckPath(state, check.checkId)
+      if (existsSync(path)) {
+        const customCheck = readJsonFile<WorkspaceHealthCheckDefinition>(path)
+        const command = renderTemplate(
+          customCheck.command ?? [],
+          context,
+        ) as string[]
+        const timeoutMs = maybeNumber(customCheck.timeoutMs, 10000)
+        const executionKind = customCheck.execution?.kind ?? "local"
+        const workTargetParam =
+          customCheck.execution?.workTargetParam ?? "workTarget"
+        const workTarget =
+          maybeString(context[workTargetParam]) ||
+          maybeString(context.workTarget)
+        if (!Array.isArray(command) || command.length === 0) {
+          return {
+            status: "UNKNOWN",
+            evidence: { customCheckPath: path, command },
+            failure: failure(
+              "invalid_check_definition",
+              "custom health check command is missing",
+            ),
+          }
+        }
+        if (executionKind === "work-at") {
+          if (!workTarget || workTarget === "local") {
+            return {
+              status: "UNKNOWN",
+              evidence: { customCheckPath: path, workTargetParam, workTarget },
+              failure: failure(
+                "invalid_work_target",
+                "work-at custom health check requires a non-local workTarget",
+              ),
+            }
+          }
+          const result = await runWorkAtCommand(workTarget, command, {
+            timeoutMs,
+          })
+          return result.exitCode === 0
+            ? {
+                status: "PASS",
+                evidence: {
+                  customCheckPath: path,
+                  workTarget,
+                  stdout: result.stdout,
+                },
+                failure: null,
+              }
+            : {
+                status: "FAIL",
+                evidence: {
+                  customCheckPath: path,
+                  workTarget,
+                  command,
+                  stdout: result.stdout,
+                  stderr: result.stderr,
+                  timedOut: result.timedOut,
+                },
+                failure: failure(
+                  result.timedOut
+                    ? "custom_check_timeout"
+                    : "custom_check_failed",
+                  result.stderr ||
+                    result.stdout ||
+                    `custom check ${check.checkId} failed`,
+                ),
+              }
+        }
+        const result = await runCommand(command, {
+          cwd: state.repoRoot,
+          timeoutMs,
+        })
+        return result.exitCode === 0
+          ? {
+              status: "PASS",
+              evidence: { customCheckPath: path, stdout: result.stdout },
+              failure: null,
+            }
+          : {
+              status: "FAIL",
+              evidence: {
+                customCheckPath: path,
+                command,
+                stdout: result.stdout,
+                stderr: result.stderr,
+                timedOut: result.timedOut,
+              },
+              failure: failure(
+                result.timedOut
+                  ? "custom_check_timeout"
+                  : "custom_check_failed",
+                result.stderr ||
+                  result.stdout ||
+                  `custom check ${check.checkId} failed`,
+              ),
+            }
+      }
       return {
         status: "UNKNOWN",
         evidence: {
-          customCheckPath: existsSync(customCheckPath) ? customCheckPath : null,
+          customCheckPath: null,
         },
         failure: failure(
           "check_runner_not_implemented",
-          `checkId ${check.checkId} is not implemented by the dashboard MVP runner`,
+          `checkId ${check.checkId} is not implemented by the dashboard health runner`,
         ),
       }
     }
@@ -3145,7 +3294,9 @@ function runStatusFromChecks(checks: HealthCheckResult[]): HealthRunStatus {
   if (checks.length === 0) {
     return "unknown"
   }
-  if (checks.some((check) => check.status !== "PASS" && check.status !== "INFO")) {
+  if (
+    checks.some((check) => check.status !== "PASS" && check.status !== "INFO")
+  ) {
     return "fail"
   }
   return "pass"
@@ -3262,11 +3413,12 @@ async function runProfile(
     requestBody.params && typeof requestBody.params === "object"
       ? requestBody.params
       : {}
+  const defaultTargetId = maybeString(profile.params?.workTarget) || "local"
   const target = resolveTarget(
     state,
     maybeString(requestBody.targetId) ||
       maybeString(requestBody.target) ||
-      "local",
+      defaultTargetId,
     requestParams,
   )
   const baseContext = {
