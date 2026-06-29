@@ -1304,28 +1304,37 @@ export function RunTargetHealthPanel({
   )
 }
 
+export function displayedScreenshotAsset(
+  screenshots: Partial<Record<OutputVariantId, string>> | undefined,
+  outputVariantId: OutputVariantId,
+  runOutputAsset?: string,
+) {
+  return runOutputAsset?.trim() || screenshots?.[outputVariantId]
+}
+
 function renderEditorFrame(
   frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>,
   storyboardUrl: string,
   captureSetId: string,
   runVariantActions?: Partial<Record<OutputVariantId, ReactNode>>,
   variantAssetCacheKeys?: Partial<Record<OutputVariantId, string>>,
+  variantOutputAssets?: Partial<Record<OutputVariantId, string>>,
 ) {
   if (hasFrameScreenshots(frame)) {
     const screenshots = frameScreenshots(frame, captureSetId)
     const desktop = proxiedAssetUrl(
       storyboardUrl,
-      screenshots?.desktop,
+      displayedScreenshotAsset(screenshots, "desktop", variantOutputAssets?.desktop),
       variantAssetCacheKeys?.desktop,
     )
     const mobile = proxiedAssetUrl(
       storyboardUrl,
-      screenshots?.mobile,
+      displayedScreenshotAsset(screenshots, "mobile", variantOutputAssets?.mobile),
       variantAssetCacheKeys?.mobile,
     )
     const square = proxiedAssetUrl(
       storyboardUrl,
-      screenshots?.square,
+      displayedScreenshotAsset(screenshots, "square", variantOutputAssets?.square),
       variantAssetCacheKeys?.square,
     )
 
@@ -2330,6 +2339,30 @@ function StoryboardEditorFixture({
     return keys
   }
 
+  function runVariantAssetsForFrame(
+    frame: StoryboardGridFrame & Partial<StoryboardFrameRecord>,
+  ) {
+    if (!document) return {}
+    const storyId = findStoryIdForFrame(document, frame.id)
+    if (!storyId) return {}
+    const assets: Partial<Record<OutputVariantId, string>> = {}
+    ;(["desktop", "mobile", "square"] as OutputVariantId[]).forEach(
+      (outputVariantId) => {
+        const key = variantRunKey(
+          document.id,
+          storyId,
+          frame.id,
+          activeCaptureSetId,
+          outputVariantId,
+          "run-and-capture",
+        )
+        const outputAsset = variantRunStates[key]?.outputAsset?.trim()
+        if (outputAsset) assets[outputVariantId] = outputAsset
+      },
+    )
+    return assets
+  }
+
   async function initializeStoryboard() {
     if (!isConnected) {
       return
@@ -2631,18 +2664,47 @@ function StoryboardEditorFixture({
   const storyboardDefaultRunUrl = normalizeWebRunTargetUrl(
     document?.runTarget?.kind === "web" ? document.runTarget.url : "",
   )
+  const selectedFrameRunAssets: Partial<Record<OutputVariantId, string>> = {}
+  if (document && selected?.kind === "frame") {
+    ;(["desktop", "mobile", "square"] as OutputVariantId[]).forEach(
+      (outputVariantId) => {
+        const key = variantRunKey(
+          document.id,
+          selected.storyId,
+          selected.frameId,
+          activeCaptureSetId,
+          outputVariantId,
+          "run-and-capture",
+        )
+        const outputAsset = variantRunStates[key]?.outputAsset?.trim()
+        if (outputAsset) selectedFrameRunAssets[outputVariantId] = outputAsset
+      },
+    )
+  }
   const selectedFrameScreenshotUrls = {
     desktop: proxiedAssetUrl(
       connectedStoryboardUrl,
-      selectedFrameCapture.screenshots?.desktop,
+      displayedScreenshotAsset(
+        selectedFrameCapture.screenshots,
+        "desktop",
+        selectedFrameRunAssets.desktop,
+      ),
     ),
     mobile: proxiedAssetUrl(
       connectedStoryboardUrl,
-      selectedFrameCapture.screenshots?.mobile,
+      displayedScreenshotAsset(
+        selectedFrameCapture.screenshots,
+        "mobile",
+        selectedFrameRunAssets.mobile,
+      ),
     ),
     square: proxiedAssetUrl(
       connectedStoryboardUrl,
-      selectedFrameCapture.screenshots?.square,
+      displayedScreenshotAsset(
+        selectedFrameCapture.screenshots,
+        "square",
+        selectedFrameRunAssets.square,
+      ),
     ),
   }
   const storyFrameOptions = selectedStory
@@ -4940,6 +5002,10 @@ function StoryboardEditorFixture({
                               Partial<StoryboardFrameRecord>,
                           ),
                           runVariantAssetCacheKeysForFrame(
+                            frame as StoryboardGridFrame &
+                              Partial<StoryboardFrameRecord>,
+                          ),
+                          runVariantAssetsForFrame(
                             frame as StoryboardGridFrame &
                               Partial<StoryboardFrameRecord>,
                           ),

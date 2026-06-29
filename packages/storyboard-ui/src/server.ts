@@ -30,6 +30,7 @@ const storyboardRunTargetConfigPath = resolve(
   process.env.STORYBOARD_RUN_TARGET_CONFIG?.trim() ||
     join(repoRoot, "packages/storyboard-ui/storyboard-run-targets.json"),
 )
+const runMirrorGeneratorVersion = 2
 
 type SnapshotJob = {
   id: string
@@ -426,7 +427,7 @@ async function proxyRunTargetHealthJson(storyboardUrl: string, path: string, run
   return { status: response.status, payload }
 }
 
-type RunMirror = { root: string; port: number; baseUrl: string; documentMtimeMs: number | null; process?: ReturnType<typeof Bun.spawn> }
+type RunMirror = { root: string; port: number; baseUrl: string; documentMtimeMs: number | null; generatorVersion?: number; process?: ReturnType<typeof Bun.spawn> }
 const runMirrors = new Map<string, RunMirror>()
 
 function runMirrorKey(storyboardUrl: string) {
@@ -613,6 +614,8 @@ async function writeRunMirrorFiles(
     })
   const manifest = {
     version: 1,
+    generatedBy: "dashboard-storyboard-run-mirror",
+    generatorVersion: runMirrorGeneratorVersion,
     enabled: true,
     runners: [{ id: "agent-browser", label: "agent-browser", kind: "browser", enabled: true, capabilities: ["run-to-state", "capture", "run-and-capture"] }],
     captureSets: [{ id: "default", label: "Default", viewport: { width: 1440, height: 900, deviceScaleFactor: 1 }, outputPathTemplate: "assets/{frameKey}.{outputVariantId}.png", imageFormat: "png", comparisonPolicy: "manual" }],
@@ -628,10 +631,17 @@ async function ensureRunMirror(storyboardUrl: string) {
   if (existing) {
     const documentPayload = await proxyStoryboardUrlDocument(storyboardUrl)
     if (documentPayload.mtimeMs === null || documentPayload.mtimeMs <= (existing.documentMtimeMs ?? 0)) {
+      if ((existing.generatorVersion ?? 0) >= runMirrorGeneratorVersion) {
+        return existing
+      }
+      const refreshed = await writeRunMirrorFiles(storyboardUrl, existing.root, documentPayload)
+      existing.documentMtimeMs = refreshed.documentMtimeMs
+      existing.generatorVersion = runMirrorGeneratorVersion
       return existing
     }
     const refreshed = await writeRunMirrorFiles(storyboardUrl, existing.root, documentPayload)
     existing.documentMtimeMs = refreshed.documentMtimeMs
+    existing.generatorVersion = runMirrorGeneratorVersion
     return existing
   }
   const root = join(runMirrorRoot, key)
@@ -649,7 +659,7 @@ async function ensureRunMirror(storyboardUrl: string) {
       STORYBOARD_AGENT_BROWSER_SESSION_NAME: `storyboard-ui-${key}`,
     },
   })
-  const mirror = { root, port, baseUrl: `http://127.0.0.1:${port}`, documentMtimeMs: written.documentMtimeMs, process: proc }
+  const mirror = { root, port, baseUrl: `http://127.0.0.1:${port}`, documentMtimeMs: written.documentMtimeMs, generatorVersion: runMirrorGeneratorVersion, process: proc }
   runMirrors.set(key, mirror)
   for (let attempt = 0; attempt < 20; attempt += 1) {
     try {

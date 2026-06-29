@@ -7,6 +7,7 @@ import {
   RunTargetHealthPanel,
   StoryboardRunTargetHealthScreen,
   buildRunAssetCacheKey,
+  displayedScreenshotAsset,
   documentToSequences,
   findSelectionForFrameId,
   readStoryboardEditorQuery,
@@ -250,6 +251,31 @@ describe("remote storyboard deep links", () => {
         completedAt: "2026-06-08T21:20:00.000Z",
       }),
     ).toBe("2026-06-08T21:20:00.000Z")
+  })
+
+  test("uses run output asset over the canonical screenshot path for refreshed frame previews", () => {
+    expect(
+      displayedScreenshotAsset(
+        {
+          desktop:
+            "assets/agent-browser-user-stories/story-c-02-manager-empty-subgroup-confirm-delete.desktop.png",
+        },
+        "desktop",
+        "assets/story-a-empty-subgroup-confirm-delete.desktop.png",
+      ),
+    ).toBe("assets/story-a-empty-subgroup-confirm-delete.desktop.png")
+
+    expect(
+      displayedScreenshotAsset(
+        {
+          desktop:
+            "assets/agent-browser-user-stories/story-a-02-empty-subgroup-confirm-delete.desktop.png",
+        },
+        "desktop",
+      ),
+    ).toBe(
+      "assets/agent-browser-user-stories/story-a-02-empty-subgroup-confirm-delete.desktop.png",
+    )
   })
 
   test("rewrites loopback run-script URLs to the remote storyboard host for bcn-814 story-a/story-c parity", () => {
