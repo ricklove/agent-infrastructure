@@ -1,6 +1,6 @@
 {
   "id": "bc_storyboard_dev_dashboard_staging_backend",
-  "title": "BaseConnect onboarding storyboard health — staging backend",
+  "title": "BaseConnect onboarding storyboard health \u2014 staging backend",
   "description": "Cold-start top-level health profile for the full DEV Storyboard + BaseConnect onboarding path: bc-storyboard source, ddev dashboard remote-storyboard route, and BaseConnect frontend staging backend runtime.",
   "runLocation": {
     "executor": "dashboard-health-api",
@@ -12,16 +12,52 @@
   },
   "params": {
     "backendMode": "staging",
-    "storyboardUrl": "http://10.0.0.239:8898/onboarding",
     "runTargetId": "baseconnect-frontend-web",
-    "frontendUrl": "http://10.0.0.239:8086",
     "localDashboardUrl": "http://127.0.0.1:3300",
     "publicDashboardUrl": "",
     "viteUrl": "http://127.0.0.1:5173",
     "expectedMinimumPassCount": "27",
-    "bcFrontendQuickTunnelUrl": "",
-    "bcFrontendQuickTunnelStateUrl": "",
-    "timeoutSeconds": "8"
+    "timeoutSeconds": "8",
+    "storyboardUrl": "{{storyboardUrl}}",
+    "frontendUrl": "{{frontendUrl}}",
+    "bcFrontendQuickTunnelUrl": "{{bcFrontendQuickTunnelUrl}}",
+    "bcFrontendQuickTunnelStateUrl": "{{bcFrontendQuickTunnelStateUrl}}",
+    "runtimeSettingsTimeoutMs": "2000",
+    "runtimeSettings": {
+      "maxAgeSeconds": 900,
+      "required": [
+        "storyboardUrl",
+        "frontendUrl"
+      ],
+      "sources": [
+        {
+          "id": "bc-storyboard-source",
+          "path": "{{stateRoot}}/runtime-settings/bc-storyboard/onboarding.json",
+          "required": [
+            "storyboardUrl"
+          ],
+          "valueMap": {
+            "storyboardUrl": "storyboardUrl",
+            "sourceUrl": "storyboardUrl"
+          }
+        },
+        {
+          "id": "bc-frontend-staging-runtime",
+          "path": "{{stateRoot}}/runtime-settings/bc-frontend/staging.json",
+          "required": [
+            "frontendUrl"
+          ],
+          "valueMap": {
+            "frontendUrl": "frontendUrl",
+            "privateBaseUrl": "frontendUrl",
+            "bcFrontendQuickTunnelUrl": "bcFrontendQuickTunnelUrl",
+            "quickTunnelUrl": "bcFrontendQuickTunnelUrl",
+            "bcFrontendQuickTunnelStateUrl": "bcFrontendQuickTunnelStateUrl",
+            "quickTunnelStateUrl": "bcFrontendQuickTunnelStateUrl"
+          }
+        }
+      ]
+    }
   },
   "checks": [
     {

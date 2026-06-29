@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs"
 import { dirname, join, resolve } from "node:path"
@@ -112,6 +113,33 @@ type HealthProfileDefinition = {
   runLocation?: HealthRunLocation
   params?: Record<string, unknown>
   checks?: HealthProfileCheckDefinition[]
+}
+
+type HealthRuntimeSettingsSource = {
+  id?: string
+  path?: string
+  url?: string
+  required?: string[]
+  maxAgeSeconds?: number
+  valuesKey?: string
+  valueMap?: Record<string, string>
+  optional?: boolean
+}
+
+type HealthRuntimeSettingsDefinition = {
+  sources?: HealthRuntimeSettingsSource[]
+  required?: string[]
+  maxAgeSeconds?: number
+}
+
+type RuntimeSettingsResolution = {
+  params: Record<string, unknown>
+  diagnostics: Record<string, unknown>
+  failures: Array<{
+    class: string
+    message: string
+    evidence: Record<string, unknown>
+  }>
 }
 
 type HealthRunRequest = {
@@ -259,6 +287,254 @@ function renderTemplate(
     )
   }
   return value
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map((entry) => maybeString(entry)).filter(Boolean)
+    : []
+}
+
+function healthRuntimeSettingsDefinition(
+  value: unknown,
+): HealthRuntimeSettingsDefinition | null {
+  if (!isRecord(value)) return null
+  const sources = Array.isArray(value.sources)
+    ? value.sources.filter(isRecord).map((source) => ({
+        id: maybeString(source.id),
+        path: maybeString(source.path),
+        url: maybeString(source.url),
+        required: stringArray(source.required),
+        maxAgeSeconds:
+          typeof source.maxAgeSeconds === "number"
+            ? source.maxAgeSeconds
+            : undefined,
+        valuesKey: maybeString(source.valuesKey),
+        valueMap: isRecord(source.valueMap)
+          ? Object.fromEntries(
+              Object.entries(source.valueMap)
+                .map(([from, to]) => [from, maybeString(to)] as const)
+                .filter(([, to]) => Boolean(to)),
+            )
+          : undefined,
+        optional: source.optional === true,
+      }))
+    : []
+  return {
+    sources,
+    required: stringArray(value.required),
+    maxAgeSeconds:
+      typeof value.maxAgeSeconds === "number" ? value.maxAgeSeconds : undefined,
+  }
+}
+
+function fileUpdatedAtUtc(path: string): string | null {
+  try {
+    return statSync(path).mtime.toISOString()
+  } catch {
+    return null
+  }
+}
+
+function timestampMs(value: unknown): number | null {
+  const raw = maybeString(value)
+  if (!raw) return null
+  const parsed = Date.parse(raw)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function runtimeSettingsUpdatedAtMs(
+  payload: Record<string, unknown>,
+  fallbackUpdatedAtUtc: string | null,
+): number | null {
+  return (
+    timestampMs(payload.updatedAtUtc) ??
+    timestampMs(payload.updatedAt) ??
+    timestampMs(payload.timestampUtc) ??
+    timestampMs(payload.timestamp) ??
+    timestampMs(fallbackUpdatedAtUtc)
+  )
+}
+
+function runtimeSettingsValues(
+  payload: Record<string, unknown>,
+  source: HealthRuntimeSettingsSource,
+): Record<string, unknown> {
+  const sourceValues = source.valuesKey
+    ? payload[source.valuesKey]
+    : isRecord(payload.values)
+      ? payload.values
+      : payload
+  if (!isRecord(sourceValues)) return {}
+  const ignoredKeys = new Set([
+    "updatedAtUtc",
+    "updatedAt",
+    "timestampUtc",
+    "timestamp",
+    "ttlSeconds",
+    "maxAgeSeconds",
+    "owner",
+    "profile",
+    "source",
+  ])
+  if (source.valueMap && Object.keys(source.valueMap).length > 0) {
+    return Object.fromEntries(
+      Object.entries(source.valueMap)
+        .map(([from, to]) => [to, sourceValues[from]] as const)
+        .filter(([, value]) => value !== undefined && value !== null),
+    )
+  }
+  return Object.fromEntries(
+    Object.entries(sourceValues).filter(([key, value]) => {
+      if (ignoredKeys.has(key)) return false
+      return ["string", "number", "boolean"].includes(typeof value)
+    }),
+  )
+}
+
+async function loadRuntimeSettingsSource(
+  source: HealthRuntimeSettingsSource,
+  timeoutMs: number,
+): Promise<{
+  ok: boolean
+  payload?: Record<string, unknown>
+  updatedAtUtc?: string | null
+  error?: string
+  httpStatus?: number | null
+}> {
+  if (source.path) {
+    try {
+      return {
+        ok: true,
+        payload: readJsonFile<Record<string, unknown>>(source.path),
+        updatedAtUtc: fileUpdatedAtUtc(source.path),
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+  if (source.url) {
+    const response = await jsonFromUrl(source.url, timeoutMs)
+    return {
+      ok:
+        response.status !== null &&
+        response.status >= 200 &&
+        response.status < 300 &&
+        isRecord(response.payload),
+      payload: isRecord(response.payload) ? response.payload : undefined,
+      error: response.error,
+      httpStatus: response.status,
+    }
+  }
+  return { ok: false, error: "runtime settings source requires path or url" }
+}
+
+async function resolveRuntimeSettings(
+  baseContext: Record<string, unknown>,
+): Promise<RuntimeSettingsResolution> {
+  const definition = healthRuntimeSettingsDefinition(baseContext.runtimeSettings)
+  if (!definition || (definition.sources ?? []).length === 0) {
+    return { params: {}, diagnostics: { sources: [] }, failures: [] }
+  }
+  const timeoutMs = Math.max(
+    500,
+    maybeNumber(baseContext.runtimeSettingsTimeoutMs, 2000),
+  )
+  const nowMs = Date.now()
+  const params: Record<string, unknown> = {}
+  const failures: RuntimeSettingsResolution["failures"] = []
+  const sourceDiagnostics: Array<Record<string, unknown>> = []
+
+  for (const source of definition.sources ?? []) {
+    const maxAgeSeconds = source.maxAgeSeconds ?? definition.maxAgeSeconds
+    const sourceId = source.id || source.path || source.url || "runtime-settings"
+    const loaded = await loadRuntimeSettingsSource(source, timeoutMs)
+    if (!loaded.ok || !loaded.payload) {
+      const evidence = {
+        sourceId,
+        path: source.path || null,
+        url: source.url || null,
+        httpStatus: loaded.httpStatus ?? null,
+        error: loaded.error ?? null,
+      }
+      sourceDiagnostics.push({ ...evidence, status: "missing" })
+      if (!source.optional) {
+        failures.push({
+          class: "CONFIG_MISSING",
+          message: `Required runtime settings source ${sourceId} is missing or unreadable`,
+          evidence,
+        })
+      }
+      continue
+    }
+
+    const updatedAtMs = runtimeSettingsUpdatedAtMs(
+      loaded.payload,
+      loaded.updatedAtUtc ?? null,
+    )
+    const ageMs = updatedAtMs === null ? null : Math.max(0, nowMs - updatedAtMs)
+    const stale =
+      typeof maxAgeSeconds === "number" &&
+      (updatedAtMs === null || ageMs === null || ageMs > maxAgeSeconds * 1000)
+    const sourceValues = runtimeSettingsValues(loaded.payload, source)
+    const missingRequired = (source.required ?? []).filter(
+      (key) => !maybeString(sourceValues[key]),
+    )
+    const diagnostics = {
+      sourceId,
+      path: source.path || null,
+      url: source.url || null,
+      updatedAtUtc:
+        maybeString(loaded.payload.updatedAtUtc) || loaded.updatedAtUtc || null,
+      ageMs,
+      maxAgeSeconds: maxAgeSeconds ?? null,
+      stale,
+      keys: Object.keys(sourceValues).sort(),
+      missingRequired,
+    }
+    sourceDiagnostics.push(diagnostics)
+    if (stale) {
+      failures.push({
+        class: "CONFIG_STALE",
+        message: `Required runtime settings source ${sourceId} is stale`,
+        evidence: diagnostics,
+      })
+      continue
+    }
+    if (missingRequired.length > 0) {
+      failures.push({
+        class: "CONFIG_MISSING",
+        message: `Required runtime settings source ${sourceId} is missing ${missingRequired.join(", ")}`,
+        evidence: diagnostics,
+      })
+      continue
+    }
+    Object.assign(params, sourceValues)
+  }
+
+  const finalParams = { ...baseContext, ...params }
+  const missingGlobal = (definition.required ?? []).filter(
+    (key) => !maybeString(finalParams[key]),
+  )
+  if (missingGlobal.length > 0) {
+    failures.push({
+      class: "CONFIG_MISSING",
+      message: `Required runtime settings are missing: ${missingGlobal.join(", ")}`,
+      evidence: { missingRequired: missingGlobal },
+    })
+  }
+  return {
+    params,
+    diagnostics: { sources: sourceDiagnostics, required: definition.required ?? [] },
+    failures,
+  }
 }
 
 function profileSummary(
@@ -3256,6 +3532,73 @@ function runStatusFromChecks(checks: HealthCheckResult[]): HealthRunStatus {
   return "pass"
 }
 
+function runtimeSettingsFailureCheck(args: {
+  profile: HealthProfileDefinition
+  context: Record<string, unknown>
+  diagnostics: Record<string, unknown>
+  failures: RuntimeSettingsResolution["failures"]
+}): HealthCheckResult {
+  const primary = args.failures[0]
+  const status: HealthCheckStatus = "BLOCKED"
+  const children: HealthCheckNodeResult[] = args.failures.map((entry, index) => ({
+    id: `runtime_settings:${index}`,
+    title: entry.message,
+    kind: "dependency",
+    status,
+    durationMs: 0,
+    evidence: entry.evidence,
+    failure: failure(entry.class, entry.message),
+    repairHint:
+      "Ask the owning runtime profile to publish a fresh runtime settings JSON file or provider endpoint for this health profile.",
+  }))
+  const contract = nodeContract({
+    id: "runtime_settings",
+    title: "Runtime settings are fresh and complete",
+    kind: "check",
+    status,
+    runLocation: args.profile.runLocation,
+    dispatchPath: [args.profile.title, "runtime settings"],
+    owner: "ddev-storyboard",
+    definitionKey: "runtime_settings",
+    templateId: "health-runtime-settings.v1",
+    target: {
+      id: args.profile.id,
+      profileId: args.profile.id,
+      backendMode: maybeString(args.context.backendMode),
+      sourceUrl: maybeString(args.context.storyboardUrl),
+    },
+    durationMs: 0,
+    detail: primary?.message ?? "Runtime settings are missing or stale",
+    children,
+    context: args.context,
+  })
+  return {
+    ...contract,
+    id: "runtime_settings",
+    title: "Runtime settings are fresh and complete",
+    checkId: "runtime_settings",
+    component: "runtime settings",
+    severity: "blocking",
+    status,
+    durationMs: 0,
+    evidence: {
+      ...contract,
+      runtimeSettings: args.diagnostics,
+      humanActionRequired: true,
+      actionTarget: "owning-runtime-profile",
+      failureClass: primary?.class ?? "CONFIG_MISSING",
+    },
+    runLocation: args.profile.runLocation,
+    failure: failure(
+      primary?.class ?? "CONFIG_MISSING",
+      primary?.message ?? "Runtime settings are missing or stale",
+    ),
+    repairHint:
+      "Ask the owning runtime profile to publish fresh runtime settings state; dashboard health will not use stale hard-coded fallbacks.",
+    children,
+  }
+}
+
 function buildRunRoot(args: {
   profile: HealthProfileDefinition
   target: HealthRunTarget
@@ -3389,9 +3732,22 @@ async function runProfile(
     repoRoot: state.repoRoot,
     stateRoot: dirname(state.stateDir),
   }
+  const initiallyRenderedBaseContext = renderTemplate(
+    baseContext,
+    baseContext,
+  ) as Record<string, unknown>
+  const runtimeSettings = await resolveRuntimeSettings(initiallyRenderedBaseContext)
   const renderedBaseContext = renderTemplate(
-    baseContext,
-    baseContext,
+    {
+      ...initiallyRenderedBaseContext,
+      ...runtimeSettings.params,
+      runtimeSettingsDiagnostics: runtimeSettings.diagnostics,
+    },
+    {
+      ...initiallyRenderedBaseContext,
+      ...runtimeSettings.params,
+      runtimeSettingsDiagnostics: runtimeSettings.diagnostics,
+    },
   ) as Record<string, unknown>
 
   const requestedCheckIds = Array.isArray(requestBody.checkIds)
@@ -3411,8 +3767,19 @@ async function runProfile(
     )
   }
   const checks: HealthCheckResult[] = []
-  for (const check of checksToRun) {
-    checks.push(await evaluateCheck(state, check, renderedBaseContext))
+  if (runtimeSettings.failures.length > 0) {
+    checks.push(
+      runtimeSettingsFailureCheck({
+        profile,
+        context: renderedBaseContext,
+        diagnostics: runtimeSettings.diagnostics,
+        failures: runtimeSettings.failures,
+      }),
+    )
+  } else {
+    for (const check of checksToRun) {
+      checks.push(await evaluateCheck(state, check, renderedBaseContext))
+    }
   }
   const finishedAt = new Date().toISOString()
   const status = runStatusFromChecks(checks)

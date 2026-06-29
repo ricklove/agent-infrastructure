@@ -1,6 +1,6 @@
 {
   "id": "bc_storyboard_dev_dashboard_docker_backend",
-  "title": "BaseConnect onboarding storyboard health — docker backend",
+  "title": "BaseConnect onboarding storyboard health \u2014 docker backend",
   "description": "Cold-start top-level health profile for the full DEV Storyboard + BaseConnect onboarding path with frontend runtime configured against the Docker/local backend stack. Reuses the shared Storyboard/dashboard cold-start health template while keeping the Docker backend branch independent from staging.",
   "runLocation": {
     "executor": "dashboard-health-api",
@@ -12,17 +12,55 @@
   },
   "params": {
     "backendMode": "docker",
-    "storyboardUrl": "http://10.0.0.239:8898/onboarding",
     "runTargetId": "baseconnect-frontend-web",
-    "frontendUrl": "http://10.0.0.239:8085",
-    "backendApiUrl": "http://10.0.0.239:8080",
     "localDashboardUrl": "http://127.0.0.1:3300",
     "publicDashboardUrl": "",
     "viteUrl": "http://127.0.0.1:5173",
     "expectedMinimumPassCount": "27",
-    "bcFrontendQuickTunnelUrl": "",
-    "bcFrontendQuickTunnelStateUrl": "",
-    "timeoutSeconds": "8"
+    "timeoutSeconds": "8",
+    "storyboardUrl": "{{storyboardUrl}}",
+    "frontendUrl": "{{frontendUrl}}",
+    "backendApiUrl": "{{backendApiUrl}}",
+    "bcFrontendQuickTunnelUrl": "{{bcFrontendQuickTunnelUrl}}",
+    "bcFrontendQuickTunnelStateUrl": "{{bcFrontendQuickTunnelStateUrl}}",
+    "runtimeSettingsTimeoutMs": "2000",
+    "runtimeSettings": {
+      "maxAgeSeconds": 900,
+      "required": [
+        "storyboardUrl",
+        "frontendUrl",
+        "backendApiUrl"
+      ],
+      "sources": [
+        {
+          "id": "bc-storyboard-source",
+          "path": "{{stateRoot}}/runtime-settings/bc-storyboard/onboarding.json",
+          "required": [
+            "storyboardUrl"
+          ],
+          "valueMap": {
+            "storyboardUrl": "storyboardUrl",
+            "sourceUrl": "storyboardUrl"
+          }
+        },
+        {
+          "id": "bc-frontend-docker-runtime",
+          "path": "{{stateRoot}}/runtime-settings/bc-frontend/docker.json",
+          "required": [
+            "frontendUrl"
+          ],
+          "valueMap": {
+            "frontendUrl": "frontendUrl",
+            "privateBaseUrl": "frontendUrl",
+            "bcFrontendQuickTunnelUrl": "bcFrontendQuickTunnelUrl",
+            "quickTunnelUrl": "bcFrontendQuickTunnelUrl",
+            "bcFrontendQuickTunnelStateUrl": "bcFrontendQuickTunnelStateUrl",
+            "quickTunnelStateUrl": "bcFrontendQuickTunnelStateUrl",
+            "backendApiUrl": "backendApiUrl"
+          }
+        }
+      ]
+    }
   },
   "checks": [
     {

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -11,6 +11,17 @@ function tempStateRoot(): string {
   const path = mkdtempSync(join(tmpdir(), "dashboard-health-api-"))
   stateRoots.push(path)
   return path
+}
+
+function writeRuntimeSettings(
+  stateRoot: string,
+  relativePath: string,
+  values: Record<string, unknown>,
+  updatedAtUtc = new Date().toISOString(),
+): void {
+  const path = join(stateRoot, "runtime-settings", relativePath)
+  mkdirSync(join(path, ".."), { recursive: true })
+  writeFileSync(path, `${JSON.stringify({ updatedAtUtc, ...values }, null, 2)}\n`)
 }
 
 afterEach(() => {
@@ -59,7 +70,22 @@ describe("dashboard health API", () => {
   })
 
   test("runs staging and docker storyboard profiles through the shared cold-start template", async () => {
-    const api = createHealthApi({ repoRoot, stateRoot: tempStateRoot() })
+    const stateRoot = tempStateRoot()
+    writeRuntimeSettings(stateRoot, "bc-storyboard/onboarding.json", {
+      storyboardUrl: "http://127.0.0.1:1/onboarding",
+    })
+    writeRuntimeSettings(stateRoot, "bc-frontend/staging.json", {
+      frontendUrl: "http://127.0.0.1:1",
+      bcFrontendQuickTunnelUrl: "",
+      bcFrontendQuickTunnelStateUrl: "",
+    })
+    writeRuntimeSettings(stateRoot, "bc-frontend/docker.json", {
+      frontendUrl: "http://127.0.0.1:1",
+      backendApiUrl: "http://127.0.0.1:1",
+      bcFrontendQuickTunnelUrl: "",
+      bcFrontendQuickTunnelStateUrl: "",
+    })
+    const api = createHealthApi({ repoRoot, stateRoot })
     async function run(profileId: string) {
       const response = await api.handle(
         new Request("http://dashboard.local/api/health/run", {
@@ -219,6 +245,110 @@ describe("dashboard health API", () => {
     expect(dockerSource?.target?.profileId).toBe(
       "bc_storyboard_dev_dashboard_docker_backend",
     )
+  })
+
+  test("runtime settings reject stale state, override defaults, and fail clearly when missing", async () => {
+    const freshStateRoot = tempStateRoot()
+    writeRuntimeSettings(freshStateRoot, "bc-storyboard/onboarding.json", {
+      storyboardUrl: "http://127.0.0.1:1/fresh-storyboard",
+    })
+    writeRuntimeSettings(freshStateRoot, "bc-frontend/staging.json", {
+      frontendUrl: "http://127.0.0.1:2",
+      bcFrontendQuickTunnelUrl: "https://fresh-bc.example.test",
+    })
+    const freshApi = createHealthApi({ repoRoot, stateRoot: freshStateRoot })
+    const freshResponse = await freshApi.handle(
+      new Request("http://dashboard.local/api/health/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          profileId: "bc_storyboard_dev_dashboard_staging_backend",
+          targetId: "local",
+          params: {
+            storyboardUrl: "http://stale-profile-default.example/onboarding",
+            frontendUrl: "http://stale-profile-default.example",
+            localDashboardUrl: "http://127.0.0.1:1",
+            publicDashboardUrl: "http://127.0.0.1:1",
+            viteUrl: "http://127.0.0.1:1",
+            timeoutSeconds: "1",
+          },
+        }),
+      }),
+    )
+    expect(freshResponse?.status).toBe(202)
+    const freshPayload = (await freshResponse?.json()) as {
+      result: { params: Record<string, unknown>; checks: Array<{ checkId: string }> }
+    }
+    expect(freshPayload.result.params.storyboardUrl).toBe(
+      "http://127.0.0.1:1/fresh-storyboard",
+    )
+    expect(freshPayload.result.params.frontendUrl).toBe("http://127.0.0.1:2")
+    expect(freshPayload.result.checks[0]?.checkId).toBe(
+      "storyboard_cold_start_dev_dashboard_backend",
+    )
+
+    const staleStateRoot = tempStateRoot()
+    const old = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    writeRuntimeSettings(
+      staleStateRoot,
+      "bc-storyboard/onboarding.json",
+      { storyboardUrl: "http://127.0.0.1:1/onboarding" },
+      old,
+    )
+    writeRuntimeSettings(
+      staleStateRoot,
+      "bc-frontend/staging.json",
+      { frontendUrl: "http://127.0.0.1:1" },
+      old,
+    )
+    const staleApi = createHealthApi({ repoRoot, stateRoot: staleStateRoot })
+    const staleResponse = await staleApi.handle(
+      new Request("http://dashboard.local/api/health/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          profileId: "bc_storyboard_dev_dashboard_staging_backend",
+          targetId: "local",
+          params: { timeoutSeconds: "1" },
+        }),
+      }),
+    )
+    const stalePayload = (await staleResponse?.json()) as {
+      result: { checks: Array<{ status: string; failure?: { class?: string } }> }
+    }
+    expect(stalePayload.result.checks[0]?.status).toBe("BLOCKED")
+    expect(stalePayload.result.checks[0]?.failure?.class).toBe("CONFIG_STALE")
+
+    const missingApi = createHealthApi({ repoRoot, stateRoot: tempStateRoot() })
+    const missingResponse = await missingApi.handle(
+      new Request("http://dashboard.local/api/health/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          profileId: "bc_storyboard_dev_dashboard_staging_backend",
+          targetId: "local",
+          params: { timeoutSeconds: "1" },
+        }),
+      }),
+    )
+    const missingPayload = (await missingResponse?.json()) as {
+      result: { checks: Array<{ status: string; failure?: { class?: string; message?: string }; evidence?: Record<string, unknown> }> }
+    }
+    expect(missingPayload.result.checks[0]?.status).toBe("BLOCKED")
+    expect(missingPayload.result.checks[0]?.failure?.class).toBe("CONFIG_MISSING")
+    expect(missingPayload.result.checks[0]?.evidence?.humanActionRequired).toBe(true)
+  })
+
+  test("BC frontend health profiles do not hard-code ephemeral URLs", () => {
+    for (const profilePath of [
+      "workspace/health/profiles/bc-storyboard-dev-dashboard-staging-backend.health-profile.json",
+      "workspace/health/profiles/bc-storyboard-dev-dashboard-docker-backend.health-profile.json",
+    ]) {
+      const text = readFileSync(join(repoRoot, profilePath), "utf8")
+      expect(text).not.toContain("10.0.0.")
+      expect(text).not.toContain("trycloudflare.com")
+      expect(text).toContain("runtimeSettings")
+    }
   })
 
   test("runs a profile and persists the latest result", async () => {
