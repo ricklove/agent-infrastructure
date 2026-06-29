@@ -1308,8 +1308,21 @@ export function displayedScreenshotAsset(
   screenshots: Partial<Record<OutputVariantId, string>> | undefined,
   outputVariantId: OutputVariantId,
   runOutputAsset?: string,
+  _frameId?: string,
 ) {
-  return runOutputAsset?.trim() || screenshots?.[outputVariantId]
+  const canonicalAsset = screenshots?.[outputVariantId]?.trim()
+  const trimmedRunOutputAsset = runOutputAsset?.trim()
+
+  if (!trimmedRunOutputAsset) return canonicalAsset
+  if (!canonicalAsset) return trimmedRunOutputAsset
+
+  // Run-state is global for the storyboard and can contain successful jobs for
+  // adjacent frames with very similar names. Never let a stale/provenance asset
+  // replace the canonical screenshot for a different frame; only use run output
+  // when it targets the same configured asset path for this exact frame/variant.
+  return trimmedRunOutputAsset === canonicalAsset
+    ? trimmedRunOutputAsset
+    : canonicalAsset
 }
 
 function renderEditorFrame(
@@ -1324,17 +1337,32 @@ function renderEditorFrame(
     const screenshots = frameScreenshots(frame, captureSetId)
     const desktop = proxiedAssetUrl(
       storyboardUrl,
-      displayedScreenshotAsset(screenshots, "desktop", variantOutputAssets?.desktop),
+      displayedScreenshotAsset(
+        screenshots,
+        "desktop",
+        variantOutputAssets?.desktop,
+        frame.id,
+      ),
       variantAssetCacheKeys?.desktop,
     )
     const mobile = proxiedAssetUrl(
       storyboardUrl,
-      displayedScreenshotAsset(screenshots, "mobile", variantOutputAssets?.mobile),
+      displayedScreenshotAsset(
+        screenshots,
+        "mobile",
+        variantOutputAssets?.mobile,
+        frame.id,
+      ),
       variantAssetCacheKeys?.mobile,
     )
     const square = proxiedAssetUrl(
       storyboardUrl,
-      displayedScreenshotAsset(screenshots, "square", variantOutputAssets?.square),
+      displayedScreenshotAsset(
+        screenshots,
+        "square",
+        variantOutputAssets?.square,
+        frame.id,
+      ),
       variantAssetCacheKeys?.square,
     )
 

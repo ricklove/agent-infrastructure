@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { formatStoryboardDocument, frameCaptureSet, normalizeStoryboardDocument, isStoryboardDocument, type StoryboardDocument, type StoryboardFrameRecord, type StoryboardStoryRecord, type StoryboardTransitionRecord } from "./storyboard-document.js"
 import { parseNumericStoryboardHeader, shouldRefreshRunMirrorAsset } from "./run-mirror.js"
 import { normalizeRunTargetHealthChecks, normalizeWebRunTargetUrl, runTargetHealthAggregateOk, runTargetHealthApiPath, runTargetProviderApiPath } from "./run-target-health.js"
+import { rewriteLoopbackUrlForStoryboardSource } from "./storyboard-action-url.js"
 
 const port = Number.parseInt(process.env.STORYBOARD_PORT ?? "8797", 10)
 const workspaceRoot = process.env.AGENT_WORKSPACE_DIR?.trim() || "/home/ec2-user/workspace"
@@ -508,6 +509,29 @@ function documentRuntimeTargetForFrame(
   )
 }
 
+function firstHttpUrlFromText(value: string | undefined) {
+  const match = value?.match(/https?:\/\/[^\s)>,]+/iu)
+  if (!match) return undefined
+  return match[0].replace(/[.,;:]+$/u, "")
+}
+
+function notesRuntimeTargetForFrame(
+  storyboardUrl: string,
+  story: StoryboardStoryRecord | undefined,
+  frame: StoryboardFrameRecord | undefined,
+  fallback?: StoryboardRunTargetConfigEntry["runtimeTarget"],
+) {
+  const rawUrl = firstHttpUrlFromText(frame?.notes) ?? firstHttpUrlFromText(story?.notes)
+  if (!rawUrl) return undefined
+  const appUrl = rewriteLoopbackUrlForStoryboardSource(rawUrl, storyboardUrl)
+  return runtimeTargetFromWebUrl(
+    appUrl,
+    "storyboard:notes",
+    "Storyboard notes web target",
+    fallback,
+  )
+}
+
 function configuredRuntimeTargetForFrame(
   storyboardUrl: string,
   storyboard: StoryboardDocument,
@@ -533,7 +557,15 @@ function documentRunTargetOverride(storyboardUrl: string, storyboard: Storyboard
 }
 
 function runtimeTargetForFrame(storyboardUrl: string, storyboard: StoryboardDocument, storyId: string, frameKey: string) {
-  return configuredRuntimeTargetForFrame(storyboardUrl, storyboard, storyId, frameKey) ?? documentRuntimeTargetForFrame(storyboard)
+  const configured = configuredRuntimeTargetForFrame(storyboardUrl, storyboard, storyId, frameKey)
+  const documentTarget = documentRuntimeTargetForFrame(storyboard, configured)
+  if (configured ?? documentTarget) return configured ?? documentTarget
+  const story = storyboard.stories.find((entry) => entry.id === storyId)
+  const frame = [
+    ...(story?.frames ?? []),
+    ...(story?.branches ?? []).flatMap((branch) => branch.frames),
+  ].find((entry) => entry.id === frameKey)
+  return notesRuntimeTargetForFrame(storyboardUrl, story, frame, configured)
 }
 
 function runManifestEntryId(storyId: string, frameKey: string) {
