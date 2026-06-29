@@ -112,7 +112,7 @@ try {
       ...process.env,
       STORYBOARD_RUN_ALLOW_ASSET_FALLBACK: "1",
       STORYBOARD_RUN_SOURCE_URL: source,
-      STORYBOARD_AGENT_BROWSER_SESSION_NAME: `storyboard-smoke-${Date.now()}`,
+      STORYBOARD_AGENT_BROWSER_SESSION_NAME: process.env.STORYBOARD_AGENT_BROWSER_SESSION_NAME ?? `storyboard-smoke-${Date.now()}`,
     },
   });
   const baseUrl = `http://127.0.0.1:${port}`;
