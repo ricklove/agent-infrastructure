@@ -625,15 +625,27 @@ async function openRuntimeTargetWithRetry(url: string) {
   return lastResult ?? runAgentBrowser(["open", url], 35_000);
 }
 
+function expectedAssertionNeedle(frame: Record<string, unknown>) {
+  const assertion = assertionText(frame);
+  const text = frameAutomationText(frame);
+  if (/Are you sure you want to delete this group\?/iu.test(`${assertion}\n${text}`)) {
+    return "Are you sure you want to delete this group?";
+  }
+  const contains = assertion.match(/document body contains\s+([^,.\n]+)/iu)?.[1]?.trim();
+  if (contains) return contains;
+  return null;
+}
+
 async function waitForBrowserPaint(jobId: string, frame: Record<string, unknown>) {
-  const expectedText = isAccountVerificationFrame(frame) ? "Military Verification" : String(frame.title ?? "").trim();
+  const expectedText = expectedAssertionNeedle(frame)
+    ?? (isAccountVerificationFrame(frame) ? "Military Verification" : String(frame.title ?? "").trim());
   const script = `async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     if (document.fonts?.ready) await document.fonts.ready.catch(() => null);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const start = Date.now();
     const expected = ${JSON.stringify(expectedText)};
-    while (expected && Date.now() - start < 5000) {
+    while (expected && Date.now() - start < 10000) {
       if ((document.body?.innerText || "").includes(expected)) break;
       await sleep(250);
     }
@@ -649,11 +661,11 @@ async function waitForBrowserPaint(jobId: string, frame: Record<string, unknown>
       rootRect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
     };
   }`;
-  const result = await runAgentBrowser(["eval", `(${script})()`], 12_000);
+  const result = await runAgentBrowser(["eval", `(${script})()`], 15_000);
   runStorage.appendLog(jobId, {
     level: result.exitCode === 0 ? "info" : "warn",
     event: "agent_browser_paint_wait",
-    context: { frameKey: frame.id, stdout: result.stdout.slice(0, 2000), stderr: result.stderr, exitCode: result.exitCode, timedOut: result.timedOut },
+    context: { frameKey: frame.id, expectedText, stdout: result.stdout.slice(0, 2000), stderr: result.stderr, exitCode: result.exitCode, timedOut: result.timedOut },
   });
   return result;
 }
@@ -742,6 +754,48 @@ function truecolorPngPaintStats(path: string) {
   };
 }
 
+function clickGroupDetailsDeleteScript() {
+  return `async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const text = (el) => (el?.innerText || el?.textContent || "").trim();
+    const buttons = Array.from(document.querySelectorAll('button,[role="button"],div[tabindex="0"],a'))
+      .filter((el) => /^Delete$/iu.test(text(el)))
+      .map((el) => ({ el, rect: el.getBoundingClientRect() }))
+      .filter(({ rect }) => rect.width > 20 && rect.height > 10);
+    if (buttons.length === 0) throw new Error('Delete button not found');
+    const groupDetailsHeading = Array.from(document.querySelectorAll('body *'))
+      .map((el) => ({ el, rect: el.getBoundingClientRect(), label: text(el) }))
+      .filter(({ label, rect }) => /GROUP DETAILS/iu.test(label) && rect.width > 0 && rect.height > 0)
+      .sort((a, b) => (a.rect.top - b.rect.top) || (a.rect.left - b.rect.left))[0];
+    const anchor = groupDetailsHeading?.rect;
+    const scored = buttons.map(({ el, rect }) => {
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const headingDistance = anchor
+        ? Math.abs(centerX - (anchor.left + anchor.width / 2)) + Math.max(0, centerY - anchor.bottom)
+        : centerX + centerY;
+      const leftRailPenalty = centerX < 250 ? 10000 : 0;
+      return { el, rect, score: headingDistance + leftRailPenalty };
+    }).sort((a, b) => a.score - b.score);
+    const target = scored[0];
+    target.el.scrollIntoView({ block: 'center', inline: 'center' });
+    await sleep(250);
+    target.el.click();
+    const start = Date.now();
+    while (Date.now() - start < 8000) {
+      if ((document.body?.innerText || '').includes('Are you sure you want to delete this group?')) break;
+      await sleep(250);
+    }
+    return {
+      clickedText: text(target.el),
+      clickedRect: { x: target.rect.x, y: target.rect.y, width: target.rect.width, height: target.rect.height },
+      promptVisible: (document.body?.innerText || '').includes('Are you sure you want to delete this group?'),
+      url: location.href,
+      bodyText: (document.body?.innerText || '').slice(0, 800),
+    };
+  }`;
+}
+
 async function applyAgentBrowserAction(action: string) {
   const rewrittenAction = rewriteLoopbackUrlsInActionForStoryboardSource(
     action,
@@ -754,6 +808,10 @@ async function applyAgentBrowserAction(action: string) {
   }
   if (/confirmation\s+Delete button|confirm(?:ation)?\s+Delete/iu.test(rewrittenAction)) {
     const result = await runAgentBrowser(["find", "text", "Delete", "click"], 15_000);
+    return { ...result, rewrittenAction };
+  }
+  if (/click\s+Delete[^\n]*group details section/iu.test(rewrittenAction)) {
+    const result = await runAgentBrowser(["eval", `(${clickGroupDetailsDeleteScript()})()`], 15_000);
     return { ...result, rewrittenAction };
   }
   if (/click\s+Delete/iu.test(rewrittenAction)) {
@@ -864,12 +922,16 @@ function accountVerificationScript(options: { checkRequiredSmsBoxes: boolean }) 
   }`;
 }
 
-async function applyKnownFrameAutomation(frame: Record<string, unknown>, runtimeTarget: { appOrigin?: string; appUrl?: string } | null) {
+function executableRuntimeTargetUrl(runtimeTarget: { configuredRunTargetUrl?: string; appUrl?: string } | null) {
+  return runtimeTarget?.configuredRunTargetUrl || runtimeTarget?.appUrl;
+}
+
+async function applyKnownFrameAutomation(frame: Record<string, unknown>, runtimeTarget: { appOrigin?: string; configuredRunTargetUrl?: string; appUrl?: string } | null) {
   const identity = frameAutomationText(frame);
   const frameId = String(frame.id ?? "");
   const title = typeof frame.title === "string" ? frame.title : "";
   if (!isAccountVerificationFrame(frame)) return null;
-  const appBase = runtimeTarget?.appOrigin || runtimeTarget?.appUrl;
+  const appBase = executableRuntimeTargetUrl(runtimeTarget) || runtimeTarget?.appOrigin;
   if (appBase) {
     const verificationUrl = new URL("/user-verification", appBase).toString();
     const open = await openRuntimeTargetWithRetry(verificationUrl);
@@ -938,9 +1000,13 @@ async function executeRunJob(jobId: string) {
     runStorage.appendLog(jobId, { level: viewportResult.exitCode === 0 ? "info" : "warn", event: "agent_browser_viewport", context: viewportResult });
   }
 
+  const executableAppUrl = executableRuntimeTargetUrl(runtimeTarget);
+  if (!executableAppUrl) {
+    throw new Error("runtime target is missing appUrl");
+  }
   const accountVerificationRuntimeUrl = isAccountVerificationFrame(frameMatch.frame)
-    ? new URL("/user-verification", runtimeTarget.appUrl).toString()
-    : runtimeTarget.appUrl;
+    ? new URL("/user-verification", executableAppUrl).toString()
+    : executableAppUrl;
   const runtimeOpen = await openRuntimeTargetWithRetry(accountVerificationRuntimeUrl);
   runStorage.appendLog(jobId, {
     level: runtimeOpen.exitCode === 0 ? "info" : "error",
