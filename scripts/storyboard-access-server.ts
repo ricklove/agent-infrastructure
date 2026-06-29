@@ -498,6 +498,13 @@ function extractOpenUrl(action: string) {
   return action.match(/\bopen\s+(https?:\/\/\S+)/iu)?.[1]?.replace(/[).,]+$/u, "") ?? null;
 }
 
+function rewriteActionForStoryboardSource(action: string) {
+  return rewriteLoopbackUrlsInActionForStoryboardSource(
+    action,
+    process.env.STORYBOARD_RUN_SOURCE_URL,
+  );
+}
+
 function frameCaptureAsset(frame: Record<string, unknown>, captureSetId: string, outputVariantId?: string, screenSizeId?: string) {
   const captureSets = frame.captureSets as undefined | Record<string, { screenshots?: Record<string, string> }>;
   const capture = captureSets?.[captureSetId] ?? captureSets?.default;
@@ -786,21 +793,22 @@ function clickGroupDetailsDeleteScript() {
       if ((document.body?.innerText || '').includes('Are you sure you want to delete this group?')) break;
       await sleep(250);
     }
+    const bodyText = (document.body?.innerText || '');
+    if (!bodyText.includes('Are you sure you want to delete this group?')) {
+      throw new Error('delete confirmation prompt not visible after clicking Delete: ' + bodyText.slice(0, 800));
+    }
     return {
       clickedText: text(target.el),
       clickedRect: { x: target.rect.x, y: target.rect.y, width: target.rect.width, height: target.rect.height },
-      promptVisible: (document.body?.innerText || '').includes('Are you sure you want to delete this group?'),
+      promptVisible: bodyText.includes('Are you sure you want to delete this group?'),
       url: location.href,
-      bodyText: (document.body?.innerText || '').slice(0, 800),
+      bodyText: bodyText.slice(0, 800),
     };
   }`;
 }
 
 async function applyAgentBrowserAction(action: string) {
-  const rewrittenAction = rewriteLoopbackUrlsInActionForStoryboardSource(
-    action,
-    process.env.STORYBOARD_RUN_SOURCE_URL,
-  );
+  const rewrittenAction = rewriteActionForStoryboardSource(action);
   const openUrl = extractOpenUrl(rewrittenAction);
   if (openUrl) {
     const result = await runAgentBrowser(["open", openUrl], 20_000);
@@ -1004,9 +1012,12 @@ async function executeRunJob(jobId: string) {
   if (!executableAppUrl) {
     throw new Error("runtime target is missing appUrl");
   }
+  const actionSequence = collectActionsToFrame(frameMatch.story, frameKey ?? "");
+  const firstOpenAction = actionSequence.find((action) => extractOpenUrl(rewriteActionForStoryboardSource(action.action)));
+  const firstOpenUrl = firstOpenAction ? extractOpenUrl(rewriteActionForStoryboardSource(firstOpenAction.action)) : null;
   const accountVerificationRuntimeUrl = isAccountVerificationFrame(frameMatch.frame)
     ? new URL("/user-verification", executableAppUrl).toString()
-    : executableAppUrl;
+    : firstOpenUrl ?? executableAppUrl;
   const runtimeOpen = await openRuntimeTargetWithRetry(accountVerificationRuntimeUrl);
   runStorage.appendLog(jobId, {
     level: runtimeOpen.exitCode === 0 ? "info" : "error",
@@ -1016,7 +1027,7 @@ async function executeRunJob(jobId: string) {
   if (runtimeOpen.exitCode !== 0) {
     throw new Error(`runtime target failed to open: ${runtimeOpen.stderr || runtimeOpen.stdout || runtimeOpen.exitCode}`);
   }
-  const actions = collectActionsToFrame(frameMatch.story, frameKey ?? "").filter((action) => !extractOpenUrl(action.action));
+  const actions = actionSequence.filter((action) => !extractOpenUrl(rewriteActionForStoryboardSource(action.action)));
   const fallbackUrl = localStoryboardFrameAssetUrl(frameMatch.frame, captureSetId, outputVariantId, job.screenSizeId);
   let usedFallback = false;
   let usedKnownAutomation = false;
@@ -1038,7 +1049,7 @@ async function executeRunJob(jobId: string) {
     const result = await applyAgentBrowserAction(action.action);
     runStorage.appendLog(jobId, { level: result.exitCode === 0 ? "info" : "warn", event: "agent_browser_action", context: { frameKey: action.id, action: action.action, ...result } });
     if (result.exitCode !== 0) {
-      if (fallbackUrl && process.env.STORYBOARD_RUN_ALLOW_ASSET_FALLBACK !== "0") {
+      if (fallbackUrl && process.env.STORYBOARD_RUN_ALLOW_ASSET_FALLBACK !== "0" && !expectedAssertionNeedle(frameMatch.frame)) {
         const fallback = await runAgentBrowser(["open", fallbackUrl], 15_000);
         usedFallback = true;
         runStorage.appendLog(jobId, { level: fallback.exitCode === 0 ? "warn" : "error", event: "agent_browser_asset_fallback", context: { fallbackUrl, ...fallback } });
