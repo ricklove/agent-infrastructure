@@ -253,7 +253,7 @@ describe("remote storyboard deep links", () => {
     ).toBe("2026-06-08T21:20:00.000Z")
   })
 
-  test("keeps refreshed frame previews scoped to the selected frame screenshot path", () => {
+  test("keeps refreshed frame previews scoped to the selected frame id", () => {
     expect(
       displayedScreenshotAsset(
         {
@@ -261,12 +261,10 @@ describe("remote storyboard deep links", () => {
             "assets/agent-browser-user-stories/story-a-02-empty-subgroup-confirm-delete.desktop.png",
         },
         "desktop",
-        "assets/agent-browser-user-stories/story-a-02-empty-subgroup-confirm-delete.desktop.png",
+        "assets/story-a-empty-subgroup-confirm-delete.desktop.png",
         "story-a-empty-subgroup-confirm-delete",
       ),
-    ).toBe(
-      "assets/agent-browser-user-stories/story-a-02-empty-subgroup-confirm-delete.desktop.png",
-    )
+    ).toBe("assets/story-a-empty-subgroup-confirm-delete.desktop.png")
 
     expect(
       displayedScreenshotAsset(
@@ -302,6 +300,15 @@ describe("remote storyboard deep links", () => {
         "story-a-empty-subgroup-confirm-delete",
       ),
     ).toBe("assets/story-a-empty-subgroup-confirm-delete.desktop.png")
+
+    expect(
+      displayedScreenshotAsset(
+        undefined,
+        "desktop",
+        "assets/story-c-manager-empty-subgroup-confirm-delete.desktop.png",
+        "story-a-empty-subgroup-confirm-delete",
+      ),
+    ).toBeUndefined()
   })
 
   test("rewrites loopback run-script URLs to the remote storyboard host for bcn-814 story-a/story-c parity", () => {

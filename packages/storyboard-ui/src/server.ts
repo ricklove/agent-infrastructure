@@ -743,6 +743,41 @@ async function proxyStoryboardUrlDocument(storyboardUrl: string, init?: RequestI
   }
 }
 
+function runMirrorDocumentPayload(storyboardUrl: string, mirror: RunMirror) {
+  const documentPath = join(mirror.root, "storyboard.json")
+  const { document, mtimeMs } = readStoryboardDocument(documentPath)
+  return {
+    path: storyboardUrl,
+    document,
+    mtimeMs,
+  }
+}
+
+async function proxyStoryboardUrlDocumentWithRunMirrorFallback(storyboardUrl: string, init?: RequestInit) {
+  try {
+    return await proxyStoryboardUrlDocument(storyboardUrl, init)
+  } catch (error) {
+    if (init || !shouldFallbackToRunMirror(error)) throw error
+    const key = runMirrorKey(storyboardUrl)
+    const existing = runMirrors.get(key)
+    if (existing && existsSync(join(existing.root, "storyboard.json"))) {
+      return runMirrorDocumentPayload(storyboardUrl, existing)
+    }
+    const persistedRoot = join(runMirrorRoot, key)
+    if (existsSync(join(persistedRoot, "storyboard.json"))) {
+      const persistedMirror = {
+        root: persistedRoot,
+        port: runMirrorPort(key),
+        baseUrl: `http://127.0.0.1:${runMirrorPort(key)}`,
+        documentMtimeMs: null,
+        generatorVersion: runMirrorGeneratorVersion,
+      }
+      return runMirrorDocumentPayload(storyboardUrl, persistedMirror)
+    }
+    throw error
+  }
+}
+
 async function proxyStoryboardAsset(storyboardUrl: string, assetPath: string, preferRunMirror = false) {
   const sourceUrl = new URL(assetPath, `${normalizeStoryboardBaseUrl(storyboardUrl)}/`)
   if (preferRunMirror) {
@@ -1318,7 +1353,10 @@ Bun.serve({
       try {
         const storyboardUrl = resolveStoryboardUrl(url, request.url)
         if (storyboardUrl) {
-          return jsonResponse({ ok: true, ...(await proxyStoryboardUrlDocument(storyboardUrl)) })
+          return jsonResponse({
+            ok: true,
+            ...(await proxyStoryboardUrlDocumentWithRunMirrorFallback(storyboardUrl)),
+          })
         }
         return jsonResponse({ ok: true, ...readStoryboardDocument(resolveStoryboardPath(url)) })
       } catch (error) {

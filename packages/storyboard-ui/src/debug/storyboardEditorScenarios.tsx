@@ -1304,25 +1304,38 @@ export function RunTargetHealthPanel({
   )
 }
 
+function assetPathTargetsFrame(assetPath: string, frameId: string | undefined) {
+  const normalizedFrameId = frameId?.trim().toLowerCase()
+  if (!normalizedFrameId) return true
+  const normalizedAssetPath = assetPath.trim().toLowerCase()
+  if (!normalizedAssetPath) return false
+
+  const basename = normalizedAssetPath.split(/[\\/]/u).at(-1) ?? normalizedAssetPath
+  const stem = basename.replace(/\.[a-z0-9]+$/u, "")
+  return (
+    stem === normalizedFrameId ||
+    stem.startsWith(`${normalizedFrameId}.`) ||
+    stem.startsWith(`${normalizedFrameId}-`) ||
+    normalizedAssetPath.includes(`/${normalizedFrameId}.`) ||
+    normalizedAssetPath.includes(`/${normalizedFrameId}-`)
+  )
+}
+
 export function displayedScreenshotAsset(
   screenshots: Partial<Record<OutputVariantId, string>> | undefined,
   outputVariantId: OutputVariantId,
   runOutputAsset?: string,
-  _frameId?: string,
+  frameId?: string,
 ) {
   const canonicalAsset = screenshots?.[outputVariantId]?.trim()
   const trimmedRunOutputAsset = runOutputAsset?.trim()
+  const frameMatchedRunOutput =
+    trimmedRunOutputAsset && assetPathTargetsFrame(trimmedRunOutputAsset, frameId)
+      ? trimmedRunOutputAsset
+      : undefined
 
-  if (!trimmedRunOutputAsset) return canonicalAsset
-  if (!canonicalAsset) return trimmedRunOutputAsset
-
-  // Run-state is global for the storyboard and can contain successful jobs for
-  // adjacent frames with very similar names. Never let a stale/provenance asset
-  // replace the canonical screenshot for a different frame; only use run output
-  // when it targets the same configured asset path for this exact frame/variant.
-  return trimmedRunOutputAsset === canonicalAsset
-    ? trimmedRunOutputAsset
-    : canonicalAsset
+  if (frameMatchedRunOutput) return frameMatchedRunOutput
+  return canonicalAsset
 }
 
 function renderEditorFrame(
